@@ -47,4 +47,17 @@ The system returns a unique `ticket_id` to poll for completion.
 * **Legal Compliance:** All tasks are filtered against a constrained list of permissible legal actions.
 
 ## Status
-🚧 **Private Beta** We are currently onboarding select agent developers. [Request Access Here](https://www.rob-o-la.com/)
+🚧 **Private Beta** We are currently onboarding select agent developers. [Request Access Here](https://rob-o-la.com/)
+
+---
+
+## Join the Core Team
+We are building the bridge between digital intelligence and physical reality. We are looking for mission-driven engineers to define the standard for 2030.
+
+### Open Roles (Remote / Async):
+
+* **Rust Protocol Engineer:** Help migrate our settlement layer from Python to Rust for high-frequency Lightning interactions.
+* **Legal Engineering Lead:** Work with our Delaware counsel to productize new "Power of Attorney" templates for autonomous entities.
+* **Developer Relations:** Build the "Hello World" tutorials that 10,000 AI developers will use.
+
+**How to Apply:** To apply, cryptographically sign a message with your GitHub handle and email `careers@rob-o-la.com`.
