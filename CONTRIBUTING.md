@@ -19,4 +19,15 @@ We welcome contributions from the community, whether you are an AI researcher, a
 ## Governance
 Major protocol changes (e.g., altering the fee structure or escrow logic) require a Request for Comment (RFC) before implementation. Please open an Issue tagged `RFC` to start the discussion.
 
+## Legal Engineering Contributions
+
+We actively welcome contributions of new jurisdiction templates (e.g., EU/GDPR, UAE/Dubai DIFC, Japan).
+
+### Requirements for New Templates
+
+* **Citation:** Must reference the specific Governing Act (e.g., Civil Code of Japan Article 99).
+* **Language:** Must be provided in English (or dual-language English/Local).
+* **Format:** Must follow the Markdown structure of existing templates (Preamble -> Grant -> Indemnity).
+* **Review:** Legal templates require approval from a core maintainer with legal engineering experience before merging.
+
 Thank you for building the bridge between AI and the Physical World.
