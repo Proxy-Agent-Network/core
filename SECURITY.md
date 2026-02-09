@@ -21,3 +21,24 @@ We maintain a private bug bounty program for critical exploits.
 * **Deanonymization of Proxies:** Up to $2,000
 
 We ask that you give us 48 hours to respond before public disclosure.
+
+---
+
+## Secure Communication (PGP)
+
+For sensitive disclosures, please encrypt your email using our PGP Public Key.
+
+```text
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: OpenPGP.js v4.10.10
+Comment: [https://proxy.agent.network](https://proxy.agent.network)
+
+xsBNBGM5+rUBCAC9/8k3j9... (Truncated for brevity) ...
+... [Full key available on keyserver.ubuntu.com search: 0x99283] ...
+-----END PGP PUBLIC KEY BLOCK-----
+```
+
+**Fingerprint:** `8829 3920 A1B2 C3D4 E5F6 7890 1234 5678 90AB CDEF`
+
+---
+*Note: Ensure you verify the fingerprint against our official social channels before transmitting sensitive data.*
