@@ -23,7 +23,18 @@ class ProxyClient:
             "estimated_time": "45s"
         }
 
+def print_banner():
+    print("""
+    ____  ____  ____  ____  __ __ 
+   (  _ \(  _ \/ __ \(  _ \(  |  )
+    )___/ )   (  (__) ))   / )_  ( 
+   (__)  (_)\_)\____/(_)\_)(____/ 
+          PROTOCOL v1.0
+    [ The Physical Runtime for AI ]
+    """)
+
 def main():
+    print_banner()
     print("🔌 Connecting to Proxy Network...")
     
     # 1. Initialize with your Secret Key
