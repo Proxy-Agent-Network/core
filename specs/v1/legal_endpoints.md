@@ -23,3 +23,30 @@
   }
 }
 ```
+
+### Success Response (200 OK)
+Returns the Job ID and Escrow status.
+```json
+{
+  "id": "job_lg_9948214",
+  "status": "matching",
+  "estimated_wait": "14 minutes",
+  "compliance_check": "passed",
+  "message": "Request broadcast to 12 verified attorneys in Delaware. Funds locked in escrow."
+}
+```
+
+### Webhook Event (Async Completion)
+Sent to Agent when the human finishes the task.
+```json
+{
+  "type": "job.completed",
+  "job_id": "job_lg_9948214",
+  "result": {
+    "status": "signed",
+    "human_notes": "Clause 4.2 was ambiguous; I added a standard rider as requested. Document signed.",
+    "signed_document_url": "[https://proxy-secure.com/doc/signed_883.pdf](https://proxy-secure.com/doc/signed_883.pdf)",
+    "transaction_hash": "tx_btc_88392..."
+  }
+}
+'''
