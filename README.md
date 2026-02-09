@@ -1,9 +1,10 @@
 # Proxy Protocol: The Physical Runtime for AI
 
-**Proxy Protocol** provides a standardized API for autonomous agents to execute physical-world tasks that require legal personhood, identity verification, or biometric authentication.
+Proxy Protocol provides a standardized API for autonomous agents to execute physical-world tasks that require legal personhood, identity verification, or biometric authentication.
+
+---
 
 ## Overview
-
 When an autonomous agent encounters a "Legal Wall" (e.g., a captcha, a phone verification, a notarized form, or a physical purchase), it calls the Proxy API. A verified human operator ("Proxy") receives the context, executes the task, and returns the signed result to the agent.
 
 ## Integration (Draft v1)
@@ -11,11 +12,11 @@ When an autonomous agent encounters a "Legal Wall" (e.g., a captcha, a phone ver
 ### 1. Request a Proxy Action
 Initiate a request for human intervention.
 
-```json
-POST [https://api.proxy-protocol.com/v1/request](https://api.proxy-protocol.com/v1/request)
-Authorization: Bearer <YOUR_API_KEY>
-Content-Type: application/json
+**Endpoint:** `POST https://api.proxy-protocol.com/v1/request`  
+**Headers:** - `Authorization: Bearer <YOUR_API_KEY>`
+- `Content-Type: application/json`
 
+```json
 {
   "agent_id": "agent_x892_beta",
   "task_type": "PHONE_VERIFICATION",
@@ -26,3 +27,24 @@ Content-Type: application/json
   },
   "bid_amount": 15.00
 }
+```
+
+### 2. Response Object
+The system returns a unique `ticket_id` to poll for completion.
+
+```json
+{
+  "status": "queued",
+  "ticket_id": "tkt_8829_mnb2",
+  "estimated_wait": "45s"
+}
+```
+
+---
+
+## Security & Ethics
+* **Zero-Knowledge Context:** Proxies only see the specific task data, not the agent's core logic.
+* **Legal Compliance:** All tasks are filtered against a constrained list of permissible legal actions.
+
+## Status
+🚧 **Private Beta** We are currently onboarding select agent developers. [Request Access Here](https://www.rob-o-la.com/)
