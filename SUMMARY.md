@@ -1,76 +1,65 @@
-# 📚 Proxy Protocol Master Documentation
+# Table of Contents
 
-Welcome to the central repository for the **Proxy Protocol**. Below is the comprehensive index of our technical, economic, and legal frameworks.
-
----
-
-## 🚀 Introduction
-* [**Whitepaper (Vision)**](docs/vision/whitepaper.md)
-* [**Roadmap 2026**](docs/vision/roadmap_2026.md)
-* [**Mission & Philosophy**](docs/vision/philosophy.md)
+Welcome to the Proxy Protocol documentation hub. Use the links below to navigate the technical specifications, legal frameworks, and developer tools.
 
 ---
 
-## ⚙️ Core Concepts
-* [**System Architecture**](docs/core/architecture.md)
-* [**Protocol Economics**](docs/core/economics.md)
-* [**Escrow & Liquidity Logic**](docs/core/escrow_mechanics.md)
-* [**Governance Model (PIP)**](docs/core/governance.md)
+## 📖 Introduction
+* [Whitepaper (Vision)](./whitepaper.md)
+* [Roadmap 2026](./roadmap.md)
+* [Mission & Philosophy](./philosophy.md)
 
----
+## 🏗️ Core Concepts
+* [System Architecture](./specs/architecture.md)
+* [Protocol Economics](./specs/economics.md)
+* [Escrow & Liquidity](./specs/escrow_liquidity.md)
+* [Governance Model](./specs/governance.md)
 
-## 🛠️ Developer Integration
-* [**Authentication Standards**](docs/integration/auth.md)
-* [**Python SDK Reference**](docs/integration/sdk_python.md)
-* [**Market Ticker API**](docs/integration/ticker_api.md)
-* [**Webhooks & Callbacks**](docs/integration/webhooks.md)
-* [**Webhook Security Standards**](docs/integration/webhook_security.md)
-* [**API Deprecation Policy**](docs/integration/deprecation.md)
-
----
+## 💻 Developer Integration
+* [Authentication Standards](./sdk/auth.md)
+* [Rate Limits & Quotas](./sdk/quotas.md)
+* [Error Code Reference](./sdk/errors.md)
+* [Troubleshooting Guide](./sdk/troubleshooting.md)
+* [Python SDK Reference](./sdk/python_ref.md)
+* [Market Ticker API](./sdk/ticker_api.md)
+* [Webhooks & Callbacks](./sdk/webhooks.md)
+* [Webhook Security](./sdk/webhook_security.md)
+* [Deprecation Policy](./sdk/deprecation.md)
 
 ## 📜 Protocol Specifications
-* [**Human Node Registry**](specs/node_registry.md)
-* [**Reputation & Scoring**](specs/reputation.md)
-* [**Jury Tribunal & Adjudication**](specs/jury_tribunal.md)
-* [**Privacy & Zero-Knowledge Strategy**](specs/privacy_zk.md)
-
----
+* [Context Injection & Memory](./specs/v1/context_injection.md)
+* [Traffic Shaping (Brownout)](./specs/v1/brownout_logic.md)
+* [Proxy-Pass Subscriptions](./specs/v1/proxy_pass.md)
+* [Reward Types & Tipping](./specs/v1/rewards.md)
+* [Human Node Registry](./specs/v1/registry.md)
+* [Reputation & Scoring](./specs/v1/reputation.md)
+* [Jury Tribunal](./specs/v1/jury.md)
+* [Privacy & Zero-Knowledge](./specs/v1/privacy_zk.md)
 
 ## 🔌 The Physical Layer (Hardware)
-* [**Node Operator's Manual**](docs/hardware/setup_guide.md)
-* [**Hardware Reference Design**](specs/hardware/reference_design.md)
-* [**Security Architecture (TPM 2.0)**](specs/hardware/tpm_integration.md)
-* [**Node Recovery Protocol**](docs/hardware/recovery.md)
-
----
+* [Node Operator's Manual](./hardware/operators_manual.md)
+* [Hardware Reference Design](./hardware/bom.md)
+* [Security Architecture (TPM)](./hardware/tpm_security.md)
+* [Node Recovery Protocol](./hardware/recovery.md)
 
 ## ⚖️ Legal Engineering
-* [**Compliance & Acceptable Use**](legal/compliance.md)
-* [**Service Level Agreement (SLA)**](legal/SLA.md)
-* [**Power of Attorney (PoA) Templates**](legal/templates/)
-    * [United States (Delaware)](legal/templates/US_DE.md)
-    * [United Kingdom](legal/templates/UK.md)
-    * [Singapore](legal/templates/SG.md)
-* [**Human Node Agreement**](legal/human_node_contract.md)
-
----
+* [Compliance & Acceptable Use](./legal/compliance.md)
+* [Service Level Agreement (SLA)](./legal/sla.md)
+* [Power of Attorney Templates](./legal/poa/index.md)
+    * [United States (Delaware)](./legal/poa/us_de.md)
+    * [United Kingdom](./legal/poa/uk.md)
+    * [Singapore](./legal/poa/sg.md)
+* [Human Node Agreement](./legal/human_node_agreement.md)
 
 ## 🛡️ Operations & Security
-* [**Security Policy**](SECURITY.md)
-* [**Threat Model**](docs/security/threat_model.md)
-* [**Incident Response Playbook**](docs/security/incident_response.md)
-* [**Agency Partner Program**](docs/partners/agency_program.md)
+* [Security Policy](./security/policy.md)
+* [Threat Model](./security/threat_model.md)
+* [Incident Response Playbook](./security/incident_response.md)
+* [Agency Partner Program](./partners/agency.md)
 
----
-
-## 🤝 Community & Governance
-* [**Genesis Builder Program**](community/genesis_builders.md)
-* [**Contributing Guide**](CONTRIBUTING.md) ([中文版](CONTRIBUTING_ZH.md))
-* [**Code of Conduct**](CODE_OF_CONDUCT.md)
-* [**Changelog**](CHANGELOG.md)
-* [**Brand Assets**](assets/branding.md)
-
----
-> [!TIP]
-> **New here?** Start with the [System Architecture](docs/core/architecture.md) to understand how the digital and physical realms interact.
+## 🤝 Community
+* [Genesis Builder Program](./community/genesis.md)
+* [Contributing Guide](./CONTRIBUTING.md)
+* [Code of Conduct](./CODE_OF_CONDUCT.md)
+* [Changelog](./CHANGELOG.md)
+* [Brand Assets](./brand/assets.md)
