@@ -4,48 +4,16 @@ info:
   description: |
     The Physical Runtime for Artificial Intelligence.
     This API allows autonomous agents to hire verified human proxies for physical, legal, and identity tasks.
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: API Support
-    email: security@proxy.agent.network
+    email: security@rob-o-la.com
 servers:
   - url: https://api.proxyprotocol.com/v1
     description: Mainnet Production
   - url: https://sandbox.proxyprotocol.com/v1
     description: Testnet Sandbox
-paths:
-  /market/ticker:
-    get:
-      summary: Get Real-Time Market Rates
-      description: Returns the current floor price for standard task types in Satoshis.
-      operationId: getMarketTicker
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TickerResponse'
-  /hire/legal:
-    post:
-      summary: Hire a Legal Proxy
-      description: Dispatches a request for a verified attorney to review or sign a document.
-      operationId: hireLegalProxy
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HireLegalRequest'
-      responses:
-        '200':
-          description: Job Dispatched
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JobResponse'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -71,6 +39,32 @@ components:
             legal_notary_sign:
               type: integer
               example: 45000
+        congestion_multiplier:
+          type: number
+          example: 1.5
+          description: "Current surge pricing multiplier based on network load."
+    
+    SubscriptionRequest:
+      type: object
+      required: [tier]
+      properties:
+        tier:
+          type: string
+          enum: [STARTER, PRO, WHALE]
+          description: "The Proxy-Pass tier to purchase."
+    
+    SubscriptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [OFFERED, ACTIVE]
+        invoice:
+          type: string
+          description: "Lightning BOLT11 invoice for payment."
+    
     HireLegalRequest:
       type: object
       required:
@@ -106,13 +100,63 @@ components:
               default: lightning
             max_budget_sats:
               type: integer
-    JobResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        status:
-          type: string
-          enum: [matching, in_progress, completed]
-        estimated_wait:
-          type: string
+
+paths:
+  /market/ticker:
+    get:
+      summary: Get Real-Time Market Rates
+      description: Returns the current floor price and congestion multiplier.
+      operationId: getMarketTicker
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TickerResponse'
+  
+  /subscription/buy:
+    post:
+      summary: Purchase Proxy-Pass
+      description: Create a 30-day subscription for 0% fees and priority routing.
+      operationId: buySubscription
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionRequest'
+      responses:
+        '200':
+          description: Offer Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+
+  /hire/legal:
+    post:
+      summary: Hire a Legal Proxy
+      description: Dispatches a request for a verified attorney.
+      operationId: hireLegalProxy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HireLegalRequest'
+      responses:
+        '200':
+          description: Job Dispatched
+        '503':
+          description: Brownout Active (Low Reputation)
+          headers:
+            X-Proxy-Brownout:
+              schema:
+                type: string
+                example: "Active"
+              description: "Indicates request was shed due to congestion."
