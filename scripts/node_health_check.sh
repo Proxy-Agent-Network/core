@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# Proxy Protocol - Node Health Check v1.0
-# Verifies TPM integrity, LND connection, and Network latency.
+# PROXY PROTOCOL - NODE HEALTH CHECK v1.0
+# "The Medic Script: Diagnose your node in 5 seconds."
+# ----------------------------------------------------
+# Usage: ./node_health_check.sh
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -16,36 +18,45 @@ echo "  (__)  (_)\_)\____/(_)\_)(____/ "
 echo "         NODE MEDIC v1.0"
 echo -e "${NC}"
 
-echo "[*] Starting System Diagnostics..."
+echo "[*] Starting Diagnostics..."
 echo "--------------------------------"
 sleep 1
 
-# 1. Check TPM 2.0 Hardware
-echo -n "[?] Checking Hardware Root of Trust (TPM 2.0)... "
+# 1. Check TPM Hardware
+echo -n "[?] Hardware Root of Trust (TPM 2.0)... "
 if [ -c /dev/tpm0 ]; then
     echo -e "${GREEN}DETECTED${NC}"
 else
     echo -e "${RED}FAIL${NC}"
-    echo "    -> CRITICAL: /dev/tpm0 missing. Verify Infineon module seating."
+    echo "    -> CRITICAL: /dev/tpm0 not found. Is the Infineon module seated correctly?"
 fi
 
-# 2. Check Lightning Daemon (LND)
-echo -n "[?] Pinging Lightning Network Daemon... "
-# Checks if process is running
-if pgrep -x "lnd" > /dev/null; then
+# 2. Check Docker Container Status
+echo -n "[?] Proxy Node Container... "
+if docker ps | grep -q proxy_physical_node; then
     echo -e "${GREEN}RUNNING${NC}"
 else
-    echo -e "${YELLOW}WARNING${NC} (Process not found)"
-    echo "    -> Ensure LND is started via 'systemctl start lnd'"
+    echo -e "${RED}STOPPED${NC}"
+    echo "    -> Try running: docker-compose up -d"
 fi
 
-# 3. Check Internet/API Connectivity
-echo -n "[?] Connecting to Proxy Mainnet... "
-# Simple ping to a reliable host to test egress
-if ping -q -c 1 -W 1 8.8.8.8 >/dev/null; then
-    echo -e "${GREEN}CONNECTED${NC}"
+# 3. Check LND Connection (Mock check for process)
+echo -n "[?] Lightning Network Daemon... "
+if pgrep -x "lnd" > /dev/null; then
+    echo -e "${GREEN}ACTIVE${NC}"
+else
+    echo -e "${YELLOW}WARNING${NC} (Process not found)"
+    echo "    -> Ensure LND is running if you are a routing node."
+fi
+
+# 4. Check Internet Connectivity
+echo -n "[?] Network Latency (8.8.8.8)... "
+ping -c 1 -W 1 8.8.8.8 > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}ONLINE${NC}"
 else
     echo -e "${RED}OFFLINE${NC}"
+    echo "    -> Check your ethernet/wifi connection."
 fi
 
 echo "--------------------------------"
