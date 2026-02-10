@@ -1,16 +1,22 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Any
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import time
+import logging
 
 # PROXY PROTOCOL - TRAFFIC SHAPER MIDDLEWARE (v1)
 # "Shedding load to preserve whale performance."
+# ----------------------------------------------------
+
+# Configure Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("TrafficShaper")
 
 class BrownoutLevel:
-    GREEN = "GREEN"
-    YELLOW = "YELLOW"
-    ORANGE = "ORANGE"
-    RED = "RED"
+    GREEN = "GREEN"    # Normal Operation
+    YELLOW = "YELLOW"  # Elevated Load
+    ORANGE = "ORANGE"  # High Congestion
+    RED = "RED"        # Critical / Whale-Only Mode
 
 # Configuration from specs/v1/brownout_logic.md
 BROWNOUT_THRESHOLDS = {
@@ -22,26 +28,45 @@ BROWNOUT_THRESHOLDS = {
 
 class TrafficShaperMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 1. Identify the Actor (Node)
-        node_rep = self._get_node_reputation(request)
-        
-        # 2. Check Network Health
+        # 1. Skip checks for Health/Status endpoints (Always allow ping)
+        if request.url.path in ["/health", "/status", "/v1/market/ticker"]:
+            return await call_next(request)
+
+        # 2. Identify the Actor (Node or Agent)
+        # In a real app, this data comes from the Auth Middleware (JWT/Macaroon)
+        # We mock extraction here for the reference implementation.
+        actor_context = self._extract_actor_context(request)
+        node_rep = actor_context.get("reputation", 0)
+        is_whale = actor_context.get("is_whale", False)
+
+        # 3. Check Network Health
         current_depth = self._get_mempool_depth()
         level, min_rep = self._determine_brownout_level(current_depth)
 
-        # 3. The Gatekeeper Logic
+        # 4. The Gatekeeper Logic
+        # Whales bypass all brownout checks.
+        if is_whale:
+            response = await call_next(request)
+            response.headers["X-Proxy-Priority"] = "Whale-Pass"
+            return response
+
+        # Logic: If we are NOT Green, and the Node's Rep is too low -> Block
         if level != BrownoutLevel.GREEN and node_rep < min_rep:
-            # SHEDDING TRAFFIC
+            logger.warning(f"Brownout Shedding: Level {level}, NodeRep {node_rep} < {min_rep}")
+            
+            # Construct 503 Response
             response = Response(
-                content=f"Network Busy. Brownout Level: {level}. Min Rep: {min_rep}", 
+                content=f"Network Busy. Brownout Level: {level}. Min Rep Required: {min_rep}", 
                 status_code=503
             )
+            # Inject Headers so the Node knows WHY it failed (Transparency)
             response.headers["X-Proxy-Brownout"] = "Active"
+            response.headers["X-Proxy-Brownout-Level"] = level
             response.headers["X-Proxy-Min-Reputation"] = str(min_rep)
             response.headers["Retry-After"] = "600" # Try again in 10 mins
             return response
 
-        # 4. Proceed normally
+        # 5. Proceed normally
         response = await call_next(request)
         return response
 
@@ -59,10 +84,20 @@ class TrafficShaperMiddleware(BaseHTTPMiddleware):
         return BrownoutLevel.RED, BROWNOUT_THRESHOLDS[BrownoutLevel.RED]["min_rep"]
 
     def _get_mempool_depth(self) -> int:
-        # In prod, this queries Redis or the LND mempool
-        return 6000  # Mock: Simulating "Orange" congestion
+        """
+        Fetches the number of pending tasks in the Redis/LND Queue.
+        """
+        # Mocking dynamic load for demonstration
+        # In prod: redis.llen("task_queue")
+        return 6000  # Simulator: Simulating "ORANGE" congestion (requires Rep > 700)
 
-    def _get_node_reputation(self, request: Request) -> int:
-        # In prod, this extracts the JWT/Auth header and queries the DB
-        # Mocking a "Probationary" node for this demo
-        return 450
+    def _extract_actor_context(self, request: Request) -> Dict[str, Any]:
+        """
+        Extracts reputation and tier from the request state or headers.
+        """
+        # Mocking a "Probationary" node (Rep 450) attempting to connect
+        # This node should be blocked if level is YELLOW or higher.
+        return {
+            "reputation": 450,
+            "is_whale": False
+        }
