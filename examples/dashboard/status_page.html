@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy Protocol // Network Status</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Fira+Code:wght@400;600&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050505;
+            color: #E5E5E5;
+        }
+        
+        .mono { font-family: 'Fira Code', monospace; }
+        
+        .status-dot {
+            height: 8px;
+            width: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        
+        .dot-green { background-color: #00FF41; box-shadow: 0 0 8px #00FF41; }
+        .dot-yellow { background-color: #FAFF00; box-shadow: 0 0 8px #FAFF00; }
+        .dot-red { background-color: #FF3333; box-shadow: 0 0 8px #FF3333; }
+
+        .card {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-8">
+
+    <!-- Top Navigation -->
+    <header class="max-w-6xl mx-auto flex justify-between items-center mb-12">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-green-500 rounded-full opacity-20 absolute animate-ping"></div>
+            <div class="w-8 h-8 border-2 border-green-500 rounded-full flex items-center justify-center">
+                <div class="w-4 h-4 bg-green-500 rounded-full"></div>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight">PROXY NETWORK</h1>
+                <p class="text-xs text-gray-500 mono">STATUS.ROB-O-LA.COM</p>
+            </div>
+        </div>
+        <a href="https://github.com/Proxy-Agent-Network/core" class="text-sm text-gray-400 hover:text-white transition-colors">Documentation &rarr;</a>
+    </header>
+
+    <!-- Main Status Banner -->
+    <div class="max-w-6xl mx-auto mb-12">
+        <div class="bg-green-900/10 border border-green-500/20 rounded-lg p-6 flex items-center gap-4">
+            <div class="text-3xl">✅</div>
+            <div>
+                <h2 class="text-xl font-bold text-green-400">All Systems Operational</h2>
+                <p class="text-sm text-green-400/60 mt-1">Network is processing tasks normally. No active incidents.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core Metrics Grid -->
+    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <!-- Metric 1 -->
+        <div class="card p-6">
+            <div class="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">Network Latency</div>
+            <div class="flex items-baseline gap-2">
+                <span class="text-4xl font-bold font-mono" id="latency">42</span>
+                <span class="text-sm text-gray-400">ms</span>
+            </div>
+            <div class="h-1 w-full bg-gray-800 mt-4 rounded-full overflow-hidden">
+                <div class="h-full bg-green-500 w-1/4 animate-pulse"></div>
+            </div>
+        </div>
+
+        <!-- Metric 2 -->
+        <div class="card p-6">
+            <div class="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">Avg Settlement Time</div>
+            <div class="flex items-baseline gap-2">
+                <span class="text-4xl font-bold font-mono" id="settlement">04:12</span>
+            </div>
+            <p class="text-xs text-gray-600 mt-2">Target: < 5m</p>
+        </div>
+
+        <!-- Metric 3 -->
+        <div class="card p-6">
+            <div class="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">Active Human Nodes</div>
+            <div class="flex items-baseline gap-2">
+                <span class="text-4xl font-bold font-mono" id="node-count">1,248</span>
+                <span class="text-xs text-green-500 bg-green-900/20 px-2 py-1 rounded">+12 today</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Geo Distribution & Uptime -->
+    <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Regional Availability -->
+        <div class="card p-6">
+            <h3 class="font-bold mb-6">Regional Node Availability</h3>
+            <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="status-dot dot-green"></span>
+                        <span class="mono text-sm">US-East (Delaware)</span>
+                    </div>
+                    <span class="text-sm text-gray-400">452 Nodes</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="status-dot dot-green"></span>
+                        <span class="mono text-sm">US-West (Arizona)</span>
+                    </div>
+                    <span class="text-sm text-gray-400">310 Nodes</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="status-dot dot-green"></span>
+                        <span class="mono text-sm">EU-West (London)</span>
+                    </div>
+                    <span class="text-sm text-gray-400">289 Nodes</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="status-dot dot-green"></span>
+                        <span class="mono text-sm">APAC (Singapore)</span>
+                    </div>
+                    <span class="text-sm text-gray-400">197 Nodes</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 90-Day Uptime -->
+        <div class="card p-6">
+            <h3 class="font-bold mb-6">System Components</h3>
+            <div class="space-y-6">
+                <div>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span>API Gateway</span>
+                        <span class="text-green-400">99.99%</span>
+                    </div>
+                    <div class="flex gap-1">
+                        <!-- Generates 30 little bars -->
+                        <script>
+                            for(let i=0; i<40; i++) {
+                                document.write(`<div class="h-8 flex-1 bg-green-500/80 rounded-sm hover:bg-green-400 transition-colors" title="Operational"></div>`);
+                            }
+                        </script>
+                    </div>
+                </div>
+                
+                <div>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span>Lightning Settlement Layer</span>
+                        <span class="text-green-400">99.95%</span>
+                    </div>
+                    <div class="flex gap-1">
+                        <script>
+                            for(let i=0; i<40; i++) {
+                                // Randomly make one yellow/red for realism
+                                let color = (i === 28) ? 'bg-yellow-500/80' : 'bg-green-500/80';
+                                document.write(`<div class="h-8 flex-1 ${color} rounded-sm hover:bg-white transition-colors" title="Operational"></div>`);
+                            }
+                        </script>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Ticker Logic -->
+    <script>
+        // Simulate live data updates
+        setInterval(() => {
+            // Latency Jitter
+            const baseLatency = 42;
+            const jitter = Math.floor(Math.random() * 10) - 5;
+            document.getElementById('latency').innerText = baseLatency + jitter;
+
+            // Node Fluctuation
+            const baseNodes = 1248;
+            const nodeDrift = Math.floor(Math.random() * 3) - 1; // +1, 0, or -1
+            // We won't actually update the number every second to avoid jumpiness, 
+            // but in a real app this connects to a websocket.
+        }, 2000);
+    </script>
+
+</body>
+</html>
