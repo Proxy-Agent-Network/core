@@ -1,0 +1,30 @@
+Core Protocol Dependencies
+
+fastapi>=0.100.0
+uvicorn>=0.22.0
+starlette>=0.27.0
+pydantic>=2.0.0
+
+Computer Vision & OCR (Node Layer)
+
+opencv-python-headless>=4.8.0
+pytesseract>=0.3.10
+numpy>=1.24.0
+
+Cryptography & Security
+
+cryptography>=41.0.0
+ecdsa>=0.18.0
+
+tpm2-pytss  # Requires system libs, uncomment if hardware present
+
+Payments & Integration
+
+stripe>=5.0.0
+web3>=6.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+Testing
+
+pytest>=7.4.0
