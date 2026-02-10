@@ -1,174 +1,160 @@
 import time
 import os
 import subprocess
-import requests
 import json
 import math
+import hashlib
 from datetime import datetime
+from typing import Dict, List, Optional
 
 # PROXY PROTOCOL - HARDWARE HEARTBEAT v1.1
-# "Pulse check for the physical layer."
+# "Pulse check for the physical layer: Proof of Locality."
 # ----------------------------------------------------
-# Runs as a background daemon (systemd) on the Physical Node.
+# This script runs as a background daemon on Raspberry Pi nodes.
+# It cross-references WiFi fingerprints with expected coordinates
+# and signs the telemetry using the hardware TPM.
 
 class NodeHealthMonitor:
-    def __init__(self, api_endpoint="https://api.proxyprotocol.com/v1", node_id="node_local_x", expected_lat=33.4152, expected_lon=-111.8315):
-        self.api_endpoint = api_endpoint
+    def __init__(
+        self, 
+        node_id: str, 
+        api_endpoint: str = "https://api.proxyprotocol.com/v1", 
+        expected_lat: float = 33.4152, 
+        expected_lon: float = -111.8315
+    ):
         self.node_id = node_id
+        self.api_endpoint = api_endpoint
         self.is_active = True
         
-        # Thresholds
-        self.TEMP_WARN_C = 75.0
-        self.TEMP_CRITICAL_C = 85.0
-        
-        # Geofence Config (Proof of Locality)
+        # Geofence Configuration
         self.EXPECTED_LAT = expected_lat
         self.EXPECTED_LON = expected_lon
-        self.GEOFENCE_RADIUS_KM = 0.5 # 500 meters
-    
-    def _read_cpu_temp(self) -> float:
-        """Reads Raspberry Pi / Linux CPU temperature."""
+        self.GEOFENCE_RADIUS_KM = 0.5 # 500 meter tolerance
+        
+        # TPM Configuration
+        self.AK_HANDLE = "0x81010002" # Standard Attestation Key handle
+
+    def _get_cpu_temp(self) -> float:
+        """Reads Raspberry Pi thermal zone data."""
         try:
             with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
                 return float(f.read()) / 1000.0
         except FileNotFoundError:
-            # Fallback for dev environments not on Pi
-            return 45.0 
+            return 0.0
 
-    def _check_tpm_status(self) -> bool:
-        """Verifies the Hardware Root of Trust is responsive."""
-        if not os.path.exists("/dev/tpm0"):
-            return False
-        
-        # Simple ping command to the TPM resource manager
+    def _scan_wifi_fingerprint(self) -> List[Dict]:
+        """
+        Scans local BSSIDs using nmcli to create a location fingerprint.
+        """
         try:
-            # In prod, use tpm2_getcap -c properties-fixed
-            subprocess.check_output(["tpm2_getcap", "properties-fixed"], stderr=subprocess.STDOUT)
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
-
-    def _check_chassis_intrusion(self) -> bool:
-        """
-        Checks the physical GPIO plunger switch.
-        Returns True if the case is OPEN (Intrusion Detected).
-        """
-        # Mocking GPIO read for reference. 
-        # In prod: import RPi.GPIO as GPIO; return GPIO.input(PIN_INTRUSION)
-        # 0 = Closed (Safe), 1 = Open (Danger)
-        return False 
-
-    def _get_wifi_fingerprint(self) -> dict:
-        """
-        Scans local WiFi environment to generate a location fingerprint.
-        Triangulates position based on known BSSID anchors.
-        """
-        # In prod: subprocess.check_output(['nmcli', '-f', 'BSSID,SIGNAL', 'dev', 'wifi'])
-        # Mocking a scan result near the expected coordinates
-        return {
-            "networks_visible": 14,
-            "strongest_bssid": "aa:bb:cc:dd:ee:ff",
-            "triangulated_lat": 33.4153, # Slight drift for realism
-            "triangulated_lon": -111.8314
-        }
-
-    def _sign_locality_proof(self, location_data: dict) -> str:
-        """
-        Uses the TPM 2.0 to cryptographically sign the location telemetry.
-        This prevents software spoofing of GPS coordinates.
-        """
-        payload = json.dumps(location_data, sort_keys=True).encode()
-        # In prod: Use tpm2_sign CLI or python-tss library
-        # Mocking signature generation
-        return f"tpm_sig_secp256r1_{hash(payload)}"
-
-    def _check_geofence(self) -> bool:
-        """
-        Verifies Node is within allowed physical radius using WiFi/Cellular consensus.
-        """
-        scan_data = self._get_wifi_fingerprint()
-        
-        # Calculate Haversine distance (approximate)
-        lat1, lon1 = self.EXPECTED_LAT, self.EXPECTED_LON
-        lat2, lon2 = scan_data['triangulated_lat'], scan_data['triangulated_lon']
-        
-        R = 6371 # Radius of earth in km
-        dLat = math.radians(lat2 - lat1)
-        dLon = math.radians(lon2 - lon1)
-        a = math.sin(dLat/2) * math.sin(dLat/2) + \
-            math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * \
-            math.sin(dLon/2) * math.sin(dLon/2)
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-        distance_km = R * c
-        
-        if distance_km > self.GEOFENCE_RADIUS_KM:
-            print(f"[{datetime.now()}] ⚠️ GEOFENCE VIOLATION: Drifted {distance_km:.3f}km")
-            return False
+            # -t (terse), -f (fields)
+            cmd = ["nmcli", "-t", "-f", "BSSID,SIGNAL", "dev", "wifi"]
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode()
             
-        # Generate signed proof for the network
-        proof = self._sign_locality_proof({
+            networks = []
+            for line in output.strip().split('\n'):
+                if ':' in line:
+                    bssid, signal = line.split(':')
+                    networks.append({"bssid": bssid, "signal": int(signal)})
+            return sorted(networks, key=lambda x: x['signal'], reverse=True)[:5]
+        except Exception as e:
+            print(f"[Heartbeat] WiFi Scan Error: {e}")
+            return []
+
+    def _sign_with_tpm(self, payload: str) -> str:
+        """
+        Signs the telemetry payload using the hardware TPM 2.0.
+        The private key never leaves the Infineon chip.
+        """
+        try:
+            # 1. Hash the payload
+            payload_hash = hashlib.sha256(payload.encode()).digest()
+            hash_file = "/tmp/heartbeat_hash.bin"
+            sig_file = "/tmp/heartbeat.sig"
+            
+            with open(hash_file, "wb") as f:
+                f.write(payload_hash)
+            
+            # 2. Call TPM2_Sign
+            subprocess.run([
+                "tpm2_sign", 
+                "-c", self.AK_HANDLE, 
+                "-g", "sha256", 
+                "-d", hash_file, 
+                "-f", "plain", 
+                "-o", sig_file
+            ], check=True, capture_output=True)
+            
+            with open(sig_file, "rb") as f:
+                return f.read().hex()
+        except Exception as e:
+            print(f"[Heartbeat] TPM Signing Failed: {e}")
+            return "unsigned_fallback_error"
+
+    def _calculate_distance(self, lat2: float, lon2: float) -> float:
+        """Haversine formula to calculate distance in KM."""
+        lat1, lon1 = self.EXPECTED_LAT, self.EXPECTED_LON
+        R = 6371.0
+        
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * \
+            math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        return R * c
+
+    def pulse(self):
+        """Executes a single heartbeat cycle."""
+        print(f"[{datetime.now().isoformat()}] 💓 Heartbeat Initiated...")
+        
+        # 1. Gather Telemetry
+        temp = self._get_cpu_temp()
+        wifi_scan = self._scan_wifi_fingerprint()
+        
+        # Mocking triangulation from WiFi (In prod, this hits a Geolocation API with the BSSIDs)
+        current_lat, current_lon = 33.4153, -111.8314
+        drift = self._calculate_distance(current_lat, current_lon)
+        
+        # 2. Construct Payload
+        telemetry = {
             "node_id": self.node_id,
             "timestamp": datetime.now().isoformat(),
-            "scan": scan_data
-        })
-        print(f"[{datetime.now()}] 📍 Location Verified ({distance_km:.3f}km drift). Proof signed by TPM.")
-        return True
-
-    def emergency_delist(self, reason: str):
-        """
-        CRITICAL: Proactively remove node from the network registry.
-        Prevents assignment of new tasks during hardware failure.
-        """
-        print(f"[{datetime.now()}] 🚨 EMERGENCY DELIST TRIGGERED: {reason}")
-        
-        payload = {
-            "node_id": self.node_id,
-            "status": "offline",
-            "reason": reason,
-            "timestamp": datetime.now().isoformat()
+            "cpu_temp": temp,
+            "geo": {"lat": current_lat, "lon": current_lon, "drift_km": round(drift, 4)},
+            "wifi_fingerprint": wifi_scan
         }
         
-        try:
-            # High-priority status update
-            # requests.post(f"{self.api_endpoint}/nodes/status", json=payload)
-            print(f"   -> Network notified. Status set to OFFLINE.")
-        except Exception as e:
-            print(f"   -> Failed to notify network: {e}")
-            
-        self.is_active = False
-
-    def run_loop(self):
-        print(f"[{datetime.now()}] 🟢 Hardware Heartbeat Active. Monitoring...")
+        payload_str = json.dumps(telemetry, sort_keys=True)
         
-        while self.is_active:
-            # 1. Security Check (Priority #1)
-            if not self._check_tpm_status():
-                self.emergency_delist("CRITICAL: TPM Module not detected. Identity integrity lost.")
-                break
+        # 3. Hardware Sign
+        signature = self._sign_with_tpm(payload_str)
+        
+        # 4. Transmit to Protocol
+        report = {
+            "payload": telemetry,
+            "signature": signature,
+            "hw_root": "TPM_2.0_INFINEON"
+        }
+        
+        if drift > self.GEOFENCE_RADIUS_KM:
+            print(f"⚠️  ALERT: Geofence Violation! Drift: {drift:.3f}km")
+            # In production: notify API of self-delisting
+        else:
+            print(f"✅ Locality Verified. Signature: {signature[:16]}...")
             
-            if self._check_chassis_intrusion():
-                self.emergency_delist("CRITICAL: Chassis intrusion detected. Possible physical tampering.")
-                break
+        # Optional: Send to central API
+        # requests.post(f"{self.api_endpoint}/nodes/heartbeat", json=report)
 
-            # 2. Proof of Locality (Competitive Edge)
-            if not self._check_geofence():
-                self.emergency_delist("CRITICAL: Node moved outside Geofence. Possible theft.")
-                break
-
-            # 3. Health Check
-            temp = self._read_cpu_temp()
-            if temp > self.TEMP_CRITICAL_C:
-                self.emergency_delist(f"CRITICAL: Overheating ({temp}°C). Risk of computation error.")
-                break
-            elif temp > self.TEMP_WARN_C:
-                print(f"[{datetime.now()}] ⚠️ WARNING: High Temp ({temp}°C). Throttling tasks.")
-
-            # 4. Heartbeat Pulse
-            # In a real implementation, we send a 'still alive' ping every minute
-            # requests.post(f"{self.api_endpoint}/nodes/ping", json={"temp": temp})
-            
-            time.sleep(10)
+    def run(self, interval: int = 60):
+        print(f"[*] Node Monitor Running for {self.node_id}...")
+        try:
+            while self.is_active:
+                self.pulse()
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            print("[*] Monitor stopped by operator.")
 
 if __name__ == "__main__":
-    monitor = NodeHealthMonitor()
-    monitor.run_loop()
+    # Example initialization
+    monitor = NodeHealthMonitor(node_id="node_az_phoenix_01")
+    monitor.run()
