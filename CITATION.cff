@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this protocol in your research or agent deployment, please cite it as below."
+authors:
+  - family-names: "Engineering Team"
+    given-names: "Proxy Protocol"
+title: "Proxy Protocol: A Decentralized Coordination Layer for Human-in-the-Loop AI"
+version: 1.0.0
+date-released: 2026-02-09
+url: "https://github.com/Proxy-Agent-Network/core"
+keywords:
+  - "artificial intelligence"
+  - "autonomous agents"
+  - "human-in-the-loop"
+  - "cryptographic escrow"
+  - "legal engineering"
+license: MIT
