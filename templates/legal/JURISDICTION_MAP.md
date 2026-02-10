@@ -47,9 +47,9 @@ The following jurisdictions are currently being codified by the Legal Engineerin
 
 ## 4. Usage Requirements
 
-1. **Geolocation Proof:** Agents must verify the Node's `hardware_heartbeat.py` coordinates before selecting a template.
-2. **Statutory Compliance:** Ensure the `[MAX_LIMIT]` placeholder in the template complies with specific jurisdictional caps (e.g., S$ in Singapore vs £ in the UK).
-3. **Signature Requirement:** The final document must be hashed and signed by the Principal's key to activate the **"Legal Bridge."**
+* **Geolocation Proof:** Agents must verify the Node's `hardware_heartbeat.py` coordinates before selecting a template.
+* **Statutory Compliance:** Ensure the `[MAX_LIMIT]` placeholder in the template complies with the specific jurisdictional caps (e.g., **S$** in Singapore vs **£** in the UK).
+* **Signature Requirement:** The final document must be hashed and signed by the Principal's key to activate the **"Legal Bridge."**
 
-> [!TIP]
-> To contribute a new jurisdiction, please refer to the [CONTRIBUTING_LEGAL.md](./CONTRIBUTING_LEGAL.md) guide.
+> [!NOTE]
+> For contributions to this map, see [CONTRIBUTING_LEGAL.md](./CONTRIBUTING_LEGAL.md).
