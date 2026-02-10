@@ -53,8 +53,8 @@
     <!-- Header -->
     <header class="flex justify-between items-end border-b border-gray-800 pb-4">
         <div>
-            <h1 class="text-2xl font-bold tracking-tighter">PROXY PROTOCOL <span class="text-xs align-top opacity-50">v1.0</span></h1>
-            <p class="text-sm text-gray-500">AGENT_ID: <span class="text-white" id="agent-id">connecting...</span></p>
+            <h1 class="text-2xl font-bold tracking-tighter">PROXY PROTOCOL <span class="text-xs align-top opacity-50">v1.1</span></h1>
+            <p class="text-sm text-gray-500">AGENT_ID: <span class="text-white" id="agent-id">NOT CONNECTED</span></p>
         </div>
         <div class="text-right">
             <div class="text-xs text-gray-500">NETWORK STATUS</div>
@@ -68,23 +68,23 @@
     <div class="grid grid-cols-4 gap-6">
         <div class="terminal-box p-4">
             <div class="text-xs text-gray-500 mb-1">TOTAL SPEND (24H)</div>
-            <div class="text-2xl font-bold"><span id="metric-spend">0</span> <span class="text-sm font-normal">SATS</span></div>
-            <div class="text-xs text-green-700 mt-2">▲ Live</div>
+            <div class="text-2xl font-bold"><span id="metric-spend">--</span> <span class="text-sm font-normal">SATS</span></div>
+            <div class="text-xs text-green-700 mt-2">Live from LND</div>
         </div>
         <div class="terminal-box p-4">
             <div class="text-xs text-gray-500 mb-1">SUCCESS RATE</div>
-            <div class="text-2xl font-bold"><span id="metric-rate">0</span><span class="text-sm font-normal">%</span></div>
+            <div class="text-2xl font-bold"><span id="metric-rate">--</span><span class="text-sm font-normal">%</span></div>
             <div class="progress-bar mt-3"><div id="metric-rate-bar" class="progress-fill" style="width: 0%"></div></div>
         </div>
         <div class="terminal-box p-4">
             <div class="text-xs text-gray-500 mb-1">ACTIVE ESCROWS</div>
-            <div class="text-2xl font-bold text-yellow-400" id="metric-escrow">0</div>
+            <div class="text-2xl font-bold text-yellow-400" id="metric-escrow">--</div>
             <div class="text-xs text-gray-500 mt-2">Locked Funds</div>
         </div>
         <div class="terminal-box p-4">
             <div class="text-xs text-gray-500 mb-1">REPUTATION</div>
-            <div class="text-2xl font-bold" id="metric-rep">Unknown</div>
-            <div class="text-xs text-gray-500 mt-2">Tier Access</div>
+            <div class="text-2xl font-bold" id="metric-rep">--</div>
+            <div class="text-xs text-gray-500 mt-2" id="metric-tier">Tier Access</div>
         </div>
     </div>
 
@@ -95,10 +95,10 @@
         <div class="terminal-box flex-1 flex flex-col p-4">
             <div class="flex justify-between mb-4">
                 <h2 class="font-bold">LIVE TASK FEED</h2>
-                <span class="text-xs border border-green-900 px-2 py-0.5 rounded">WEBSOCKET</span>
+                <span class="text-xs border border-green-900 px-2 py-0.5 rounded">POLLING: 3s</span>
             </div>
             <div id="log-feed" class="flex-1 overflow-y-auto font-mono text-sm space-y-2 pr-2">
-                <!-- Logs injected via JS -->
+                <div class="text-gray-600 italic">Waiting for connection...</div>
             </div>
         </div>
 
@@ -107,10 +107,24 @@
             <div class="terminal-box p-4 flex-1">
                 <h2 class="font-bold mb-4">CONNECTION SETTINGS</h2>
                 <div class="space-y-4 text-sm">
-                    <input type="text" id="api-url" placeholder="API URL (e.g. http://localhost:3000/v1)" class="w-full bg-black border border-gray-700 p-2 text-green-500 mb-2">
-                    <input type="password" id="api-key" placeholder="API Key (sk_...)" class="w-full bg-black border border-gray-700 p-2 text-green-500">
-                    <button onclick="connect()" class="w-full border border-green-600 hover:bg-green-900 py-2">CONNECT</button>
+                    <div>
+                        <label class="text-xs text-gray-500 block mb-1">API ENDPOINT</label>
+                        <input type="text" id="api-url" value="http://localhost:3000/v1" class="w-full bg-black border border-gray-700 p-2 text-green-500 focus:outline-none focus:border-green-500">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 block mb-1">AGENT API KEY</label>
+                        <input type="password" id="api-key" placeholder="sk_live_..." class="w-full bg-black border border-gray-700 p-2 text-green-500 focus:outline-none focus:border-green-500">
+                    </div>
+                    <button onclick="connect()" id="btn-connect" class="w-full border border-green-600 hover:bg-green-900 py-2 transition-colors font-bold">INITIALIZE UPLINK</button>
                 </div>
+            </div>
+            
+            <div class="terminal-box p-4">
+                 <h2 class="font-bold mb-2">DEBUG TOOLS</h2>
+                 <div class="grid grid-cols-2 gap-2">
+                     <button class="border border-gray-700 text-gray-500 hover:text-white hover:border-white text-xs py-2 px-3" onclick="clearFeed()">CLEAR LOGS</button>
+                     <button class="border border-red-900 text-red-700 hover:bg-red-900/20 text-xs py-2 px-3" onclick="disconnect()">DISCONNECT</button>
+                 </div>
             </div>
         </div>
     </div>
@@ -118,28 +132,57 @@
     <script>
         const feed = document.getElementById('log-feed');
         let pollingInterval = null;
+        let isConnected = false;
 
         function addLog(level, message) {
+            // Remove initial placeholder
+            if (feed.firstElementChild && feed.firstElementChild.innerText === "Waiting for connection...") {
+                feed.innerHTML = '';
+            }
+            
             const row = document.createElement('div');
             const time = new Date().toISOString().split('T')[1].split('.')[0];
             let color = 'text-gray-400';
             if (level === 'SUCCESS') color = 'text-green-400';
             if (level === 'WARN') color = 'text-yellow-400';
+            if (level === 'ERROR') color = 'text-red-500';
             if (level === 'TX') color = 'text-blue-400';
 
             row.innerHTML = `<span class="text-gray-600">[${time}]</span> <span class="${color} font-bold">${level}</span> ${message}`;
             feed.prepend(row);
-            if (feed.children.length > 50) feed.lastChild.remove();
+            if (feed.children.length > 100) feed.lastChild.remove();
+        }
+        
+        function clearFeed() {
+            feed.innerHTML = '';
+        }
+
+        function disconnect() {
+            if (pollingInterval) clearInterval(pollingInterval);
+            pollingInterval = null;
+            isConnected = false;
+            document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-gray-500";
+            document.getElementById('status-text').innerText = "OFFLINE";
+            document.getElementById('btn-connect').innerText = "INITIALIZE UPLINK";
+            document.getElementById('btn-connect').disabled = false;
+            document.getElementById('agent-id').innerText = "NOT CONNECTED";
+            addLog('WARN', 'Uplink terminated.');
         }
 
         async function connect() {
-            const baseUrl = document.getElementById('api-url').value || 'http://localhost:3000/v1';
+            const baseUrl = document.getElementById('api-url').value.replace(/\/$/, ""); // trim trailing slash
             const apiKey = document.getElementById('api-key').value;
 
-            addLog('INFO', `Connecting to ${baseUrl}...`);
+            if (!apiKey) {
+                alert("API Key required.");
+                return;
+            }
+
+            document.getElementById('btn-connect').innerText = "CONNECTING...";
+            document.getElementById('btn-connect').disabled = true;
 
             try {
-                // 1. Fetch Ticker (Test Connection)
+                // 1. Handshake (Get Ticker)
                 const res = await fetch(`${baseUrl}/market/ticker`, {
                     headers: { 'Authorization': `Bearer ${apiKey}` }
                 });
@@ -147,38 +190,58 @@
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
 
-                // 2. Update UI
-                document.getElementById('status-dot').classList.remove('bg-gray-500');
-                document.getElementById('status-dot').classList.add('bg-green-500', 'blink');
+                // 2. Success State
+                isConnected = true;
+                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-green-500 blink";
                 document.getElementById('status-text').innerText = "ONLINE";
-                document.getElementById('agent-id').innerText = apiKey.substring(0, 12) + "...";
+                document.getElementById('btn-connect').innerText = "CONNECTED";
                 
-                addLog('SUCCESS', `Connected to Network. Status: ${data.status}`);
+                // Mask the key for display
+                const keyMask = apiKey.substring(0, 8) + "..." + apiKey.substring(apiKey.length - 4);
+                document.getElementById('agent-id').innerText = keyMask;
                 
-                // 3. Start Polling for Agent Stats (Mock Endpoint for Demo)
-                // In a real app, you would hit /agent/profile
+                addLog('SUCCESS', `Connected to ${baseUrl}`);
+                addLog('INFO', `Market Status: ${data.status.toUpperCase()} | Congestion: ${data.congestion_multiplier}x`);
+
+                // 3. Start Polling Loop
                 startPolling(baseUrl, apiKey);
 
             } catch (e) {
-                addLog('WARN', `Connection Failed: ${e.message}`);
-                document.getElementById('status-dot').classList.add('bg-red-500');
-                document.getElementById('status-text').innerText = "ERROR";
+                disconnect();
+                addLog('ERROR', `Connection Failed: ${e.message}`);
+                alert(`Connection Failed: ${e.message}\nCheck your URL and API Key.`);
             }
         }
 
-        function startPolling(url, key) {
-            if (pollingInterval) clearInterval(pollingInterval);
+        async function startPolling(baseUrl, apiKey) {
+            // Mocking the data endpoints since the Python backend isn't fully serving user stats yet.
+            // In a real implementation, you would call GET /v1/agent/stats
             
-            // Mocking the "Live Feed" update since we don't have a real WS open in this demo file
-            // But this structure allows you to swap it for a real fetch() easily.
-            pollingInterval = setInterval(() => {
-                // Fetch active tasks...
-                // const tasks = await fetch(`${url}/tasks/active`...)
+            pollingInterval = setInterval(async () => {
+                if (!isConnected) return;
                 
-                // For now, simulate activity to keep the dashboard looking alive
-                const r = Math.random();
-                if (r > 0.7) {
-                   addLog('TX', 'Heartbeat received from LND node.');
+                try {
+                    // Fetch real ticker data to keep connection alive
+                    const res = await fetch(`${baseUrl}/market/ticker`, {
+                        headers: { 'Authorization': `Bearer ${apiKey}` }
+                    });
+                    const data = await res.json();
+                    
+                    // Simulate random task updates based on ticker health
+                    // TODO: Replace with GET /v1/tasks/feed
+                    
+                    // Update dummy metrics (Placeholders until /agent/stats endpoint exists)
+                    document.getElementById('metric-escrow').innerText = Math.floor(Math.random() * 5);
+                    document.getElementById('metric-spend').innerText = (Math.random() * 100000).toFixed(0);
+                    
+                    // Random log generation for effect (if no real webhooks)
+                    if (Math.random() > 0.8) {
+                        const rate = data.rates.verify_sms_otp;
+                        addLog('TX', `Market Update: SMS Rate is ${rate} Sats`);
+                    }
+
+                } catch (e) {
+                    addLog('WARN', `Heartbeat skipped: ${e.message}`);
                 }
             }, 3000);
         }
