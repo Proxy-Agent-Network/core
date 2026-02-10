@@ -10,8 +10,8 @@ from typing import Optional, Dict
 # ----------------------------------------------------
 
 class EscrowState(Enum):
-    PENDING = "PENDING"       # Invoice created, waiting for payment
-    LOCKED = "LOCKED"         # Payment held by LND (HODL)
+    OPEN = "OPEN"             # Invoice created, waiting for payment
+    ACCEPTED = "ACCEPTED"     # Payment held by LND (HODL)
     EXECUTING = "EXECUTING"   # Human accepted task
     SETTLED = "SETTLED"       # Preimage revealed, funds moved
     CANCELLED = "CANCELLED"   # Timeout, funds refunded
@@ -25,7 +25,7 @@ class HodlContract:
     agent_pubkey: str
     node_pubkey: Optional[str] = None
     expiry: int = 0
-    state: EscrowState = EscrowState.PENDING
+    state: EscrowState = EscrowState.OPEN
 
 class EscrowManager:
     def __init__(self):
@@ -56,11 +56,12 @@ class EscrowManager:
             preimage=preimage_hex,
             amount_sats=amount_sats,
             agent_pubkey=agent_pubkey,
-            expiry=expiry
+            expiry=expiry,
+            state=EscrowState.OPEN
         )
         self.contracts[payment_hash] = contract
         
-        print(f"[Escrow] Created Contract {contract_id}. Waiting for Lock...")
+        print(f"[Escrow] Created Contract {contract_id}. State: OPEN. Waiting for Lock...")
         
         # In prod: call LND AddInvoice(hash=payment_hash, amt=amount_sats, hodl=True)
         return {
@@ -79,13 +80,17 @@ class EscrowManager:
             raise ValueError("Unknown Contract")
             
         contract = self.contracts[payment_hash]
-        contract.state = EscrowState.LOCKED
-        print(f"[Escrow] {contract.contract_id} -> LOCKED. Funds secured in channel.")
+        if contract.state != EscrowState.OPEN:
+            print(f"[Escrow] Warning: Payment received for contract in state {contract.state}")
+            return
+
+        contract.state = EscrowState.ACCEPTED
+        print(f"[Escrow] {contract.contract_id} -> ACCEPTED. Funds secured in channel.")
 
     def assign_human(self, payment_hash: str, node_id: str):
         contract = self.contracts[payment_hash]
-        if contract.state != EscrowState.LOCKED:
-            raise ValueError(f"Funds not locked yet. Current state: {contract.state}")
+        if contract.state != EscrowState.ACCEPTED:
+            raise ValueError(f"Funds not accepted/locked yet. Current state: {contract.state}")
             
         contract.node_pubkey = node_id
         contract.state = EscrowState.EXECUTING
