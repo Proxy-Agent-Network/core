@@ -1,79 +1,121 @@
 import cv2
 import numpy as np
+import pytesseract
 import re
 import hashlib
 import json
-from typing import Tuple, Optional
+from pytesseract import Output
+from typing import Tuple, Dict
 
-# PROXY PROTOCOL - PRIVACY GUARD v1.0
-# "What the Agent doesn't see, can't hurt it."
+# PROXY PROTOCOL - ZK PRIVACY GUARD (v1.1)
+# "Sanitize locally. Verify globally."
 # ----------------------------------------------------
-# Dependencies: pip install opencv-python-headless numpy
+# Dependencies: pip install opencv-python-headless pytesseract
 
 class PrivacyGuard:
-    def __init__(self, sensitivity_level: str = "high"):
-        self.sensitivity = sensitivity_level
-        # Load pre-trained face detection model (Haar Cascade is lightweight for Pi)
+    def __init__(self):
+        # Load Face Detection Model
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         )
+        
+        # Regex Patterns for Sensitive Text
+        self.PATTERNS = {
+            "CREDIT_CARD": r'\b(?:\d[ -]*?){13,16}\b',
+            "SSN": r'\b\d{3}-\d{2}-\d{4}\b',
+            "EMAIL": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        }
 
-    def _apply_pixelation(self, image, x, y, w, h, blocks=10):
+    def _pixelate_region(self, image, x, y, w, h, blocks=15):
         """
-        Destructive editing: Downsample and upsample to remove PII details.
+        Destructive editing: Downsample and upsample to remove details.
         """
+        # 1. Select Region of Interest (ROI)
         roi = image[y:y+h, x:x+w]
-        # Divide region into small blocks
+        
+        # 2. Downsample (Shrink)
         roi = cv2.resize(roi, (blocks, blocks), interpolation=cv2.INTER_LINEAR)
-        # Scale back up (pixelated)
+        
+        # 3. Upsample (Expand back to original size)
         roi = cv2.resize(roi, (w, h), interpolation=cv2.INTER_NEAREST)
+        
+        # 4. Apply back to image
         image[y:y+h, x:x+w] = roi
         return image
 
-    def redact_faces(self, image_path: str) -> Tuple[np.ndarray, int]:
+    def redact_pii(self, image_path: str) -> Tuple[str, Dict]:
         """
-        Detects human faces and applies irreversible pixelation.
-        Returns: (Processed Image, Count of Redactions)
+        Main pipeline: Detects faces + Sensitive Text and blurs them.
+        Returns: (Output Path, Report)
         """
         img = cv2.imread(image_path)
+        if img is None:
+            raise ValueError("Image not found or invalid format.")
+
+        report = {"faces_redacted": 0, "text_blocks_redacted": 0}
+
+        # --- STEP 1: FACE REDACTION ---
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Detect faces
         faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
         
         for (x, y, w, h) in faces:
-            self._apply_pixelation(img, x, y, w, h)
-            # Add visual marker for the Agent
-            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 65), 2) # Terminal Green
-            cv2.putText(img, "REDACTED_HUMAN", (x, y-10), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 65), 1)
+            self._pixelate_region(img, x, y, w, h)
+            # Add a green box to show the Agent "We handled this"
+            cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 65), 2)
+            report["faces_redacted"] += 1
 
-        return img, len(faces)
-
-    def generate_zk_proof(self, original_path: str, processed_path: str) -> dict:
-        """
-        Generates a cryptographic commitment.
-        The Node proves it processed *this* specific image without revealing the original.
-        """
-        with open(original_path, "rb") as f:
-            raw_bytes = f.read()
-            original_hash = hashlib.sha256(raw_bytes).hexdigest()
+        # --- STEP 2: TEXT REDACTION (OCR) ---
+        # Get detailed OCR data (words + bounding boxes)
+        d = pytesseract.image_to_data(img, output_type=Output.DICT)
+        n_boxes = len(d['text'])
+        
+        for i in range(n_boxes):
+            text = d['text'][i]
+            conf = int(d['conf'][i])
             
-        with open(processed_path, "rb") as f:
-            proc_bytes = f.read()
-            public_hash = hashlib.sha256(proc_bytes).hexdigest()
+            if conf > 40 and text.strip():
+                # Check against regex patterns
+                is_sensitive = False
+                for p_name, pattern in self.PATTERNS.items():
+                    if re.search(pattern, text):
+                        is_sensitive = True
+                        break
+                
+                if is_sensitive:
+                    (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
+                    # Expand box slightly to ensure full coverage
+                    pad = 5
+                    self._pixelate_region(img, x-pad, y-pad, w+(pad*2), h+(pad*2))
+                    report["text_blocks_redacted"] += 1
 
-        # In a real ZK circuit (e.g. RISC Zero), we would generate a SNARK here.
-        # For v1, we use a Commit-Reveal scheme.
+        # --- STEP 3: SAVE & PROVE ---
+        output_path = image_path.replace(".", "_safe.")
+        cv2.imwrite(output_path, img)
+        
+        # Generate ZK Commitment (Proof of Sanitization)
+        # In v2, this would be a zk-SNARK. In v1, it's a Hash Commitment.
+        proof = self._generate_commitment(image_path, output_path)
+        report["proof"] = proof
+        
+        return output_path, report
+
+    def _generate_commitment(self, original_path: str, safe_path: str) -> Dict:
+        """
+        Creates a cryptographic record linking the raw input to the sanitized output.
+        The Raw Hash acts as the 'Commitment' and the Safe Hash is the 'Public Output'.
+        """
+        def get_hash(path):
+            with open(path, "rb") as f:
+                return hashlib.sha256(f.read()).hexdigest()
+
         return {
-            "proof_type": "privacy_guard_v1",
-            "original_commitment": original_hash,
-            "public_output": public_hash,
-            "sanitization_method": "haar_cascade_pixelation",
+            "method": "privacy_guard_v1.1",
+            "input_commitment": get_hash(original_path), # Private (Raw)
+            "output_hash": get_hash(safe_path),          # Public (Safe)
             "timestamp": "2026-02-10T08:00:00Z"
         }
 
-# --- CLI Usage for Node Operators ---
+# --- CLI Usage ---
 if __name__ == "__main__":
     import sys
     
@@ -81,17 +123,13 @@ if __name__ == "__main__":
         print("Usage: python3 privacy_guard.py <image_path>")
         sys.exit(1)
 
-    filepath = sys.argv[1]
     guard = PrivacyGuard()
+    print(f"[*] Analyzing {sys.argv[1]} for PII...")
     
-    print(f"[*] Scanning {filepath} for PII...")
-    processed_img, count = guard.redact_faces(filepath)
-    
-    output_path = filepath.replace(".", "_safe.")
-    cv2.imwrite(output_path, processed_img)
-    
-    proof = guard.generate_zk_proof(filepath, output_path)
-    
-    print(f"[*] Redacted {count} faces.")
-    print(f"[*] Saved Safe Copy: {output_path}")
-    print(f"[*] Proof Generated: {json.dumps(proof, indent=2)}")
+    try:
+        safe_file, metrics = guard.redact_pii(sys.argv[1])
+        print(f"✅ SANITIZATION COMPLETE")
+        print(f"   - Saved: {safe_file}")
+        print(f"   - Metrics: {json.dumps(metrics, indent=2)}")
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
