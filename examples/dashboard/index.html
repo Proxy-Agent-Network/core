@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy Protocol // Agent Command</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap');
+        
+        body {
+            font-family: 'Fira Code', monospace;
+            background-color: #0D0D0D;
+            color: #00FF41;
+        }
+        
+        .scan-line {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .terminal-box {
+            border: 1px solid #333;
+            background: rgba(13, 13, 13, 0.9);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.1);
+        }
+
+        .blink { animation: blinker 1s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0; } }
+
+        .progress-bar {
+            background: #1a1a1a;
+            height: 8px;
+            width: 100%;
+        }
+        .progress-fill {
+            background: #00FF41;
+            height: 100%;
+            transition: width 0.5s ease;
+        }
+    </style>
+</head>
+<body class="h-screen overflow-hidden p-6 flex flex-col gap-6">
+    <div class="scan-line"></div>
+
+    <!-- Header -->
+    <header class="flex justify-between items-end border-b border-gray-800 pb-4">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tighter">PROXY PROTOCOL <span class="text-xs align-top opacity-50">v1.0</span></h1>
+            <p class="text-sm text-gray-500">AGENT_ID: <span class="text-white">autonomous_trader_v4</span></p>
+        </div>
+        <div class="text-right">
+            <div class="text-xs text-gray-500">NETWORK STATUS</div>
+            <div class="text-sm flex items-center gap-2 justify-end">
+                <span class="w-2 h-2 rounded-full bg-green-500 blink"></span> ONLINE
+            </div>
+        </div>
+    </header>
+
+    <!-- KPI Grid -->
+    <div class="grid grid-cols-4 gap-6">
+        <div class="terminal-box p-4">
+            <div class="text-xs text-gray-500 mb-1">TOTAL SPEND (24H)</div>
+            <div class="text-2xl font-bold">145,200 <span class="text-sm font-normal">SATS</span></div>
+            <div class="text-xs text-green-700 mt-2">▲ 12% vs yesterday</div>
+        </div>
+        <div class="terminal-box p-4">
+            <div class="text-xs text-gray-500 mb-1">SUCCESS RATE</div>
+            <div class="text-2xl font-bold">98.2<span class="text-sm font-normal">%</span></div>
+            <div class="progress-bar mt-3"><div class="progress-fill" style="width: 98.2%"></div></div>
+        </div>
+        <div class="terminal-box p-4">
+            <div class="text-xs text-gray-500 mb-1">ACTIVE ESCROWS</div>
+            <div class="text-2xl font-bold text-yellow-400">3</div>
+            <div class="text-xs text-gray-500 mt-2">Locked: 15,000 SATS</div>
+        </div>
+        <div class="terminal-box p-4">
+            <div class="text-xs text-gray-500 mb-1">REPUTATION</div>
+            <div class="text-2xl font-bold">Tier 3</div>
+            <div class="text-xs text-gray-500 mt-2">Access: Legal, Physical</div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex flex-1 gap-6 min-h-0">
+        
+        <!-- Live Feed -->
+        <div class="terminal-box flex-1 flex flex-col p-4">
+            <div class="flex justify-between mb-4">
+                <h2 class="font-bold">LIVE TASK FEED</h2>
+                <span class="text-xs border border-green-900 px-2 py-0.5 rounded">REAL-TIME</span>
+            </div>
+            <div id="log-feed" class="flex-1 overflow-y-auto font-mono text-sm space-y-2 pr-2">
+                <!-- Logs injected via JS -->
+            </div>
+        </div>
+
+        <!-- System Stats -->
+        <div class="w-1/3 flex flex-col gap-6">
+            <div class="terminal-box p-4 flex-1">
+                <h2 class="font-bold mb-4">NODE DISTRIBUTION</h2>
+                <div class="space-y-4 text-sm">
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span>US (Delaware)</span>
+                            <span>45 Nodes</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" style="width: 45%"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span>UK (London)</span>
+                            <span>28 Nodes</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" style="width: 28%"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span>SG (Singapore)</span>
+                            <span>12 Nodes</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" style="width: 12%"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="terminal-box p-4">
+                <h2 class="font-bold mb-2">QUICK ACTIONS</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <button class="border border-green-600 hover:bg-green-900 text-xs py-2 px-3 transition-colors" onclick="addLog('INFO', 'Exporting CSV report...')">EXPORT CSV</button>
+                    <button class="border border-red-600 text-red-500 hover:bg-red-900 text-xs py-2 px-3 transition-colors" onclick="addLog('WARN', 'Emergency Halt triggered.')">HALT AGENT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- SIMULATION LOGIC ---
+        const feed = document.getElementById('log-feed');
+        const tasks = [
+            { type: 'verify_sms', msg: 'OTP Code received via Tier 1 Node.' },
+            { type: 'legal_sign', msg: 'Contract #8829 signed by DE Attorney.' },
+            { type: 'escrow_lock', msg: '5000 Sats locked for Task #9920.' },
+            { type: 'human_ack', msg: 'Node node_alpha accepted task.' },
+            { type: 'kyc_video', msg: 'Liveness check passed (Score: 0.99).' }
+        ];
+
+        function addLog(level, message) {
+            const row = document.createElement('div');
+            const time = new Date().toISOString().split('T')[1].split('.')[0];
+            let color = 'text-gray-400';
+            if (level === 'SUCCESS') color = 'text-green-400';
+            if (level === 'WARN') color = 'text-yellow-400';
+            if (level === 'TX') color = 'text-blue-400';
+
+            row.innerHTML = `<span class="text-gray-600">[${time}]</span> <span class="${color} font-bold">${level}</span> ${message}`;
+            feed.prepend(row);
+            
+            // Keep history clean
+            if (feed.children.length > 50) feed.lastChild.remove();
+        }
+
+        // Init
+        addLog('INFO', 'Dashboard initialized.');
+        addLog('INFO', 'Connected to Lightning Node (LND).');
+        addLog('SUCCESS', 'Agent Identity Verified: 0x8829...3920');
+
+        // Loop
+        setInterval(() => {
+            const event = tasks[Math.floor(Math.random() * tasks.length)];
+            const levels = ['INFO', 'SUCCESS', 'TX'];
+            const level = levels[Math.floor(Math.random() * levels.length)];
+            addLog(level, event.msg);
+        }, 3500);
+
+    </script>
+</body>
+</html>
