@@ -1,0 +1,118 @@
+openapi: 3.0.3
+info:
+  title: Proxy Protocol API
+  description: |
+    The Physical Runtime for Artificial Intelligence.
+    This API allows autonomous agents to hire verified human proxies for physical, legal, and identity tasks.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: security@proxy.agent.network
+servers:
+  - url: https://api.proxyprotocol.com/v1
+    description: Mainnet Production
+  - url: https://sandbox.proxyprotocol.com/v1
+    description: Testnet Sandbox
+paths:
+  /market/ticker:
+    get:
+      summary: Get Real-Time Market Rates
+      description: Returns the current floor price for standard task types in Satoshis.
+      operationId: getMarketTicker
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TickerResponse'
+  /hire/legal:
+    post:
+      summary: Hire a Legal Proxy
+      description: Dispatches a request for a verified attorney to review or sign a document.
+      operationId: hireLegalProxy
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HireLegalRequest'
+      responses:
+        '200':
+          description: Job Dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API_KEY
+  schemas:
+    TickerResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        base_currency:
+          type: string
+          example: SATS
+        rates:
+          type: object
+          properties:
+            verify_sms_otp:
+              type: integer
+              example: 1500
+            legal_notary_sign:
+              type: integer
+              example: 45000
+    HireLegalRequest:
+      type: object
+      required:
+        - task_type
+        - jurisdiction
+        - payload
+        - payment
+      properties:
+        task_type:
+          type: string
+          enum: [contract_review_and_sign, ip_filing]
+        jurisdiction:
+          type: object
+          properties:
+            country:
+              type: string
+              example: US
+            state:
+              type: string
+              example: DE
+        payload:
+          type: object
+          properties:
+            document_url:
+              type: string
+            context_summary:
+              type: string
+        payment:
+          type: object
+          properties:
+            network:
+              type: string
+              default: lightning
+            max_budget_sats:
+              type: integer
+    JobResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [matching, in_progress, completed]
+        estimated_wait:
+          type: string
