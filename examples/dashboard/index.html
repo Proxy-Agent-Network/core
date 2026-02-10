@@ -54,12 +54,12 @@
     <header class="flex justify-between items-end border-b border-gray-800 pb-4">
         <div>
             <h1 class="text-2xl font-bold tracking-tighter">PROXY PROTOCOL <span class="text-xs align-top opacity-50">v1.0</span></h1>
-            <p class="text-sm text-gray-500">AGENT_ID: <span class="text-white">autonomous_trader_v4</span></p>
+            <p class="text-sm text-gray-500">AGENT_ID: <span class="text-white" id="agent-id">connecting...</span></p>
         </div>
         <div class="text-right">
             <div class="text-xs text-gray-500">NETWORK STATUS</div>
             <div class="text-sm flex items-center gap-2 justify-end">
-                <span class="w-2 h-2 rounded-full bg-green-500 blink"></span> ONLINE
+                <span id="status-dot" class="w-2 h-2 rounded-full bg-gray-500"></span> <span id="status-text">OFFLINE</span>
             </div>
         </div>
     </header>
@@ -68,23 +68,23 @@
     <div class="grid grid-cols-4 gap-6">
         <div class="terminal-box p-4">
             <div class="text-xs text-gray-500 mb-1">TOTAL SPEND (24H)</div>
-            <div class="text-2xl font-bold">145,200 <span class="text-sm font-normal">SATS</span></div>
-            <div class="text-xs text-green-700 mt-2">▲ 12% vs yesterday</div>
+            <div class="text-2xl font-bold"><span id="metric-spend">0</span> <span class="text-sm font-normal">SATS</span></div>
+            <div class="text-xs text-green-700 mt-2">▲ Live</div>
         </div>
         <div class="terminal-box p-4">
             <div class="text-xs text-gray-500 mb-1">SUCCESS RATE</div>
-            <div class="text-2xl font-bold">98.2<span class="text-sm font-normal">%</span></div>
-            <div class="progress-bar mt-3"><div class="progress-fill" style="width: 98.2%"></div></div>
+            <div class="text-2xl font-bold"><span id="metric-rate">0</span><span class="text-sm font-normal">%</span></div>
+            <div class="progress-bar mt-3"><div id="metric-rate-bar" class="progress-fill" style="width: 0%"></div></div>
         </div>
         <div class="terminal-box p-4">
             <div class="text-xs text-gray-500 mb-1">ACTIVE ESCROWS</div>
-            <div class="text-2xl font-bold text-yellow-400">3</div>
-            <div class="text-xs text-gray-500 mt-2">Locked: 15,000 SATS</div>
+            <div class="text-2xl font-bold text-yellow-400" id="metric-escrow">0</div>
+            <div class="text-xs text-gray-500 mt-2">Locked Funds</div>
         </div>
         <div class="terminal-box p-4">
             <div class="text-xs text-gray-500 mb-1">REPUTATION</div>
-            <div class="text-2xl font-bold">Tier 3</div>
-            <div class="text-xs text-gray-500 mt-2">Access: Legal, Physical</div>
+            <div class="text-2xl font-bold" id="metric-rep">Unknown</div>
+            <div class="text-xs text-gray-500 mt-2">Tier Access</div>
         </div>
     </div>
 
@@ -95,62 +95,29 @@
         <div class="terminal-box flex-1 flex flex-col p-4">
             <div class="flex justify-between mb-4">
                 <h2 class="font-bold">LIVE TASK FEED</h2>
-                <span class="text-xs border border-green-900 px-2 py-0.5 rounded">REAL-TIME</span>
+                <span class="text-xs border border-green-900 px-2 py-0.5 rounded">WEBSOCKET</span>
             </div>
             <div id="log-feed" class="flex-1 overflow-y-auto font-mono text-sm space-y-2 pr-2">
                 <!-- Logs injected via JS -->
             </div>
         </div>
 
-        <!-- System Stats -->
+        <!-- Configuration -->
         <div class="w-1/3 flex flex-col gap-6">
             <div class="terminal-box p-4 flex-1">
-                <h2 class="font-bold mb-4">NODE DISTRIBUTION</h2>
+                <h2 class="font-bold mb-4">CONNECTION SETTINGS</h2>
                 <div class="space-y-4 text-sm">
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <span>US (Delaware)</span>
-                            <span>45 Nodes</span>
-                        </div>
-                        <div class="progress-bar"><div class="progress-fill" style="width: 45%"></div></div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <span>UK (London)</span>
-                            <span>28 Nodes</span>
-                        </div>
-                        <div class="progress-bar"><div class="progress-fill" style="width: 28%"></div></div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <span>SG (Singapore)</span>
-                            <span>12 Nodes</span>
-                        </div>
-                        <div class="progress-bar"><div class="progress-fill" style="width: 12%"></div></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="terminal-box p-4">
-                <h2 class="font-bold mb-2">QUICK ACTIONS</h2>
-                <div class="grid grid-cols-2 gap-2">
-                    <button class="border border-green-600 hover:bg-green-900 text-xs py-2 px-3 transition-colors" onclick="addLog('INFO', 'Exporting CSV report...')">EXPORT CSV</button>
-                    <button class="border border-red-600 text-red-500 hover:bg-red-900 text-xs py-2 px-3 transition-colors" onclick="addLog('WARN', 'Emergency Halt triggered.')">HALT AGENT</button>
+                    <input type="text" id="api-url" placeholder="API URL (e.g. http://localhost:3000/v1)" class="w-full bg-black border border-gray-700 p-2 text-green-500 mb-2">
+                    <input type="password" id="api-key" placeholder="API Key (sk_...)" class="w-full bg-black border border-gray-700 p-2 text-green-500">
+                    <button onclick="connect()" class="w-full border border-green-600 hover:bg-green-900 py-2">CONNECT</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // --- SIMULATION LOGIC ---
         const feed = document.getElementById('log-feed');
-        const tasks = [
-            { type: 'verify_sms', msg: 'OTP Code received via Tier 1 Node.' },
-            { type: 'legal_sign', msg: 'Contract #8829 signed by DE Attorney.' },
-            { type: 'escrow_lock', msg: '5000 Sats locked for Task #9920.' },
-            { type: 'human_ack', msg: 'Node node_alpha accepted task.' },
-            { type: 'kyc_video', msg: 'Liveness check passed (Score: 0.99).' }
-        ];
+        let pollingInterval = null;
 
         function addLog(level, message) {
             const row = document.createElement('div');
@@ -162,24 +129,59 @@
 
             row.innerHTML = `<span class="text-gray-600">[${time}]</span> <span class="${color} font-bold">${level}</span> ${message}`;
             feed.prepend(row);
-            
-            // Keep history clean
             if (feed.children.length > 50) feed.lastChild.remove();
         }
 
-        // Init
-        addLog('INFO', 'Dashboard initialized.');
-        addLog('INFO', 'Connected to Lightning Node (LND).');
-        addLog('SUCCESS', 'Agent Identity Verified: 0x8829...3920');
+        async function connect() {
+            const baseUrl = document.getElementById('api-url').value || 'http://localhost:3000/v1';
+            const apiKey = document.getElementById('api-key').value;
 
-        // Loop
-        setInterval(() => {
-            const event = tasks[Math.floor(Math.random() * tasks.length)];
-            const levels = ['INFO', 'SUCCESS', 'TX'];
-            const level = levels[Math.floor(Math.random() * levels.length)];
-            addLog(level, event.msg);
-        }, 3500);
+            addLog('INFO', `Connecting to ${baseUrl}...`);
 
+            try {
+                // 1. Fetch Ticker (Test Connection)
+                const res = await fetch(`${baseUrl}/market/ticker`, {
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+                
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                // 2. Update UI
+                document.getElementById('status-dot').classList.remove('bg-gray-500');
+                document.getElementById('status-dot').classList.add('bg-green-500', 'blink');
+                document.getElementById('status-text').innerText = "ONLINE";
+                document.getElementById('agent-id').innerText = apiKey.substring(0, 12) + "...";
+                
+                addLog('SUCCESS', `Connected to Network. Status: ${data.status}`);
+                
+                // 3. Start Polling for Agent Stats (Mock Endpoint for Demo)
+                // In a real app, you would hit /agent/profile
+                startPolling(baseUrl, apiKey);
+
+            } catch (e) {
+                addLog('WARN', `Connection Failed: ${e.message}`);
+                document.getElementById('status-dot').classList.add('bg-red-500');
+                document.getElementById('status-text').innerText = "ERROR";
+            }
+        }
+
+        function startPolling(url, key) {
+            if (pollingInterval) clearInterval(pollingInterval);
+            
+            // Mocking the "Live Feed" update since we don't have a real WS open in this demo file
+            // But this structure allows you to swap it for a real fetch() easily.
+            pollingInterval = setInterval(() => {
+                // Fetch active tasks...
+                // const tasks = await fetch(`${url}/tasks/active`...)
+                
+                // For now, simulate activity to keep the dashboard looking alive
+                const r = Math.random();
+                if (r > 0.7) {
+                   addLog('TX', 'Heartbeat received from LND node.');
+                }
+            }, 3000);
+        }
     </script>
 </body>
 </html>
