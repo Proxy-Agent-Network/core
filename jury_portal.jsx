@@ -7,19 +7,20 @@ import {
   RefreshCw, Key, ShieldQuestion, Globe, Map, ZapOff, Waves, ShieldX, 
   PiggyBank, ArrowUpRight, ArrowDownRight, History, FileSignature, 
   Stamp, Wallet, Unlock, AlertOctagon, Wifi, Binary, ShieldEllipsis, 
-  Database, FileCode, CheckSquare, Layers
+  Database, FileCode, CheckSquare, Layers, MapPin, Navigation,
+  PenTool, FilePlus, Send, Archive, PieChart, Target, Calculator
 } from 'lucide-react';
 
 // --- MODULAR UI COMPONENTS ---
 
-const ProtocolHeader = ({ nodeId, reserves, tier, brownoutLevel }) => (
+const ProtocolHeader = ({ nodeId, reserves, brownoutLevel }) => (
   <header className="border-b border-white/10 bg-[#0d0d0e] px-6 py-4 flex justify-between items-center sticky top-0 z-50">
     <div className="flex items-center gap-3">
       <div className="bg-amber-500/10 p-2 rounded border border-amber-500/20">
         <Gavel className="w-5 h-5 text-amber-500" />
       </div>
       <div>
-        <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest leading-none">Jury Tribunal v2.18</h1>
+        <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest leading-none">Jury Tribunal v2.17</h1>
         <p className="text-[9px] text-amber-500/70 uppercase tracking-widest mt-1 text-glow">Secure Adjudication Node</p>
       </div>
     </div>
@@ -37,7 +38,7 @@ const ProtocolHeader = ({ nodeId, reserves, tier, brownoutLevel }) => (
         <span className="text-white font-bold">{(reserves / 100000000).toFixed(2)} BTC</span>
       </div>
       <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded border border-white/10">
-        <div className={`w-2 h-2 rounded-full animate-pulse ${brownoutLevel === 'RED' ? 'bg-red-500' : 'bg-green-500'}`} />
+        <div className={`w-2 h-2 rounded-full animate-pulse ${brownoutLevel === 'RED' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-green-500'}`} />
         <span className="text-white font-bold text-xs tracking-tighter">{nodeId}</span>
       </div>
     </div>
@@ -69,67 +70,27 @@ const JudicialStanding = ({ stats }) => (
   </div>
 );
 
-const MultiSigSignerTab = ({ pendingTx, onSign, isSigning }) => (
+const ReputationHeatmapTab = ({ regions }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden shadow-2xl">
-      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
-        <h2 className="text-xs uppercase font-black tracking-widest flex items-center gap-2 text-white">
-          <Layers className="w-4 h-4 text-blue-400" /> Pending Consensus Transfers
-        </h2>
-        <span className="text-[9px] text-gray-500 uppercase font-black tracking-tighter">2-of-3 Hardware Quorum Required</span>
-      </div>
-      <div className="divide-y divide-white/5">
-        {pendingTx.map((tx) => (
-          <div key={tx.id} className="p-6 flex flex-col lg:flex-row justify-between gap-6 hover:bg-white/[0.01] transition-all">
-            <div className="flex gap-6">
-              <div className="w-14 h-14 bg-blue-500/10 rounded border border-blue-500/20 flex flex-col items-center justify-center">
-                <Banknote className="w-6 h-6 text-blue-400" />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-black text-white uppercase">{tx.id}</span>
-                  <span className={`text-[9px] px-2 py-0.5 rounded font-black uppercase tracking-tighter ${
-                    tx.type === 'BOND_RELEASE' ? 'bg-amber-500/10 text-amber-500' : 'bg-red-500/10 text-red-500'
-                  }`}>{tx.type}</span>
-                </div>
-                <p className="text-xs text-gray-500 max-w-md leading-relaxed">{tx.description}</p>
-                <div className="flex items-center gap-4 pt-1">
-                  <span className="text-[9px] text-gray-600 mono truncate max-w-[200px]">TO: {tx.destination}</span>
-                  <span className="text-[9px] text-blue-400 font-black uppercase">AMOUNT: {tx.amount.toLocaleString()} SATS</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-6">
-               <div className="flex flex-col items-end gap-2">
-                  <div className="flex gap-1">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className={`w-3 h-3 rounded-full border ${i < tx.sigs ? 'bg-green-500 border-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'border-gray-800'}`} />
-                    ))}
-                  </div>
-                  <span className="text-[9px] text-gray-600 uppercase font-black">{tx.sigs}/3 Signatures</span>
-               </div>
-               <button 
-                  onClick={() => onSign(tx.id)}
-                  disabled={isSigning || tx.signed_by_me}
-                  className={`px-6 py-3 rounded text-[10px] font-black uppercase tracking-widest transition-all ${
-                    tx.signed_by_me 
-                      ? 'bg-green-500/10 text-green-500 border border-green-500/20 cursor-default' 
-                      : 'bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500 hover:text-black'
-                  }`}
-               >
-                  {isSigning ? 'Signing...' : tx.signed_by_me ? 'Verified' : 'Affix Signature'}
-               </button>
-            </div>
-          </div>
-        ))}
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
+      <div className="bg-black/60 rounded-lg h-[350px] relative overflow-hidden flex flex-col items-center justify-center border border-white/5">
+        <div className="absolute inset-0 opacity-[0.07]" 
+             style={{ backgroundImage: 'radial-gradient(#00FF41 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+        <Globe className="w-16 h-16 text-gray-800 mb-4 opacity-40" />
+        <h3 className="text-xs uppercase font-black text-gray-500 tracking-[0.6em] text-glow">Geospatial Integrity Grid</h3>
       </div>
     </div>
-    <div className="p-6 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-start gap-4 shadow-inner">
-       <Shield className="w-5 h-5 text-blue-400 flex-shrink-0" />
-       <p className="text-[10px] text-blue-300/40 leading-relaxed italic">
-          "Signatures are non-repudiable. Authorization tokens are cryptographically linked to the TPM handle 0x81010001 and broadcast to the Lightning mesh fallback if primary API latency is detected."
-       </p>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {regions.map((r) => (
+        <div key={r.name} className={`bg-[#0d0d0e] border rounded-lg p-5 group hover:bg-white/[0.01] ${r.status === 'CRITICAL' ? 'border-red-500/20' : 'border-white/10'}`}>
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-xs font-black text-white uppercase">{r.name}</span>
+            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${r.status === 'HEALTHY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{r.status}</span>
+          </div>
+          <div className="text-2xl font-black text-white mb-1">{r.score}%</div>
+          <p className="text-[10px] text-gray-500 italic leading-tight">"{r.insight}"</p>
+        </div>
+      ))}
     </div>
   </div>
 );
@@ -142,25 +103,17 @@ const LivenessHeatmapTab = ({ heartbeats }) => (
              style={{ backgroundImage: 'linear-gradient(#f43f5e 1px, transparent 1px), linear-gradient(90deg, #f43f5e 1px, transparent 1px)', backgroundSize: '25px 25px' }} />
         <HeartPulse className="w-16 h-16 text-rose-500/20 mb-4 animate-pulse" />
         <h3 className="text-xs uppercase font-black text-gray-500 tracking-[0.6em] text-glow-red">Biological Pulse Grid</h3>
-        <p className="text-[9px] text-gray-700 mt-2 uppercase font-black tracking-widest">Global Aggregate: 1.2Hz</p>
       </div>
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {heartbeats.map((hb) => (
-        <div key={hb.region} className="bg-[#0d0d0e] border border-white/10 rounded-lg p-5 group hover:border-rose-500/30 transition-all">
-          <div className="flex justify-between items-center mb-4">
+        <div key={hb.region} className="bg-[#0d0d0e] border border-white/10 rounded-lg p-5">
+          <div className="flex justify-between items-center mb-2">
             <span className="text-[10px] text-gray-500 font-black uppercase">{hb.region}</span>
-            <div className={`w-2 h-2 rounded-full ${hb.status === 'ACTIVE' ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]' : 'bg-amber-500'}`} />
+            <span className="text-white font-bold">{hb.intensity}% Vitality</span>
           </div>
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-2xl font-black text-white">{hb.count}</span>
-            <span className="text-[9px] text-gray-600 uppercase font-bold">Nodes</span>
-          </div>
-          <div className="flex items-center gap-4">
-             <div className="flex-1 bg-white/5 h-1 rounded-full overflow-hidden">
-                <div className="bg-rose-500 h-full animate-pulse" style={{ width: `${hb.intensity}%` }} />
-             </div>
-             <span className="text-[9px] text-rose-400 font-bold">{hb.intensity}%</span>
+          <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
+            <div className="bg-rose-500 h-full animate-pulse" style={{ width: `${hb.intensity}%` }} />
           </div>
         </div>
       ))}
@@ -168,47 +121,98 @@ const LivenessHeatmapTab = ({ heartbeats }) => (
   </div>
 );
 
+const MultiSigSignerTab = ({ pendingTx, onSign, isSigning }) => (
+  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden shadow-2xl">
+      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
+        <h2 className="text-xs uppercase font-black tracking-widest flex items-center gap-2 text-white"><Layers className="w-4 h-4 text-blue-400" /> Multi-Sig Quorum</h2>
+      </div>
+      <div className="divide-y divide-white/5">
+        {pendingTx.map((tx) => (
+          <div key={tx.id} className="p-6 flex flex-col lg:flex-row justify-between gap-6 hover:bg-white/[0.01]">
+            <div className="space-y-2">
+               <span className="text-sm font-black text-white">{tx.id} | {tx.type}</span>
+               <p className="text-xs text-gray-500">{tx.description}</p>
+               <span className="text-[9px] text-blue-400 font-black uppercase">Amount: {tx.amount.toLocaleString()} SATS</span>
+            </div>
+            <button onClick={() => onSign(tx.id)} disabled={isSigning || tx.signed_by_me} className={`px-6 py-3 rounded text-[10px] font-black uppercase ${tx.signed_by_me ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-black transition-all'}`}>
+               {isSigning ? 'Signing...' : tx.signed_by_me ? 'Verified' : 'Affix Signature'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const VotingAnalyticsTab = ({ votingStats }) => (
+  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+          <span className="text-[10px] text-gray-600 uppercase font-black tracking-widest block mb-4">Consensus Alignment</span>
+          <div className="flex items-baseline gap-2"><span className="text-4xl font-black text-white">{votingStats.alignment_rate}%</span><TrendingUp className="w-5 h-5 text-green-500" /></div>
+       </div>
+       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+          <span className="text-[10px] text-gray-600 uppercase font-black tracking-widest block mb-4">Schelling Saliency</span>
+          <div className="flex items-baseline gap-2"><span className="text-4xl font-black text-indigo-400">{votingStats.saliency_score}</span><Target className="w-5 h-5 text-indigo-400" /></div>
+       </div>
+    </div>
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+       <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><PieChart className="w-5 h-5 text-indigo-400" /> Sector Accuracy</h3>
+       <div className="space-y-5">
+          {votingStats.sectors.map((s) => (
+             <div key={s.name}>
+                <div className="flex justify-between text-[10px] mb-2 uppercase font-black text-gray-500"><span>{s.name}</span><span className="text-white">{s.score}%</span></div>
+                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden"><div className="bg-green-500 h-full" style={{ width: `${s.score}%` }} /></div>
+             </div>
+          ))}
+       </div>
+    </div>
+  </div>
+);
+
+const ProposalForgeTab = ({ nodeId, onDraftSubmit, isBroadcasting }) => {
+  const [draft, setDraft] = useState({ title: "", content: "# Abstract\n\n..." });
+  return (
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-400">
+      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h2 className="text-xs uppercase font-black text-white flex items-center gap-2"><PenTool className="w-4 h-4 text-amber-500" /> Draft Proposal</h2></div>
+      <div className="p-8 space-y-6">
+        <input type="text" value={draft.title} onChange={(e) => setDraft({...draft, title: e.target.value})} placeholder="Proposal Title..." className="w-full bg-black border border-white/10 rounded p-4 text-sm text-white focus:outline-none focus:border-amber-500/50" />
+        <textarea value={draft.content} onChange={(e) => setDraft({...draft, content: e.target.value})} className="w-full h-48 bg-black border border-white/10 rounded p-4 text-xs mono text-gray-400 focus:outline-none resize-none" />
+        <button onClick={() => onDraftSubmit(draft)} disabled={isBroadcasting || !draft.title} className="w-full py-4 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-widest hover:bg-amber-500 hover:text-black transition-all">
+          {isBroadcasting ? 'Broadcasting to Mesh...' : 'Sign & Broadcast PIP'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const InsuranceActuaryTab = ({ actuaryData, onAdjustRate, isAdjusting }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between shadow-xl">
+      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
         <div>
           <span className="text-[10px] text-gray-600 uppercase font-black tracking-widest block mb-4">Loss Ratio (90d)</span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-black text-white">{actuaryData.loss_ratio}%</span>
-            <span className={`text-[10px] font-bold ${actuaryData.loss_ratio < 20 ? 'text-green-500' : 'text-red-400'}`}>OPTIMAL</span>
-          </div>
+          <div className="flex items-baseline gap-2"><span className="text-4xl font-black text-white">{actuaryData.loss_ratio}%</span><span className="text-[10px] font-bold text-green-500 uppercase">Optimal</span></div>
         </div>
-        <div className="mt-6 space-y-2">
-          <div className="flex justify-between text-[10px] uppercase font-bold text-gray-500">
-            <span>Premium Revenue</span>
-            <span className="text-green-500">+{actuaryData.total_premiums.toLocaleString()} SATS</span>
-          </div>
-          <div className="flex justify-between text-[10px] uppercase font-bold text-gray-500">
-            <span>Claims Paid</span>
-            <span className="text-red-400">-{actuaryData.total_payouts.toLocaleString()} SATS</span>
-          </div>
+        <div className="mt-6 space-y-2 text-[10px] uppercase font-bold text-gray-500">
+          <div className="flex justify-between"><span>Revenue</span><span className="text-green-500">+{actuaryData.total_premiums.toLocaleString()} SATS</span></div>
+          <div className="flex justify-between"><span>Claims</span><span className="text-red-400">-{actuaryData.total_payouts.toLocaleString()} SATS</span></div>
         </div>
       </div>
-
       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-        <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><Calculator className="w-5 h-5 text-blue-400" /> Risk Sectors</h3>
+        <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><Calculator className="w-5 h-5 text-blue-400" /> Incident Probability</h3>
         <div className="space-y-4">
           {actuaryData.risk_sectors.map((s) => (
             <div key={s.name}>
-              <div className="flex justify-between items-center text-[10px] mb-2 uppercase font-black text-gray-400">
-                <span>{s.name}</span>
-                <span className="text-white">{s.prob}%</span>
-              </div>
+              <div className="flex justify-between text-[10px] mb-2 uppercase font-black text-gray-400"><span>{s.name}</span><span className="text-white">{s.prob}%</span></div>
               <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden"><div className="bg-blue-500 h-full" style={{ width: `${s.prob * 10}%` }} /></div>
             </div>
           ))}
         </div>
       </div>
-
       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
         <h3 className="text-xs uppercase font-black text-white mb-4">Tax Governance</h3>
-        <p className="text-[10px] text-gray-500 leading-relaxed mb-6 font-bold tracking-tighter">Current 0.1% tax rate covers all SEV-2 liabilities with a healthy treasury surplus.</p>
         <button onClick={() => onAdjustRate(0.0008)} disabled={isAdjusting} className="w-full py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-black uppercase tracking-widest rounded hover:bg-blue-400 hover:text-black transition-all">
           {isAdjusting ? 'Broadcasting...' : 'Adjust Rate'}
         </button>
@@ -219,34 +223,22 @@ const InsuranceActuaryTab = ({ actuaryData, onAdjustRate, isAdjusting }) => (
 
 const TreasuryTab = ({ treasuryStats, ledger }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div className="bg-green-500/5 border border-green-500/20 p-5 rounded-lg">
-        <span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Net Reserves</span>
-        <p className="text-2xl font-black text-white">{(treasuryStats.net_reserves / 1000000).toFixed(1)}M <span className="text-xs text-gray-500 font-normal">SATS</span></p>
-      </div>
-      <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-lg">
-        <span className="text-[9px] text-blue-400 uppercase font-black block mb-2 tracking-widest">Insurance Depth</span>
-        <p className="text-2xl font-black text-white">{(treasuryStats.locked_insurance_pool / 1000000).toFixed(1)}M</p>
-      </div>
-      <div className="bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg">
-        <span className="text-[9px] text-amber-400 uppercase font-black block mb-2 tracking-widest">Slash Revenue</span>
-        <p className="text-2xl font-black text-white">{(treasuryStats.slashing_revenue / 1000000).toFixed(1)}M</p>
-      </div>
-      <div className="bg-red-500/5 border border-red-500/20 p-5 rounded-lg">
-        <span className="text-[9px] text-red-400 uppercase font-black block mb-2 tracking-widest">Total Outflow</span>
-        <p className="text-2xl font-black text-white">{(treasuryStats.total_outflow / 1000000).toFixed(1)}M</p>
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
+      <div className="bg-green-500/5 border border-green-500/20 p-5 rounded-lg"><span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Net Reserves</span><p className="text-2xl font-black text-white">{(treasuryStats.net_reserves / 1000000).toFixed(1)}M</p></div>
+      <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-lg"><span className="text-[9px] text-blue-400 uppercase font-black block mb-2 tracking-widest">Insurance Depth</span><p className="text-2xl font-black text-white">{(treasuryStats.locked_insurance_pool / 1000000).toFixed(1)}M</p></div>
+      <div className="bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg"><span className="text-[9px] text-amber-400 uppercase font-black block mb-2 tracking-widest">Slash Revenue</span><p className="text-2xl font-black text-white">{(treasuryStats.slashing_revenue / 1000000).toFixed(1)}M</p></div>
+      <div className="bg-red-500/5 border border-red-500/20 p-5 rounded-lg"><span className="text-[9px] text-red-400 uppercase font-black block mb-2 tracking-widest">Total Outflow</span><p className="text-2xl font-black text-white">{(treasuryStats.total_outflow / 1000000).toFixed(1)}M</p></div>
     </div>
-    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 shadow-2xl">
-      <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><History className="w-5 h-5 text-blue-400" /> Transaction Ledger</h3>
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+      <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><History className="w-5 h-5 text-blue-400" /> Protocol Ledger</h3>
       <div className="space-y-4">
         {ledger.map((tx) => (
-          <div key={tx.id} className="flex items-center justify-between group transition-colors">
+          <div key={tx.id} className="flex items-center justify-between group">
             <div className="flex items-center gap-4">
               <div className={`p-2 rounded bg-white/5 border border-white/10 ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-400'}`}>
                 {tx.type === 'PAYOUT' ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
               </div>
-              <div><span className="text-[10px] font-black text-white block mb-0.5 tracking-tighter">{tx.id}</span><span className="text-[8px] text-gray-600 uppercase font-bold">{tx.type} • {tx.timestamp}</span></div>
+              <div><span className="text-[10px] font-black text-white block mb-0.5">{tx.id}</span><span className="text-[8px] text-gray-600 uppercase font-bold">{tx.type} • {tx.timestamp}</span></div>
             </div>
             <span className={`text-xs font-black ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-500'}`}>{tx.type === 'PAYOUT' ? '-' : '+'}{tx.amount.toLocaleString()} SATS</span>
           </div>
@@ -262,44 +254,35 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('cases');
   const [selectedCase, setSelectedCase] = useState(null);
   const [isVoting, setIsVoting] = useState(false);
-  
-  // Protocol State Stabilization
-  const [mempoolDepth] = useState(6402);
-  const [brownoutLevel] = useState('GREEN');
-  const [isManualOverride, setIsManualOverride] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [isEvidenceUnlocked, setIsEvidenceUnlocked] = useState(false);
   const [isAdjustingActuary, setIsAdjustingActuary] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [isSigningTx, setIsSigningTx] = useState(false);
+  const [isBroadcastingPIP, setIsBroadcastingPIP] = useState(false);
+  
+  const [mempoolDepth] = useState(6402);
+  const [brownoutLevel] = useState('GREEN');
   const [nodeId, setNodeId] = useState("NODE_ELITE_X29");
 
-  // Multi-Sig State (v2.18)
+  // Mock State Buffers
   const [pendingTx, setPendingTx] = useState([
-    { 
-      id: "MSIG-4421", 
-      type: "BOND_RELEASE", 
-      description: "Exit-cooling period complete for Node_Alpha_002.", 
-      sigs: 1, 
-      amount: 2000000, 
-      destination: "bc1q...x921", 
-      signed_by_me: false 
-    },
-    { 
-      id: "MSIG-4422", 
-      type: "INSURANCE_PAYOUT", 
-      description: "Compensation for Node_Gamma LND desync incident.", 
-      sigs: 1, 
-      amount: 10000, 
-      destination: "bc1p...v012", 
-      signed_by_me: false 
-    }
+    { id: "MSIG-4421", type: "BOND_RELEASE", description: "Node Alpha 002 exit request.", sigs: 1, amount: 2000000, destination: "bc1q...", signed_by_me: false }
   ]);
 
-  // Mock Data Buffers
+  const [regionStats] = useState([
+    { name: "North America", score: 98.4, status: "HEALTHY", insight: "Minimal jitter deviation. Compliance optimal." },
+    { name: "Asia-South", score: 64.2, status: "CRITICAL", insight: "Identical TPM firmware detected. Sybil risk high." }
+  ]);
+
+  const [votingStats] = useState({
+    alignment_rate: 98.2,
+    saliency_score: 9.4,
+    sectors: [{ name: "Digital", score: 100 }, { name: "Identity", score: 96 }]
+  });
+
   const [livenessHeartbeats] = useState([
     { region: "US_EAST", count: 442, intensity: 98, status: "ACTIVE" },
-    { region: "EU_WEST", count: 310, intensity: 94, status: "ACTIVE" },
     { region: "ASIA_S", count: 128, intensity: 42, status: "DEGRADED" }
   ]);
 
@@ -307,10 +290,7 @@ const App = () => {
     loss_ratio: 14.8,
     total_premiums: 50290100,
     total_payouts: 12500000,
-    risk_sectors: [
-      { name: "LND Desync", prob: 0.12 },
-      { name: "Physical Theft", prob: 0.82 }
-    ]
+    risk_sectors: [{ name: "LND Desync", prob: 0.12 }, { name: "Physical Theft", prob: 0.82 }]
   });
 
   const [treasuryStats] = useState({
@@ -338,7 +318,7 @@ const App = () => {
       evidence: {
         instructions: "Relay the 6-digit code sent to +1 555-0199.",
         locked_blob_hash: "0x7a2e...f91c",
-        decrypted_data: { raw_payload: "Your Proxy code is: 882190", human_input: "882190", tpm_id: "OPTIGA_7721_RPI5" }
+        decrypted_data: { raw_payload: "Your Proxy code is: 882190", human_input: "882190", tpm_id: "OPTIGA_7721" }
       }
     }
   ]);
@@ -351,14 +331,10 @@ const App = () => {
     tier: "SUPER-ELITE"
   });
 
-  // Action Handlers
+  // Handlers
   const handleVote = (verdict) => {
     setIsVoting(true);
-    setTimeout(() => {
-      setIsVoting(false);
-      setSelectedCase(null);
-      setIsEvidenceUnlocked(false);
-    }, 1200);
+    setTimeout(() => { setIsVoting(false); setSelectedCase(null); setIsEvidenceUnlocked(false); }, 1200);
   };
 
   const handleAdjustRate = () => {
@@ -368,33 +344,25 @@ const App = () => {
 
   const handleUnlockEvidence = () => {
     setIsDecrypting(true);
-    setTimeout(() => {
-      setIsDecrypting(false);
-      setIsEvidenceUnlocked(true);
-    }, 2000);
-  };
-
-  const handleRotateKey = () => {
-    setIsRotating(true);
-    setTimeout(() => {
-      setNodeId(`NODE_ELITE_${Math.random().toString(36).substring(7).toUpperCase()}`);
-      setIsRotating(false);
-    }, 3000);
+    setTimeout(() => { setIsDecrypting(false); setIsEvidenceUnlocked(true); }, 2000);
   };
 
   const handleSignTx = (txId) => {
     setIsSigningTx(true);
     setTimeout(() => {
-      setPendingTx(prev => prev.map(tx => 
-        tx.id === txId ? { ...tx, sigs: tx.sigs + 1, signed_by_me: true } : tx
-      ));
+      setPendingTx(prev => prev.map(tx => tx.id === txId ? { ...tx, sigs: tx.sigs + 1, signed_by_me: true } : tx));
       setIsSigningTx(false);
     }, 2000);
   };
 
+  const handlePIPBroadcast = (draft) => {
+    setIsBroadcastingPIP(true);
+    setTimeout(() => { setIsBroadcastingPIP(false); setActiveTab('cases'); }, 3000);
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-gray-200 font-mono selection:bg-amber-500/30">
-      <ProtocolHeader nodeId={nodeId} reserves={treasuryStats.net_reserves} tier={stats.tier} brownoutLevel={brownoutLevel} />
+      <ProtocolHeader nodeId={nodeId} reserves={treasuryStats.net_reserves} brownoutLevel={brownoutLevel} />
 
       <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-12 gap-6">
         <aside className="col-span-12 lg:col-span-3 space-y-4">
@@ -402,12 +370,14 @@ const App = () => {
           <nav className="space-y-1">
             {[
               { id: 'cases', label: 'Open Disputes', icon: Activity, color: 'amber' },
+              { id: 'analytics', label: 'Voting Analytics', icon: BarChart3, color: 'indigo' },
+              { id: 'forge', label: 'Proposal Forge', icon: FilePlus, color: 'purple' },
               { id: 'multisig', label: 'Multi-Sig Sign', icon: CheckSquare, color: 'blue' },
+              { id: 'heatmap', label: 'Reputation Map', icon: Globe, color: 'green' },
               { id: 'liveness', label: 'Liveness Map', icon: HeartPulse, color: 'rose' },
               { id: 'actuary', label: 'Insurance Actuary', icon: Calculator, color: 'blue' },
-              { id: 'treasury', label: 'Treasury Audit', icon: PiggyBank, color: 'green' },
-              { id: 'staking', label: 'Stake Manager', icon: Wallet, color: 'emerald' },
-              { id: 'security', label: 'Hardware Security', icon: Cpu, color: 'blue' }
+              { id: 'treasury', label: 'Treasury Audit', icon: PiggyBank, color: 'emerald' },
+              { id: 'security', label: 'Hardware Sec', icon: Cpu, color: 'blue' }
             ].map((tab) => {
               const Icon = tab.icon;
               return (
@@ -436,7 +406,7 @@ const App = () => {
               <div className="divide-y divide-white/5">
                  {cases.map((c) => (
                     <div key={c.id} className="p-6 flex items-center justify-between hover:bg-white/[0.01] transition-colors group">
-                       <div className="flex items-center gap-6"><div className="w-12 h-12 bg-amber-500/10 rounded border border-amber-500/20 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform"><Database className="w-6 h-6" /></div><div><span className="text-white font-bold uppercase tracking-tighter">{c.id}</span><p className="text-xs text-gray-500 mt-1">{c.dispute_reason}</p></div></div>
+                       <div className="flex items-center gap-6"><div className="w-12 h-12 bg-amber-500/10 rounded border border-amber-500/20 flex items-center justify-center text-amber-500"><Database className="w-6 h-6" /></div><div><span className="text-white font-bold uppercase">{c.id}</span><p className="text-xs text-gray-500">{c.dispute_reason}</p></div></div>
                        <button onClick={() => setSelectedCase(c)} className="px-6 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-black uppercase tracking-widest hover:border-amber-500 hover:text-white transition-all">Enter Locker</button>
                     </div>
                  ))}
@@ -444,49 +414,37 @@ const App = () => {
             </div>
           )}
 
-          {activeTab === 'multisig' && (
-             <MultiSigSignerTab pendingTx={pendingTx} onSign={handleSignTx} isSigning={isSigningTx} />
-          )}
-
+          {activeTab === 'analytics' && <VotingAnalyticsTab votingStats={votingStats} />}
+          {activeTab === 'forge' && <ProposalForgeTab nodeId={nodeId} onDraftSubmit={handlePIPBroadcast} isBroadcasting={isBroadcastingPIP} />}
+          {activeTab === 'multisig' && <MultiSigSignerTab pendingTx={pendingTx} onSign={handleSignTx} isSigning={isSigningTx} />}
+          {activeTab === 'heatmap' && <ReputationHeatmapTab regions={regionStats} />}
           {activeTab === 'liveness' && <LivenessHeatmapTab heartbeats={livenessHeartbeats} />}
           {activeTab === 'actuary' && <InsuranceActuaryTab actuaryData={actuaryData} onAdjustRate={handleAdjustRate} isAdjusting={isAdjustingActuary} />}
           {activeTab === 'treasury' && <TreasuryTab treasuryStats={treasuryStats} ledger={ledger} />}
-
-          {activeTab === 'staking' && (
-            <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8 shadow-2xl">
-              <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><Lock className="w-5 h-5 text-green-500" /> Locked Collateral</h3>
-              <div className="flex items-baseline gap-2 font-black text-white mb-8"><span className="text-4xl">{(stats.staked_bond / 1000000).toFixed(2)}</span><span className="text-sm font-bold text-gray-500 uppercase tracking-widest">M SATS</span></div>
-              <div className="p-4 bg-white/5 rounded border border-white/10 text-[10px] text-gray-500 leading-relaxed italic mb-8">
-                 "Collateral release is subject to a 14-day observation window to prevent exit-scamming of contested epochs."
-              </div>
-              <button disabled className="w-full py-4 bg-red-500/5 border border-red-500/20 rounded-lg text-[10px] font-black uppercase tracking-[0.2em] opacity-40 cursor-not-allowed">Initiate Withdrawal Request</button>
-            </div>
-          )}
-
           {activeTab === 'security' && (
-            <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8 shadow-2xl">
+            <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8 shadow-xl">
                <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3 mb-8"><Key className="w-5 h-5 text-blue-400" /> TPM 2.0 Identity</h3>
-               <div className="bg-black/60 p-4 border border-white/5 rounded mono text-[11px] text-blue-300 break-all mb-6 shadow-inner tracking-tighter">0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd</div>
-               <button onClick={handleRotateKey} className="w-full py-4 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-center justify-center gap-3 hover:bg-blue-500/10 transition-all shadow-[0_0_15px_rgba(59,130,246,0.1)]"><RefreshCw className={`w-4 h-4 text-blue-400 ${isRotating ? 'animate-spin' : ''}`} /><span className="text-xs font-black uppercase text-blue-400 tracking-widest">{isRotating ? 'Executing Ceremony...' : 'Rotate Hardware Handle'}</span></button>
+               <div className="bg-black/60 p-4 border border-white/5 rounded mono text-[11px] text-blue-300 break-all mb-6">0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd</div>
+               <button disabled={isRotating} onClick={() => { setIsRotating(true); setTimeout(() => setIsRotating(false), 3000); }} className="w-full py-4 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-center justify-center gap-3 hover:bg-blue-500/10 transition-all"><RefreshCw className={`w-4 h-4 text-blue-400 ${isRotating ? 'animate-spin' : ''}`} /><span className="text-xs font-black uppercase text-blue-400 tracking-widest">{isRotating ? 'Rotating...' : 'Rotate Handle'}</span></button>
             </div>
           )}
 
           {selectedCase && (
              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                 <button onClick={() => { setSelectedCase(null); setIsEvidenceUnlocked(false); }} className="text-xs text-gray-500 hover:text-white mb-2 flex items-center gap-2 font-black uppercase tracking-widest transition-colors"><ArrowRight className="w-3 h-3 rotate-180" /> Back to Docket</button>
-                <div className="lg:col-span-8 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[400px] flex flex-col relative shadow-2xl">
-                   <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs font-black tracking-widest text-white flex items-center gap-2"><ShieldEllipsis className="w-5 h-5 text-amber-500" /> Secure Evidence Locker</h3></div>
+                <div className="lg:col-span-8 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[400px] flex flex-col relative shadow-2xl mx-auto">
+                   <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs font-black tracking-widest text-white flex items-center gap-2"><ShieldEllipsis className="w-5 h-5 text-amber-500" /> Evidence Locker</h3></div>
                    <div className="flex-1 p-8 flex flex-col items-center justify-center bg-black/40 relative z-10">
                       {!isEvidenceUnlocked ? (
                          <div className="text-center max-w-sm">
                             <Fingerprint className={`w-16 h-16 text-amber-500 mx-auto mb-6 ${isDecrypting ? 'animate-pulse' : ''}`} />
                             <h4 className="text-white font-bold uppercase mb-2 tracking-widest">Evidence Sealed</h4>
                             <p className="text-xs text-gray-500 mb-8 leading-relaxed font-bold tracking-tighter uppercase">High Court hardware signature required to zero-knowledge decrypt the biological proof blob.</p>
-                            <button onClick={handleUnlockEvidence} disabled={isDecrypting} className="px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-amber-500 hover:text-black transition-all shadow-[0_0_20px_rgba(245,158,11,0.2)]">{isDecrypting ? 'RSA-OAEP Decryption...' : 'Unlock Evidence'}</button>
+                            <button onClick={handleUnlockEvidence} disabled={isDecrypting} className="px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-amber-500 hover:text-black transition-all shadow-[0_0_20px_rgba(245,158,11,0.2)]">{isDecrypting ? 'RSA-OAEP Handshake...' : 'Unlock via TPM Signature'}</button>
                          </div>
                       ) : (
                          <div className="w-full h-full animate-in zoom-in-95 duration-500 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="p-6 bg-white/[0.02] border border-white/5 rounded-lg overflow-y-auto shadow-inner"><FileCode className="w-4 h-4 text-green-500 mb-4" /><pre className="text-[10px] text-gray-400 mono leading-relaxed">{JSON.stringify(selectedCase.evidence.decrypted_data, null, 2)}</pre></div>
+                            <div className="p-6 bg-white/[0.02] border border-white/5 rounded-lg overflow-y-auto"><FileCode className="w-4 h-4 text-green-500 mb-4" /><pre className="text-[10px] text-gray-400 mono leading-relaxed">{JSON.stringify(selectedCase.evidence.decrypted_data, null, 2)}</pre></div>
                             <div className="space-y-4 flex flex-col"><div className="p-4 bg-green-500/5 border border-green-500/20 rounded text-[10px] text-white font-bold tracking-widest uppercase">Hardware Attestation Valid. Response generated in TEE.</div><div className="p-4 bg-black/40 border border-white/5 rounded flex-1 flex flex-col gap-2"><button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-3 bg-green-500/10 border border-green-500/30 text-green-500 font-black text-[10px] uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all">Verify Valid</button><button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-3 bg-red-500/10 border border-red-500/30 text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">Verify Fraud</button></div></div>
                          </div>
                       )}
