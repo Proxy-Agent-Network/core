@@ -1,0 +1,34 @@
+# --- SENSITIVE DATA ---
+.env
+*.pem
+*.key
+proxy_api_secret.txt
+
+# --- PROJECT LOGS ---
+*.log
+proxy_heartbeat.log
+active_tasks.log
+
+# --- BINARIES & LARGE ASSETS ---
+# Protecting against the "Viking Funeral" repeat
+*.psd
+*.raw
+website/images/raw images/
+
+# --- PYTHON ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# --- NODE.JS ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+
+# --- SYSTEM & IDE ---
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
