@@ -8,57 +8,53 @@ from datetime import datetime
 # Import our hardware binding class
 from tpm_binding import TPMBinding
 
-# PROXY PROTOCOL - HARDWARE HEARTBEAT v1.3 (Geolocated & Attested)
-# "Proof of Locality: Identity tied to a coordinate."
+# PROXY PROTOCOL - HARDWARE HEARTBEAT v1.4 (Reputation Guarded)
+# "Trust, but verify locally. Proactive self-auditing."
 # ----------------------------------------------------
 
 class NodeHealthMonitor:
-    def __init__(self, api_endpoint="https://api.proxyprotocol.com/v1"):
+    def __init__(self, api_endpoint="https://api.proxyprotocol.com/v1", claimed_iso="US"):
         self.api_endpoint = api_endpoint
+        self.claimed_iso = claimed_iso # The ISO code the operator registered with
         self.tpm = TPMBinding()
         self.is_active = True
+        
+        # Internal State
+        self.reputation_warning_active = False
         
         if not self.tpm.check_availability():
             print("⚠️  TPM NOT DETECTED. Starting in SOFTWARE MODE (Tier 0).")
             self.has_hardware = False
         else:
-            print("🔒 TPM 2.0 DETECTED. Starting in HARDWARE MODE (Tier 2/3).")
+            print(f"🔒 TPM 2.0 DETECTED. Claimed Jurisdiction: {self.claimed_iso}")
             self.has_hardware = True
 
     def _get_wifi_fingerprint(self):
-        """
-        Scans nearby WiFi Access Points to create a unique physical location hash.
-        Requires 'network-manager' (nmcli) on Linux.
-        """
+        """Scans nearby WiFi Access Points for location fingerprinting."""
         try:
-            # -t: Terse output, -f: Specific fields
             cmd = ["nmcli", "-t", "-f", "BSSID,SIGNAL", "dev", "wifi", "list"]
             output = subprocess.check_output(cmd).decode('utf-8').strip()
-            
             aps = []
             for line in output.split('\n'):
                 if line:
-                    bssid, signal = line.split(':')
-                    aps.append({"bssid": bssid, "rssi": signal})
-            
-            # Sort by signal strength and take top 5 to ensure stability
-            aps = sorted(aps, key=lambda x: int(x['rssi']), reverse=True)[:5]
-            return aps
-        except Exception as e:
-            print(f"   [!] WiFi Scan Failed: {e}")
+                    parts = line.split(':')
+                    if len(parts) >= 2:
+                        aps.append({"bssid": parts[0], "rssi": parts[1]})
+            return sorted(aps, key=lambda x: int(x['rssi']), reverse=True)[:5]
+        except Exception:
             return []
 
     def _get_network_metadata(self):
-        """
-        Captures public IP and performs a latency check to the Proxy API.
-        """
-        metadata = {"public_ip": "unknown", "latency_ms": 0}
+        """Captures public IP and basic Geo-metadata."""
+        metadata = {"public_ip": "unknown", "latency_ms": 0, "detected_country": "unknown"}
         try:
-            # 1. Get Public IP
-            ip_resp = requests.get("https://api.ipify.org?format=json", timeout=5)
-            metadata["public_ip"] = ip_resp.json().get("ip")
+            # 1. Get Public IP and Geo-location info (Using a public API for demo)
+            ip_resp = requests.get("https://ipapi.co/json/", timeout=5)
+            data = ip_resp.json()
+            metadata["public_ip"] = data.get("ip")
+            metadata["detected_country"] = data.get("country_code")
             
-            # 2. Ping API for Latency Proof
+            # 2. Latency Proof
             start = time.time()
             requests.get(f"{self.api_endpoint}/status", timeout=5)
             metadata["latency_ms"] = int((time.time() - start) * 1000)
@@ -66,53 +62,75 @@ class NodeHealthMonitor:
             pass
         return metadata
 
+    def _self_audit(self, telemetry):
+        """
+        PRE-FLIGHT CHECK:
+        Compares current telemetry against claimed jurisdiction.
+        Returns (is_compliant, reason)
+        """
+        detected_iso = telemetry['network'].get('detected_country')
+        
+        if detected_iso != self.claimed_iso:
+            return False, f"Jurisdiction Mismatch: Claimed {self.claimed_iso} but detected {detected_iso}"
+        
+        # Check for sufficient WiFi entropy (Anti-VM check)
+        if len(telemetry['wifi_aps']) < 1:
+             return False, "Insufficient WiFi Entropy (Node appears to be virtualized)"
+             
+        return True, "Locality Verified"
+
     def pulse(self):
-        """
-        Sends a cryptographically attested heartbeat including Geolocation Proofs.
-        """
-        print(f"[{datetime.now().isoformat()}] 💓 Generating Geolocated Pulse...")
+        """Sends an attested heartbeat with proactive reputation protection."""
+        print(f"[{datetime.now().isoformat()}] 💓 Generating Pulse...")
         
         # 1. Gather Physical Telemetry
         wifi_data = self._get_wifi_fingerprint()
         net_data = self._get_network_metadata()
         
-        # 2. Construct Core Payload
+        telemetry = {
+            "wifi_aps": wifi_data,
+            "network": net_data
+        }
+
+        # 2. Proactive Reputation Audit
+        is_compliant, reason = self._self_audit(telemetry)
+        if not is_compliant:
+            print(f"   [!] REPUTATION ALERT: {reason}")
+            self.reputation_warning_active = True
+
+        # 3. Construct Payload
         payload = {
-            "status": "ONLINE",
+            "status": "ONLINE" if is_compliant else "UNSTABLE",
             "timestamp": datetime.now().isoformat(),
             "tier": "2" if self.has_hardware else "0",
-            "location_proof": {
-                "wifi_aps": wifi_data,
-                "network": net_data
+            "location_proof": telemetry,
+            "local_audit": {
+                "compliant": is_compliant,
+                "reason": reason
             }
         }
 
         if self.has_hardware:
-            # 3. Request Challenge Nonce (Prevents Replay)
-            # In production, we'd fetch this from the API.
             nonce_raw = secrets.token_hex(16)
-            
-            # To bind the location to the hardware quote, we hash the location data
-            # into the nonce sent to the TPM. This proves the machine was at 
-            # THESE coordinates when it signed the quote.
-            location_hash = hashlib.sha256(json.dumps(payload['location_proof']).encode()).hexdigest()
+            location_hash = hashlib.sha256(json.dumps(telemetry).encode()).hexdigest()
             binding_nonce = f"{nonce_raw}:{location_hash[:16]}"
             
-            # 4. Generate Hardware Quote (PCR 0,1,7)
+            # Generate Hardware Quote (PCR 0,1,7)
             attestation = self.tpm.generate_attestation_quote(binding_nonce)
-            
             payload['attestation'] = attestation
             payload['hw_secured'] = True
             payload['binding_nonce'] = nonce_raw
         
-        # 5. Transmit
-        print(f"   -> Data: IP {net_data['public_ip']} | Latency {net_data['latency_ms']}ms | APs {len(wifi_data)}")
-        # requests.post(f"{self.api_endpoint}/nodes/heartbeat", json=payload)
-        
-        if self.has_hardware:
-            print("   ✅ SENT: Hardware-Signed Locality Proof (TPM 2.0)")
-        else:
-            print("   ⚠️ SENT: Unsigned Heartbeat (Low Trust / Software Mode)")
+        # 4. Transmit & Handle Slashing Response
+        try:
+            # response = requests.post(f"{self.api_endpoint}/nodes/heartbeat", json=payload)
+            # In a real scenario, we check for PX_401 (Geofence Violation)
+            # if response.status_code == 403 and "PX_401" in response.text:
+            #     print("🚨 SLASH ALERT: API reported location fraud. Bond at risk.")
+            print(f"   -> Compliance: {'PASSED' if is_compliant else 'SUSPICIOUS'}")
+            
+        except Exception as e:
+            print(f"   [!] Transmission Error: {e}")
 
     def run(self):
         while self.is_active:
@@ -120,8 +138,9 @@ class NodeHealthMonitor:
                 self.pulse()
             except Exception as e:
                 print(f"   [!] Pulse Error: {e}")
-            time.sleep(60) # 1 Minute Heartbeat
+            time.sleep(60)
 
 if __name__ == "__main__":
-    monitor = NodeHealthMonitor()
+    # Simulate a US-based node
+    monitor = NodeHealthMonitor(claimed_iso="US")
     monitor.run()
