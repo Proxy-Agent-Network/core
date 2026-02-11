@@ -7,10 +7,10 @@ import {
   RefreshCw, Key, ShieldQuestion, Globe, Map, ZapOff, Waves, ShieldX, 
   PiggyBank, ArrowUpRight, ArrowDownRight, History, FileSignature, 
   Stamp, Wallet, Unlock, AlertOctagon, Wifi, Binary, ShieldEllipsis, 
-  Database, FileCode, CheckSquare, Layers
+  Database, FileCode, CheckSquare, Layers, MapPin, Navigation
 } from 'lucide-react';
 
-// --- v2.11 MODULAR COMPONENTS ---
+// --- MODULAR COMPONENTS ---
 
 const ProtocolHeader = ({ nodeId, reserves, tier }) => (
   <header className="border-b border-white/10 bg-[#0d0d0e] px-6 py-4 flex justify-between items-center sticky top-0 z-50">
@@ -19,8 +19,8 @@ const ProtocolHeader = ({ nodeId, reserves, tier }) => (
         <Gavel className="w-5 h-5 text-amber-500" />
       </div>
       <div>
-        <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest leading-none">Jury Tribunal v2.11</h1>
-        <p className="text-[9px] text-amber-500/70 uppercase tracking-widest mt-1">2-of-3 Multi-Sig Protocol Active</p>
+        <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest leading-none">Jury Tribunal v2.12</h1>
+        <p className="text-[9px] text-amber-500/70 uppercase tracking-widest mt-1">Geospatial Integrity Mapping Active</p>
       </div>
     </div>
     
@@ -45,8 +45,8 @@ const ProtocolHeader = ({ nodeId, reserves, tier }) => (
 );
 
 const JudicialStanding = ({ stats }) => (
-  <div className="bg-[#0d0d0e] border border-white/10 p-5 rounded-lg">
-    <h3 className="text-[10px] uppercase text-gray-500 mb-4 font-bold tracking-widest text-glow">Judicial Standing</h3>
+  <div className="bg-[#0d0d0e] border border-white/10 p-5 rounded-lg text-glow">
+    <h3 className="text-[10px] uppercase text-gray-500 mb-4 font-bold tracking-widest">Judicial Standing</h3>
     <div className="space-y-4">
       <div className="flex justify-between items-center text-sm font-bold">
         <span>Reputation</span>
@@ -57,11 +57,11 @@ const JudicialStanding = ({ stats }) => (
       </div>
       <div className="grid grid-cols-2 gap-2 pt-2">
         <div className="bg-white/5 p-3 rounded border border-white/5 text-center">
-          <p className="text-[9px] text-gray-500 uppercase mb-1 font-bold">Accuracy</p>
+          <p className="text-[9px] text-gray-500 uppercase mb-1 font-bold tracking-tighter">Accuracy</p>
           <p className="text-sm font-bold text-white">{stats.accuracy_rate}</p>
         </div>
         <div className="bg-white/5 p-3 rounded border border-white/5 text-center">
-          <p className="text-[9px] text-gray-500 uppercase mb-1 font-bold">Yield</p>
+          <p className="text-[9px] text-gray-500 uppercase mb-1 font-bold tracking-tighter">Yield</p>
           <p className="text-sm font-bold text-green-500">+{stats.earned_fees}</p>
         </div>
       </div>
@@ -69,11 +69,70 @@ const JudicialStanding = ({ stats }) => (
   </div>
 );
 
-// --- v2.11 NEW: Multi-Sig Dashboard ---
+// --- v2.12 NEW: Reputation Heatmap Dashboard ---
+const ReputationHeatmapTab = ({ regions }) => (
+  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
+      <div className="bg-black/60 rounded-lg h-[400px] relative overflow-hidden flex flex-col items-center justify-center border border-white/5">
+        <div className="absolute inset-0 opacity-[0.07] pointer-events-none" 
+             style={{ backgroundImage: 'radial-gradient(#00FF41 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+        
+        {/* Animated Map Markers */}
+        <div className="absolute top-1/4 left-1/4 group cursor-help">
+          <div className="w-3 h-3 bg-green-500 rounded-full animate-ping opacity-20 absolute" />
+          <div className="w-3 h-3 bg-green-500 rounded-full relative" />
+          <div className="hidden group-hover:block absolute top-6 left-0 bg-black/90 border border-green-500/30 p-2 rounded text-[8px] mono whitespace-nowrap z-20">
+            REGION: US-EAST<br/>HONESTY: 98.2%
+          </div>
+        </div>
+
+        <div className="absolute bottom-1/3 right-1/3 group cursor-help">
+          <div className="w-3 h-3 bg-red-500 rounded-full animate-ping absolute" />
+          <div className="w-3 h-3 bg-red-500 rounded-full relative" />
+          <div className="hidden group-hover:block absolute top-6 left-0 bg-black/90 border border-red-500/30 p-2 rounded text-[8px] mono whitespace-nowrap z-20">
+            REGION: ASIA-SOUTH<br/>HONESTY: 64.1% [ANOMALY]
+          </div>
+        </div>
+
+        <Globe className="w-16 h-16 text-gray-800 mb-4" />
+        <h3 className="text-xs uppercase font-black text-gray-500 tracking-[0.5em]">Geospatial Reputation Grid</h3>
+        <p className="text-[9px] text-gray-700 mt-2 uppercase font-bold">Telemetry sourced from Hardware-Heartbeat v1.4</p>
+      </div>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {regions.map((region) => (
+        <div key={region.name} className={`bg-[#0d0d0e] border rounded-lg p-5 transition-all hover:bg-white/[0.01] ${region.status === 'CRITICAL' ? 'border-red-500/20' : 'border-white/10'}`}>
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex items-center gap-2">
+              <MapPin className={`w-4 h-4 ${region.status === 'CRITICAL' ? 'text-red-500' : 'text-green-500'}`} />
+              <span className="text-xs font-black text-white uppercase tracking-tighter">{region.name}</span>
+            </div>
+            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${region.status === 'HEALTHY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+              {region.status}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2 mb-4">
+            <span className="text-2xl font-black text-white">{region.score}%</span>
+            <span className="text-[9px] text-gray-600 uppercase font-bold tracking-tighter">Honesty Index</span>
+          </div>
+          <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden mb-4">
+            <div className={`h-full ${region.score > 90 ? 'bg-green-500' : region.score > 80 ? 'bg-amber-500' : 'bg-red-500'}`} 
+                 style={{ width: `${region.score}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-500 leading-tight italic">
+            "{region.insight}"
+          </p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const MultiSigTab = ({ pendingTx, onSign, isSigning }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden">
-      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
+      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center text-glow">
         <h2 className="text-xs uppercase font-black tracking-widest flex items-center gap-2 text-white">
           <Layers className="w-4 h-4 text-blue-400" /> Pending Consensus Transactions
         </h2>
@@ -81,7 +140,7 @@ const MultiSigTab = ({ pendingTx, onSign, isSigning }) => (
       </div>
       <div className="divide-y divide-white/5">
         {pendingTx.map((tx) => (
-          <div key={tx.id} className="p-6 flex flex-col lg:flex-row justify-between gap-6 hover:bg-white/[0.01]">
+          <div key={tx.id} className="p-6 flex flex-col lg:flex-row justify-between gap-6 hover:bg-white/[0.01] transition-all">
             <div className="flex gap-6">
               <div className="w-14 h-14 bg-blue-500/10 rounded border border-blue-500/20 flex flex-col items-center justify-center">
                 <Banknote className="w-6 h-6 text-blue-400" />
@@ -89,12 +148,12 @@ const MultiSigTab = ({ pendingTx, onSign, isSigning }) => (
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-black text-white uppercase">{tx.id}</span>
-                  <span className="text-[9px] bg-white/5 px-2 py-0.5 rounded text-gray-400 uppercase font-bold">{tx.type}</span>
+                  <span className="text-[9px] bg-white/5 px-2 py-0.5 rounded text-gray-400 uppercase font-bold tracking-tighter">{tx.type}</span>
                 </div>
-                <p className="text-xs text-gray-500 max-w-md">{tx.description}</p>
+                <p className="text-xs text-gray-500 max-w-md leading-relaxed">{tx.description}</p>
                 <div className="flex items-center gap-4 pt-1">
-                  <span className="text-[9px] text-gray-600 mono truncate max-w-[200px]">To: {tx.destination}</span>
-                  <span className="text-[9px] text-blue-400 font-black uppercase">Amount: {tx.amount.toLocaleString()} SATS</span>
+                  <span className="text-[9px] text-gray-600 mono truncate max-w-[200px]">TO: {tx.destination}</span>
+                  <span className="text-[9px] text-blue-400 font-black uppercase">AMOUNT: {tx.amount.toLocaleString()} SATS</span>
                 </div>
               </div>
             </div>
@@ -103,7 +162,7 @@ const MultiSigTab = ({ pendingTx, onSign, isSigning }) => (
                <div className="flex flex-col items-end gap-2">
                   <div className="flex gap-1">
                     {[...Array(3)].map((_, i) => (
-                      <div key={i} className={`w-3 h-3 rounded-full border ${i < tx.sigs ? 'bg-green-500 border-green-500' : 'border-gray-700'}`} />
+                      <div key={i} className={`w-3 h-3 rounded-full border ${i < tx.sigs ? 'bg-green-500 border-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'border-gray-800'}`} />
                     ))}
                   </div>
                   <span className="text-[9px] text-gray-600 uppercase font-black">{tx.sigs}/3 Signatures</span>
@@ -117,24 +176,58 @@ const MultiSigTab = ({ pendingTx, onSign, isSigning }) => (
                       : 'bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500 hover:text-black'
                   }`}
                >
-                  {isSigning ? 'Signing...' : tx.signed_by_me ? 'Signed' : 'Affix Signature'}
+                  {isSigning ? 'Signing...' : tx.signed_by_me ? 'Verified' : 'Affix Signature'}
                </button>
             </div>
           </div>
         ))}
-        {pendingTx.length === 0 && (
-          <div className="p-20 text-center text-gray-600 uppercase font-black text-xs tracking-widest">
-             No pending multisig requests.
-          </div>
-        )}
       </div>
     </div>
+  </div>
+);
 
-    <div className="p-6 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-start gap-4">
-       <Shield className="w-5 h-5 text-blue-400 flex-shrink-0" />
-       <p className="text-[10px] text-blue-300/40 leading-relaxed italic">
-          "Multi-Sig transactions utilize Taproot scripts. Your signature is affixed via the TPM hardware handle 0x81010001, providing non-repudiable proof of judicial authorization."
-       </p>
+const TreasuryTab = ({ treasuryStats, ledger }) => (
+  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-green-500/5 border border-green-500/20 p-5 rounded-lg">
+        <span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Net Reserves</span>
+        <p className="text-2xl font-black text-white">{(treasuryStats.net_reserves / 1000000).toFixed(1)}M <span className="text-xs text-gray-500 font-normal">SATS</span></p>
+      </div>
+      <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-lg">
+        <span className="text-[9px] text-blue-400 uppercase font-black block mb-2 tracking-widest">Insurance Pool</span>
+        <p className="text-2xl font-black text-white">{(treasuryStats.locked_insurance_pool / 1000000).toFixed(1)}M</p>
+      </div>
+      <div className="bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg">
+        <span className="text-[9px] text-amber-400 uppercase font-black block mb-2 tracking-widest">Slash Revenue</span>
+        <p className="text-2xl font-black text-white">{(treasuryStats.slashing_revenue / 1000000).toFixed(1)}M</p>
+      </div>
+      <div className="bg-red-500/5 border border-red-500/20 p-5 rounded-lg">
+        <span className="text-[9px] text-red-400 uppercase font-black block mb-2 tracking-widest">Insurance Drain</span>
+        <p className="text-2xl font-black text-white">{(treasuryStats.total_outflow / 1000000).toFixed(1)}M</p>
+      </div>
+    </div>
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+      <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3">
+        <History className="w-5 h-5 text-blue-400" /> Transaction Ledger
+      </h3>
+      <div className="space-y-4">
+        {ledger.map((tx) => (
+          <div key={tx.id} className="flex items-center justify-between group">
+            <div className="flex items-center gap-4">
+              <div className={`p-2 rounded bg-white/5 border border-white/10 ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-400'}`}>
+                {tx.type === 'PAYOUT' ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-white block mb-0.5">{tx.id}</span>
+                <span className="text-[8px] text-gray-600 uppercase font-bold">{tx.type} • {tx.timestamp}</span>
+              </div>
+            </div>
+            <span className={`text-xs font-black ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-500'}`}>
+              {tx.type === 'PAYOUT' ? '-' : '+'}{tx.amount.toLocaleString()} SATS
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   </div>
 );
@@ -182,6 +275,13 @@ const App = () => {
       sigs: 1,
       signed_by_me: false
     }
+  ]);
+
+  // v2.12 Heatmap State
+  const [regionStats] = useState([
+    { name: "North America", score: 98.4, status: "HEALTHY", insight: "Minimal jitter deviation detected. High PoA compliance." },
+    { name: "Europe-West", score: 94.1, status: "HEALTHY", insight: "Organic node distribution aligned with major urban hubs." },
+    { name: "Asia-South", score: 64.2, status: "CRITICAL", insight: "Cluster of identical TPM versions in residential subnets. Sybil risk high." }
   ]);
 
   const [ledger] = useState([
@@ -263,18 +363,18 @@ const App = () => {
             {[
               { id: 'cases', label: 'Open Disputes', icon: Activity, color: 'amber' },
               { id: 'multisig', label: 'Multi-Sig Sign', icon: CheckSquare, color: 'blue' },
-              { id: 'treasury', label: 'Treasury Audit', icon: PiggyBank, color: 'green' },
-              { id: 'staking', label: 'Stake Management', icon: Wallet, color: 'emerald' },
-              { id: 'brownout', label: 'Brownout Control', icon: Waves, color: 'orange' },
-              { id: 'jitter', label: 'Jitter Proof', icon: Binary, color: 'cyan' },
-              { id: 'security', label: 'Hardware Security', icon: Cpu, color: 'blue' }
+              { id: 'heatmap', label: 'Reputation Map', icon: Globe, color: 'green' },
+              { id: 'treasury', label: 'Treasury Audit', icon: PiggyBank, color: 'emerald' },
+              { id: 'staking', label: 'Stake Manager', icon: Wallet, color: 'cyan' },
+              { id: 'brownout', label: 'Traffic Control', icon: Waves, color: 'orange' },
+              { id: 'security', label: 'Hardware Sec', icon: Cpu, color: 'blue' }
             ].map((tab) => (
               <button 
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id); setSelectedCase(null); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${
                   activeTab === tab.id 
-                    ? `bg-${tab.color}-500/10 text-${tab.color}-500 border border-${tab.color}-500/20 shadow-[0_0_15px_rgba(0,0,0,0.5)]` 
+                    ? `bg-${tab.color}-500/10 text-${tab.color}-500 border border-${tab.color}-500/20 shadow-[0_0_15px_rgba(0,0,0,0.4)]` 
                     : 'text-gray-500 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -283,9 +383,9 @@ const App = () => {
             ))}
           </nav>
 
-          <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-lg">
-            <p className="text-[10px] text-amber-500/60 font-bold leading-relaxed uppercase tracking-tighter italic">
-              "Multisig signatures require TPM authorization. Revoking a signature after consensus is mathematically impossible."
+          <div className="p-4 bg-green-500/5 border border-green-500/10 rounded-lg">
+            <p className="text-[10px] text-green-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
+              "Mapping regional honesty prevents territorial collusion and allows the protocol to dynamic-weight jury selection."
             </p>
           </div>
         </aside>
@@ -297,9 +397,10 @@ const App = () => {
           {activeTab === 'cases' && !selectedCase && (
             <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden animate-in fade-in duration-300">
               <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
-                <h2 className="text-xs uppercase font-bold tracking-widest flex items-center gap-2 text-amber-500 text-glow">
-                  <Activity className="w-4 h-4" /> Pending Case Docket
+                <h2 className="text-xs uppercase font-black tracking-widest flex items-center gap-2 text-amber-500">
+                  <Activity className="w-4 h-4" /> Active Dispute Docket
                 </h2>
+                <span className="text-[9px] text-gray-600 uppercase font-black tracking-tighter">Verified Super-Elite Oversight</span>
               </div>
               <div className="divide-y divide-white/5">
                  {cases.map((c) => (
@@ -313,17 +414,20 @@ const App = () => {
                                 <span className="text-white font-bold uppercase">{c.id}</span>
                                 <span className="text-[9px] bg-white/5 px-2 py-0.5 rounded text-gray-400 font-black tracking-widest">{c.type}</span>
                              </div>
-                             <p className="text-xs text-gray-500">{c.dispute_reason}</p>
+                             <p className="text-xs text-gray-500 leading-relaxed max-w-lg">{c.dispute_reason}</p>
                           </div>
                        </div>
-                       <button onClick={() => setSelectedCase(c)} className="px-6 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-black uppercase tracking-widest hover:border-amber-500 hover:text-white transition-all">Enter Locker</button>
+                       <button onClick={() => setSelectedCase(c)} className="px-6 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-black uppercase tracking-widest hover:border-amber-500 hover:text-white transition-all">Audit Evidence</button>
                     </div>
                  ))}
               </div>
             </div>
           )}
 
-          {/* MULTI-SIG TAB (v2.11 FEATURE) */}
+          {/* REPUTATION HEATMAP (v2.12 FEATURE) */}
+          {activeTab === 'heatmap' && <ReputationHeatmapTab regions={regionStats} />}
+
+          {/* MULTI-SIG TAB */}
           {activeTab === 'multisig' && (
              <MultiSigTab 
                 pendingTx={pendingTx} 
@@ -332,6 +436,9 @@ const App = () => {
              />
           )}
 
+          {/* TREASURY TAB */}
+          {activeTab === 'treasury' && <TreasuryTab treasuryStats={treasuryStats} ledger={ledger} />}
+
           {/* CASE DETAIL VIEW */}
           {selectedCase && (
              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
@@ -339,30 +446,29 @@ const App = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                    <div className="lg:col-span-4 space-y-6">
                       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                         <h3 className="text-xs font-black uppercase text-white mb-6 flex items-center gap-2"><Activity className="w-4 h-4 text-amber-500" /> Dispute Metadata</h3>
+                         <h3 className="text-xs font-black uppercase text-white mb-6 flex items-center gap-2"><Activity className="w-4 h-4 text-amber-500" /> Case Context</h3>
                          <div className="space-y-4 text-[10px]">
-                            <div><span className="text-gray-600 block uppercase font-bold mb-1">Incident Type</span><span className="text-white">{selectedCase.type}</span></div>
-                            <div><span className="text-gray-600 block uppercase font-bold mb-1">Instructions</span><p className="text-gray-400 leading-relaxed italic border-l-2 border-amber-500/20 pl-3">"{selectedCase.evidence.instructions}"</p></div>
-                            <div className="pt-4 border-t border-white/5 flex justify-between font-black text-green-500 uppercase"><span>Reward</span><span>+{selectedCase.reward} SATS</span></div>
+                            <div><span className="text-gray-600 block uppercase font-bold mb-1">Instruction Log</span><p className="text-gray-400 leading-relaxed italic border-l-2 border-amber-500/20 pl-3">"{selectedCase.evidence.instructions}"</p></div>
+                            <div className="pt-4 border-t border-white/5 flex justify-between font-black text-green-500 uppercase tracking-tighter"><span>Adjudication Reward</span><span>+{selectedCase.reward} SATS</span></div>
                          </div>
                       </div>
                    </div>
-                   <div className="lg:col-span-8 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[400px] flex flex-col relative">
-                      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs font-black tracking-widest text-white flex items-center gap-2 text-glow"><ShieldEllipsis className="w-5 h-5 text-amber-500" /> Evidence Locker</h3><span className="text-[9px] text-gray-600 mono uppercase tracking-tighter">Blob: {selectedCase.evidence.locked_blob_hash}</span></div>
+                   <div className="lg:col-span-8 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[400px] flex flex-col relative shadow-2xl">
+                      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs font-black tracking-widest text-white flex items-center gap-2"><ShieldEllipsis className="w-5 h-5 text-amber-500" /> Secure Evidence Locker</h3><span className="text-[9px] text-gray-600 mono uppercase tracking-tighter">CID: {selectedCase.evidence.locked_blob_hash}</span></div>
                       <div className="flex-1 p-8 flex flex-col items-center justify-center bg-black/40 relative z-10">
                          {!isEvidenceUnlocked ? (
                             <div className="text-center max-w-sm">
                                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center border border-amber-500/20 mx-auto mb-6"><Fingerprint className={`w-8 h-8 text-amber-500 ${isDecrypting ? 'animate-pulse' : ''}`} /></div>
                                <h4 className="text-white font-bold uppercase mb-2 tracking-widest">Evidence Sealed</h4>
-                               <p className="text-xs text-gray-500 mb-8 leading-relaxed">Requires High Court RSA-OAEP decryption via TPM.</p>
-                               <button onClick={handleUnlockEvidence} disabled={isDecrypting} className="px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-amber-500 hover:text-black transition-all">{isDecrypting ? 'Decrypting...' : 'Unlock Evidence'}</button>
+                               <p className="text-xs text-gray-500 mb-8 leading-relaxed">High Court hardware signature required to zero-knowledge decrypt the biological proof blob.</p>
+                               <button onClick={handleUnlockEvidence} disabled={isDecrypting} className="px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-amber-500 hover:text-black transition-all shadow-[0_0_20px_rgba(245,158,11,0.1)]">{isDecrypting ? 'Wrangling Silicon...' : 'Unlock via TPM Signature'}</button>
                             </div>
                          ) : (
                             <div className="w-full h-full animate-in zoom-in-95 duration-500 grid grid-cols-1 md:grid-cols-2 gap-4">
-                               <div className="p-6 bg-white/[0.02] border border-white/5 rounded-lg overflow-y-auto"><div className="flex items-center gap-2 mb-4 text-green-500"><FileCode className="w-4 h-4" /><span className="text-[9px] font-black uppercase">Decrypted Proof</span></div><pre className="text-[10px] text-gray-400 mono leading-relaxed">{JSON.stringify(selectedCase.evidence.decrypted_data, null, 2)}</pre></div>
+                               <div className="p-6 bg-white/[0.02] border border-white/5 rounded-lg overflow-y-auto"><div className="flex items-center gap-2 mb-4 text-green-500"><FileCode className="w-4 h-4" /><span className="text-[9px] font-black uppercase tracking-widest">Decrypted Payload</span></div><pre className="text-[10px] text-gray-400 mono leading-relaxed">{JSON.stringify(selectedCase.evidence.decrypted_data, null, 2)}</pre></div>
                                <div className="space-y-4 flex flex-col">
-                                  <div className="p-4 bg-green-500/5 border border-green-500/20 rounded"><span className="text-[9px] text-green-400 font-black uppercase block mb-1">Hardware Audit</span><p className="text-xs text-white">TPM Quote Valid. Instruction matched at T+42s.</p></div>
-                                  <div className="p-4 bg-black/40 border border-white/5 rounded flex-1 flex flex-col"><span className="text-[9px] text-gray-600 font-black uppercase block mb-4">Cast Verdict</span><button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-3 mb-2 bg-green-500/10 border border-green-500/30 text-green-500 font-black text-[10px] uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all">Valid</button><button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-3 bg-red-500/10 border border-red-500/30 text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">Fraud</button></div>
+                                  <div className="p-4 bg-green-500/5 border border-green-500/20 rounded"><span className="text-[9px] text-green-400 font-black uppercase block mb-1">Hardware Attestation</span><p className="text-xs text-white">Silicon binding verified. Response generated within TEE environment.</p></div>
+                                  <div className="p-4 bg-black/40 border border-white/5 rounded flex-1 flex flex-col"><span className="text-[9px] text-gray-600 font-black uppercase block mb-4 tracking-widest text-center">Cast Final Verdict</span><button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-3 mb-2 bg-green-500/10 border border-green-500/30 text-green-500 font-black text-[10px] uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all">Verify Valid</button><button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-3 bg-red-500/10 border border-red-500/30 text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">Verify Fraud</button></div>
                                </div>
                             </div>
                          )}
@@ -372,27 +478,47 @@ const App = () => {
              </div>
           )}
 
-          {/* TREASURY TAB */}
-          {activeTab === 'treasury' && <TreasuryTab treasuryStats={treasuryStats} ledger={ledger} />}
+          {/* STAKING TAB */}
+          {activeTab === 'staking' && (
+             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8">
+                      <div className="flex items-center justify-between mb-8">
+                         <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3 text-glow"><Lock className="w-5 h-5 text-green-500" /> Locked Collateral</h3>
+                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-green-500/10 text-green-500 border border-green-500/20">STAKED</span>
+                      </div>
+                      <div className="space-y-6">
+                         <div>
+                            <span className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Active Bond</span>
+                            <div className="flex items-baseline gap-2 font-black text-white"><span className="text-4xl">{(stats.staked_bond / 1000000).toFixed(2)}</span><span className="text-sm font-bold text-gray-500 uppercase tracking-widest">M SATS</span></div>
+                         </div>
+                         <button onClick={initiateWithdrawal} disabled={isProcessingStake} className="w-full py-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-lg flex items-center justify-center gap-3 transition-all">
+                            <Unlock className="w-4 h-4 text-red-500" /><span className="text-xs font-black uppercase text-red-500 tracking-widest">{isProcessingStake ? 'Awaiting Multisig...' : 'Request Release'}</span>
+                         </button>
+                      </div>
+                   </div>
+                </div>
+             </div>
+          )}
 
           {/* BROWNOUT TAB */}
           {activeTab === 'brownout' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 text-glow">
                      <span className="text-[10px] text-gray-600 uppercase font-black block mb-4 tracking-widest">Mempool Depth</span>
                      <div className="flex items-baseline gap-2"><span className="text-3xl font-black text-white">{mempoolDepth.toLocaleString()}</span><span className="text-xs text-gray-500 uppercase tracking-widest">Tasks</span></div>
                   </div>
                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-4 tracking-widest text-glow">Congestion Level</span>
+                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-4 tracking-widest">Congestion</span>
                      <div className="flex items-center gap-3"><div className={`w-3 h-3 rounded-full animate-pulse ${brownoutLevel === 'GREEN' ? 'bg-green-500' : 'bg-red-500'}`} /><span className="text-2xl font-black text-white uppercase">{brownoutLevel}</span></div>
                   </div>
                </div>
                <div className="bg-[#0d0d0e] border border-orange-500/20 rounded-lg p-8 grid grid-cols-1 md:grid-cols-4 gap-6">
                   {['GREEN', 'YELLOW', 'ORANGE', 'RED'].map((level) => (
-                    <button key={level} disabled className={`p-6 border rounded-lg transition-all flex flex-col items-center text-center ${brownoutLevel === level ? 'bg-white/5 border-orange-500' : 'bg-black/40 border-white/5 opacity-40'}`}>
+                    <button key={level} disabled className={`p-6 border rounded-lg transition-all flex flex-col items-center text-center ${brownoutLevel === level ? 'bg-white/5 border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.1)]' : 'bg-black/40 border-white/5 opacity-40'}`}>
                       <span className={`text-[9px] font-black uppercase mb-3 ${level === 'GREEN' ? 'text-green-500' : 'text-red-500'}`}>{level}</span>
-                      <p className="text-[10px] text-gray-400 font-bold tracking-tighter leading-tight font-black">REP {'>'} {level === 'GREEN' ? '300' : '900'}</p>
+                      <p className="text-[10px] text-gray-400 font-bold tracking-tighter leading-tight font-black uppercase">REP {'>'} {level === 'GREEN' ? '300' : '900'}</p>
                     </button>
                   ))}
                </div>
@@ -403,9 +529,10 @@ const App = () => {
           {activeTab === 'jitter' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                  <h3 className="text-xs uppercase font-black tracking-widest text-cyan-400 flex items-center gap-3 mb-6"><Wifi className="w-5 h-5" /> Network Entropy Analysis</h3>
-                  <div className="bg-black/40 h-48 rounded border border-white/5 p-8 flex items-end gap-1 overflow-hidden">
+                  <h3 className="text-xs uppercase font-black tracking-widest text-cyan-400 flex items-center gap-3 mb-6"><Wifi className="w-5 h-5" /> Network Entropy Stream</h3>
+                  <div className="bg-black/40 h-48 rounded border border-white/5 p-8 flex items-end gap-1 overflow-hidden relative">
                     {[...Array(60)].map((_, i) => (<div key={i} className="flex-1 bg-cyan-500/20 border-t border-cyan-400/40" style={{ height: `${15 + Math.random() * 70}%` }} />))}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
                   </div>
                </div>
             </div>
@@ -415,13 +542,13 @@ const App = () => {
           {activeTab === 'security' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8">
+                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8 shadow-xl">
                      <div className="flex items-center justify-between mb-8">
-                       <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3"><Key className="w-5 h-5 text-blue-400" /> TPM 2.0 Identity</h3>
+                       <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3"><Key className="w-5 h-5 text-blue-400" /> Hardware Root Identity</h3>
                      </div>
                      <div className="space-y-6">
-                        <div className="bg-black/60 p-4 border border-white/5 rounded mono text-xs text-blue-300 break-all select-all">0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd</div>
-                        <button disabled className="w-full py-4 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-center justify-center gap-3 transition-all"><RefreshCw className="w-4 h-4 text-blue-400" /><span className="text-xs font-black uppercase text-blue-400 tracking-widest">Rotate Identity</span></button>
+                        <div className="bg-black/60 p-4 border border-white/5 rounded mono text-xs text-blue-300 break-all select-all shadow-inner">0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd</div>
+                        <button disabled className="w-full py-4 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-center justify-center gap-3 transition-all"><RefreshCw className="w-4 h-4 text-blue-400" /><span className="text-xs font-black uppercase text-blue-400 tracking-widest">Rotate Identity Handle</span></button>
                      </div>
                   </div>
                </div>
