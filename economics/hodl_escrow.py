@@ -6,7 +6,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 from typing import Optional, Dict, List
 
-# PROXY PROTOCOL - HODL ESCROW STATE MACHINE (v1.2)
+# PROXY PROTOCOL - HODL ESCROW STATE MACHINE (v1.3)
 # "Programmable value transfer with cryptographic finality."
 # ----------------------------------------------------
 
@@ -42,6 +42,8 @@ class EscrowManager:
     def __init__(self):
         # In-memory registry (In production: backed by high-availability Redis/PostgreSQL)
         self.contracts: Dict[str, HodlContract] = {}
+        # Map task_id to payment_hash for fast webhook lookups
+        self.task_map: Dict[str, str] = {}
         self.DEFAULT_EXPIRY = 14400 # 4-hour standard task window
 
     def create_invoice(self, agent_id: str, task_id: str, amount_sats: int) -> Dict:
@@ -68,6 +70,7 @@ class EscrowManager:
         )
         
         self.contracts[payment_hash] = contract
+        self.task_map[task_id] = payment_hash
         
         print(f"[Escrow] 🟢 Contract Created: {contract.contract_id}")
         print(f"         Task: {task_id} | Amount: {amount_sats} SATS")
@@ -90,7 +93,6 @@ class EscrowManager:
         contract = self.contracts[payment_hash]
         
         # Validation Logic: Prevent illegal state jumps
-        # e.g., Cannot settle a contract that hasn't been ACCEPTED (locked)
         if new_state == EscrowState.SETTLED and contract.state not in [EscrowState.ACCEPTED, EscrowState.IN_PROGRESS]:
             raise PermissionError(f"Cannot settle invoice in state {contract.state}")
 
@@ -99,6 +101,34 @@ class EscrowManager:
             contract.node_id = node_id
 
         print(f"[Escrow] 🔄 {contract.contract_id} transitioned to {new_state.value}")
+
+    def handle_webhook_event(self, event_payload: Dict):
+        """
+        v1.3: Integration for webhook_simulator.py flows.
+        Automatically updates escrow state based on incoming network signals.
+        """
+        event_type = event_payload.get("type")
+        data = event_payload.get("data", {})
+        task_id = data.get("task_id")
+        
+        if not task_id or task_id not in self.task_map:
+            print(f"[Escrow] ⚠️ Received webhook for unknown task: {task_id}")
+            return
+
+        payment_hash = self.task_map[task_id]
+
+        if event_type == "task.matched":
+            # Human has accepted, move to IN_PROGRESS
+            self.update_state(payment_hash, EscrowState.IN_PROGRESS, node_id=data.get("node_id"))
+        
+        elif event_type == "task.completed":
+            # Proof verified by protocol, trigger automatic settlement
+            print(f"[Escrow] ✅ Webhook confirmed completion for {task_id}. Initiating release...")
+            self.settle_contract(payment_hash)
+            
+        elif event_type == "task.failed":
+            # Task failed (flake or rejection), trigger refund
+            self.cancel_contract(payment_hash, reason=data.get("reason", "Unknown failure"))
 
     def settle_contract(self, payment_hash: str) -> str:
         """
@@ -113,7 +143,6 @@ class EscrowManager:
         self.update_state(payment_hash, EscrowState.SETTLED)
 
         # 2. Trigger LND Settlement
-        # In production: self.lnd_client.settle_invoice(contract.preimage)
         print(f"[Escrow] 💸 Preimage Revealed: {contract.preimage[:16]}...")
         print(f"         SATS released to Node: {contract.node_id}")
         
@@ -128,8 +157,6 @@ class EscrowManager:
             return
 
         self.update_state(payment_hash, EscrowState.CANCELLED)
-        
-        # In production: self.lnd_client.cancel_invoice(payment_hash)
         print(f"[Escrow] 🛑 Invoice Cancelled. Reason: {reason}")
         print(f"         Funds refunded to Agent: {contract.agent_id}")
 
@@ -144,35 +171,51 @@ class EscrowManager:
             "task_id": contract.task_id,
             "state": contract.state.value,
             "amount_sats": contract.amount_sats,
+            "node_id": contract.node_id,
             "is_locked": contract.state != EscrowState.OPEN,
             "time_remaining": max(0, contract.expiry - int(time.time()))
         }
 
-# --- Task Lifecycle Simulation ---
+# --- End-to-End Webhook Integration Simulation ---
 if __name__ == "__main__":
     manager = EscrowManager()
     
-    print("--- 1. INITIATION ---")
-    # Agent requests an SMS verification
+    # 1. SETUP: Agent creates a task
+    TASK_ID = "task_webhook_demo_99"
     invoice_info = manager.create_invoice(
-        agent_id="agent_alpha_v1", 
-        task_id="task_88293", 
-        amount_sats=1500
+        agent_id="agent_alpha", 
+        task_id=TASK_ID, 
+        amount_sats=2500
     )
     p_hash = invoice_info['payment_hash']
 
-    print("\n--- 2. ESCROW LOCKING ---")
-    # Simulate LND reporting that the Agent has paid the HODL invoice
+    # 2. ESCROW LOCK: Simulate Agent paying the invoice
     manager.update_state(p_hash, EscrowState.ACCEPTED)
 
-    print("\n--- 3. TASK EXECUTION ---")
-    # Simulate a Node accepting the task
-    manager.update_state(p_hash, EscrowState.IN_PROGRESS, node_id="node_bob_elite")
+    print("\n--- SIMULATING WEBHOOK: TASK.MATCHED ---")
+    # This payload matches the structure in scripts/webhook_simulator.py
+    match_webhook = {
+        "type": "task.matched",
+        "data": {
+            "task_id": TASK_ID,
+            "node_id": "node_verified_882",
+            "estimated_completion": "10m"
+        }
+    }
+    manager.handle_webhook_event(match_webhook)
 
-    print("\n--- 4. SETTLEMENT ---")
-    # Task verified! Reveal the secret.
-    manager.settle_contract(p_hash)
+    print("\n--- SIMULATING WEBHOOK: TASK.COMPLETED ---")
+    # This event triggers the actual release of BTC
+    complete_webhook = {
+        "type": "task.completed",
+        "data": {
+            "task_id": TASK_ID,
+            "status": "completed",
+            "result": {"summary": "Proof verified."}
+        }
+    }
+    manager.handle_webhook_event(complete_webhook)
     
-    # Check final status
+    # Final Audit
     final_status = manager.get_contract_status(p_hash)
-    print(f"\n[Final Status] {json.dumps(final_status, indent=2)}")
+    print(f"\n[Final Settlement Status]\n{json.dumps(final_status, indent=2)}")
