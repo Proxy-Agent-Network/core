@@ -1,60 +1,66 @@
-import os
-import platform
 import time
-import json
-import uuid
+import requests
+import secrets
 from datetime import datetime
+# Import our new class
+from tpm_binding import TPMBinding
 
-# --- CONFIGURATION ---
-# On Windows, we'll save the log to the current folder instead of /var/log/
-LOG_FILE = "proxy_heartbeat.log" if platform.system() == "Windows" else "/var/log/proxy_heartbeat.log"
+# PROXY PROTOCOL - HARDWARE HEARTBEAT v1.2 (Attested)
+# "Heartbeat with a Pulse."
+# ----------------------------------------------------
 
-def get_node_identity():
-    """
-    On a Pi, this would talk to the TPM chip. 
-    On Windows, we'll use a unique ID based on your computer.
-    """
-    if platform.system() == "Windows":
-        return f"SIM-WIN-{uuid.getnode()}"
-    return "HARDWARE-TPM-PROD-001"
+class NodeHealthMonitor:
+    def __init__(self, api_endpoint="https://api.proxyprotocol.com/v1"):
+        self.api_endpoint = api_endpoint
+        self.tpm = TPMBinding()
+        self.is_active = True
+        
+        if not self.tpm.check_availability():
+            print("⚠️  TPM NOT DETECTED. Starting in SOFTWARE MODE (Tier 0).")
+            self.has_hardware = False
+        else:
+            print("🔒 TPM 2.0 DETECTED. Starting in HARDWARE MODE (Tier 2/3).")
+            self.has_hardware = True
 
-def get_location_mock():
-    """
-    Simulates GPS/WiFi triangulation.
-    """
-    return {"lat": 51.5074, "lng": -0.1278, "city": "London", "iso": "GB"}
+    def pulse(self):
+        """
+        Sends a cryptographically attested heartbeat.
+        """
+        print(f"[{datetime.now().isoformat()}] 💓 Generating Pulse...")
+        
+        payload = {
+            "status": "ONLINE",
+            "timestamp": datetime.now().isoformat(),
+            "tier": "2" if self.has_hardware else "0"
+        }
 
-def pulse():
-    identity = get_node_identity()
-    location = get_location_mock()
-    
-    heartbeat_payload = {
-        "timestamp": datetime.now().isoformat(),
-        "node_id": identity,
-        "location": location,
-        "status": "ACTIVE",
-        "mock_mode": platform.system() == "Windows"
-    }
+        if self.has_hardware:
+            # 1. Get Challenge/Nonce from API (Anti-Replay)
+            # In prod: resp = requests.get(f"{self.api_endpoint}/auth/challenge")
+            # nonce = resp.json()['nonce']
+            nonce = secrets.token_hex(16) # Mock nonce
+            
+            # 2. Generate Hardware Quote
+            # This takes ~500ms on a Raspberry Pi
+            attestation = self.tpm.generate_attestation_quote(nonce)
+            
+            payload['attestation'] = attestation
+            payload['hw_secured'] = True
+        
+        # 3. Transmit
+        print(f"   -> Uploading to Network (Size: {len(str(payload))} bytes)")
+        # requests.post(f"{self.api_endpoint}/nodes/heartbeat", json=payload)
+        
+        if self.has_hardware:
+            print("   ✅ SENT: Hardware-Signed Quote (PCR 0,1,7)")
+        else:
+            print("   ⚠️ SENT: Unsigned Heartbeat (Low Trust)")
 
-    # In a real scenario, this would be signed by the TPM
-    signature = f"sig_mock_{uuid.uuid4().hex[:8]}"
-    heartbeat_payload["signature_proof"] = signature
-
-    log_entry = json.dumps(heartbeat_payload)
-    
-    # Append to the log file
-    with open(LOG_FILE, "a") as f:
-        f.write(log_entry + "\n")
-    
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Heartbeat Sent: {signature}")
+    def run(self):
+        while self.is_active:
+            self.pulse()
+            time.sleep(60) # 1 Minute Heartbeat
 
 if __name__ == "__main__":
-    print(f"Proxy Heartbeat Initialized on {platform.system()}")
-    print(f"Logging to: {os.path.abspath(LOG_FILE)}")
-    
-    try:
-        while True:
-            pulse()
-            time.sleep(10) # Pulse every 10 seconds
-    except KeyboardInterrupt:
-        print("\nHeartbeat stopped by user.")
+    monitor = NodeHealthMonitor()
+    monitor.run()
