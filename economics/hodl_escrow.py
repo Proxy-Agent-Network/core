@@ -6,8 +6,8 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 from typing import Optional, Dict, List
 
-# PROXY PROTOCOL - HODL ESCROW STATE MACHINE (v1.4)
-# "Programmable value transfer with fault-tolerant settlement."
+# PROXY PROTOCOL - HODL ESCROW STATE MACHINE (v1.5)
+# "Programmable value transfer with automated insurance recovery."
 # ----------------------------------------------------
 
 class EscrowState(Enum):
@@ -33,6 +33,7 @@ class HodlContract:
     node_id: Optional[str] = None
     created_at: float = time.time()
     retry_count: int = 0
+    insurance_claim_id: Optional[str] = None
 
 class EscrowManager:
     """
@@ -40,13 +41,17 @@ class EscrowManager:
     Interacts with the LND gateway to lock and release HTLCs.
     """
     
-    def __init__(self):
+    def __init__(self, insurance_engine=None):
         # In-memory registry (In production: backed by high-availability Redis/PostgreSQL)
         self.contracts: Dict[str, HodlContract] = {}
         # Map task_id to payment_hash for fast webhook lookups
         self.task_map: Dict[str, str] = {}
         # Queue for failed settlement attempts (Preimage revelation)
         self.retry_queue: List[str] = []
+        
+        # Integration with core/economics/insurance_pool.py
+        self.insurance = insurance_engine
+        
         self.DEFAULT_EXPIRY = 14400 # 4-hour standard task window
         self.MAX_RETRY_ATTEMPTS = 5
 
@@ -129,7 +134,6 @@ class EscrowManager:
             return False
 
         # 1. Attempt LND Broadcast
-        # In production: try: self.lnd_client.settle(contract.preimage) except...
         if simulate_fail:
             print(f"[Escrow] 🚨 SETTLEMENT FAILURE: LND Node Unreachable for {contract.contract_id}")
             if payment_hash not in self.retry_queue:
@@ -150,25 +154,41 @@ class EscrowManager:
     def process_retry_queue(self):
         """
         Worker function to clear the retry queue. 
-        Should be called periodically by the protocol daemon.
+        Automatically triggers Insurance Claims for systemic failures.
         """
         if not self.retry_queue:
             return
 
         print(f"\n[Escrow Worker] 🛠️ Processing Retry Queue ({len(self.retry_queue)} items)...")
         
-        # Create a copy to iterate so we can remove items during success
         for p_hash in list(self.retry_queue):
             contract = self.contracts[p_hash]
             contract.retry_count += 1
             
+            # --- INSURANCE TRIGGER ---
             if contract.retry_count > self.MAX_RETRY_ATTEMPTS:
-                print(f"[Escrow Worker] 💀 Max retries exceeded for {contract.contract_id}. Escalating to SEV-2.")
+                print(f"[Escrow Worker] 💀 Max retries exceeded for {contract.contract_id}.")
+                
+                if self.insurance and contract.node_id:
+                    print(f"[Escrow Worker] 🏥 Filing Insurance Claim for Node {contract.node_id}...")
+                    
+                    proof_log = (
+                        f"Systemic Settlement Failure. Task: {contract.task_id}. "
+                        f"Retries: {contract.retry_count}. Preimage: {contract.preimage[:12]}..."
+                    )
+                    
+                    claim_id = self.insurance.file_claim(
+                        node_id=contract.node_id,
+                        amount_sats=contract.amount_sats,
+                        proof_log=proof_log
+                    )
+                    contract.insurance_claim_id = claim_id
+                    print(f"[Escrow Worker] ✅ Claim Secured: {claim_id}. Escalating to SEV-2.")
+                
                 self.retry_queue.remove(p_hash)
                 continue
 
             print(f"   -> Retry attempt {contract.retry_count} for {contract.contract_id}...")
-            # Simulate recovery on retry
             self.settle_contract(p_hash, simulate_fail=False)
 
     def cancel_contract(self, payment_hash: str, reason: str = "Timeout"):
@@ -193,30 +213,39 @@ class EscrowManager:
             "amount_sats": contract.amount_sats,
             "node_id": contract.node_id,
             "retry_pending": payment_hash in self.retry_queue,
-            "retries": contract.retry_count
+            "retries": contract.retry_count,
+            "insurance_claim": contract.insurance_claim_id
         }
 
-# --- End-to-End Fault-Tolerant Simulation ---
+# --- End-to-End Insurance Recovery Simulation ---
 if __name__ == "__main__":
-    manager = EscrowManager()
+    # Mock Insurance Engine to test the integration
+    from core.economics.insurance_pool import InsuranceEngine
+    
+    mock_insurance = InsuranceEngine()
+    manager = EscrowManager(insurance_engine=mock_insurance)
     
     # 1. SETUP
-    TASK_ID = "task_retry_demo_404"
-    invoice = manager.create_invoice("agent_test", TASK_ID, 5000)
+    TASK_ID = "task_insurance_demo_505"
+    invoice = manager.create_invoice("agent_test", TASK_ID, 10000)
     p_hash = invoice['payment_hash']
     manager.update_state(p_hash, EscrowState.ACCEPTED)
+    manager.update_state(p_hash, EscrowState.IN_PROGRESS, node_id="node_unlucky_operator")
 
-    print("\n--- SCENARIO: SETTLEMENT ATTEMPT (LND DOWN) ---")
-    # Simulate a webhook coming in while LND is offline
-    manager.update_state(p_hash, EscrowState.IN_PROGRESS, node_id="node_unlucky")
+    print("\n--- SCENARIO: SYSTEMIC LND FAILURE (LOOPING RETRIES) ---")
+    # Simulate first failure
     manager.settle_contract(p_hash, simulate_fail=True)
     
-    status = manager.get_contract_status(p_hash)
-    print(f"Current Status: {status['state']} | Retry Pending: {status['retry_pending']}")
-
-    print("\n--- SCENARIO: WORKER PROCESSES QUEUE (LND RECOVERED) ---")
-    # Simulate the periodic background job
-    manager.process_retry_queue()
+    # Simulate worker trying until max attempts reached
+    for _ in range(6):
+        manager.process_retry_queue()
     
+    # Final Audit
     final_status = manager.get_contract_status(p_hash)
-    print(f"\n[Final Status] State: {final_status['state']} | Retries: {final_status['retries']}")
+    print(f"\n[Audit Report]")
+    print(f"State:            {final_status['state']}")
+    print(f"Retries recorded: {final_status['retries']}")
+    print(f"Insurance Claim:  {final_status['insurance_claim']}")
+    
+    if final_status['insurance_claim']:
+        print("\n✅ Integration Verified: Failed settlement successfully triggered protocol insurance.")
