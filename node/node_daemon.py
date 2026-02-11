@@ -15,8 +15,8 @@ from secure_memory import SecurePayload
 from ocr_validator import OCRValidator
 from privacy_guard import PrivacyGuard
 
-# PROXY PROTOCOL - NODE DAEMON v1.4 (Privacy Refined)
-# "Hardened local sanitization with fail-safe logic."
+# PROXY PROTOCOL - NODE DAEMON v1.5 (Legal Ready)
+# "Automated legal delegation with hardware attestation."
 # ----------------------------------------------------
 
 class ProxyNodeDaemon:
@@ -42,47 +42,68 @@ class ProxyNodeDaemon:
         Prompts for biological presence before sensitive data access.
         """
         print(f"[Liveness] Initializing camera for challenge {challenge_id}...")
-        # (Camera loop logic as established in v1.1)
         return {
             "status": "verified",
             "confidence": 0.99,
             "hw_proof": self.tpm.generate_attestation_quote(challenge_id)
         }
 
-    # --- 2. Physical Task Execution (SMS Relay) ---
+    # --- 2. Legal Bridge: Documentation Generator ---
 
-    def _execute_sms_relay(self, service_name: str, timeout: int) -> str:
+    def _generate_legal_instrument(self, agent_key: str, requirements: dict) -> dict:
         """
-        Simulates interaction with a physical GSM modem.
+        v1.5: Auto-fills Markdown PoA templates based on task context.
+        Binds the Agent's key to the Node's hardware identity.
         """
-        print(f"[SMS] Waiting for incoming {service_name} code (Timeout: {timeout}s)...")
-        time.sleep(random.randint(5, 15)) 
-        otp_code = str(random.randint(100000, 999999))
-        print(f"[SMS] ✅ Received code: {otp_code}")
-        return otp_code
+        jurisdiction = requirements.get('jurisdiction', 'US_DE')
+        principal_name = requirements.get('principal_name', '[ANONYMOUS PRINCIPAL]')
+        
+        print(f"[Legal] Generating PoA for jurisdiction: {jurisdiction}")
+        
+        # 1. Select Template (Mocked file path logic)
+        template_map = {
+            "US_DE": "templates/legal/us_delaware_poa.md",
+            "UK": "templates/legal/uk_poa.md",
+            "SG": "templates/legal/singapore_poa.md"
+        }
+        
+        template_path = template_map.get(jurisdiction, "templates/legal/ai_power_of_attorney.md")
+        
+        # 2. Fill Placeholders
+        # In production, we'd read the actual .md file. Here we simulate the fill logic.
+        instrument_text = f"""
+        # LIMITED POWER OF ATTORNEY ({jurisdiction})
+        PRINCIPAL: {principal_name}
+        AGENT_KEY: {agent_key[:20]}...
+        PROXY_NODE: {self.node_id}
+        TIMESTAMP: {datetime.now().isoformat()}
+        TASK_ID: {self.current_task_id}
+        """
+        
+        # 3. Cryptographically Bind the Instrument
+        # We hash the filled text and sign it with the TPM
+        content_hash = hashlib.sha256(instrument_text.encode()).hexdigest()
+        hw_signature = self.tpm.generate_attestation_quote(content_hash)
+        
+        return {
+            "instrument_body": instrument_text,
+            "content_hash": content_hash,
+            "hw_signature": hw_signature,
+            "jurisdiction": jurisdiction
+        }
 
     # --- 3. Privacy & Sanitization Pipeline ---
 
     def _apply_privacy_masking(self, input_path: str, task_requirements: dict) -> tuple:
-        """
-        Refined Privacy Logic: 
-        Applies masking based on Agent requirements with fail-safe enforcement.
-        """
+        """Applies masking based on Agent requirements with fail-safe enforcement."""
         privacy_tier = task_requirements.get('privacy_tier', 'STANDARD')
-        print(f"[Privacy] Applying {privacy_tier} ZK-Masking...")
-
         try:
-            # The PrivacyGuard handles the destructive editing (pixelation)
             safe_path, report = self.privacy.redact_pii(input_path)
-            
-            # Fail-safe check: ensure output file exists and is different from input
             if not os.path.exists(safe_path):
-                raise RuntimeError("Sanitization failed to generate output.")
-
+                raise RuntimeError("Sanitization failed.")
             return safe_path, report
         except Exception as e:
-            print(f"[Privacy] 🚨 CRITICAL FAILURE: {str(e)}")
-            raise SecurityError("Privacy pipeline failed. Aborting to prevent data leak.")
+            raise SecurityError(f"Privacy pipeline failed: {str(e)}")
 
     # --- 4. Secure Processing Pipeline ---
 
@@ -90,7 +111,6 @@ class ProxyNodeDaemon:
         """End-to-end encryption using Agent's Public Key."""
         public_key = serialization.load_pem_public_key(agent_pubkey_pem.encode())
         message = json.dumps(data).encode()
-        
         ciphertext = public_key.encrypt(
             message,
             padding.OAEP(
@@ -102,62 +122,56 @@ class ProxyNodeDaemon:
         return base64.b64encode(ciphertext).decode()
 
     def handle_incoming_task(self, raw_task: dict):
-        """
-        Main execution pipeline. Integrates OCR validation and Refined Privacy Masking.
-        """
+        """Main execution pipeline with Legal Bridge automation."""
         instruction_str = raw_task.get('instruction', 'Execute standard task.')
         
         with SecurePayload(instruction_str) as secure_instruction:
             print(f"\n[!] TASK RECEIVED: {raw_task['id']}")
-            print(f"    -> Instruction: {secure_instruction.read()}")
             
             self.current_task_id = raw_task['id']
             agent_key = raw_task.get('agent_public_key')
             
-            # 1. Check Prerequisites (Liveness)
+            # 1. Legal Bridge Pre-flight
+            # If the task involves legal authority, generate the instrument first
+            legal_proof = None
+            if raw_task.get('type') == 'legal_notary_sign':
+                legal_proof = self._generate_legal_instrument(agent_key, raw_task['requirements'])
+                print(f"✅ Legal Instrument Generated (Hash: {legal_proof['content_hash'][:10]})")
+
+            # 2. Check Prerequisites (Liveness)
             if raw_task.get('tier') >= 2:
                 liveness = self._capture_liveness(raw_task.get('challenge_id'))
                 if liveness['confidence'] < 0.85:
                     return {"status": "failed", "reason": "Liveness check failed"}
 
-            # 2. Branch by Task Type
+            # 3. Branch by Task Type
             result_data = {}
             task_type = raw_task.get('type')
 
             try:
-                if task_type == 'verify_sms_otp':
-                    otp = self._execute_sms_relay(
-                        raw_task['requirements']['service'], 
-                        raw_task['requirements'].get('timeout', 120)
-                    )
-                    result_data = {"otp_code": otp, "method": "gsm_relay"}
+                if task_type == 'legal_notary_sign':
+                    # Simulated signing action
+                    print("[Legal] Affixing signature with hardware attestation...")
+                    result_data = {
+                        "legal_instrument": legal_proof,
+                        "signature_status": "affixed",
+                        "attestation_ref": legal_proof['hw_signature']['timestamp']
+                    }
                 
                 elif task_type == 'physical_mail_receive':
                     print("[Mail] Scanning envelope...")
                     scan_path = "raw_envelope.jpg"
-                    
-                    # A. Pre-flight Quality Check
                     scan_result = self.ocr.validate_image(scan_path)
                     if not scan_result['valid']:
-                        return {"status": "failed", "reason": f"QA Failed: {scan_result['rejection_reason']}"}
+                        return {"status": "failed", "reason": "QA Failed"}
                     
-                    # B. Refined Privacy Redaction
-                    # Using the new _apply_privacy_masking helper with fail-safe logic
-                    safe_path, privacy_report = self._apply_privacy_masking(
-                        scan_path, 
-                        raw_task['requirements']
-                    )
-                    
+                    safe_path, privacy_report = self._apply_privacy_masking(scan_path, raw_task['requirements'])
                     result_data = {
-                        "scan_url": f"ipfs://{hashlib.md5(safe_path.encode()).hexdigest()}",
-                        "sanitized": True,
-                        "privacy_tier": raw_task['requirements'].get('privacy_tier', 'STANDARD'),
-                        "privacy_metrics": privacy_report,
-                        "ocr_summary": scan_result['metrics']
+                        "scan_url": "ipfs://...",
+                        "privacy_metrics": privacy_report
                     }
-                    print(f"[Privacy] Redacted {privacy_report['text_blocks_redacted']} text blocks.")
 
-                # 3. Wrap & Encrypt
+                # 4. Wrap & Encrypt
                 payload = {
                     "task_id": self.current_task_id,
                     "completed_at": datetime.now().isoformat(),
@@ -173,7 +187,7 @@ class ProxyNodeDaemon:
                 }
 
             except SecurityError as se:
-                return {"status": "failed", "reason": f"Security Alert: {str(se)}"}
+                return {"status": "failed", "reason": str(se)}
             except Exception as e:
                 return {"status": "error", "message": str(e)}
 
@@ -185,22 +199,18 @@ class ProxyNodeDaemon:
             print("[*] Polling Proxy API for tasks...", end="\r")
             
             if random.random() > 0.95:
-                # Simulation: Mail task with Privacy Tier specified
+                # Simulation: Legal task
                 mock_task = {
                     "id": f"tkt_{random.randint(1000, 9999)}",
-                    "type": "physical_mail_receive",
-                    "tier": 1,
-                    "instruction": "Scan the letter. Redact all financial PII.",
+                    "type": "legal_notary_sign",
+                    "tier": 3,
+                    "instruction": "Sign the Delaware Incorporation Deed.",
                     "requirements": {
-                        "scanning_instructions": "scan_contents",
-                        "privacy_tier": "AGGRESSIVE" 
+                        "jurisdiction": "US_DE",
+                        "principal_name": "Project Genesis LLC"
                     },
                     "agent_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA..."
                 }
-                
-                # Mock raw image
-                with open("raw_envelope.jpg", "wb") as f:
-                    f.write(b"fake image data")
                 
                 result = self.handle_incoming_task(mock_task)
                 print(f"\n[Result] Task Status: {result['status']}")
@@ -208,7 +218,6 @@ class ProxyNodeDaemon:
             time.sleep(5)
 
 class SecurityError(Exception):
-    """Custom exception for privacy pipeline failures."""
     pass
 
 if __name__ == "__main__":
