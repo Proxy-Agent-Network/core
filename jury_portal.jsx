@@ -31,7 +31,13 @@ import {
   ShieldQuestion,
   Globe,
   Map,
-  ZapOff
+  ZapOff,
+  Waves,
+  ShieldX,
+  PiggyBank,
+  ArrowUpRight,
+  ArrowDownRight,
+  History
 } from 'lucide-react';
 
 const App = () => {
@@ -55,16 +61,28 @@ const App = () => {
       deviation: "+14.2%",
       status: "FLAGGED",
       logic: "Identical TPM firmware signatures & simultaneous heartbeats detected."
-    },
-    {
-      id: "CLUSTER-EPSILON-2",
-      risk_score: 42,
-      nodes: 4,
-      ip_range: "45.12.8.0/28",
-      deviation: "+2.1%",
-      status: "MONITORING",
-      logic: "High latency jitter correlation across diverse subnets."
     }
+  ]);
+
+  // v2.4 Brownout State
+  const [brownoutLevel, setBrownoutLevel] = useState('GREEN'); // GREEN, YELLOW, ORANGE, RED
+  const [mempoolDepth, setMempoolDepth] = useState(6402);
+  const [isManualOverride, setIsManualOverride] = useState(false);
+
+  // v2.5 Treasury Audit State
+  const [treasuryStats] = useState({
+    total_inflow: 84290100,
+    total_outflow: 12500000,
+    slashing_revenue: 34000000,
+    tax_revenue: 50290100,
+    net_reserves: 71790100
+  });
+
+  const [transactions] = useState([
+    { id: "TX-99812", type: "SLASH", amount: 250000, timestamp: "2026-02-11 11:02:00", node: "NODE_MALICIOUS_X8", status: "CONFIRMED" },
+    { id: "TX-99811", type: "TAX", amount: 4200, timestamp: "2026-02-11 10:58:12", node: "NODE_ELITE_X29", status: "CONFIRMED" },
+    { id: "TX-99810", type: "PAYOUT", amount: 10000, timestamp: "2026-02-11 10:45:00", node: "CLAIM-X01", status: "SETTLED" },
+    { id: "TX-99809", type: "SLASH", amount: 1200000, timestamp: "2026-02-11 09:12:44", node: "SYBIL_CLUSTER_A", status: "CONFIRMED" }
   ]);
 
   // Stats & Environment
@@ -201,8 +219,8 @@ const App = () => {
             <Gavel className="w-5 h-5 text-amber-500" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tighter text-white uppercase">Jury Tribunal v2.3</h1>
-            <p className="text-[10px] text-amber-500/70 uppercase tracking-widest">Sybil Defense Logic Engaged</p>
+            <h1 className="text-sm font-bold tracking-tighter text-white uppercase">Jury Tribunal v2.5</h1>
+            <p className="text-[10px] text-amber-500/70 uppercase tracking-widest">Protocol Integrity & Treasury Audit</p>
           </div>
         </div>
         
@@ -215,8 +233,8 @@ const App = () => {
           </div>
           <div className="h-8 w-px bg-white/10" />
           <div className="flex flex-col items-end">
-            <span className="text-gray-500 uppercase font-bold tracking-tighter">Your Bond</span>
-            <span className="text-white">{(stats.staked_bond / 1000000).toFixed(1)}M SATS</span>
+            <span className="text-gray-500 uppercase font-bold tracking-tighter">Network Reserves</span>
+            <span className="text-white font-bold">{(treasuryStats.net_reserves / 100000000).toFixed(2)} BTC</span>
           </div>
           <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded border border-white/10">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -262,6 +280,18 @@ const App = () => {
               <Activity className="w-4 h-4" /> Open Disputes
             </button>
             <button 
+              onClick={() => { setActiveTab('treasury'); setSelectedCase(null); setSelectedClaim(null); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'treasury' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            >
+              <PiggyBank className="w-4 h-4" /> Treasury Audit
+            </button>
+            <button 
+              onClick={() => { setActiveTab('brownout'); setSelectedCase(null); setSelectedClaim(null); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'brownout' ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            >
+              <Waves className="w-4 h-4" /> Brownout Control
+            </button>
+            <button 
               onClick={() => { setActiveTab('sybil'); setSelectedCase(null); setSelectedClaim(null); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'sybil' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
             >
@@ -279,23 +309,11 @@ const App = () => {
             >
               <Scale className="w-4 h-4" /> Recent Verdicts
             </button>
-            <button 
-              onClick={() => { setActiveTab('stats'); setSelectedCase(null); setSelectedClaim(null); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'stats' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
-            >
-              <TrendingUp className="w-4 h-4" /> Personal Standing
-            </button>
-            <button 
-              onClick={() => { setActiveTab('security'); setSelectedCase(null); setSelectedClaim(null); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'security' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
-            >
-              <Cpu className="w-4 h-4" /> Hardware Security
-            </button>
           </nav>
 
-          <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-lg">
-            <p className="text-[10px] text-red-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
-              "Sybil clusters are identified by hardware footprint and IP entropy. Flagging legitimate nodes results in reputation slashing."
+          <div className="p-4 bg-green-500/5 border border-green-500/10 rounded-lg">
+            <p className="text-[10px] text-green-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
+              "Treasury audits are published to the network's public ledger every 2016 blocks for independent verification."
             </p>
           </div>
         </aside>
@@ -338,61 +356,154 @@ const App = () => {
             </div>
           )}
 
-          {/* 2. SYBIL DEFENSE VIEW (v2.3 FEATURE) */}
-          {activeTab === 'sybil' && (
+          {/* 2. TREASURY AUDIT VIEW (v2.5 FEATURE) */}
+          {activeTab === 'treasury' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-               {/* Global Heatmap Placeholder */}
-               <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
-                  <div className="bg-black/60 rounded-lg h-64 flex flex-col items-center justify-center relative overflow-hidden">
-                     <div className="absolute inset-0 opacity-10">
-                        <div className="w-full h-full bg-[radial-gradient(#ff3333_1px,transparent_1px)] bg-[size:20px_20px]" />
-                     </div>
-                     <Globe className="w-12 h-12 text-red-500/40 mb-4" />
-                     <h3 className="text-xs uppercase font-black text-gray-500 tracking-[0.4em]">Global Node Entropy Map</h3>
-                     <p className="text-[9px] text-gray-700 mt-2 uppercase">Live telemetry stream active</p>
-                     
-                     {/* Floating Mock Data Points */}
-                     <div className="absolute top-1/4 left-1/3 w-3 h-3 bg-red-500 rounded-full animate-ping opacity-20" />
-                     <div className="absolute bottom-1/3 right-1/4 w-2 h-2 bg-red-500 rounded-full animate-ping opacity-40" />
+               
+               {/* Economic Health Cards */}
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-green-500/5 border border-green-500/20 p-5 rounded-lg">
+                    <span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Net Reserves</span>
+                    <p className="text-2xl font-black text-white">{(treasuryStats.net_reserves / 1000000).toFixed(1)}M <span className="text-xs text-gray-500 font-normal">SATS</span></p>
+                  </div>
+                  <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-lg">
+                    <span className="text-[9px] text-blue-400 uppercase font-black block mb-2 tracking-widest">Insurance Depth</span>
+                    <p className="text-2xl font-black text-white">{(stats.insurance_pool_depth / 1000000).toFixed(1)}M <span className="text-xs text-gray-500 font-normal">SATS</span></p>
+                  </div>
+                  <div className="bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg">
+                    <span className="text-[9px] text-amber-400 uppercase font-black block mb-2 tracking-widest">Slash Revenue</span>
+                    <p className="text-2xl font-black text-white">{(treasuryStats.slashing_revenue / 1000000).toFixed(1)}M</p>
+                  </div>
+                  <div className="bg-red-500/5 border border-red-500/20 p-5 rounded-lg">
+                    <span className="text-[9px] text-red-400 uppercase font-black block mb-2 tracking-widest">Total Outflow</span>
+                    <p className="text-2xl font-black text-white">{(treasuryStats.total_outflow / 1000000).toFixed(1)}M</p>
                   </div>
                </div>
 
-               <div className="bg-[#0d0d0e] border border-red-500/20 rounded-lg overflow-hidden">
-                  <div className="p-4 border-b border-red-500/20 bg-red-500/[0.02] flex justify-between items-center">
-                     <h3 className="text-xs uppercase font-black tracking-widest text-red-400 flex items-center gap-2">
-                        <ZapOff className="w-4 h-4" /> Suspicious Node Clusters
-                     </h3>
-                     <span className="text-[10px] text-red-400/50 uppercase font-bold">Audit Level: High</span>
+               {/* Transaction Ledger */}
+               <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden">
+                  <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
+                    <h3 className="text-xs uppercase font-bold tracking-widest flex items-center gap-2">
+                      <History className="w-4 h-4 text-green-500" /> Recent Protocol Transactions
+                    </h3>
                   </div>
+                  <div className="divide-y divide-white/5">
+                    {transactions.map((tx) => (
+                      <div key={tx.id} className="p-5 flex items-center justify-between hover:bg-white/[0.01] transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className={`p-2 rounded bg-white/5 border border-white/10 ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-400'}`}>
+                            {tx.type === 'PAYOUT' ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-sm font-bold text-white">{tx.id}</span>
+                              <span className={`text-[9px] px-2 py-0.5 rounded font-black uppercase tracking-tighter ${
+                                tx.type === 'SLASH' ? 'bg-amber-500/10 text-amber-500' : 
+                                tx.type === 'TAX' ? 'bg-blue-500/10 text-blue-500' : 'bg-red-500/10 text-red-500'
+                              }`}>{tx.type}</span>
+                            </div>
+                            <p className="text-[10px] text-gray-500">Node: {tx.node} • {tx.timestamp}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm font-black ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-500'}`}>
+                            {tx.type === 'PAYOUT' ? '-' : '+'}{tx.amount.toLocaleString()} SATS
+                          </p>
+                          <span className="text-[9px] text-gray-600 uppercase font-bold">{tx.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-4 bg-white/[0.01] border-t border-white/5 text-center">
+                    <button className="text-[10px] text-gray-500 hover:text-white uppercase font-black tracking-widest flex items-center gap-2 mx-auto transition-colors">
+                      View Full Audit Trail <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* 3. BROWNOUT CONTROL VIEW (v2.4) */}
+          {activeTab === 'brownout' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-4">Mempool Depth</span>
+                     <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-black text-white">{mempoolDepth.toLocaleString()}</span>
+                        <span className="text-xs text-gray-500 uppercase tracking-widest">Tasks</span>
+                     </div>
+                  </div>
+                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-4">Congestion Level</span>
+                     <div className="flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full animate-pulse ${
+                          brownoutLevel === 'GREEN' ? 'bg-green-500' : 
+                          brownoutLevel === 'YELLOW' ? 'bg-yellow-500' : 
+                          brownoutLevel === 'ORANGE' ? 'bg-orange-500' : 'bg-red-500'
+                        }`} />
+                        <span className="text-2xl font-black text-white uppercase">{brownoutLevel}</span>
+                     </div>
+                  </div>
+                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
+                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-2">Manual Override</span>
+                     <button onClick={() => setIsManualOverride(!isManualOverride)} className={`w-full py-2 rounded text-[10px] font-black uppercase tracking-widest ${isManualOverride ? 'bg-orange-500 text-black' : 'bg-white/5 border border-white/10 text-gray-400'}`}>{isManualOverride ? 'ENABLED' : 'DISABLED'}</button>
+                  </div>
+               </div>
+
+               <div className="bg-[#0d0d0e] border border-orange-500/20 rounded-lg overflow-hidden">
+                  <div className="p-4 border-b border-orange-500/20 bg-orange-500/[0.02] flex justify-between items-center"><h3 className="text-xs uppercase font-black tracking-widest text-orange-400 flex items-center gap-2"><ShieldAlert className="w-4 h-4" /> Traffic Shedding Parameters</h3></div>
+                  <div className="p-8">
+                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        {['GREEN', 'YELLOW', 'ORANGE', 'RED'].map((level) => (
+                           <button 
+                              key={level} 
+                              disabled={!isManualOverride} 
+                              onClick={() => setBrownoutLevel(level)} 
+                              className={`p-6 border rounded-lg transition-all flex flex-col items-center text-center ${brownoutLevel === level ? 'bg-white/5 border-orange-500' : 'bg-black/40 border-white/5 opacity-40'} ${!isManualOverride && 'cursor-not-allowed opacity-20'}`}
+                           >
+                              <span className={`text-[9px] font-black uppercase mb-3 ${level === 'GREEN' ? 'text-green-500' : level === 'YELLOW' ? 'text-yellow-500' : level === 'ORANGE' ? 'text-orange-500' : 'text-red-500'}`}>{level}</span>
+                              <p className="text-[10px] text-gray-400 leading-tight">
+                                {level === 'GREEN' ? 'Normal Operations (&gt;300 REP)' : 
+                                 level === 'YELLOW' ? 'Shed Probationary (&gt;500 REP)' : 
+                                 level === 'ORANGE' ? 'Shed Non-Elite (&gt;700 REP)' : 
+                                 'Whale Only (&gt;900 REP)'}
+                              </p>
+                           </button>
+                        ))}
+                     </div>
+                  </div>
+               </div>
+
+               <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                  <h3 className="text-xs uppercase font-black text-gray-500 tracking-widest mb-6">Congestion Audit Log</h3>
+                  <div className="space-y-3 font-mono text-[9px]">
+                     <div className="flex justify-between text-gray-600"><span>[10:42:12] AUTO_SCALING: PROMOTED TO ORANGE (MEMPOOL &gt; 5000)</span><span className="text-green-500">VERIFIED</span></div>
+                     <div className="flex justify-between text-gray-600"><span>[10:45:00] SHEDDING_EXEC: DROPPED 422 TASKS FROM &lt; 500 REP NODES</span><span className="text-green-500">VERIFIED</span></div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* 4. SYBIL DEFENSE VIEW (v2.3) */}
+          {activeTab === 'sybil' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+               <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
+                  <div className="bg-black/60 rounded-lg h-64 flex flex-col items-center justify-center relative overflow-hidden">
+                     <Globe className="w-12 h-12 text-red-500/40 mb-4" />
+                     <h3 className="text-xs uppercase font-black text-gray-500 tracking-[0.4em]">Global Node Entropy Map</h3>
+                  </div>
+               </div>
+               <div className="bg-[#0d0d0e] border border-red-500/20 rounded-lg overflow-hidden">
+                  <div className="p-4 border-b border-red-500/20 bg-red-500/[0.02] flex justify-between items-center"><h3 className="text-xs uppercase font-black tracking-widest text-red-400 flex items-center gap-2"><ZapOff className="w-4 h-4" /> Suspicious Node Clusters</h3></div>
                   <div className="divide-y divide-white/5">
                      {sybilClusters.map((cluster) => (
                         <div key={cluster.id} className="p-6 flex flex-col md:flex-row justify-between gap-6 hover:bg-white/[0.01] transition-colors">
                            <div className="flex gap-6">
-                              <div className="w-14 h-14 bg-red-500/10 rounded border border-red-500/30 flex flex-col items-center justify-center">
-                                 <span className="text-[8px] text-red-500 uppercase font-black">Risk</span>
-                                 <span className="text-lg font-black text-white leading-none">{cluster.risk_score}</span>
-                              </div>
-                              <div className="space-y-1">
-                                 <div className="flex items-center gap-3">
-                                    <span className="text-sm font-bold text-white uppercase">{cluster.id}</span>
-                                    <span className="text-[9px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded font-black tracking-tighter">{cluster.status}</span>
-                                 </div>
-                                 <p className="text-xs text-gray-500 max-w-md">{cluster.logic}</p>
-                                 <div className="flex gap-4 pt-2">
-                                    <span className="text-[9px] text-gray-600 mono">IP: {cluster.ip_range}</span>
-                                    <span className="text-[9px] text-gray-600 mono uppercase">Nodes: {cluster.nodes}</span>
-                                    <span className="text-[9px] text-red-400/60 mono uppercase font-bold">Deviation: {cluster.deviation}</span>
-                                 </div>
-                              </div>
+                              <div className="w-14 h-14 bg-red-500/10 rounded border border-red-500/30 flex flex-col items-center justify-center"><span className="text-[8px] text-red-500 uppercase font-black">Risk</span><span className="text-lg font-black text-white leading-none">{cluster.risk_score}</span></div>
+                              <div className="space-y-1"><span className="text-sm font-bold text-white uppercase block">{cluster.id}</span><p className="text-xs text-gray-500 max-w-md">{cluster.logic}</p></div>
                            </div>
-                           <div className="flex items-center gap-3">
-                              <button className="px-4 py-2 border border-red-500/30 text-red-400 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/10 transition-all">
-                                 Flag Cluster
-                              </button>
-                              <button className="px-4 py-2 bg-red-500/10 border border-red-500 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">
-                                 Mass Slash
-                              </button>
-                           </div>
+                           <button className="px-4 py-2 bg-red-500/10 border border-red-500 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">Mass Slash</button>
                         </div>
                      ))}
                   </div>
@@ -400,38 +511,22 @@ const App = () => {
             </div>
           )}
 
-          {/* 3. HARDWARE SECURITY VIEW (v2.2) */}
+          {/* 5. HARDWARE SECURITY VIEW (v2.2) */}
           {activeTab === 'security' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8">
                      <div className="flex items-center justify-between mb-8">
-                        <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3">
-                           <Key className="w-5 h-5 text-blue-400" /> TPM 2.0 Identity Management
-                        </h3>
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${isRotating ? 'bg-yellow-500/10 text-yellow-500 animate-pulse' : 'bg-green-500/10 text-green-500'}`}>
-                           {isRotating ? 'ROTATING' : 'LOCKED'}
-                        </span>
+                        <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3"><Key className="w-5 h-5 text-blue-400" /> TPM 2.0 Identity Management</h3>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${isRotating ? 'bg-yellow-500/10 text-yellow-500 animate-pulse' : 'bg-green-500/10 text-green-500'}`}>{isRotating ? 'ROTATING' : 'LOCKED'}</span>
                      </div>
                      <div className="space-y-6">
-                        <div>
-                           <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Active Identity Hash</label>
-                           <div className="bg-black/60 p-4 border border-white/5 rounded mono text-xs text-blue-300 break-all select-all">
-                              {nodeId === "NODE_ELITE_X29" ? "0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd" : "0x81010002:fresh_" + nodeId}
-                           </div>
-                        </div>
-                        <button disabled={isRotating} onClick={startKeyRotation} className="w-full py-4 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg flex items-center justify-center gap-3 transition-all">
-                           <RefreshCw className={`w-4 h-4 text-blue-400 ${isRotating ? 'animate-spin' : ''}`} />
-                           <span className="text-xs font-black uppercase text-blue-400 tracking-widest">Rotate Hardware Identity</span>
-                        </button>
+                        <div className="bg-black/60 p-4 border border-white/5 rounded mono text-xs text-blue-300 break-all select-all">{nodeId === "NODE_ELITE_X29" ? "0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd" : "0x81010002:fresh_" + nodeId}</div>
+                        <button disabled={isRotating} onClick={startKeyRotation} className="w-full py-4 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-center justify-center gap-3"><RefreshCw className={`w-4 h-4 text-blue-400 ${isRotating ? 'animate-spin' : ''}`} /><span className="text-xs font-black uppercase text-blue-400 tracking-widest">Rotate Hardware Identity</span></button>
                      </div>
                   </div>
                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg flex flex-col">
-                     <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
-                        <h3 className="text-xs uppercase font-black tracking-widest flex items-center gap-2">
-                           <Fingerprint className="w-4 h-4 text-gray-500" /> Binding Console
-                        </h3>
-                     </div>
+                     <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs uppercase font-black tracking-widest flex items-center gap-2"><Fingerprint className="w-4 h-4 text-gray-500" /> Binding Console</h3></div>
                      <div className="flex-1 p-6 font-mono text-[10px] leading-relaxed overflow-y-auto bg-black/40">
                         <p className="text-gray-600">[*] Hardware Root: OPTIGA TPM 2.0 Detected</p>
                         {keyRotationStep >= 1 && <p className="text-yellow-500 mt-2">[*] Wiping handle 0x81010001... SUCCESS</p>}
@@ -443,129 +538,36 @@ const App = () => {
             </div>
           )}
 
-          {/* 4. APPELLATE COURT VIEW (v2.1) */}
+          {/* 6. APPELLATE COURT VIEW (v2.1) */}
           {activeTab === 'appellate' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
               <div className="bg-red-500/10 border border-red-500/40 rounded-lg p-8 flex flex-col md:flex-row items-center justify-between gap-8">
-                <div className="flex items-center gap-6">
-                   <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center border border-red-500/30 text-red-500">
-                      <ShieldAlert className="w-8 h-8 animate-pulse" />
-                   </div>
-                   <div>
-                      <h2 className="text-xl font-black text-red-500 uppercase tracking-tighter">SEV-1 Convocation Active</h2>
-                      <p className="text-sm text-gray-400 mt-1 max-w-md">Systemic jury collusion detected. High Court convened to restore Schelling Point integrity.</p>
-                   </div>
+                <div className="flex items-center gap-6 text-red-500">
+                   <ShieldAlert className="w-8 h-8 animate-pulse" />
+                   <div><h2 className="text-xl font-black uppercase tracking-tighter">SEV-1 Convocation Active</h2><p className="text-sm text-gray-400 mt-1 max-w-md">Systemic jury collusion detected. High Court convened.</p></div>
                 </div>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 bg-[#0d0d0e] border border-white/10 rounded-lg p-6 text-[10px]">
-                   <h3 className="text-xs uppercase font-bold mb-6 flex items-center gap-2 text-white">
-                     <Cpu className="w-4 h-4 text-red-500" /> VRF Selection Proof
-                   </h3>
-                   <div className="space-y-4">
-                      <div className="bg-black/40 p-2 rounded mono text-red-400 truncate">{appellateContext.incident_id}</div>
-                      <div className="bg-black/40 p-2 rounded mono text-gray-400 break-all">{appellateContext.btc_block_hash}</div>
-                   </div>
+                   <h3 className="text-xs uppercase font-bold mb-6 flex items-center gap-2 text-white"><Cpu className="w-4 h-4 text-red-500" /> VRF Selection Proof</h3>
+                   <div className="space-y-4"><div className="bg-black/40 p-2 rounded mono text-red-400 truncate">{appellateContext.incident_id}</div><div className="bg-black/40 p-2 rounded mono text-gray-400 break-all">{appellateContext.btc_block_hash}</div></div>
                 </div>
-                <div className="lg:col-span-2">
-                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden h-full">
-                      <div className="p-4 border-b border-white/10 bg-white/[0.02]"><h3 className="text-xs uppercase font-bold tracking-widest text-red-500">Verified High Court Roster</h3></div>
-                      <div className="divide-y divide-white/5">
-                         {appellateContext.roster.map((juror) => (
-                           <div key={juror.id} className={`p-4 flex items-center justify-between ${juror.status === 'YOU' ? 'bg-red-500/5' : ''}`}>
-                              <span className={`text-xs font-bold ${juror.status === 'YOU' ? 'text-white' : 'text-gray-400'}`}>{juror.id}</span>
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${juror.status === 'YOU' ? 'bg-red-500 text-black' : 'text-green-500 border border-green-500/20'}`}>{juror.status}</span>
-                           </div>
-                         ))}
-                      </div>
-                   </div>
+                <div className="lg:col-span-2 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden h-full">
+                   <div className="p-4 border-b border-white/10 bg-white/[0.02]"><h3 className="text-xs uppercase font-bold tracking-widest text-red-500">Verified High Court Roster</h3></div>
+                   <div className="divide-y divide-white/5">{appellateContext.roster.map((juror) => (<div key={juror.id} className={`p-4 flex items-center justify-between ${juror.status === 'YOU' ? 'bg-red-500/5' : ''}`}><span className={`text-xs font-bold ${juror.status === 'YOU' ? 'text-white' : 'text-gray-400'}`}>{juror.id}</span><span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${juror.status === 'YOU' ? 'bg-red-500 text-black' : 'text-green-500 border border-green-500/20'}`}>{juror.status}</span></div>))}</div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 5. RECENT VERDICTS FEED */}
+          {/* 7. RECENT VERDICTS FEED */}
           {activeTab === 'history' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-black/40 border border-white/5 p-4 rounded-lg">
-                  <span className="text-[9px] text-gray-600 uppercase block mb-1 font-bold">Total Adjudications</span>
-                  <p className="text-xl font-bold text-white">4,821</p>
-                </div>
-                <div className="bg-black/40 border border-white/5 p-4 rounded-lg text-green-500">
-                  <span className="text-[9px] text-gray-600 uppercase block mb-1 font-bold">Outcome Skew</span>
-                  <p className="text-xl font-bold">82% Valid</p>
-                </div>
-                <div className="bg-black/40 border border-white/5 p-4 rounded-lg text-amber-500">
-                  <span className="text-[9px] text-gray-600 uppercase block mb-1 font-bold">Slashing Yield</span>
-                  <p className="text-xl font-bold">12.4M Sats</p>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-black/40 border border-white/5 p-4 rounded-lg text-green-500"><span className="text-[9px] text-gray-600 uppercase block mb-1 font-bold">Outcome Skew</span><p className="text-xl font-bold">82% Valid</p></div>
+                <div className="bg-black/40 border border-white/5 p-4 rounded-lg text-amber-500"><span className="text-[9px] text-gray-600 uppercase block mb-1 font-bold">Slashing Yield</span><p className="text-xl font-bold">12.4M Sats</p></div>
               </div>
-              <div className="bg-[#0d0d0e] border border-green-500/20 rounded-lg overflow-hidden">
-                {verdicts.map((v) => (
-                  <div key={v.id} className="p-6 border-b border-white/5">
-                    <div className="flex justify-between items-start">
-                      <span className="text-sm font-bold text-white">{v.id}</span>
-                      <div className={`px-3 py-1 rounded text-[10px] font-black uppercase ${v.outcome === 'VALID' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{v.outcome}</div>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-2">{v.summary}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 6. PERSONAL STATS DASHBOARD */}
-          {activeTab === 'stats' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="flex flex-col md:flex-row gap-4">
-                 <div className="flex-1 bg-purple-500/5 border border-purple-500/20 p-5 rounded-lg">
-                    <p className="text-2xl font-black text-white">+42 <span className="text-xs text-gray-500 font-normal">REP / Mo</span></p>
-                 </div>
-                 <div className="flex-1 bg-green-500/5 border border-green-500/20 p-5 rounded-lg relative">
-                    <p className="text-2xl font-black text-white">{stats.earned_fees.toLocaleString()}</p>
-                    <button onClick={handleTaxExport} className="absolute top-4 right-4 p-2 text-green-500"><Download className="w-4 h-4" /></button>
-                 </div>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                  <h3 className="text-xs uppercase font-bold mb-6 text-purple-400">Reputation Momentum</h3>
-                  <div className="flex items-end gap-2 h-40">
-                    {performanceHistory.reputation_trend.map((val, i) => (
-                      <div key={i} className="flex-1 bg-purple-500/20 border-t-2 border-purple-500/50 rounded-t-sm" style={{ height: `${(val / 1000) * 100}%` }}></div>
-                    ))}
-                  </div>
-                </div>
-                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                  <h3 className="text-xs uppercase font-bold mb-6 text-green-400">Adjudication Accuracy</h3>
-                  <div className="space-y-4 text-[10px]">
-                    {performanceHistory.task_breakdown.map((task) => (
-                      <div key={task.type}>
-                        <div className="flex justify-between mb-1.5 uppercase font-bold"><span>{task.type} Protocols</span><span className="text-white">{task.accuracy}%</span></div>
-                        <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden"><div className={`h-full ${task.accuracy >= 98 ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: `${task.accuracy}%` }} /></div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 7. INSURANCE CLAIMS VIEW */}
-          {activeTab === 'insurance' && !selectedClaim && (
-            <div className="bg-[#0d0d0e] border border-cyan-500/20 rounded-lg overflow-hidden animate-in fade-in duration-300">
-              {claims.map((claim) => (
-                <div key={claim.id} className="p-6 flex items-center justify-between border-b border-white/5">
-                  <div className="flex items-center gap-6">
-                    <div className="w-12 h-12 bg-cyan-500/10 rounded flex flex-col items-center justify-center border border-cyan-500/20 text-cyan-400">
-                      <AlertTriangle className="w-5 h-5" />
-                      <span className="text-[8px] font-black mt-1 uppercase">{claim.severity}</span>
-                    </div>
-                    <div><span className="text-white font-bold text-sm block">{claim.id}</span><p className="text-xs text-gray-500 uppercase">Settlement Failure: {claim.node_id}</p></div>
-                  </div>
-                  <button onClick={() => setSelectedClaim(claim)} className="bg-cyan-500/10 border border-cyan-500/30 px-4 py-2 rounded text-xs text-cyan-400 font-bold uppercase">Audit Incident</button>
-                </div>
-              ))}
+              <div className="bg-[#0d0d0e] border border-green-500/20 rounded-lg overflow-hidden">{verdicts.map((v) => (<div key={v.id} className="p-6 border-b border-white/5"><div className="flex justify-between items-start"><span className="text-sm font-bold text-white">{v.id}</span><div className={`px-3 py-1 rounded text-[10px] font-black uppercase ${v.outcome === 'VALID' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{v.outcome}</div></div><p className="text-xs text-gray-400 mt-2">{v.summary}</p></div>))}</div>
             </div>
           )}
 
