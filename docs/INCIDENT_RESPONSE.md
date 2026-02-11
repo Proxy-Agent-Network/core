@@ -1,4 +1,4 @@
-# Proxy Protocol Incident Response Playbook (v1.1)
+# Proxy Protocol Incident Response Playbook (v1.2)
 
 **Status:** Active  
 **Classification:** Operational Security (Internal/Partner)
@@ -21,9 +21,9 @@ This document defines the mandatory response protocols for "Scorched Earth" and 
 
 In the event of a catastrophic failure, the Core Team triggers the Circuit Breaker:
 
-1.  **Bridge Freeze:** Broadcast a `PAUSE` signal to the LND Gateway. This prevents any new HODL invoices from being accepted.
-2.  **State Snapshot:** Force a read-only state on the Task Mempool for forensic auditing.
-3.  **Disclosure:** Immediate status update via `security@proxyagent.network` and the official Status Page.
+1. **Bridge Freeze:** Broadcast a `PAUSE` signal to the LND Gateway. This prevents any new HODL invoices from being accepted.
+2. **State Snapshot:** Force a read-only state on the Task Mempool for forensic auditing.
+3. **Disclosure:** Immediate status update via `security@proxyagent.network` and the official Status Page.
 
 ---
 
@@ -41,17 +41,18 @@ In the event of a catastrophic failure, the Core Team triggers the Circuit Break
 **Symptom:** Verifiably correct proofs are being rejected by the Jury Tribunal (Schelling Point failure).
 
 **Mitigation:**
-1.  **Governance Freeze:** Temporarily suspend the automated Jury VRF selection.
-2.  **Escalation:** Divert all disputed tasks above 50,000 Sats to the Appellate Court (7 manually verified Elite Jurors).
-3.  **Slashing:** Identify the Sybil cluster (linked nodes/IPs) and perform a mass-burn of their staked BTC.
+1. **Governance Freeze:** Temporarily suspend the automated Jury VRF selection.
+2. **Escalation:** Divert all disputed tasks above 50,000 Sats to the Appellate Court (7 manually verified Elite Jurors).
+3. **Cryptographic Fairness:** Jurors are selected via the `appellate_vrf.py` engine using a seed derived from the latest Bitcoin Block Header. This prevents the Foundation from cherry-picking jurors during the freeze.
+4. **Slashing:** Identify the Sybil cluster (linked nodes/IPs) and perform a mass-burn of their staked BTC.
 
 ### C. Zero-Day Hardware Vulnerability (TPM Bypass)
 **Symptom:** Discovery of a method to export "sealed" private keys from the Infineon OPTIGA™ chip.
 
 **Mitigation:**
-1.  **Node Invalidation:** Revoke the `AK_HANDLE` (Attestation Key) for all nodes running the affected firmware version.
-2.  **Mandatory Re-Binding:** Force all Tier 2/3 nodes to perform a new Key Generation Ceremony with patched SDKs.
-3.  **Reputation Snapshot:** Preserve operator scores but require a new hardware collateral lock.
+1. **Node Invalidation:** Revoke the `AK_HANDLE` (Attestation Key) for all nodes running the affected firmware version.
+2. **Mandatory Re-Binding:** Force all Tier 2/3 nodes to perform a new Key Generation Ceremony with patched SDKs.
+3. **Reputation Snapshot:** Preserve operator scores but require a new hardware collateral lock.
 
 ---
 
