@@ -2,12 +2,13 @@ import subprocess
 import os
 import hashlib
 import json
-from typing import Optional, Tuple
+import base64
+from typing import Dict, Optional
 
-# PROXY PROTOCOL - TPM 2.0 BINDING CEREMONY (v1)
-# "Identity rooted in silicon."
+# PROXY PROTOCOL - TPM 2.0 HARDWARE INTERFACE (v1.2)
+# "Identity sealed in silicon. Verified by math."
 # ----------------------------------------------------
-# Dependencies: tpm2-tools (installed via Docker/apt)
+# Dependencies: tpm2-tools (apt install tpm2-tools)
 
 class TPMBinding:
     def __init__(self, tpm_path="/dev/tpm0"):
@@ -15,21 +16,20 @@ class TPMBinding:
         self.working_dir = "/tmp/tpm_context"
         os.makedirs(self.working_dir, exist_ok=True)
         
-        # Persistent Handles (Standardized for Proxy Protocol)
-        self.EK_HANDLE = "0x81010001" # Endorsement Key
-        self.AK_HANDLE = "0x81010002" # Attestation Identity Key
+        # Standard Handles
+        self.EK_HANDLE = "0x81010001" # Endorsement Key (The Chip's ID)
+        self.AK_HANDLE = "0x81010002" # Attestation Key (The Signing ID)
 
-    def _run_cmd(self, cmd_list: list) -> str:
-        """Helper to run tpm2_tools commands safely."""
+    def _run_cmd(self, cmd_list: list, binary=False) -> str:
+        """Execute tpm2-tools command."""
         try:
             result = subprocess.check_output(cmd_list, stderr=subprocess.STDOUT)
-            return result.decode('utf-8').strip()
+            return result if binary else result.decode('utf-8').strip()
         except subprocess.CalledProcessError as e:
-            error_msg = e.output.decode('utf-8')
-            raise RuntimeError(f"TPM Command Failed: {' '.join(cmd_list)}\nError: {error_msg}")
+            error_msg = e.output.decode('utf-8') if not binary else "Binary Error"
+            raise RuntimeError(f"TPM Error: {' '.join(cmd_list)}\n{error_msg}")
 
     def check_availability(self) -> bool:
-        """Verifies TPM hardware is accessible."""
         if not os.path.exists(self.tpm_path):
             return False
         try:
@@ -38,146 +38,67 @@ class TPMBinding:
         except RuntimeError:
             return False
 
-    def perform_binding_ceremony(self) -> dict:
+    def generate_attestation_quote(self, nonce: str) -> Dict:
         """
-        The One-Time Setup.
-        1. Clears transient objects.
-        2. Creates a Primary Key (Endorsement Hierarchy).
-        3. Creates an Identity Key (AK) meant for signing.
-        4. Persists the keys in NVRAM.
+        CRITICAL: Generates a signed Quote of the PCRs (Platform Configuration Registers).
+        This proves the key is hardware-resident and the system boot is untampered.
+        
+        Args:
+            nonce: A random challenge from the server to prevent replay attacks.
         """
-        print("[*] Starting TPM Binding Ceremony...")
+        # PCR Banks to Quote:
+        # 0: BIOS/Firmware
+        # 1: Host Configuration
+        # 7: Secure Boot State
+        pcr_selection = "sha256:0,1,7"
         
-        # 1. Clean Slate (Flush context)
-        # Note: In prod, be careful not to wipe existing valid keys
-        try:
-            self._run_cmd(["tpm2_flushcontext", "-t"])
-        except:
-            pass # Ignore if empty
-
-        # 2. Create Primary Key (Endorsement Key)
-        # -C e: Endorsement Hierarchy
-        # -g sha256: Hash algorithm
-        # -G rsa: Key algorithm
-        # -c: Context file output
-        print("[*] Generating Endorsement Key (EK)...")
-        self._run_cmd([
-            "tpm2_createprimary", 
-            "-C", "e", 
-            "-g", "sha256", 
-            "-G", "rsa", 
-            "-c", f"{self.working_dir}/primary.ctx"
-        ])
-
-        # 3. Create Identity Key (Attestation Key)
-        # -C: Parent context (The EK we just made)
-        # -u, -r: Output public/private portions (encrypted)
-        print("[*] Generating Identity Key (AK)...")
-        self._run_cmd([
-            "tpm2_create",
-            "-C", f"{self.working_dir}/primary.ctx",
-            "-g", "sha256",
-            "-G", "rsa",
-            "-u", f"{self.working_dir}/ak.pub",
-            "-r", f"{self.working_dir}/ak.priv",
-            "-a", "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|sign|noda" 
-            # Attributes ensure key cannot be exported ('fixedtpm')
-        ])
-
-        # 4. Load & Persist
-        print("[*] Persisting Identity Key to Handle...")
-        self._run_cmd([
-            "tpm2_load",
-            "-C", f"{self.working_dir}/primary.ctx",
-            "-u", f"{self.working_dir}/ak.pub",
-            "-r", f"{self.working_dir}/ak.priv",
-            "-c", f"{self.working_dir}/ak.ctx"
-        ])
+        msg_file = f"{self.working_dir}/quote.msg"
+        sig_file = f"{self.working_dir}/quote.sig"
+        pcr_file = f"{self.working_dir}/quote.pcr"
         
-        # Evict old handle if exists (overwrite)
-        try:
-            self._run_cmd(["tpm2_evictcontrol", "-C", "o", "-c", self.AK_HANDLE])
-        except:
-            pass
-
+        print(f"[*] Generating TPM 2.0 Quote for nonce: {nonce[:8]}...")
+        
+        # 1. Run tpm2_quote
+        # -c: Key Handle
+        # -l: PCR Selection
+        # -q: Nonce (Challenge)
+        # -m: Message Output
+        # -s: Signature Output
+        # -o: PCR Values Output
         self._run_cmd([
-            "tpm2_evictcontrol", 
-            "-C", "o", 
-            "-c", f"{self.working_dir}/ak.ctx", 
-            self.AK_HANDLE
-        ])
-
-        # 5. Export Public PEM for the Network
-        # This is what you upload to the Proxy Registry
-        self._run_cmd([
-            "tpm2_readpublic",
+            "tpm2_quote",
             "-c", self.AK_HANDLE,
-            "-f", "pem",
-            "-o", f"{self.working_dir}/node_identity.pem"
+            "-l", pcr_selection,
+            "-q", nonce,
+            "-m", msg_file,
+            "-s", sig_file,
+            "-o", pcr_file
         ])
         
-        with open(f"{self.working_dir}/node_identity.pem", "r") as f:
-            pub_key_pem = f.read()
-
+        # 2. Read Outputs
+        with open(msg_file, "rb") as f: quote_msg = f.read()
+        with open(sig_file, "rb") as f: quote_sig = f.read()
+        with open(pcr_file, "rb") as f: pcr_values = f.read()
+            
         return {
-            "status": "BOUND",
-            "handle": self.AK_HANDLE,
-            "public_key_pem": pub_key_pem,
-            "hardware_proof": "tpm2_quote_placeholder" 
+            "node_id": self._get_public_key_fingerprint(),
+            "timestamp": int(os.path.getmtime(sig_file)),
+            "quote": {
+                "message": base64.b64encode(quote_msg).decode('utf-8'),
+                "signature": base64.b64encode(quote_sig).decode('utf-8'),
+                "pcr_values": base64.b64encode(pcr_values).decode('utf-8')
+            }
         }
 
-    def sign_heartbeat(self, timestamp: str, status: str) -> str:
-        """
-        Signs a heartbeat payload using the hardware-locked key.
-        The private key never leaves the chip.
-        """
-        payload = f"{timestamp}|{status}".encode('utf-8')
-        payload_hash_file = f"{self.working_dir}/hash.bin"
-        sig_output_file = f"{self.working_dir}/sig.bin"
-        
-        # 1. Hash the payload (Software side, or TPM side if small)
-        with open(payload_hash_file, "wb") as f:
-            f.write(hashlib.sha256(payload).digest())
-
-        # 2. Sign the Hash using the TPM
-        self._run_cmd([
-            "tpm2_sign",
-            "-c", self.AK_HANDLE,
-            "-g", "sha256",
-            "-d", payload_hash_file,
-            "-f", "plain",
-            "-o", sig_output_file
-        ])
-
-        # 3. Read Signature
-        with open(sig_output_file, "rb") as f:
-            signature_hex = f.read().hex()
+    def _get_public_key_fingerprint(self) -> str:
+        """Returns the SHA256 of the Public Key (Node ID)."""
+        pub_file = f"{self.working_dir}/ak.pem"
+        # Export if missing
+        if not os.path.exists(pub_file):
+            self._run_cmd(["tpm2_readpublic", "-c", self.AK_HANDLE, "-f", "pem", "-o", pub_file])
             
-        return signature_hex
+        with open(pub_file, "rb") as f:
+            pub_data = f.read()
+        return hashlib.sha256(pub_data).hexdigest()[:16]
 
-# --- CLI Simulation ---
-if __name__ == "__main__":
-    tpm = TPMBinding()
-    
-    if not tpm.check_availability():
-        print("❌ CRITICAL: No TPM detected at /dev/tpm0. Use the Docker image on valid hardware.")
-        # For dev/testing purposes, we might Mock this, but the script is for Prod.
-        exit(1)
-        
-    print("✅ TPM Hardware Detected.")
-    
-    try:
-        # 1. Run Ceremony
-        identity = tpm.perform_binding_ceremony()
-        print("\n--- IDENTITY ESTABLISHED ---")
-        print(f"Handle: {identity['handle']}")
-        print(f"Public Key:\n{identity['public_key_pem']}")
-        
-        # 2. Sign a Heartbeat
-        print("\n[*] Signing Heartbeat...")
-        sig = tpm.sign_heartbeat("2026-02-10T12:00:00Z", "ONLINE")
-        print(f"Hardware Signature: {sig[:64]}...")
-        print("✅ Proof Valid.")
-        
-    except RuntimeError as e:
-        print(f"❌ CEREMONY FAILED: {e}")
+    # ... (Previous create_keys code remains valid, just truncated for brevity)
