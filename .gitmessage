@@ -1,0 +1,39 @@
+<type>(<scope>): <subject>
+
+Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+
+Scope: sdk-node, core, gov, hardware, ui, etc.
+
+------------------------------------------------------------------------------
+
+Example: feat(gov): implement appellate VRF for SEV-1 jury selection
+
+------------------------------------------------------------------------------
+
+[Body]
+
+Describe the "Why" and "What", not the "How".
+
+Use the imperative mood ("Add feature" not "Added feature").
+
+Wrap lines at 72 characters.
+
+[Security & Protocol Context]
+
+Severity: SEV-1 | SEV-2 | SEV-3 | NONE
+
+Protocol Version: v1.6.x
+
+Hardware Impact: (e.g., TPM key generation, GPIO interrupt change)
+
+Legal Impact: (e.g., PoA template update for Singapore)
+
+[Breaking Changes]
+
+List any breaking changes here, starting with "BREAKING CHANGE: "
+
+[Ref]
+
+Fixes #IssueNumber
+
+See: https://www.google.com/search?q=https://github.com/Proxy-Agent-Network/core/docs/...
