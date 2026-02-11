@@ -4,102 +4,114 @@ import hashlib
 import uuid
 from datetime import datetime
 
-# PROXY PROTOCOL - NOSTR FALLBACK (v1)
-# "When the servers die, the signal survives."
+# PROXY PROTOCOL - NOSTR FALLBACK (v1.0)
+# "Censorship-resistant settlement signal for SEV-1 emergencies."
 # ----------------------------------------------------
-# Dependencies: pip install nostr-sdk (simulated here)
 
 class NostrSwitch:
-    def __init__(self, central_api_url="https://api.proxyprotocol.com/health"):
+    """
+    Activated during a 'Bridge Freeze' or 'Chain Partition' (Section 3A).
+    Broadcasts task completion preimages to the Nostr network so Agents 
+    can manually release HTLCs when the central API is down.
+    """
+    
+    def __init__(self, central_api_url="https://api.proxyprotocol.com/v1/health"):
         self.central_api = central_api_url
         self.relays = [
             "wss://relay.damus.io",
             "wss://relay.snort.social",
-            "wss://nos.lol"
+            "wss://nos.lol",
+            "wss://relay.proxyagent.network" # Dedicated protocol relay
         ]
-        # Nostr Event Kind for Proxy Tasks (Ephemeral)
+        # Custom Nostr Event Kind for Proxy Settlement (Ephemeral)
         self.PROXY_EVENT_KIND = 28282 
         self.is_p2p_active = False
 
     def _check_central_pulse(self) -> bool:
         """
-        Pings the central gateway. Returns False if dead.
+        Pings the central gateway to determine if fallback is necessary.
         """
         try:
-            # Simulated ping
+            # In a production implementation: 
             # response = requests.get(self.central_api, timeout=3)
             # return response.status_code == 200
-            return False # Simulating a TOTAL OUTAGE for demo
-        except:
+            return False # Simulating a SEV-1 Outage for this logic demo
+        except Exception:
             return False
 
     def _sign_nostr_event(self, content: str, private_key_hex: str) -> dict:
         """
-        Constructs a Schnorr-signed Nostr event.
+        Constructs a signed Nostr event structure (NIP-01).
         """
-        # Mocking the Schnorr signature logic for simplicity
-        # In prod: use secp256k1 library
+        # Note: Production requires the 'secp256k1' or 'nostr-sdk' library
+        # for real Schnorr signatures.
         event = {
-            "pubkey": "a1b2c3d4...", # Derived from private key
+            "pubkey": "node_identity_pubkey_hex", 
             "created_at": int(time.time()),
             "kind": self.PROXY_EVENT_KIND,
-            "tags": [["t", "proxy_protocol_settlement"]],
+            "tags": [
+                ["t", "proxy_protocol_settlement"],
+                ["p", "agent_identity_pubkey_hex"]
+            ],
             "content": content,
         }
         
-        # Serialize for ID
+        # Deterministic Event ID calculation (SHA256 of the event structure)
         serialized = json.dumps([
             0, event['pubkey'], event['created_at'], 
             event['kind'], event['tags'], event['content']
         ], separators=(',', ':'))
         
         event['id'] = hashlib.sha256(serialized.encode()).hexdigest()
+        # In production: event['sig'] = schnorr_sign(event['id'], private_key)
         event['sig'] = f"schnorr_sig_{uuid.uuid4().hex}"
         
         return event
 
-    def broadcast_settlement(self, task_id: str, proof_hash: str, agent_pubkey: str):
+    def broadcast_settlement(self, task_id: str, preimage: str, agent_pubkey: str):
         """
-        The Dead Man's Switch Action.
-        Broadcasts the task completion proof to the censorship-resistant web.
+        Broadcasting the 'Dying Breath' settlement signal.
+        Allows the Agent's SDK to pick up the preimage even if 
+        the central server is unreachable.
         """
-        print(f"[{datetime.now()}] ⚠️ API HEARTBEAT LOST. ENGAGING P2P MODE.")
+        print(f"[{datetime.now()}] 🚨 FALLBACK ACTIVATED: Broadcasing to Nostr.")
         
+        # Payload contains the proof needed to unlock the Lightning HTLC
         payload = json.dumps({
+            "version": "1.0",
             "action": "SETTLE_HODL_INVOICE",
             "task_id": task_id,
-            "preimage_hash": proof_hash,
+            "preimage": preimage,
             "agent_target": agent_pubkey
         })
         
-        # Sign with Node's Identity Key
-        event = self._sign_nostr_event(payload, "node_priv_key_...")
+        # Create the signed event
+        event = self._sign_nostr_event(payload, "node_private_key_hex")
         
-        print(f"[{datetime.now()}] 📡 Connecting to {len(self.relays)} Relays...")
+        print(f"[*] Connecting to {len(self.relays)} decentralized relays...")
         for relay in self.relays:
-            # ws.send(json.dumps(["EVENT", event]))
-            print(f"   -> Broadcast to {relay}: SUCCESS (Event ID: {event['id'][:8]})")
+            # In a real implementation: websocket_send(relay, ["EVENT", event])
+            print(f"   -> Broadcast to {relay}: SUCCESS (Event ID: {event['id'][:12]})")
             
-        print(f"[{datetime.now()}] ✅ P2P Settlement Signal Sent. Agent should auto-release.")
+        print(f"[{datetime.now()}] ✅ Settlement signal is live in the P2P mesh.")
+        return event['id']
 
-# --- Simulation ---
+# --- SEV-1 MANUAL OVERRIDE SIMULATION ---
 if __name__ == "__main__":
-    dead_switch = NostrSwitch()
+    switch = NostrSwitch()
     
-    print("[*] Monitoring Central Gateway...")
-    time.sleep(1)
+    print("--- Emergency Redundancy Audit ---")
     
-    if not dead_switch._check_central_pulse():
-        print("[!] CONNECTION FAILURE DETECTED.")
-        print("[!] Retrying (1/3)... Failed.")
-        print("[!] Retrying (2/3)... Failed.")
-        print("[!] Retrying (3/3)... Failed.")
+    # Step 1: Detect if the central system is failing
+    if not switch._check_central_pulse():
+        print("[!] API Heartbeat Lost. Initializing P2P Settlement Path.")
         
-        # Trigger P2P Settlement
-        # Scene: Human finished a job, but can't upload to the server.
-        # Instead, they shout the result into the Nostr void.
-        dead_switch.broadcast_settlement(
-            task_id="task_88923_offline",
-            proof_hash="sha256_of_signed_contract_pdf",
-            agent_pubkey="npub1_agent_owner_xyz"
+        # Scenario: Node has finished a high-value task but cannot reach the server.
+        # It shouts the result into the Nostr void for the Agent to hear.
+        switch.broadcast_settlement(
+            task_id="task_88923_critical",
+            preimage="3045022100...deadbeef_preimage_secret",
+            agent_pubkey="npub1_agent_owner_x82"
         )
+    else:
+        print("✅ Central API is stable. Falling back to standard HTTPS routing.")
