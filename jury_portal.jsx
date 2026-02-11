@@ -21,8 +21,8 @@ const ProtocolHeader = ({ nodeId, reserves, brownoutLevel }) => (
         <Gavel className="w-5 h-5 text-amber-500" />
       </div>
       <div>
-        <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest leading-none">Jury Tribunal v2.19</h1>
-        <p className="text-[9px] text-amber-500/70 uppercase tracking-widest mt-1 text-glow">Node Density Audit Active</p>
+        <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest leading-none">Jury Tribunal v2.20</h1>
+        <p className="text-[9px] text-amber-500/70 uppercase tracking-widest mt-1 text-glow">Proposal Forge Active</p>
       </div>
     </div>
     
@@ -71,7 +71,128 @@ const JudicialStanding = ({ stats }) => (
   </div>
 );
 
-// --- v2.19 NEW: Regional Node Density Tab ---
+// --- v2.20 NEW: Proposal Forge Dashboard ---
+const ProposalForgeTab = ({ nodeId, onDraftSubmit, isBroadcasting }) => {
+  const [draft, setDraft] = useState({
+    title: "",
+    category: "CORE",
+    content: "# PIP ABSTRACT\n\nProvide a summary of the proposed protocol change...\n\n# MOTIVATION\n\nWhy is this change necessary?"
+  });
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Editor Side */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
+              <h2 className="text-xs uppercase font-black tracking-widest flex items-center gap-2 text-white">
+                <PenTool className="w-4 h-4 text-amber-500" /> Draft Proxy Improvement Proposal
+              </h2>
+              <span className="text-[9px] text-gray-600 uppercase font-bold tracking-tighter">Standard: RFC-PIP-V1</span>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Proposal Title</label>
+                <input 
+                  type="text" 
+                  value={draft.title}
+                  onChange={(e) => setDraft({...draft, title: e.target.value})}
+                  placeholder="e.g., Increase Tier 3 Collateral to 2.5M SATS"
+                  className="w-full bg-black border border-white/10 rounded p-3 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Category</label>
+                  <select 
+                    value={draft.category}
+                    onChange={(e) => setDraft({...draft, category: e.target.value})}
+                    className="w-full bg-black border border-white/10 rounded p-2 text-xs text-gray-300 focus:outline-none"
+                  >
+                    <option value="CORE">CORE PROTOCOL</option>
+                    <option value="FEES">ECONOMIC FEES</option>
+                    <option value="LEGAL">LEGAL HUB</option>
+                    <option value="META">META GOVERNANCE</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Author ID</label>
+                  <div className="bg-white/5 border border-white/10 rounded p-2 text-xs text-gray-500 mono truncate">
+                    {nodeId}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Specification (Markdown)</label>
+                <textarea 
+                  value={draft.content}
+                  onChange={(e) => setDraft({...draft, content: e.target.value})}
+                  className="w-full h-64 bg-black border border-white/10 rounded p-4 text-[11px] mono text-gray-400 focus:outline-none focus:border-amber-500/50 transition-colors resize-none leading-relaxed"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-white/10 bg-white/[0.01] flex justify-between items-center">
+              <p className="text-[9px] text-gray-600 leading-tight italic max-w-sm">
+                "Submitting a PIP consumes 5,000 SATS as an anti-spam levy. Proposals require a 66% majority to activate."
+              </p>
+              <button 
+                onClick={() => onDraftSubmit(draft)}
+                disabled={isBroadcasting || !draft.title}
+                className="flex items-center gap-3 px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-500 hover:text-black transition-all disabled:opacity-30"
+              >
+                {isBroadcasting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isBroadcasting ? 'Broadcasting...' : 'Sign & Propose'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* History / Archive Side */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col shadow-xl">
+            <h3 className="text-xs font-black uppercase text-white mb-6 flex items-center gap-3">
+              <Archive className="w-4 h-4 text-gray-500" /> Active Proposals
+            </h3>
+            <div className="space-y-4">
+              <div className="p-4 bg-white/5 border border-white/10 rounded-lg group cursor-pointer hover:border-amber-500/30 transition-all">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[9px] text-amber-500 font-black tracking-widest uppercase">PIP-882</span>
+                  <span className="text-[8px] bg-green-500/10 text-green-500 px-1.5 rounded uppercase font-bold">Voting</span>
+                </div>
+                <p className="text-[11px] font-bold text-white mb-1">Standardize Singapore Notary Seals</p>
+                <div className="w-full bg-white/5 h-1 rounded-full mt-3 overflow-hidden">
+                  <div className="bg-green-500 h-full" style={{ width: '74%' }} />
+                </div>
+              </div>
+              
+              <div className="p-4 bg-white/5 border border-white/10 rounded-lg opacity-50">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[9px] text-gray-500 font-black tracking-widest uppercase">PIP-881</span>
+                  <span className="text-[8px] bg-white/10 text-gray-400 px-1.5 rounded uppercase font-bold">Passed</span>
+                </div>
+                <p className="text-[11px] font-bold text-gray-300 mb-1 tracking-tighter">Implement Latency Jitter Proof v1.4</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 bg-amber-500/5 border border-amber-500/10 rounded-lg flex items-start gap-4">
+             <ShieldAlert className="w-5 h-5 text-amber-500 flex-shrink-0" />
+             <p className="text-[10px] text-amber-200/40 leading-relaxed italic">
+                "Proposing radical changes without community rough consensus in the Governance forum often leads to reputation decay."
+             </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const RegionalDensityTab = ({ densityData }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8 flex flex-col items-center justify-center relative overflow-hidden shadow-2xl min-h-[300px]">
@@ -79,7 +200,7 @@ const RegionalDensityTab = ({ densityData }) => (
        <LayoutGrid className="w-16 h-16 text-amber-500/20 mb-4" />
        <h2 className="text-xl font-black text-white uppercase tracking-tighter mb-2">Physical Proximity Forensics</h2>
        <p className="text-xs text-gray-500 max-w-md text-center leading-relaxed">
-          Nodes within the same /24 IP subnet or GPS radius (100m) are flagged for industrial bias. High density in non-urban areas indicates data-center farm activity.
+          Nodes within the same /24 IP subnet or GPS radius (100m) are flagged for industrial bias. High density indicates data-center farm activity.
        </p>
     </div>
 
@@ -147,7 +268,7 @@ const MessageTunnel = ({ messages, onSendMessage, newMessage, setNewMessage }) =
           </div>
           <div className={`px-4 py-2 rounded-lg text-xs leading-relaxed max-w-[85%] ${
             msg.sender === 'JUDGE' 
-              ? 'bg-amber-500/10 border border-amber-500/20 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.05)]' 
+              ? 'bg-amber-500/10 border border-amber-500/20 text-amber-200' 
               : 'bg-blue-500/10 border border-blue-500/20 text-blue-200'
           }`}>
             {msg.content}
@@ -164,7 +285,7 @@ const MessageTunnel = ({ messages, onSendMessage, newMessage, setNewMessage }) =
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSendMessage()}
             placeholder="Send directive to Agent..."
-            className="flex-1 bg-black border border-white/10 rounded p-2 text-xs text-white focus:outline-none focus:border-blue-500/50 transition-colors shadow-inner"
+            className="flex-1 bg-black border border-white/10 rounded p-2 text-xs text-white focus:outline-none focus:border-blue-500/50 transition-colors"
           />
           <button 
             onClick={onSendMessage}
@@ -186,21 +307,17 @@ const App = () => {
   const [isVoting, setIsVoting] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [isEvidenceUnlocked, setIsEvidenceUnlocked] = useState(false);
-  const [isAdjustingActuary, setIsAdjustingActuary] = useState(false);
-  const [isRotating, setIsRotating] = useState(false);
-  const [isSigningTx, setIsSigningTx] = useState(false);
   const [isBroadcastingPIP, setIsBroadcastingPIP] = useState(false);
   
   const [nodeId, setNodeId] = useState("NODE_ELITE_X29");
 
   // Protocol State
-  const [mempoolDepth] = useState(6402);
   const [brownoutLevel] = useState('GREEN');
 
-  // v2.19 NEW: Density Data State
+  // Density Data State
   const [densityData] = useState([
      { name: "Silicon Valley, CA", total_nodes: 142, bias: 8, entropy: "High", risk: "LOW", audit_summary: "Organic residential and office distribution." },
-     { name: "Mumbai, India", total_nodes: 89, bias: 62, entropy: "Critical", risk: "HIGH", audit_summary: "Cluster of 42 nodes sharing a single tier-1 data center backbone." }
+     { name: "Mumbai, India", total_nodes: 89, bias: 62, entropy: "Critical", risk: "HIGH", audit_summary: "Cluster sharing a single data center backbone." }
   ]);
 
   // Messaging State
@@ -218,11 +335,6 @@ const App = () => {
     net_reserves: 71790100,
     locked_insurance_pool: 10450200
   });
-
-  const [ledger] = useState([
-    { id: "TX-99812", type: "SLASH", amount: 250000, timestamp: "2026-02-11 11:02:00", node: "NODE_MALICIOUS_X8", status: "CONFIRMED" },
-    { id: "TX-99811", type: "TAX", amount: 4200, timestamp: "2026-02-11 10:58:12", node: "NODE_ELITE_X29", status: "CONFIRMED" }
-  ]);
 
   const [cases] = useState([
     {
@@ -269,108 +381,3 @@ const App = () => {
     setMessages([...messages, msg]);
     setNewMessage("");
   };
-
-  return (
-    <div className="min-h-screen bg-[#0a0a0b] text-gray-200 font-mono selection:bg-amber-500/30">
-      <ProtocolHeader nodeId={nodeId} reserves={treasuryStats.net_reserves} brownoutLevel={brownoutLevel} />
-
-      <div className="max-w-[1400px] mx-auto p-6 grid grid-cols-12 gap-6">
-        <aside className="col-span-12 lg:col-span-3 space-y-4">
-          <JudicialStanding stats={stats} />
-          <nav className="space-y-1">
-            {[
-              { id: 'cases', label: 'Open Disputes', icon: Activity, color: 'amber' },
-              { id: 'density', label: 'Node Density', icon: LayoutGrid, color: 'orange' },
-              { id: 'heatmap', label: 'Reputation Map', icon: Globe, color: 'green' },
-              { id: 'liveness', label: 'Liveness Map', icon: HeartPulse, color: 'rose' },
-              { id: 'treasury', label: 'Treasury Audit', icon: PiggyBank, color: 'emerald' },
-              { id: 'security', label: 'Hardware Sec', icon: Cpu, color: 'blue' }
-            ].map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button 
-                  key={tab.id}
-                  onClick={() => { setActiveTab(tab.id); setSelectedCase(null); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${
-                    activeTab === tab.id 
-                      ? `bg-${tab.color}-500/10 text-${tab.color}-500 border border-${tab.color}-500/20 shadow-xl` 
-                      : 'text-gray-500 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" /> {tab.label}
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
-
-        <main className="col-span-12 lg:col-span-9">
-          {activeTab === 'cases' && !selectedCase && (
-            <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden animate-in fade-in duration-300 shadow-2xl">
-              <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center text-glow">
-                <h2 className="text-xs uppercase font-black tracking-widest flex items-center gap-2 text-amber-500"><Activity className="w-4 h-4" /> Pending Case Docket</h2>
-              </div>
-              <div className="divide-y divide-white/5">
-                 {cases.map((c) => (
-                    <div key={c.id} className="p-6 flex items-center justify-between hover:bg-white/[0.01] transition-colors group">
-                       <div className="flex items-center gap-6"><div className="w-12 h-12 bg-amber-500/10 rounded border border-amber-500/20 flex items-center justify-center text-amber-500"><Database className="w-6 h-6" /></div><div><span className="text-white font-bold uppercase tracking-tighter">{c.id}</span><p className="text-xs text-gray-500">{c.dispute_reason}</p></div></div>
-                       <button onClick={() => setSelectedCase(c)} className="px-6 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-black uppercase tracking-widest hover:border-amber-500 hover:text-white transition-all shadow-xl">Enter Locker</button>
-                    </div>
-                 ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'density' && <RegionalDensityTab densityData={densityData} />}
-
-          {selectedCase && (
-             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-                <button onClick={() => { setSelectedCase(null); setIsEvidenceUnlocked(false); }} className="text-xs text-gray-500 hover:text-white mb-2 flex items-center gap-2 font-black uppercase tracking-widest transition-colors"><ArrowRight className="w-3 h-3 rotate-180" /> Back to Docket</button>
-                
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                   <div className="lg:col-span-4 space-y-6">
-                      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 shadow-xl">
-                         <h3 className="text-xs font-black uppercase text-white mb-6 flex items-center gap-2"><Activity className="w-4 h-4 text-amber-500" /> Case Context</h3>
-                         <div className="space-y-4 text-[10px]">
-                            <div><span className="text-gray-600 block uppercase font-bold mb-1 text-glow">Instruction Log</span><p className="text-gray-400 leading-relaxed italic border-l-2 border-amber-500/20 pl-3">"{selectedCase.evidence.instructions}"</p></div>
-                            <div className="pt-4 border-t border-white/5 flex justify-between font-black text-green-500 uppercase tracking-tighter"><span>Adjudication Reward</span><span>+{selectedCase.reward} SATS</span></div>
-                         </div>
-                      </div>
-                      <MessageTunnel messages={messages} onSendMessage={handleSendMessage} newMessage={newMessage} setNewMessage={setNewMessage} />
-                   </div>
-
-                   <div className="lg:col-span-8 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[500px] flex flex-col relative shadow-2xl">
-                      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs font-black tracking-widest text-white flex items-center gap-2 text-glow"><ShieldEllipsis className="w-5 h-5 text-amber-500" /> Secure Evidence Locker</h3><span className="text-[9px] text-gray-600 mono uppercase tracking-tighter">CID: {selectedCase.evidence.locked_blob_hash}</span></div>
-                      <div className="flex-1 p-8 flex flex-col items-center justify-center bg-black/40 relative z-10">
-                         {!isEvidenceUnlocked ? (
-                            <div className="text-center max-w-sm">
-                               <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center border border-amber-500/20 mx-auto mb-6"><Fingerprint className={`w-8 h-8 text-amber-500 ${isDecrypting ? 'animate-pulse' : ''}`} /></div>
-                               <h4 className="text-white font-bold uppercase mb-2 tracking-widest">Evidence Sealed</h4>
-                               <p className="text-xs text-gray-500 mb-8 leading-relaxed font-bold tracking-tighter uppercase">High Court hardware signature required to zero-knowledge decrypt the biological proof blob.</p>
-                               <button onClick={handleUnlockEvidence} disabled={isDecrypting} className="px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-amber-500 hover:text-black transition-all shadow-2xl">{isDecrypting ? 'RSA-OAEP Handshake...' : 'Unlock Evidence'}</button>
-                            </div>
-                         ) : (
-                            <div className="w-full h-full animate-in zoom-in-95 duration-500 grid grid-cols-1 md:grid-cols-2 gap-4">
-                               <div className="p-6 bg-white/[0.02] border border-white/5 rounded-lg overflow-y-auto"><div className="flex items-center gap-2 mb-4 text-green-500"><FileCode className="w-4 h-4" /><span className="text-[9px] font-black uppercase tracking-widest">Decrypted Payload</span></div><pre className="text-[10px] text-gray-400 mono leading-relaxed">{JSON.stringify(selectedCase.evidence.decrypted_data, null, 2)}</pre></div>
-                               <div className="space-y-4 flex flex-col">
-                                  <div className="p-4 bg-green-500/5 border border-green-500/20 rounded"><span className="text-[9px] text-green-400 font-black uppercase block mb-1 font-bold">Hardware Attestation</span><p className="text-xs text-white">Silicon binding verified. Response generated within TEE environment.</p></div>
-                                  <div className="p-4 bg-black/40 border border-white/5 rounded flex-1 flex flex-col gap-2"><span className="text-[9px] text-gray-600 font-black uppercase block mb-4 tracking-widest text-center">Cast Final Verdict</span><button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-3 mb-2 bg-green-500/10 border border-green-500/30 text-green-500 font-black text-[10px] uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all">Verify Valid</button><button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-3 bg-red-500/10 border border-red-500/30 text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">Verify Fraud</button></div>
-                               </div>
-                            </div>
-                         )}
-                      </div>
-                   </div>
-                </div>
-             </div>
-          )}
-
-          {/* Fallback rendering for missing tabs (Stability check) */}
-          {activeTab === 'treasury' && <div className="p-8 text-center text-gray-600 uppercase font-black text-[10px] tracking-widest">Treasury Audit Tab Refactoring...</div>}
-        </main>
-      </div>
-      <div className="fixed inset-0 pointer-events-none opacity-[0.03] z-[-1]" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
-    </div>
-  );
-};
-
-export default App;
