@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 import uvicorn
 import asyncio
 import time
@@ -7,10 +8,10 @@ import os
 import random
 import json
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Optional
 
-# PROXY PROTOCOL - NODE HEALTH DASHBOARD v1.4 (Re-Certification API Enabled)
-# "On-the-fly jurisdictional agility for a mobile workforce."
+# PROXY PROTOCOL - NODE HEALTH DASHBOARD v1.5 (Jury Tribunal Enabled)
+# "Decentralized justice for the autonomous workforce."
 # ----------------------------------------------------
 
 app = FastAPI(title="Proxy Node Dashboard")
@@ -38,7 +39,13 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- 2. System Monitoring & Resolution Logic ---
+# --- 2. Jury Data Models ---
+
+class JuryVote(BaseModel):
+    case_id: str
+    verdict: str # "APPROVE" or "REJECT"
+
+# --- 3. System Monitoring & Jury Logic ---
 
 class SystemStats:
     def __init__(self):
@@ -48,8 +55,21 @@ class SystemStats:
         
         # Jurisdiction State
         self.claimed_region = "US-DE"
-        self.detected_region = "US-DE" # Standard state
-        self.resolution_status = "LOCKED" # LOCKED, CONFLICT, TRANSITION
+        self.detected_region = "US-DE"
+        self.resolution_status = "LOCKED"
+        
+        # Jury State
+        self.reputation = 942
+        self.active_cases = [
+            {
+                "case_id": "dispute_9921",
+                "type": "PHOTO_BLURRY",
+                "instruction": "Photograph the legal notice at 123 Market St.",
+                "proof_url": "ipfs://QmProof_Blurry_Sample",
+                "reward_potential": "450 SATS",
+                "status": "OPEN"
+            }
+        ]
         
     def get_latest(self):
         uptime = str(datetime.now() - self.start_time).split('.')[0]
@@ -59,9 +79,8 @@ class SystemStats:
         self.pcr_history.append(current_integrity)
         if len(self.pcr_history) > 20: self.pcr_history.pop(0)
 
-        # Simulation: Occasionally trigger a jurisdictional mismatch
-        # Represents moving the node across a geofence
-        if self.resolution_status == "LOCKED" and random.random() > 0.99:
+        # Conflict Simulation (Rare)
+        if self.resolution_status == "LOCKED" and random.random() > 0.995:
             self.detected_region = "SG-CORE"
             self.resolution_status = "CONFLICT"
 
@@ -72,27 +91,38 @@ class SystemStats:
             "tpm_temp": f"{random.randint(42, 48)}°C",
             "lnd_sync": "100%",
             "channel_balance": f"{1240500 + random.randint(-100, 5000):,} SATS",
-            "reputation": "942/1000",
+            "reputation": f"{self.reputation}/1000",
             "claimed_region": self.claimed_region,
             "detected_region": self.detected_region,
             "resolution_status": self.resolution_status,
             "lat_long": "1.3521° N, 103.8198° E" if self.detected_region == "SG-CORE" else "39.7459° N, 75.5467° W",
             "tasks_24h": random.randint(10, 25),
             "status": "ONLINE" if self.resolution_status == "LOCKED" else "SUSPENDED",
-            "pcr_history": self.pcr_history
+            "pcr_history": self.pcr_history,
+            "cases": self.active_cases
         }
 
     def recertify(self):
-        """Resolves conflict by promoting detected region to claimed."""
         if self.resolution_status == "CONFLICT":
             self.claimed_region = self.detected_region
             self.resolution_status = "LOCKED"
             return True
         return False
 
+    def submit_verdict(self, case_id: str, verdict: str):
+        # Find and remove the case from local queue
+        for case in self.active_cases:
+            if case['case_id'] == case_id:
+                case['status'] = 'VOTED'
+                self.active_cases.remove(case)
+                # Elite nodes gain rep/fees for voting
+                self.reputation += 1 
+                return True
+        return False
+
 stats_engine = SystemStats()
 
-# --- 3. UI Template ---
+# --- 4. UI Template ---
 
 DASHBOARD_HTML = """
 <!DOCTYPE html>
@@ -115,11 +145,13 @@ DASHBOARD_HTML = """
         ::-webkit-scrollbar-thumb { background: #1a1a1a; }
         .chart-container { position: relative; height: 180px; width: 100%; }
         .alert-bar { border: 1px solid #FF3333; background: rgba(255, 51, 51, 0.1); }
+        .case-card { border-left: 4px solid #333; transition: all 0.2s; }
+        .case-card:hover { border-left-color: #00FF41; background: rgba(0, 255, 65, 0.02); }
     </style>
 </head>
 <body class="p-4 md:p-8 min-h-screen">
 
-    <!-- Jurisdiction Conflict Alert (Dynamic) -->
+    <!-- Jurisdiction Conflict Alert -->
     <div id="conflict-banner" class="max-w-6xl mx-auto mb-8 hidden">
         <div class="alert-bar p-6 rounded-lg flex flex-col md:flex-row justify-between items-center gap-6">
             <div class="flex items-center gap-6">
@@ -130,8 +162,7 @@ DASHBOARD_HTML = """
                 </div>
             </div>
             <div class="flex gap-4">
-                <button onclick="recertifyNode()" class="bg-red-600 text-white px-6 py-2 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 transition-all">Re-Certify for New Region</button>
-                <button class="border border-gray-700 text-gray-500 px-6 py-2 font-black text-[10px] uppercase tracking-widest hover:text-white">Ignore (SLA Penalty)</button>
+                <button onclick="recertifyNode()" class="bg-red-600 text-white px-6 py-2 font-black text-[10px] uppercase tracking-widest hover:bg-red-500">Re-Certify for New Region</button>
             </div>
         </div>
     </div>
@@ -139,7 +170,7 @@ DASHBOARD_HTML = """
     <!-- Header -->
     <header class="max-w-6xl mx-auto flex justify-between items-end border-b border-green-900/50 pb-6 mb-8">
         <div>
-            <h1 class="text-2xl font-bold tracking-tighter glow uppercase">Proxy Node Medic <span class="text-xs opacity-50">v1.4</span></h1>
+            <h1 class="text-2xl font-bold tracking-tighter glow uppercase">Proxy Node Medic <span class="text-xs opacity-50">v1.5</span></h1>
             <p class="text-xs text-gray-500 mt-1">NODE_ID: <span class="text-green-500">{{ node_id }}</span></p>
         </div>
         <div class="text-right">
@@ -151,20 +182,20 @@ DASHBOARD_HTML = """
     <!-- KPI Grid -->
     <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div class="terminal-border p-4 bg-void">
-            <span class="text-[10px] text-gray-500 uppercase block mb-1">Hardware ID</span>
+            <span class="text-[10px] text-gray-500 uppercase block mb-1 font-bold">Node ID</span>
             <span class="text-lg font-bold text-white truncate block">{{ node_id }}</span>
         </div>
         <div class="terminal-border p-4 bg-void border-l-4 border-l-green-500">
-            <span class="text-[10px] text-gray-500 uppercase block mb-1">TPM 2.0 State</span>
+            <span class="text-[10px] text-gray-500 uppercase block mb-1 font-bold">TPM 2.0 State</span>
             <span id="stat-tpm_status" class="text-lg font-bold text-green-500 uppercase">{{ tpm_status }}</span>
         </div>
         <div class="terminal-border p-4 bg-void">
-            <span class="text-[10px] text-gray-500 uppercase block mb-1">LN Balance</span>
+            <span class="text-[10px] text-gray-500 uppercase block mb-1 font-bold">LN Balance</span>
             <span id="stat-channel_balance" class="text-lg font-bold text-yellow-500">{{ channel_balance }}</span>
         </div>
         <div class="terminal-border p-4 bg-void">
-            <span class="text-[10px] text-gray-500 uppercase block mb-1">Uptime</span>
-            <span id="stat-uptime" class="text-lg font-bold text-white">{{ uptime }}</span>
+            <span class="text-[10px] text-gray-500 uppercase block mb-1 font-bold">Reputation</span>
+            <span id="stat-reputation" class="text-lg font-bold text-white">{{ reputation }}</span>
         </div>
     </div>
 
@@ -172,16 +203,13 @@ DASHBOARD_HTML = """
     <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         <div class="lg:col-span-2 space-y-6">
-            <!-- Locality & Forensics -->
-            <div class="terminal-border p-6 bg-void h-full">
+            <!-- Hardware Forensics -->
+            <div class="terminal-border p-6 bg-void">
                 <div class="flex justify-between items-center mb-6 border-b border-gray-900 pb-2">
-                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest">Jurisdiction Selection Map</h3>
-                    <div class="flex gap-2">
-                        <span id="stat-resolution_status" class="text-[9px] text-green-500 mono bg-green-500/10 px-2 py-0.5 rounded">RESOLUTION_LOCKED</span>
-                    </div>
+                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest">Hardware Forensics</h3>
+                    <span id="stat-resolution_status" class="text-[9px] text-green-500 mono bg-green-500/10 px-2 py-0.5 rounded">RESOLUTION_LOCKED</span>
                 </div>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                         <span class="text-xs text-gray-600 block mb-2 uppercase">TPM Integrity History</span>
                         <div class="chart-container">
@@ -190,69 +218,82 @@ DASHBOARD_HTML = """
                     </div>
                     <div>
                         <span class="text-xs text-gray-600 block mb-4 uppercase">Locality Evidence</span>
-                        <div class="space-y-4">
-                            <div class="flex justify-between items-start">
-                                <div>
-                                    <span class="text-[10px] text-gray-500 block mb-1">Claimed Hub</span>
-                                    <p id="stat-claimed_region" class="text-xs text-white font-bold">{{ claimed_region }}</p>
-                                </div>
-                                <div class="text-right">
-                                    <span class="text-[10px] text-gray-500 block mb-1">Detected Geo</span>
-                                    <p id="stat-detected_region" class="text-xs text-white font-bold">{{ detected_region }}</p>
-                                </div>
+                        <div class="space-y-4 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Claimed:</span>
+                                <span id="stat-claimed_region" class="text-white font-bold">{{ claimed_region }}</span>
                             </div>
-                            <div>
-                                <span class="text-[10px] text-gray-500 block mb-1">Coordinates</span>
-                                <p id="stat-lat_long" class="text-xs text-white mono">{{ lat_long }}</p>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Detected:</span>
+                                <span id="stat-detected_region" class="text-white font-bold">{{ detected_region }}</span>
                             </div>
-                            <div class="pt-2">
-                                <span class="text-[10px] text-gray-500 block mb-2 uppercase">Env: TPM Temp</span>
-                                <div class="flex justify-between items-center text-xs mb-1">
-                                    <span id="stat-tpm_temp" class="text-green-500 font-bold">{{ tpm_temp }}</span>
-                                </div>
-                                <div class="w-full bg-gray-900 h-1 rounded-full overflow-hidden">
-                                    <div id="temp-bar" class="bg-green-500 h-full transition-all duration-500" style="width: 45%"></div>
-                                </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Coords:</span>
+                                <span id="stat-lat_long" class="text-white mono">{{ lat_long }}</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Jury Tribunal Section -->
+            <div class="terminal-border p-6 bg-void">
+                <div class="flex justify-between items-center mb-6 border-b border-gray-900 pb-2">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest">Jury Tribunal Evidence Locker</h3>
+                    <span class="text-[9px] text-yellow-500 mono bg-yellow-500/10 px-2 py-0.5 rounded">JURY ELIGIBLE (REP > 800)</span>
+                </div>
+                <div id="case-list" class="space-y-4">
+                    <!-- Cases injected here via JS -->
+                    <p class="text-xs text-gray-600 italic">Scanning network for active disputes...</p>
+                </div>
+            </div>
         </div>
 
         <div class="space-y-6">
+            <!-- Node Status -->
             <div class="terminal-border p-6 bg-void">
                 <h3 class="text-sm font-bold text-gray-400 uppercase mb-6 tracking-widest">Operator Standing</h3>
-                <div class="text-center py-4">
-                    <div id="stat-reputation" class="text-4xl font-black text-white mb-2">{{ reputation }}</div>
-                    <span class="text-[10px] text-gray-600 uppercase">Current REP Score</span>
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs text-gray-500 uppercase">Status</span>
+                    <span id="stat-status_text" class="text-green-500 font-bold animate-pulse">ACTIVE</span>
                 </div>
-                <div class="mt-6 border-t border-gray-900 pt-4">
-                    <div class="flex justify-between text-[10px] text-gray-500 mb-2 uppercase">
-                        <span>Tasks (24h)</span>
-                        <span id="stat-tasks_24h" class="text-white">{{ tasks_24h }}</span>
-                    </div>
-                    <div class="flex justify-between text-[10px] text-gray-500 uppercase">
-                        <span>Status</span>
-                        <span id="stat-status_text" class="text-green-500 font-bold animate-pulse">ACTIVE</span>
-                    </div>
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs text-gray-500 uppercase">Tasks (24h)</span>
+                    <span id="stat-tasks_24h" class="text-white font-bold">{{ tasks_24h }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-xs text-gray-500 uppercase">LND Sync</span>
+                    <span id="stat-lnd_sync" class="text-white font-bold">{{ lnd_sync }}</span>
                 </div>
             </div>
 
+            <!-- Environmental -->
             <div class="terminal-border p-6 bg-void">
-                <h3 class="text-sm font-bold text-gray-400 uppercase mb-4 tracking-widest">Management</h3>
+                <h3 class="text-sm font-bold text-gray-400 uppercase mb-4 tracking-widest">Environment</h3>
+                <div class="flex justify-between items-center text-xs mb-2">
+                    <span class="text-gray-500">TPM Temp</span>
+                    <span id="stat-tpm_temp" class="text-green-500 font-bold">{{ tpm_temp }}</span>
+                </div>
+                <div class="w-full bg-gray-900 h-1.5 rounded-full overflow-hidden">
+                    <div id="temp-bar" class="bg-green-500 h-full transition-all duration-500" style="width: 45%"></div>
+                </div>
+            </div>
+
+            <!-- Management Actions -->
+            <div class="terminal-border p-6 bg-void">
+                <h3 class="text-sm font-bold text-gray-400 uppercase mb-4 tracking-widest text-center">Protocol Actions</h3>
                 <div class="space-y-2">
-                    <button class="w-full py-2 border border-gray-700 text-gray-400 hover:text-white hover:border-white transition-all text-[10px] uppercase font-bold">Download Logs</button>
+                    <button class="w-full py-2 border border-gray-700 text-gray-400 hover:text-white hover:border-white transition-all text-[10px] uppercase font-bold">Rotate TPM Identity</button>
                     <button class="w-full py-2 border border-red-900 text-red-500 hover:bg-red-900/20 transition-all text-[10px] uppercase font-bold">Scorched Earth (Wipe)</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Live Log Terminal -->
+    <!-- Live Terminal -->
     <div class="max-w-6xl mx-auto mt-8">
         <div id="terminal" class="terminal-border bg-black p-4 h-48 overflow-y-auto text-[11px] leading-relaxed text-gray-500 mono">
-            <p class="text-green-500">[*] UPLINK_ESTABLISHED: Watching for jurisdictional shifts...</p>
+            <p class="text-green-500">[*] UPLINK_ESTABLISHED: Watching for network events...</p>
         </div>
     </div>
 
@@ -272,11 +313,10 @@ DASHBOARD_HTML = """
             if (level === 'SUCCESS') colorClass = 'text-green-400';
             if (level === 'WARN') colorClass = 'text-yellow-500';
             if (level === 'CRITICAL') colorClass = 'text-red-500';
-            
             p.innerHTML = `<span class="text-gray-700">[${time}]</span> <span class="${colorClass}">[${level}] ${message}</span>`;
             terminal.appendChild(p);
             terminal.scrollTop = terminal.scrollHeight;
-            if (terminal.children.length > 100) terminal.removeChild(terminal.firstChild);
+            if (terminal.children.length > 50) terminal.removeChild(terminal.firstChild);
         }
 
         const ctx = document.getElementById('pcrChart').getContext('2d');
@@ -285,7 +325,6 @@ DASHBOARD_HTML = """
             data: {
                 labels: Array(20).fill(''),
                 datasets: [{
-                    label: 'Integrity %',
                     data: Array(20).fill(100),
                     borderColor: '#00FF41',
                     borderWidth: 2,
@@ -299,33 +338,57 @@ DASHBOARD_HTML = """
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
-                scales: {
-                    x: { display: false },
-                    y: { 
-                        min: 99.9, 
-                        max: 100.1, 
-                        ticks: { color: '#333', font: { size: 8 } },
-                        grid: { color: '#111' }
-                    }
-                }
+                scales: { x: { display: false }, y: { min: 99.9, max: 100.1, ticks: { display: false }, grid: { color: '#111' } } }
             }
         });
 
-        // 4. Re-Certification Action
-        async function recertifyNode() {
-            addLog('INFO', 'Initiating Jurisdiction Re-Certification Ceremony...');
+        // Jury Voting Action
+        async function castJuryVote(caseId, verdict) {
+            addLog(`Broadcasting Jury Verdict [${verdict}] for ${caseId}...`, 'INFO');
             try {
-                const res = await fetch('/api/recertify', { method: 'POST' });
+                const res = await fetch('/api/jury/vote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ case_id: caseId, verdict: verdict })
+                });
                 if (res.ok) {
-                    const data = await res.json();
-                    addLog('SUCCESS', `Regional transition complete. Hub promoted to ${data.new_jurisdiction}.`);
-                } else {
-                    const err = await res.json();
-                    addLog('CRITICAL', `Re-Certification Failed: ${err.detail}`);
+                    addLog(`Consensus vote accepted. Fee reward queued.`, 'SUCCESS');
                 }
             } catch (e) {
-                addLog('CRITICAL', 'Network Communication Error during resolution.');
+                addLog('Arbitration communication error.', 'CRITICAL');
             }
+        }
+
+        async function recertifyNode() {
+            try {
+                const res = await fetch('/api/recertify', { method: 'POST' });
+                if (res.ok) addLog('Regional transition verified and locked.', 'SUCCESS');
+            } catch (e) { addLog('Re-certification handshake failed.', 'CRITICAL'); }
+        }
+
+        function renderCases(cases) {
+            const container = document.getElementById('case-list');
+            if (cases.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-700 italic">No active disputes requiring arbitration.</p>';
+                return;
+            }
+            container.innerHTML = '';
+            cases.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'case-card bg-gray-950 p-4 rounded terminal-border';
+                div.innerHTML = `
+                    <div class="flex justify-between mb-4">
+                        <span class="text-[10px] text-green-500 mono">${c.case_id} // ${c.type}</span>
+                        <span class="text-[10px] text-yellow-500 mono font-bold">Reward: ${c.reward_potential}</span>
+                    </div>
+                    <p class="text-xs text-gray-300 mb-4 leading-relaxed"><span class="text-gray-600">INSTRUCTION:</span> ${c.instruction}</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <button onclick="castJuryVote('${c.case_id}', 'APPROVE')" class="text-[9px] font-black uppercase py-2 bg-green-500/10 border border-green-500 text-green-500 hover:bg-green-500 hover:text-black">Approve Proof</button>
+                        <button onclick="castJuryVote('${c.case_id}', 'REJECT')" class="text-[9px] font-black uppercase py-2 bg-red-900/10 border border-red-500 text-red-500 hover:bg-red-500 hover:text-black">Reject Proof</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
         }
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -333,76 +396,60 @@ DASHBOARD_HTML = """
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
-            if (data.type === 'log') {
-                addLog(data.message, data.level);
-            } else if (data.type === 'stats') {
+            if (data.type === 'log') addLog(data.message, data.level);
+            else if (data.type === 'stats') {
                 const stats = data.payload;
                 for (const [key, value] of Object.entries(stats)) {
-                    if (key !== 'pcr_history') {
+                    if (!['pcr_history', 'cases'].includes(key)) {
                         const el = document.getElementById(`stat-${key}`);
                         if (el) el.innerText = value;
                     }
                 }
                 
-                // Conflict Resolver logic
                 const banner = document.getElementById('conflict-banner');
                 if (stats.resolution_status === 'CONFLICT') {
                     banner.classList.remove('hidden');
                     document.getElementById('alert-claimed').innerText = stats.claimed_region;
                     document.getElementById('alert-detected').innerText = stats.detected_region;
-                    document.getElementById('stat-status_text').className = "text-red-500 font-bold animate-pulse";
-                    document.getElementById('stat-status_text').innerText = "CONFLICT";
-                    document.getElementById('stat-resolution_status').className = "text-[9px] text-red-500 mono bg-red-500/10 px-2 py-0.5 rounded";
-                    document.getElementById('stat-resolution_status').innerText = "JURISDICTION_CONFLICT";
-                } else {
-                    banner.classList.add('hidden');
-                    // Reset UI to Healthy State
-                    document.getElementById('stat-status_text').className = "text-green-500 font-bold animate-pulse";
-                    document.getElementById('stat-status_text').innerText = "ACTIVE";
-                    document.getElementById('stat-resolution_status').className = "text-[9px] text-green-500 mono bg-green-500/10 px-2 py-0.5 rounded";
-                    document.getElementById('stat-resolution_status').innerText = "RESOLUTION_LOCKED";
-                }
+                } else banner.classList.add('hidden');
 
-                const temp = parseInt(stats.tpm_temp);
-                document.getElementById('temp-bar').style.width = `${(temp/100)*100}%`;
+                document.getElementById('temp-bar').style.width = `${(parseInt(stats.tpm_temp)/100)*100}%`;
                 pcrChart.data.datasets[0].data = stats.pcr_history;
                 pcrChart.update('none');
+                renderCases(stats.cases);
             }
-        };
-
-        ws.onclose = () => {
-            addLog('WebSocket connection lost. Reconnecting...', 'WARN');
-            setTimeout(() => window.location.reload(), 5000);
         };
     </script>
 </body>
 </html>
 """
 
-# --- 4. API Endpoints ---
+# --- 5. API Endpoints ---
 
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request: Request):
     data = stats_engine.get_latest()
     html = DASHBOARD_HTML
     for key, value in data.items():
-        if key != 'pcr_history':
+        if key not in ['pcr_history', 'cases']:
             html = html.replace(f"{{{{ {key} }}}}", str(value))
     return html
 
 @app.post("/api/recertify")
 async def recertify_endpoint():
-    """
-    POST endpoint to trigger regional re-certification.
-    Validates physical telemetry and promotes detected region to claimed status.
-    """
-    success = stats_engine.recertify()
-    if success:
+    if stats_engine.recertify():
         return {"status": "success", "new_jurisdiction": stats_engine.claimed_region}
-    else:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="No jurisdiction conflict active for this node.")
+    raise HTTPException(status_code=400, detail="No active conflict.")
+
+@app.post("/api/jury/vote")
+async def jury_vote_endpoint(vote: JuryVote):
+    """
+    Handles the submission of a jury verdict.
+    In prod, this signs the vote with the TPM and broadcasts to the Jury Tribunal.
+    """
+    if stats_engine.submit_verdict(vote.case_id, vote.verdict):
+        return {"status": "accepted", "reward": "PENDING_CONSENSUS"}
+    raise HTTPException(status_code=404, detail="Case not found or already closed.")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -412,30 +459,23 @@ async def websocket_endpoint(websocket: WebSocket):
             stats = stats_engine.get_latest()
             await websocket.send_json({"type": "stats", "payload": stats})
             
-            # Simulate occasional forensic logs including conflict awareness
-            if random.random() > 0.8:
-                log_msgs = [
-                    ("WiFi Entropy Shift detected (Roaming active)", "WARN"),
-                    ("New IP Jurisdiction: Singapore (ASN 173)", "INFO"),
-                    ("Legal Bridge: Matching SG-ETA-2010 templates", "SUCCESS"),
-                    ("Conflict Resolver: Awaiting operator confirmation", "WARN"),
-                    ("PCR 7 Secure Boot: Hub state verification passed", "SUCCESS")
+            # Simulated tribunal events in the logs
+            if random.random() > 0.85:
+                events = [
+                    ("New dispute ticket detected in mempool", "INFO"),
+                    ("Consensus found for case_981: APPROVE", "SUCCESS"),
+                    ("Adjudication fee of 120 SATS credited", "SUCCESS"),
+                    ("VRF selection active for pending Tier 3 audit", "INFO")
                 ]
-                msg, level = random.choice(log_msgs)
-                await websocket.send_json({"type": "log", "message": msg, "level": level})
+                msg, lvl = random.choice(events)
+                await websocket.send_json({"type": "log", "message": msg, "level": lvl})
             
             await asyncio.sleep(3)
-            
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception as e:
-        print(f"WS Error: {e}")
+    except Exception:
         manager.disconnect(websocket)
 
-@app.get("/api/health")
-async def health_api():
-    return stats_engine.get_latest()
-
 if __name__ == "__main__":
-    print("[*] Launching Jurisdiction-Aware Dashboard v1.4 on port 8000...")
+    print("[*] Launching Adjudication-Ready Dashboard v1.5 on port 8000...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
