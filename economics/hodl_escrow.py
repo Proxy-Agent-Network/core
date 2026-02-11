@@ -6,8 +6,8 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 from typing import Optional, Dict, List
 
-# PROXY PROTOCOL - HODL ESCROW STATE MACHINE (v1.3)
-# "Programmable value transfer with cryptographic finality."
+# PROXY PROTOCOL - HODL ESCROW STATE MACHINE (v1.4)
+# "Programmable value transfer with fault-tolerant settlement."
 # ----------------------------------------------------
 
 class EscrowState(Enum):
@@ -32,6 +32,7 @@ class HodlContract:
     state: EscrowState = EscrowState.OPEN
     node_id: Optional[str] = None
     created_at: float = time.time()
+    retry_count: int = 0
 
 class EscrowManager:
     """
@@ -44,7 +45,10 @@ class EscrowManager:
         self.contracts: Dict[str, HodlContract] = {}
         # Map task_id to payment_hash for fast webhook lookups
         self.task_map: Dict[str, str] = {}
+        # Queue for failed settlement attempts (Preimage revelation)
+        self.retry_queue: List[str] = []
         self.DEFAULT_EXPIRY = 14400 # 4-hour standard task window
+        self.MAX_RETRY_ATTEMPTS = 5
 
     def create_invoice(self, agent_id: str, task_id: str, amount_sats: int) -> Dict:
         """
@@ -52,11 +56,8 @@ class EscrowManager:
         2. Generate the Payment Hash (The Lock).
         3. Store the contract state and return BOLT11 details.
         """
-        # Generate 32-byte secure preimage
         preimage_bytes = secrets.token_bytes(32)
         preimage_hex = preimage_bytes.hex()
-        
-        # Calculate SHA-256 Payment Hash
         payment_hash = hashlib.sha256(preimage_bytes).hexdigest()
         
         contract = HodlContract(
@@ -73,26 +74,20 @@ class EscrowManager:
         self.task_map[task_id] = payment_hash
         
         print(f"[Escrow] 🟢 Contract Created: {contract.contract_id}")
-        print(f"         Task: {task_id} | Amount: {amount_sats} SATS")
-
         return {
             "payment_hash": payment_hash,
             "contract_id": contract.contract_id,
             "expiry": contract.expiry,
-            # In a real impl, this would be a BOLT11 string signed by the LN node
             "bolt11": f"lnbc{amount_sats}n1...{payment_hash[:8]}..." 
         }
 
     def update_state(self, payment_hash: str, new_state: EscrowState, node_id: Optional[str] = None):
-        """
-        Manages valid state transitions.
-        """
+        """Manages valid state transitions."""
         if payment_hash not in self.contracts:
             raise ValueError(f"Unknown payment hash: {payment_hash}")
             
         contract = self.contracts[payment_hash]
         
-        # Validation Logic: Prevent illegal state jumps
         if new_state == EscrowState.SETTLED and contract.state not in [EscrowState.ACCEPTED, EscrowState.IN_PROGRESS]:
             raise PermissionError(f"Cannot settle invoice in state {contract.state}")
 
@@ -103,10 +98,7 @@ class EscrowManager:
         print(f"[Escrow] 🔄 {contract.contract_id} transitioned to {new_state.value}")
 
     def handle_webhook_event(self, event_payload: Dict):
-        """
-        v1.3: Integration for webhook_simulator.py flows.
-        Automatically updates escrow state based on incoming network signals.
-        """
+        """Integration for webhook_simulator.py flows."""
         event_type = event_payload.get("type")
         data = event_payload.get("data", {})
         task_id = data.get("task_id")
@@ -118,47 +110,75 @@ class EscrowManager:
         payment_hash = self.task_map[task_id]
 
         if event_type == "task.matched":
-            # Human has accepted, move to IN_PROGRESS
             self.update_state(payment_hash, EscrowState.IN_PROGRESS, node_id=data.get("node_id"))
         
         elif event_type == "task.completed":
-            # Proof verified by protocol, trigger automatic settlement
-            print(f"[Escrow] ✅ Webhook confirmed completion for {task_id}. Initiating release...")
+            print(f"[Escrow] ✅ Webhook confirmed completion for {task_id}.")
             self.settle_contract(payment_hash)
             
         elif event_type == "task.failed":
-            # Task failed (flake or rejection), trigger refund
             self.cancel_contract(payment_hash, reason=data.get("reason", "Unknown failure"))
 
-    def settle_contract(self, payment_hash: str) -> str:
+    def settle_contract(self, payment_hash: str, simulate_fail: bool = False) -> bool:
         """
         Reveals the secret preimage to the Lightning Network.
-        This triggers the final movement of funds to the Node.
+        Includes a retry mechanism for unreachable Lightning nodes.
         """
         contract = self.contracts.get(payment_hash)
-        if not contract:
-            return None
+        if not contract or contract.state == EscrowState.SETTLED:
+            return False
 
-        # 1. Update Internal State
+        # 1. Attempt LND Broadcast
+        # In production: try: self.lnd_client.settle(contract.preimage) except...
+        if simulate_fail:
+            print(f"[Escrow] 🚨 SETTLEMENT FAILURE: LND Node Unreachable for {contract.contract_id}")
+            if payment_hash not in self.retry_queue:
+                self.retry_queue.append(payment_hash)
+            return False
+
+        # 2. Update Internal State on Success
         self.update_state(payment_hash, EscrowState.SETTLED)
+        
+        # 3. Secure Cleanup
+        if payment_hash in self.retry_queue:
+            self.retry_queue.remove(payment_hash)
 
-        # 2. Trigger LND Settlement
         print(f"[Escrow] 💸 Preimage Revealed: {contract.preimage[:16]}...")
         print(f"         SATS released to Node: {contract.node_id}")
+        return True
+
+    def process_retry_queue(self):
+        """
+        Worker function to clear the retry queue. 
+        Should be called periodically by the protocol daemon.
+        """
+        if not self.retry_queue:
+            return
+
+        print(f"\n[Escrow Worker] 🛠️ Processing Retry Queue ({len(self.retry_queue)} items)...")
         
-        return contract.preimage
+        # Create a copy to iterate so we can remove items during success
+        for p_hash in list(self.retry_queue):
+            contract = self.contracts[p_hash]
+            contract.retry_count += 1
+            
+            if contract.retry_count > self.MAX_RETRY_ATTEMPTS:
+                print(f"[Escrow Worker] 💀 Max retries exceeded for {contract.contract_id}. Escalating to SEV-2.")
+                self.retry_queue.remove(p_hash)
+                continue
+
+            print(f"   -> Retry attempt {contract.retry_count} for {contract.contract_id}...")
+            # Simulate recovery on retry
+            self.settle_contract(p_hash, simulate_fail=False)
 
     def cancel_contract(self, payment_hash: str, reason: str = "Timeout"):
-        """
-        Instructs LND to cancel the invoice, returning funds to the Agent.
-        """
+        """Instructs LND to cancel the invoice, returning funds to the Agent."""
         contract = self.contracts.get(payment_hash)
         if not contract:
             return
 
         self.update_state(payment_hash, EscrowState.CANCELLED)
         print(f"[Escrow] 🛑 Invoice Cancelled. Reason: {reason}")
-        print(f"         Funds refunded to Agent: {contract.agent_id}")
 
     def get_contract_status(self, payment_hash: str) -> Optional[Dict]:
         """Returns a public view of the escrow state."""
@@ -172,50 +192,31 @@ class EscrowManager:
             "state": contract.state.value,
             "amount_sats": contract.amount_sats,
             "node_id": contract.node_id,
-            "is_locked": contract.state != EscrowState.OPEN,
-            "time_remaining": max(0, contract.expiry - int(time.time()))
+            "retry_pending": payment_hash in self.retry_queue,
+            "retries": contract.retry_count
         }
 
-# --- End-to-End Webhook Integration Simulation ---
+# --- End-to-End Fault-Tolerant Simulation ---
 if __name__ == "__main__":
     manager = EscrowManager()
     
-    # 1. SETUP: Agent creates a task
-    TASK_ID = "task_webhook_demo_99"
-    invoice_info = manager.create_invoice(
-        agent_id="agent_alpha", 
-        task_id=TASK_ID, 
-        amount_sats=2500
-    )
-    p_hash = invoice_info['payment_hash']
-
-    # 2. ESCROW LOCK: Simulate Agent paying the invoice
+    # 1. SETUP
+    TASK_ID = "task_retry_demo_404"
+    invoice = manager.create_invoice("agent_test", TASK_ID, 5000)
+    p_hash = invoice['payment_hash']
     manager.update_state(p_hash, EscrowState.ACCEPTED)
 
-    print("\n--- SIMULATING WEBHOOK: TASK.MATCHED ---")
-    # This payload matches the structure in scripts/webhook_simulator.py
-    match_webhook = {
-        "type": "task.matched",
-        "data": {
-            "task_id": TASK_ID,
-            "node_id": "node_verified_882",
-            "estimated_completion": "10m"
-        }
-    }
-    manager.handle_webhook_event(match_webhook)
-
-    print("\n--- SIMULATING WEBHOOK: TASK.COMPLETED ---")
-    # This event triggers the actual release of BTC
-    complete_webhook = {
-        "type": "task.completed",
-        "data": {
-            "task_id": TASK_ID,
-            "status": "completed",
-            "result": {"summary": "Proof verified."}
-        }
-    }
-    manager.handle_webhook_event(complete_webhook)
+    print("\n--- SCENARIO: SETTLEMENT ATTEMPT (LND DOWN) ---")
+    # Simulate a webhook coming in while LND is offline
+    manager.update_state(p_hash, EscrowState.IN_PROGRESS, node_id="node_unlucky")
+    manager.settle_contract(p_hash, simulate_fail=True)
     
-    # Final Audit
+    status = manager.get_contract_status(p_hash)
+    print(f"Current Status: {status['state']} | Retry Pending: {status['retry_pending']}")
+
+    print("\n--- SCENARIO: WORKER PROCESSES QUEUE (LND RECOVERED) ---")
+    # Simulate the periodic background job
+    manager.process_retry_queue()
+    
     final_status = manager.get_contract_status(p_hash)
-    print(f"\n[Final Settlement Status]\n{json.dumps(final_status, indent=2)}")
+    print(f"\n[Final Status] State: {final_status['state']} | Retries: {final_status['retries']}")
