@@ -5,6 +5,7 @@ import random
 import hashlib
 import base64
 import subprocess
+import os
 from datetime import datetime
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -12,9 +13,10 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from tpm_binding import TPMBinding
 from secure_memory import SecurePayload
 from ocr_validator import OCRValidator
+from privacy_guard import PrivacyGuard
 
-# PROXY PROTOCOL - NODE DAEMON v1.2 (Execution Refined)
-# "The physical interface for the autonomous economy."
+# PROXY PROTOCOL - NODE DAEMON v1.3 (Privacy Enforced)
+# "Local sanitization via ZK-Masking logic."
 # ----------------------------------------------------
 
 class ProxyNodeDaemon:
@@ -23,6 +25,7 @@ class ProxyNodeDaemon:
         self.claimed_iso = claimed_iso
         self.tpm = TPMBinding()
         self.ocr = OCRValidator()
+        self.privacy = PrivacyGuard()
         self.node_id = self.tpm._get_public_key_fingerprint()
         
         # State Management
@@ -51,14 +54,9 @@ class ProxyNodeDaemon:
     def _execute_sms_relay(self, service_name: str, timeout: int) -> str:
         """
         Simulates interaction with a physical GSM modem.
-        In production, this talks to /dev/ttyUSB0 via AT commands.
         """
         print(f"[SMS] Waiting for incoming {service_name} code (Timeout: {timeout}s)...")
-        
-        # Mocking the wait for a physical SMS arrival on the SIM card
         time.sleep(random.randint(5, 15)) 
-        
-        # Simulated OTP code
         otp_code = str(random.randint(100000, 999999))
         print(f"[SMS] ✅ Received code: {otp_code}")
         return otp_code
@@ -82,10 +80,8 @@ class ProxyNodeDaemon:
 
     def handle_incoming_task(self, raw_task: dict):
         """
-        Main execution pipeline. Uses SecureMemory for the instruction payload.
+        Main execution pipeline. Integrates OCR validation and Privacy Masking.
         """
-        # 1. Load Instruction into Secure Memory
-        # This prevents 'instruction' from lingering in Python's garbage collector.
         instruction_str = raw_task.get('instruction', 'Execute standard task.')
         
         with SecurePayload(instruction_str) as secure_instruction:
@@ -95,13 +91,13 @@ class ProxyNodeDaemon:
             self.current_task_id = raw_task['id']
             agent_key = raw_task.get('agent_public_key')
             
-            # 2. Check Prerequisites (Liveness)
+            # 1. Check Prerequisites (Liveness)
             if raw_task.get('tier') >= 2:
                 liveness = self._capture_liveness(raw_task.get('challenge_id'))
                 if liveness['confidence'] < 0.85:
                     return {"status": "failed", "reason": "Liveness check failed"}
 
-            # 3. Branch by Task Type
+            # 2. Branch by Task Type
             result_data = {}
             task_type = raw_task.get('type')
 
@@ -114,18 +110,28 @@ class ProxyNodeDaemon:
                     result_data = {"otp_code": otp, "method": "gsm_relay"}
                 
                 elif task_type == 'physical_mail_receive':
-                    # Logic for Mail Scan with local OCR validation
                     print("[Mail] Scanning envelope...")
-                    # Simulate scan save
-                    scan_path = "mock_envelope.jpg" 
+                    scan_path = "raw_envelope.jpg"
+                    
+                    # A. Pre-flight Quality Check
                     scan_result = self.ocr.validate_image(scan_path)
-                    
                     if not scan_result['valid']:
-                        return {"status": "failed", "reason": "Image quality check failed (Blurry/Unreadable)"}
+                        return {"status": "failed", "reason": f"QA Failed: {scan_result['rejection_reason']}"}
                     
-                    result_data = {"scan_url": "ipfs://...", "ocr_summary": scan_result['metrics']}
+                    # B. Privacy Redaction (ZK-Masking)
+                    # This step removes faces/SSNs before encryption or upload
+                    print("[Privacy] Running local ZK-Masking pipeline...")
+                    safe_path, privacy_report = self.privacy.redact_pii(scan_path)
+                    
+                    result_data = {
+                        "scan_url": f"ipfs://{hashlib.md5(safe_path.encode()).hexdigest()}",
+                        "sanitized": True,
+                        "privacy_metrics": privacy_report,
+                        "ocr_summary": scan_result['metrics']
+                    }
+                    print(f"[Privacy] Redacted {privacy_report['text_blocks_redacted']} text blocks.")
 
-                # 4. Wrap & Encrypt
+                # 3. Wrap & Encrypt
                 payload = {
                     "task_id": self.current_task_id,
                     "completed_at": datetime.now().isoformat(),
@@ -134,7 +140,6 @@ class ProxyNodeDaemon:
                 
                 encrypted_blob = self._encrypt_for_agent(payload, agent_key)
                 
-                # Proves it was this physical node that performed the work
                 return {
                     "status": "success",
                     "encrypted_blob": encrypted_blob,
@@ -151,16 +156,21 @@ class ProxyNodeDaemon:
         while self.is_running:
             print("[*] Polling Proxy API for tasks...", end="\r")
             
-            # Simulation: Randomly trigger a task for demonstration
             if random.random() > 0.95:
+                # Simulation: Mail task for Discord registration
                 mock_task = {
                     "id": f"tkt_{random.randint(1000, 9999)}",
-                    "type": "verify_sms_otp",
+                    "type": "physical_mail_receive",
                     "tier": 1,
-                    "instruction": "Verify Discord account. Sender ID: 'DISCORD'",
-                    "requirements": {"service": "Discord"},
-                    "agent_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA..." # Placeholder
+                    "instruction": "Scan the legal notice received from Discord.",
+                    "requirements": {"scanning_instructions": "scan_contents"},
+                    "agent_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA..."
                 }
+                
+                # Mock a raw image file for the simulation
+                with open("raw_envelope.jpg", "wb") as f:
+                    f.write(b"fake image data")
+                
                 result = self.handle_incoming_task(mock_task)
                 print(f"\n[Result] Task Status: {result['status']}")
                 
