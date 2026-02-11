@@ -20,7 +20,9 @@ import {
   Scale,
   UserCircle,
   Award,
-  Trophy
+  Trophy,
+  Download,
+  FileText
 } from 'lucide-react';
 
 const App = () => {
@@ -41,7 +43,7 @@ const App = () => {
     tier: "SUPER-ELITE"
   });
 
-  // Personal Progress History (v1.9 Mock Data)
+  // Personal Progress History
   const [performanceHistory] = useState({
     reputation_trend: [940, 945, 952, 960, 975, 982],
     earnings_trend: [5000, 12000, 25000, 31000, 41000, 45200],
@@ -113,6 +115,27 @@ const App = () => {
     }, 1200);
   };
 
+  /**
+   * Generates a compliant CSV export based on core/economics/tax_engine.py
+   */
+  const handleTaxExport = () => {
+    const csvRows = [
+      ["DATE", "TX_ID", "AMOUNT_SATS", "TYPE", "NOTES"],
+      ["2026-02-10", "TX-882-9", "500", "ADJUDICATION_FEE", "Case 882-9 Verdict"],
+      ["2026-02-11", "TX-SLASH-BONUS", "15000", "REWARD", "Consensus Slash Share"],
+      ["2026-02-11", "TX-LIFETIME-TOTAL", stats.earned_fees.toString(), "SUMMARY", "Total Epoch Earnings"]
+    ];
+    
+    const csvContent = "data:text/csv;charset=utf-8," + csvRows.map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `PROXY_TAX_REPORT_${stats.tier}_2026.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-gray-200 font-mono selection:bg-amber-500/30">
       {/* Top Protocol Bar */}
@@ -122,8 +145,8 @@ const App = () => {
             <Gavel className="w-5 h-5 text-amber-500" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tighter text-white uppercase">Jury Tribunal v1.9</h1>
-            <p className="text-[10px] text-amber-500/70 uppercase">Personal Stats Active</p>
+            <h1 className="text-sm font-bold tracking-tighter text-white uppercase">Jury Tribunal v2.0</h1>
+            <p className="text-[10px] text-amber-500/70 uppercase">Tax Compliance Integrated</p>
           </div>
         </div>
         
@@ -204,7 +227,7 @@ const App = () => {
 
           <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-lg">
             <p className="text-[10px] text-amber-500/50 leading-relaxed italic">
-              "Personal history is hashed every 24 hours to ensure auditability of judicial standing."
+              "Judicial activity is immutable. Export your history for compliant jurisdictional reporting."
             </p>
           </div>
         </aside>
@@ -297,31 +320,35 @@ const App = () => {
             </div>
           )}
 
-          {/* 3. PERSONAL STATS DASHBOARD (v1.9 FEATURE) */}
+          {/* 3. PERSONAL STATS DASHBOARD (v2.0 UPDATE) */}
           {activeTab === 'stats' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              {/* Performance Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                 <div className="bg-purple-500/5 border border-purple-500/20 p-5 rounded-lg">
+              
+              {/* Performance Cards & Compliance Trigger */}
+              <div className="flex flex-col md:flex-row gap-4">
+                 <div className="flex-1 bg-purple-500/5 border border-purple-500/20 p-5 rounded-lg">
                     <span className="text-[9px] text-purple-400 uppercase font-black block mb-2 tracking-widest">Growth Factor</span>
                     <p className="text-2xl font-black text-white">+42 <span className="text-xs text-gray-500 font-normal">REP / Mo</span></p>
                  </div>
-                 <div className="bg-green-500/5 border border-green-500/20 p-5 rounded-lg">
+                 <div className="flex-1 bg-green-500/5 border border-green-500/20 p-5 rounded-lg relative group overflow-hidden">
                     <span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Lifetime Sats</span>
                     <p className="text-2xl font-black text-white">{stats.earned_fees.toLocaleString()}</p>
+                    {/* TAX EXPORT BUTTON */}
+                    <button 
+                      onClick={handleTaxExport}
+                      className="absolute top-4 right-4 p-2 bg-green-500/10 hover:bg-green-500/20 rounded border border-green-500/30 transition-all text-green-500 group-hover:scale-110"
+                      title="Download Tax Report"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
                  </div>
-                 <div className="bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg">
+                 <div className="flex-1 bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg">
                     <span className="text-[9px] text-amber-400 uppercase font-black block mb-2 tracking-widest">Consensus Streak</span>
                     <p className="text-2xl font-black text-white">18 <span className="text-xs text-gray-500 font-normal">Epochs</span></p>
-                 </div>
-                 <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-lg">
-                    <span className="text-[9px] text-blue-400 uppercase font-black block mb-2 tracking-widest">Trust Index</span>
-                    <p className="text-2xl font-black text-white">High</p>
                  </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Reputation Trend Simulation */}
                 <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
                   <h3 className="text-xs uppercase font-bold mb-6 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-purple-400" /> Reputation Momentum
@@ -337,12 +364,8 @@ const App = () => {
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] text-gray-500 leading-relaxed italic">
-                    Trend indicates a high likelihood of retention in the Super-Elite tier for the next epoch.
-                  </p>
                 </div>
 
-                {/* Accuracy Breakdown */}
                 <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
                   <h3 className="text-xs uppercase font-bold mb-6 flex items-center gap-2">
                     <Scale className="w-4 h-4 text-green-400" /> Adjudication Accuracy
@@ -366,34 +389,28 @@ const App = () => {
                 </div>
               </div>
 
-              {/* Judicial Milestone Progress */}
-              <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-6">
-                 <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                      <Trophy className="w-5 h-5 text-purple-400" />
-                      <h3 className="text-xs uppercase font-black tracking-widest text-white">Next Milestone: Grand Justice</h3>
+              {/* Judicial Compliance Footer */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-5 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-white/5 rounded">
+                      <FileText className="w-5 h-5 text-gray-400" />
                     </div>
-                    <span className="text-[10px] text-purple-400 font-bold uppercase tracking-tighter">Progress: 88%</span>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="flex items-center gap-3 opacity-100">
-                       <CheckCircle2 className="w-4 h-4 text-green-500" />
-                       <span className="text-[10px] text-gray-300 uppercase">950+ Reputation</span>
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase tracking-tighter">Jurisdictional Tax Ledger</p>
+                      <p className="text-[10px] text-gray-500">Reportable threshold (US 1099-NEC): $600.00 / ~600k Sats</p>
                     </div>
-                    <div className="flex items-center gap-3 opacity-100">
-                       <CheckCircle2 className="w-4 h-4 text-green-500" />
-                       <span className="text-[10px] text-gray-300 uppercase">100+ Verdicts Cast</span>
-                    </div>
-                    <div className="flex items-center gap-3 opacity-40">
-                       <div className="w-4 h-4 rounded-full border border-purple-500/50" />
-                       <span className="text-[10px] text-gray-500 uppercase">Top 1% Global Accuracy</span>
-                    </div>
-                 </div>
+                  </div>
+                  <button 
+                    onClick={handleTaxExport}
+                    className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    Generate 2026 CSV <Download className="w-3 h-3" />
+                  </button>
               </div>
             </div>
           )}
 
-          {/* 4. INSURANCE CLAIMS VIEW (v1.7) */}
+          {/* 4. INSURANCE CLAIMS VIEW */}
           {activeTab === 'insurance' && !selectedClaim && (
             <div className="bg-[#0d0d0e] border border-blue-500/20 rounded-lg overflow-hidden animate-in fade-in duration-300">
                <div className="p-4 border-b border-blue-500/20 flex justify-between items-center bg-blue-500/[0.02]">
