@@ -25,7 +25,10 @@ import {
   FileText,
   Shield,
   Fingerprint,
-  Cpu
+  Cpu,
+  RefreshCw,
+  Key,
+  ShieldQuestion
 } from 'lucide-react';
 
 const App = () => {
@@ -33,8 +36,13 @@ const App = () => {
   const [selectedCase, setSelectedCase] = useState(null);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [isVoting, setIsVoting] = useState(false);
+  
+  // v2.2 Hardware States
+  const [isRotating, setIsRotating] = useState(false);
+  const [keyRotationStep, setKeyRotationStep] = useState(0); // 0: Idle, 1: Wiping, 2: Generating, 3: Verifying
+  const [nodeId, setNodeId] = useState("NODE_ELITE_X29");
 
-  // Stats & Environment (v2.1 Update)
+  // Stats & Environment
   const [stats] = useState({
     reputation: 982,
     staked_bond: 2000000,
@@ -47,7 +55,7 @@ const App = () => {
     is_appellate_eligible: true
   });
 
-  // Appellate VRF State (Mocking a SEV-1 Incident)
+  // Appellate VRF State
   const [appellateContext] = useState({
     incident_id: "SEV1-2026-02-11-JURY-COLLUSION",
     btc_block_hash: "00000000000000000001859c25f483c613098555e71415411707572706c6521",
@@ -127,6 +135,30 @@ const App = () => {
     }, 1200);
   };
 
+  /**
+   * Simulation of the hardware-bound Key Rotation Ceremony (v2.2)
+   */
+  const startKeyRotation = () => {
+    setIsRotating(true);
+    setKeyRotationStep(1);
+    
+    // Step 1: Wipe Old Handle
+    setTimeout(() => {
+      setKeyRotationStep(2);
+      // Step 2: Generate Primary Seed in TPM
+      setTimeout(() => {
+        setKeyRotationStep(3);
+        // Step 3: Verify and Re-bind Reputation
+        setTimeout(() => {
+          const newSuffix = Math.random().toString(36).substring(7).toUpperCase();
+          setNodeId(`NODE_ELITE_${newSuffix}`);
+          setIsRotating(false);
+          setKeyRotationStep(0);
+        }, 2000);
+      }, 2500);
+    }, 1500);
+  };
+
   const handleTaxExport = () => {
     const csvRows = [
       ["DATE", "TX_ID", "AMOUNT_SATS", "TYPE", "NOTES"],
@@ -151,8 +183,8 @@ const App = () => {
             <Gavel className="w-5 h-5 text-amber-500" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tighter text-white uppercase">Jury Tribunal v2.1</h1>
-            <p className="text-[10px] text-amber-500/70 uppercase tracking-widest">Appellate Selection Logic Engaged</p>
+            <h1 className="text-sm font-bold tracking-tighter text-white uppercase">Jury Tribunal v2.2</h1>
+            <p className="text-[10px] text-amber-500/70 uppercase tracking-widest">Identity Rotation Integrated</p>
           </div>
         </div>
         
@@ -170,7 +202,7 @@ const App = () => {
           </div>
           <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded border border-white/10">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-white font-bold text-xs">NODE_ELITE_X29</span>
+            <span className="text-white font-bold text-xs">{nodeId}</span>
           </div>
         </div>
       </header>
@@ -230,16 +262,22 @@ const App = () => {
               <TrendingUp className="w-4 h-4" /> Personal Standing
             </button>
             <button 
+              onClick={() => { setActiveTab('security'); setSelectedCase(null); setSelectedClaim(null); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'security' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            >
+              <Cpu className="w-4 h-4" /> Hardware Security
+            </button>
+            <button 
               onClick={() => { setActiveTab('insurance'); setSelectedCase(null); setSelectedClaim(null); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'insurance' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'insurance' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
             >
               <HeartPulse className="w-4 h-4" /> Insurance Claims
             </button>
           </nav>
 
-          <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-lg">
-            <p className="text-[10px] text-red-400 font-bold leading-relaxed uppercase tracking-tighter italic">
-              "Appellate summons bypass standard priority. Failure to respond to SEV-1 epochs results in emergency bond suspension."
+          <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-lg">
+            <p className="text-[10px] text-blue-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
+              "Silently verify hardware PCRs every epoch to ensure zero-day protection remains active."
             </p>
           </div>
         </aside>
@@ -282,106 +320,168 @@ const App = () => {
             </div>
           )}
 
-          {/* 2. APPELLATE COURT VIEW (v2.1 FEATURE) */}
+          {/* 2. HARDWARE SECURITY VIEW (v2.2 FEATURE) */}
+          {activeTab === 'security' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
+                  {/* Key Management Card */}
+                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8">
+                     <div className="flex items-center justify-between mb-8">
+                        <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3">
+                           <Key className="w-5 h-5 text-blue-400" /> TPM 2.0 Identity Management
+                        </h3>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${isRotating ? 'bg-yellow-500/10 text-yellow-500 animate-pulse' : 'bg-green-500/10 text-green-500'}`}>
+                           {isRotating ? 'ROTATING' : 'LOCKED'}
+                        </span>
+                     </div>
+
+                     <div className="space-y-6">
+                        <div>
+                           <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Active Identity Hash</label>
+                           <div className="bg-black/60 p-4 border border-white/5 rounded mono text-xs text-blue-300 break-all select-all">
+                              {nodeId === "NODE_ELITE_X29" ? "0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd" : "0x81010002:fresh_" + nodeId}
+                           </div>
+                        </div>
+
+                        <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded text-[10px] text-blue-300 leading-relaxed italic">
+                           "Identity keys are sealed within the OPTIGA™ TPM 2.0. Rotating your key will invalidate all pending signatures but maintain your reputation bridge."
+                        </div>
+
+                        <button 
+                           disabled={isRotating}
+                           onClick={startKeyRotation}
+                           className="w-full py-4 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg flex items-center justify-center gap-3 transition-all group"
+                        >
+                           <RefreshCw className={`w-4 h-4 text-blue-400 ${isRotating ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+                           <span className="text-xs font-black uppercase text-blue-400 tracking-widest">
+                              Rotate Hardware Identity
+                           </span>
+                        </button>
+                     </div>
+                  </div>
+
+                  {/* Ceremony Console */}
+                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg flex flex-col">
+                     <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
+                        <h3 className="text-xs uppercase font-black tracking-widest flex items-center gap-2">
+                           <Fingerprint className="w-4 h-4 text-gray-500" /> Binding Console
+                        </h3>
+                     </div>
+                     <div className="flex-1 p-6 font-mono text-[10px] leading-relaxed overflow-y-auto bg-black/40">
+                        <p className="text-gray-600">[*] System initialized at T-0ms</p>
+                        <p className="text-gray-600">[*] Kernel: Linux 6.6.1-proxy-node</p>
+                        <p className="text-green-500">[*] Hardware Root: OPTIGA TPM 2.0 Detected</p>
+                        
+                        {keyRotationStep >= 1 && (
+                           <div className="mt-4 animate-in fade-in slide-in-from-left duration-300">
+                              <p className="text-red-500 font-bold">[!] REQUESTING ROTATION...</p>
+                              <p className="text-white">[*] Command: tpm2_clear --hierarchy platform</p>
+                              <p className="text-yellow-500">[*] Wiping handle 0x81010001... SUCCESS</p>
+                           </div>
+                        )}
+                        
+                        {keyRotationStep >= 2 && (
+                           <div className="mt-4 animate-in fade-in slide-in-from-left duration-300">
+                              <p className="text-white">[*] Command: tpm2_createprimary -C e -G ecc</p>
+                              <p className="text-green-500">[*] Primary Seed Generated (Silicon Entropy)</p>
+                              <p className="text-white">[*] Creating AK Handle at 0x81010002...</p>
+                              <p className="text-green-500">[*] Object Persistence Locked.</p>
+                           </div>
+                        )}
+
+                        {keyRotationStep >= 3 && (
+                           <div className="mt-4 animate-in fade-in slide-in-from-left duration-300">
+                              <p className="text-white">[*] Synchronizing Reputation Bridge...</p>
+                              <p className="text-green-500">[*] PGP Revocation Certificate Published.</p>
+                              <p className="text-green-500">[*] New Attestation Key Public Key Exported.</p>
+                              <p className="text-white font-black mt-2">✅ BINDING CEREMONY COMPLETE.</p>
+                           </div>
+                        )}
+                        
+                        {isRotating && (
+                           <div className="mt-4 animate-pulse flex items-center gap-2 text-blue-400">
+                              <div className="w-1 h-3 bg-blue-400"></div>
+                              <p>PROCESSING HARDWARE REQUEST...</p>
+                           </div>
+                        )}
+                     </div>
+                  </div>
+               </div>
+
+               {/* Forensics Section */}
+               <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-6">
+                     <h3 className="text-xs uppercase font-black tracking-widest text-gray-400 flex items-center gap-2">
+                        <ShieldQuestion className="w-4 h-4" /> Integrity Forensics
+                     </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                     <div className="bg-black/40 p-4 border border-white/5 rounded">
+                        <span className="text-[9px] text-gray-600 uppercase block mb-1">Chassis Intrusion</span>
+                        <span className="text-xs font-bold text-green-500">CIRCUIT CLOSED</span>
+                     </div>
+                     <div className="bg-black/40 p-4 border border-white/5 rounded">
+                        <span className="text-[9px] text-gray-600 uppercase block mb-1">PCR Banks</span>
+                        <span className="text-xs font-bold text-white uppercase">UNMODIFIED (GOLDEN)</span>
+                     </div>
+                     <div className="bg-black/40 p-4 border border-white/5 rounded">
+                        <span className="text-[9px] text-gray-600 uppercase block mb-1">Node Temperature</span>
+                        <span className="text-xs font-bold text-amber-500 uppercase tracking-tighter">44°C STABLE</span>
+                     </div>
+                  </div>
+               </div>
+            </div>
+          )}
+
+          {/* 3. APPELLATE COURT VIEW (v2.1) */}
           {activeTab === 'appellate' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-              
-              {/* Emergency Banner */}
               <div className="bg-red-500/10 border border-red-500/40 rounded-lg p-8 flex flex-col md:flex-row items-center justify-between gap-8">
                 <div className="flex items-center gap-6">
-                   <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center border border-red-500/30">
-                      <ShieldAlert className="w-8 h-8 text-red-500 animate-pulse" />
+                   <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center border border-red-500/30 text-red-500">
+                      <ShieldAlert className="w-8 h-8 animate-pulse" />
                    </div>
                    <div>
                       <h2 className="text-xl font-black text-red-500 uppercase tracking-tighter">SEV-1 Convocation Active</h2>
                       <p className="text-sm text-gray-400 mt-1 max-w-md">Systemic jury collusion detected. High Court convened to restore Schelling Point integrity.</p>
                    </div>
                 </div>
-                <div className="bg-black/60 px-6 py-3 rounded border border-red-500/20 text-center">
-                   <span className="text-[9px] text-red-400 uppercase font-black block mb-1">Your Selection Status</span>
-                   <span className="text-white font-black uppercase text-xs">SELECTED FOR ROSTER</span>
-                </div>
               </div>
-
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                {/* VRF Entropy Audit */}
-                <div className="lg:col-span-1 space-y-6">
-                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                      <h3 className="text-xs uppercase font-bold mb-6 flex items-center gap-2 text-white">
-                        <Cpu className="w-4 h-4 text-red-500" /> VRF Selection Proof
-                      </h3>
-                      <div className="space-y-4 text-[10px]">
-                         <div>
-                            <label className="text-gray-600 block mb-1 uppercase font-bold tracking-widest">Incident ID</label>
-                            <div className="bg-black/40 p-2 rounded mono text-red-400 truncate">{appellateContext.incident_id}</div>
-                         </div>
-                         <div>
-                            <label className="text-gray-600 block mb-1 uppercase font-bold tracking-widest">BTC Block Entropy</label>
-                            <div className="bg-black/40 p-2 rounded mono text-gray-400 break-all">{appellateContext.btc_block_hash}</div>
-                         </div>
-                         <div className="pt-4 border-t border-white/5">
-                            <div className="flex justify-between items-center mb-2">
-                               <span className="text-gray-600 uppercase font-bold">Your VRF Score</span>
-                               <span className="text-red-500 font-black">RANK #1</span>
-                            </div>
-                            <div className="bg-red-500/10 p-3 rounded border border-red-500/20 mono text-center text-white">
-                               {appellateContext.vrf_score}
-                            </div>
-                         </div>
-                      </div>
+                <div className="lg:col-span-1 bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                   <h3 className="text-xs uppercase font-bold mb-6 flex items-center gap-2 text-white">
+                     <Cpu className="w-4 h-4 text-red-500" /> VRF Selection Proof
+                   </h3>
+                   <div className="space-y-4 text-[10px]">
+                      <div className="bg-black/40 p-2 rounded mono text-red-400 truncate">{appellateContext.incident_id}</div>
+                      <div className="bg-black/40 p-2 rounded mono text-gray-400 break-all">{appellateContext.btc_block_hash}</div>
                    </div>
                 </div>
-
-                {/* The 7-Person Roster */}
                 <div className="lg:col-span-2">
                    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden h-full">
                       <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
                          <h3 className="text-xs uppercase font-bold tracking-widest flex items-center gap-2">
                            <Fingerprint className="w-4 h-4 text-red-500" /> Verified High Court Roster
                          </h3>
-                         <span className="text-[10px] text-gray-600 uppercase font-black tracking-tighter">Quorum: 7/7 Locked</span>
                       </div>
-                      <div className="divide-y divide-white/5 max-h-[350px] overflow-y-auto">
-                         {appellateContext.roster.map((juror, i) => (
+                      <div className="divide-y divide-white/5">
+                         {appellateContext.roster.map((juror) => (
                            <div key={juror.id} className={`p-4 flex items-center justify-between ${juror.status === 'YOU' ? 'bg-red-500/5' : ''}`}>
-                              <div className="flex items-center gap-4">
-                                 <span className="text-[10px] text-gray-700 font-black w-4">{i+1}</span>
-                                 <div className="flex flex-col">
-                                    <span className={`text-xs font-bold ${juror.status === 'YOU' ? 'text-white' : 'text-gray-400'}`}>{juror.id}</span>
-                                    <span className="text-[8px] text-gray-600 mono uppercase tracking-widest">VRF: {juror.score}</span>
-                                 </div>
-                              </div>
+                              <span className={`text-xs font-bold ${juror.status === 'YOU' ? 'text-white' : 'text-gray-400'}`}>{juror.id}</span>
                               <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${juror.status === 'YOU' ? 'bg-red-500 text-black' : 'text-green-500 border border-green-500/20'}`}>
                                  {juror.status}
                               </span>
                            </div>
                          ))}
                       </div>
-                      <div className="p-4 bg-white/[0.01] text-center">
-                         <p className="text-[9px] text-gray-600 italic">"Deterministically selected from 1,248 Elite Candidates"</p>
-                      </div>
                    </div>
                 </div>
-              </div>
-
-              {/* Action Area */}
-              <div className="bg-black/40 border border-white/10 rounded-lg p-6 flex items-center justify-between">
-                 <div className="flex items-center gap-4">
-                    <ShieldCheck className="w-5 h-5 text-red-500" />
-                    <div>
-                       <p className="text-xs font-bold text-white uppercase">Ready for Adjudication</p>
-                       <p className="text-[10px] text-gray-500">Wait for the cryptographic evidence locker to synchronize (5/7 peers ready).</p>
-                    </div>
-                 </div>
-                 <button disabled className="px-6 py-2 bg-white/5 border border-white/10 text-gray-600 text-[10px] font-black uppercase tracking-widest rounded cursor-not-allowed">
-                    Awaiting Quorum
-                 </button>
               </div>
             </div>
           )}
 
-          {/* 3. RECENT VERDICTS FEED */}
+          {/* 4. RECENT VERDICTS FEED */}
           {activeTab === 'history' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -389,16 +489,15 @@ const App = () => {
                   <span className="text-[9px] text-gray-600 uppercase block mb-1 font-bold">Total Adjudications</span>
                   <p className="text-xl font-bold text-white">4,821</p>
                 </div>
-                <div className="bg-black/40 border border-white/5 p-4 rounded-lg">
+                <div className="bg-black/40 border border-white/5 p-4 rounded-lg text-green-500">
                   <span className="text-[9px] text-gray-600 uppercase block mb-1 font-bold">Outcome Skew</span>
-                  <p className="text-xl font-bold text-green-500">82% Valid</p>
+                  <p className="text-xl font-bold">82% Valid</p>
                 </div>
-                <div className="bg-black/40 border border-white/5 p-4 rounded-lg">
+                <div className="bg-black/40 border border-white/5 p-4 rounded-lg text-amber-500">
                   <span className="text-[9px] text-gray-600 uppercase block mb-1 font-bold">Slashing Yield</span>
-                  <p className="text-xl font-bold text-amber-500">12.4M Sats</p>
+                  <p className="text-xl font-bold">12.4M Sats</p>
                 </div>
               </div>
-
               <div className="bg-[#0d0d0e] border border-green-500/20 rounded-lg overflow-hidden">
                 <div className="p-4 border-b border-green-500/20 flex justify-between items-center bg-green-500/[0.02]">
                   <h2 className="text-xs uppercase font-bold tracking-widest flex items-center gap-2 text-green-400">
@@ -407,23 +506,14 @@ const App = () => {
                 </div>
                 <div className="divide-y divide-white/5">
                   {verdicts.map((v) => (
-                    <div key={v.id} className="p-6 hover:bg-white/[0.01] transition-colors">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-bold text-white">{v.id}</span>
-                          <span className="text-[9px] text-gray-600 mono uppercase tracking-widest font-bold">{v.date}</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <span className="text-[9px] text-gray-600 uppercase block font-bold">Consensus</span>
-                            <span className="text-sm font-black text-green-500">{v.consensus}</span>
-                          </div>
-                          <div className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest ${v.outcome === 'VALID' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                            {v.outcome}
-                          </div>
+                    <div key={v.id} className="p-6">
+                      <div className="flex justify-between items-start">
+                        <span className="text-sm font-bold text-white">{v.id}</span>
+                        <div className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest ${v.outcome === 'VALID' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                          {v.outcome}
                         </div>
                       </div>
-                      <p className="text-xs text-gray-400 leading-relaxed max-w-2xl mb-3">{v.summary}</p>
+                      <p className="text-xs text-gray-400 mt-2">{v.summary}</p>
                     </div>
                   ))}
                 </div>
@@ -431,7 +521,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 4. PERSONAL STATS DASHBOARD */}
+          {/* 5. PERSONAL STATS DASHBOARD */}
           {activeTab === 'stats' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="flex flex-col md:flex-row gap-4">
@@ -442,54 +532,29 @@ const App = () => {
                  <div className="flex-1 bg-green-500/5 border border-green-500/20 p-5 rounded-lg relative group overflow-hidden">
                     <span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Lifetime Sats</span>
                     <p className="text-2xl font-black text-white">{stats.earned_fees.toLocaleString()}</p>
-                    <button 
-                      onClick={handleTaxExport}
-                      className="absolute top-4 right-4 p-2 bg-green-500/10 hover:bg-green-500/20 rounded border border-green-500/30 transition-all text-green-500"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                 </div>
-                 <div className="flex-1 bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg">
-                    <span className="text-[9px] text-amber-400 uppercase font-black block mb-2 tracking-widest">Consensus Streak</span>
-                    <p className="text-2xl font-black text-white">18 <span className="text-xs text-gray-500 font-normal">Epochs</span></p>
+                    <button onClick={handleTaxExport} className="absolute top-4 right-4 p-2 bg-green-500/10 hover:bg-green-500/20 rounded border border-green-500/30 transition-all text-green-500"><Download className="w-4 h-4" /></button>
                  </div>
               </div>
-
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
                   <h3 className="text-xs uppercase font-bold mb-6 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-purple-400" /> Reputation Momentum
                   </h3>
-                  <div className="flex items-end gap-2 h-40 mb-4 px-2">
+                  <div className="flex items-end gap-2 h-40">
                     {performanceHistory.reputation_trend.map((val, i) => (
-                      <div key={i} className="flex-1 flex flex-col items-center group">
-                        <div 
-                          className="w-full bg-purple-500/20 border-t-2 border-purple-500/50 rounded-t-sm transition-all"
-                          style={{ height: `${(val / 1000) * 100}%` }}
-                        ></div>
-                        <span className="text-[8px] text-gray-600 mt-2 uppercase">W{i+1}</span>
-                      </div>
+                      <div key={i} className="flex-1 bg-purple-500/20 border-t-2 border-purple-500/50 rounded-t-sm" style={{ height: `${(val / 1000) * 100}%` }}></div>
                     ))}
                   </div>
                 </div>
-
                 <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
                   <h3 className="text-xs uppercase font-bold mb-6 flex items-center gap-2">
                     <Scale className="w-4 h-4 text-green-400" /> Adjudication Accuracy
                   </h3>
-                  <div className="space-y-4">
+                  <div className="space-y-4 text-[10px]">
                     {performanceHistory.task_breakdown.map((task) => (
                       <div key={task.type}>
-                        <div className="flex justify-between text-[10px] mb-1.5 uppercase font-bold">
-                          <span className="text-gray-400">{task.type} Protocols</span>
-                          <span className="text-white">{task.accuracy}% ({task.count} cases)</span>
-                        </div>
-                        <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full ${task.accuracy >= 98 ? 'bg-green-500' : 'bg-amber-500'}`} 
-                            style={{ width: `${task.accuracy}%` }}
-                          />
-                        </div>
+                        <div className="flex justify-between mb-1.5 uppercase font-bold"><span>{task.type} Protocols</span><span className="text-white">{task.accuracy}%</span></div>
+                        <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden"><div className={`h-full ${task.accuracy >= 98 ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: `${task.accuracy}%` }} /></div>
                       </div>
                     ))}
                   </div>
@@ -498,34 +563,28 @@ const App = () => {
             </div>
           )}
 
-          {/* 5. INSURANCE CLAIMS VIEW */}
+          {/* 6. INSURANCE CLAIMS VIEW */}
           {activeTab === 'insurance' && !selectedClaim && (
-            <div className="bg-[#0d0d0e] border border-blue-500/20 rounded-lg overflow-hidden animate-in fade-in duration-300">
-               <div className="p-4 border-b border-blue-500/20 flex justify-between items-center bg-blue-500/[0.02]">
-                <h2 className="text-xs uppercase font-bold tracking-widest flex items-center gap-2">
-                  <HeartPulse className="w-4 h-4 text-blue-400" /> Automated Insurance Claims
+            <div className="bg-[#0d0d0e] border border-cyan-500/20 rounded-lg overflow-hidden animate-in fade-in duration-300">
+               <div className="p-4 border-b border-cyan-500/20 flex justify-between items-center bg-cyan-500/[0.02]">
+                <h2 className="text-xs uppercase font-bold tracking-widest flex items-center gap-2 text-cyan-400">
+                  <HeartPulse className="w-4 h-4" /> Automated Insurance Claims
                 </h2>
               </div>
               <div className="divide-y divide-white/5">
                 {claims.map((claim) => (
-                  <div key={claim.id} className="p-6 hover:bg-white/[0.02] transition-colors flex items-center justify-between group">
+                  <div key={claim.id} className="p-6 flex items-center justify-between group">
                     <div className="flex items-center gap-6">
-                      <div className="w-12 h-12 bg-blue-500/10 rounded flex flex-col items-center justify-center border border-blue-500/20 text-blue-400">
+                      <div className="w-12 h-12 bg-cyan-500/10 rounded flex flex-col items-center justify-center border border-cyan-500/20 text-cyan-400">
                         <AlertTriangle className="w-5 h-5" />
-                        <span className="text-[8px] font-bold mt-1 font-black">{claim.severity}</span>
+                        <span className="text-[8px] font-black mt-1">{claim.severity}</span>
                       </div>
                       <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-white font-bold text-sm">{claim.id}</span>
-                          <span className="text-[9px] bg-red-500/10 px-2 py-0.5 rounded text-red-400 uppercase font-bold tracking-tighter">Settlement Failure</span>
-                        </div>
-                        <p className="text-xs text-gray-500">Node: {claim.node_id}</p>
+                        <span className="text-white font-bold text-sm block">{claim.id}</span>
+                        <p className="text-xs text-gray-500 uppercase">Settlement Failure: {claim.node_id}</p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => setSelectedClaim(claim)}
-                      className="bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 px-4 py-2 rounded text-xs transition-all flex items-center gap-2 text-blue-400 font-bold"
-                    >
+                    <button onClick={() => setSelectedClaim(claim)} className="bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 px-4 py-2 rounded text-xs transition-all text-cyan-400 font-bold">
                       Audit Incident <ArrowRight className="w-3 h-3" />
                     </button>
                   </div>
@@ -537,26 +596,24 @@ const App = () => {
           {/* DETAIL VIEWS */}
           {selectedCase && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <button onClick={() => setSelectedCase(null)} className="text-xs text-gray-500 hover:text-white mb-4 flex items-center gap-2 font-bold">
-                <ArrowRight className="w-3 h-3 rotate-180" /> Back to Docket
-              </button>
+              <button onClick={() => setSelectedCase(null)} className="text-xs text-gray-500 hover:text-white mb-4 flex items-center gap-2 font-bold"><ArrowRight className="w-3 h-3 rotate-180" /> Back to Docket</button>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 text-xs leading-relaxed italic text-gray-400">"{selectedCase.evidence.instructions}"</div>
                 <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                  <h3 className="text-xs uppercase font-bold mb-4 flex items-center gap-2 text-amber-500">
-                    <Lock className="w-4 h-4" /> Adjudication Locker
-                  </h3>
-                  <div className="space-y-4">
-                    <div className="bg-black/60 p-4 border border-white/5 rounded text-xs text-gray-400 leading-relaxed italic">
-                      "{selectedCase.evidence.instructions}"
-                    </div>
-                  </div>
+                  <button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-4 mb-3 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded text-green-500 font-black text-xs uppercase tracking-widest">Valid Work</button>
+                  <button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded text-red-500 font-black text-xs uppercase tracking-widest">Fraudulent Proof</button>
                 </div>
-                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                  <h3 className="text-xs uppercase font-bold mb-6 text-white font-black">Cast Verified Verdict</h3>
-                  <div className="space-y-3">
-                    <button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded text-green-500 font-black text-xs uppercase tracking-widest">Valid Work</button>
-                    <button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded text-red-500 font-black text-xs uppercase tracking-widest">Fraudulent Proof</button>
-                  </div>
+              </div>
+            </div>
+          )}
+
+          {selectedClaim && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <button onClick={() => setSelectedClaim(null)} className="text-xs text-gray-500 hover:text-white mb-4 flex items-center gap-2 font-bold"><ArrowRight className="w-3 h-3 rotate-180" /> Back to Claims</button>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-[#0d0d0e] border border-cyan-500/20 rounded-lg p-6 mono text-[10px] text-red-400/80 leading-relaxed">{selectedClaim.proof_log}</div>
+                <div className="bg-[#0d0d0e] border border-cyan-500/20 rounded-lg p-6">
+                  <button onClick={() => handleVote('APPROVE')} disabled={isVoting} className="w-full py-5 bg-cyan-500/10 border border-cyan-500/30 rounded flex items-center justify-center gap-3 text-cyan-400 font-black text-xs uppercase tracking-widest"><CheckCircle2 className="w-4 h-4" /> Authorize Keysend</button>
                 </div>
               </div>
             </div>
