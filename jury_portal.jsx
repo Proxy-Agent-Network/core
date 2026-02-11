@@ -39,7 +39,10 @@ import {
   ArrowDownRight,
   History,
   FileSignature,
-  Stamp
+  Stamp,
+  Wallet,
+  Unlock,
+  AlertOctagon
 } from 'lucide-react';
 
 const App = () => {
@@ -53,6 +56,11 @@ const App = () => {
   const [isRotating, setIsRotating] = useState(false);
   const [keyRotationStep, setKeyRotationStep] = useState(0); 
   const [nodeId, setNodeId] = useState("NODE_ELITE_X29");
+
+  // v2.7 Stake Management State
+  const [withdrawalState, setWithdrawalState] = useState('IDLE'); // IDLE, REQUESTED, COOLING_OFF
+  const [cooldownDaysRemaining, setCooldownDaysRemaining] = useState(14);
+  const [isProcessingStake, setIsProcessingStake] = useState(false);
 
   // v2.3 Sybil Defense State
   const [sybilClusters] = useState([
@@ -106,15 +114,6 @@ const App = () => {
       last_audit: "2026-02-01",
       status: "AUDIT_REQUIRED",
       body: "# LIMITED POWER OF ATTORNEY (UK JURISDICTION)\n\nTHIS INSTRUMENT is made on the date of the cryptographic timestamp by the Principal... Attorney is authorized to act on behalf of the Principal for the purpose of executing instructions..."
-    },
-    {
-      id: "POA-SG-ETA-V1",
-      jurisdiction: "SG",
-      title: "Singapore Electronic PoA",
-      legislation: "Electronic Transactions Act 2010",
-      last_audit: "2025-12-20",
-      status: "VERIFIED",
-      body: "# LIMITED POWER OF ATTORNEY (SINGAPORE JURISDICTION)\n\nPursuant to the Powers of Attorney Act (Cap. 243), the Principal grants the Attorney the limited power to perform specific physical and legal acts..."
     }
   ]);
 
@@ -207,6 +206,17 @@ const App = () => {
     }, 1200);
   };
 
+  /**
+   * Requesting a Stake Withdrawal (v2.7)
+   */
+  const initiateWithdrawal = () => {
+    setIsProcessingStake(true);
+    setTimeout(() => {
+      setWithdrawalState('COOLING_OFF');
+      setIsProcessingStake(false);
+    }, 1500);
+  };
+
   const startKeyRotation = () => {
     setIsRotating(true);
     setKeyRotationStep(1);
@@ -248,8 +258,8 @@ const App = () => {
             <Gavel className="w-5 h-5 text-amber-500" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tighter text-white uppercase">Jury Tribunal v2.6</h1>
-            <p className="text-[10px] text-amber-500/70 uppercase tracking-widest">Legal Instrument Notarization</p>
+            <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest">Jury Tribunal v2.7</h1>
+            <p className="text-[10px] text-amber-500/70 uppercase tracking-widest">Stake Custody Active</p>
           </div>
         </div>
         
@@ -276,7 +286,7 @@ const App = () => {
         {/* Sidebar / Stats */}
         <aside className="col-span-12 lg:col-span-3 space-y-4">
           <div className="bg-[#0d0d0e] border border-white/10 p-5 rounded-lg">
-            <h3 className="text-[10px] uppercase text-gray-500 mb-4 font-bold tracking-widest">Judicial Standing</h3>
+            <h3 className="text-[10px] uppercase text-gray-500 mb-4 font-bold tracking-widest text-glow">Judicial Standing</h3>
             <div className="space-y-4">
               <div className="flex justify-between items-center text-sm font-bold">
                 <span>Reputation</span>
@@ -309,6 +319,12 @@ const App = () => {
               <Activity className="w-4 h-4" /> Open Disputes
             </button>
             <button 
+              onClick={() => { setActiveTab('staking'); setSelectedCase(null); setSelectedClaim(null); setSelectedTemplate(null); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'staking' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            >
+              <Wallet className="w-4 h-4" /> Stake Management
+            </button>
+            <button 
               onClick={() => { setActiveTab('notary'); setSelectedCase(null); setSelectedClaim(null); setSelectedTemplate(null); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'notary' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
             >
@@ -316,7 +332,7 @@ const App = () => {
             </button>
             <button 
               onClick={() => { setActiveTab('treasury'); setSelectedCase(null); setSelectedClaim(null); setSelectedTemplate(null); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'treasury' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'treasury' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
             >
               <PiggyBank className="w-4 h-4" /> Treasury Audit
             </button>
@@ -340,9 +356,9 @@ const App = () => {
             </button>
           </nav>
 
-          <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-lg">
-            <p className="text-[10px] text-blue-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
-              "Legal instrument notarization ensures all Power of Attorney templates comply with local statutes before being served to Agents."
+          <div className="p-4 bg-green-500/5 border border-green-500/10 rounded-lg">
+            <p className="text-[10px] text-green-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
+              "Collateral release is subject to a 14-day observation window to prevent exit-scamming of contested epochs."
             </p>
           </div>
         </aside>
@@ -385,7 +401,122 @@ const App = () => {
             </div>
           )}
 
-          {/* 2. NOTARY TEMPLATES VIEW (v2.6 FEATURE) */}
+          {/* 2. STAKE MANAGEMENT VIEW (v2.7 FEATURE) */}
+          {activeTab === 'staking' && (
+             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   
+                   {/* Current Stake Card */}
+                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8">
+                      <div className="flex items-center justify-between mb-8">
+                         <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3 text-glow">
+                            <Lock className="w-5 h-5 text-green-500" /> Locked Collateral
+                         </h3>
+                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-green-500/10 text-green-500 border border-green-500/20">
+                            STAKED
+                         </span>
+                      </div>
+                      <div className="space-y-6">
+                         <div>
+                            <span className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Active Bond Balance</span>
+                            <div className="flex items-baseline gap-2">
+                               <span className="text-4xl font-black text-white">{(stats.staked_bond / 1000000).toFixed(2)}</span>
+                               <span className="text-sm font-bold text-gray-500 uppercase tracking-widest">M SATS</span>
+                            </div>
+                         </div>
+
+                         <div className="p-4 bg-white/5 rounded border border-white/10 space-y-3">
+                            <div className="flex justify-between items-center text-[10px] uppercase font-black">
+                               <span className="text-gray-500">Tier Requirements</span>
+                               <span className="text-green-500 font-bold">MET (SUPER-ELITE)</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[10px] uppercase font-black">
+                               <span className="text-gray-500">Slashing Exposure</span>
+                               <span className="text-red-400 font-bold">30% PER DISPUTE</span>
+                            </div>
+                         </div>
+
+                         {withdrawalState === 'IDLE' ? (
+                            <button 
+                               onClick={initiateWithdrawal}
+                               disabled={isProcessingStake}
+                               className="w-full py-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 hover:border-red-500/50 rounded-lg flex items-center justify-center gap-3 transition-all group"
+                            >
+                               <Unlock className="w-4 h-4 text-red-500" />
+                               <span className="text-xs font-black uppercase text-red-500 tracking-widest">
+                                  {isProcessingStake ? 'COMMUNICATING WITH MULTISIG...' : 'Request Release of Stake'}
+                               </span>
+                            </button>
+                         ) : (
+                            <div className="w-full py-4 bg-orange-500/10 border border-orange-500/30 rounded-lg flex flex-col items-center text-center px-4">
+                               <div className="flex items-center gap-2 text-orange-400 mb-1">
+                                  <Clock className="w-4 h-4 animate-spin-slow" />
+                                  <span className="text-[10px] font-black uppercase">Cooling-off Period Active</span>
+                               </div>
+                               <p className="text-[9px] text-orange-400/60 leading-tight">Identity suspended. Final release in {cooldownDaysRemaining} days.</p>
+                            </div>
+                         )}
+                      </div>
+                   </div>
+
+                   {/* Policy and Warnings */}
+                   <div className="space-y-6">
+                      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                         <h3 className="text-xs uppercase font-black text-gray-400 mb-6 flex items-center gap-3">
+                            <AlertOctagon className="w-5 h-5 text-amber-500" /> Staking Policy v1.1
+                         </h3>
+                         <div className="space-y-4">
+                            <div className="flex gap-4">
+                               <div className="w-1.5 h-1.5 bg-amber-500 rounded-full mt-1.5 flex-shrink-0" />
+                               <p className="text-[11px] text-gray-500 leading-relaxed">
+                                  Withdrawing your bond will <span className="text-white font-bold">immediately terminate</span> your Super-Elite adjudication status and stop all fee-sharing.
+                               </p>
+                            </div>
+                            <div className="flex gap-4">
+                               <div className="w-1.5 h-1.5 bg-amber-500 rounded-full mt-1.5 flex-shrink-0" />
+                               <p className="text-[11px] text-gray-500 leading-relaxed">
+                                  The 14-day cooldown is mandatory. If you are selected for a jury during this window and fail to participate, your remaining bond may be slashed.
+                               </p>
+                            </div>
+                            <div className="flex gap-4">
+                               <div className="w-1.5 h-1.5 bg-amber-500 rounded-full mt-1.5 flex-shrink-0" />
+                               <p className="text-[11px] text-gray-500 leading-relaxed">
+                                  Funds are released via <span className="text-white font-bold">Lightning Keysend</span> to the identity key associated with your hardware TPM.
+                                </p>
+                            </div>
+                         </div>
+                      </div>
+
+                      {/* Yield Projections */}
+                      <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-6 flex items-center justify-between">
+                         <div>
+                            <span className="text-[9px] text-green-500 uppercase font-black block mb-1">Opportunity Cost</span>
+                            <p className="text-xs text-gray-300">Staying staked earns ~12% APY in slash bonuses.</p>
+                         </div>
+                         <TrendingUp className="w-8 h-8 text-green-500/20" />
+                      </div>
+                   </div>
+                </div>
+
+                {/* Staking History */}
+                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden">
+                   <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center text-xs uppercase font-black tracking-widest text-gray-500">
+                      Stake Transaction Ledger
+                   </div>
+                   <div className="divide-y divide-white/5">
+                      <div className="p-4 flex justify-between items-center hover:bg-white/[0.01]">
+                         <div className="flex items-center gap-4">
+                            <span className="text-[9px] text-gray-700 font-black">2026-01-01</span>
+                            <span className="text-[10px] text-white font-bold">Initial Bond Deposit</span>
+                         </div>
+                         <span className="text-sm font-black text-green-500">+2,000,000 SATS</span>
+                      </div>
+                   </div>
+                </div>
+             </div>
+          )}
+
+          {/* 3. NOTARY TEMPLATES VIEW (v2.6) */}
           {activeTab === 'notary' && !selectedTemplate && (
              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                 <div className="bg-[#0d0d0e] border border-blue-500/20 rounded-lg overflow-hidden">
@@ -395,12 +526,12 @@ const App = () => {
                       </h2>
                       <span className="text-[9px] text-gray-500 uppercase font-bold">Standardized POA Formats</span>
                    </div>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-1 p-1 bg-white/5">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-1 bg-white/5">
                       {notaryTemplates.map((template) => (
                          <div key={template.id} className="bg-[#0d0d0e] p-6 hover:bg-white/[0.01] transition-all flex flex-col justify-between group">
                             <div>
                                <div className="flex justify-between items-start mb-4">
-                                  <div className="w-10 h-10 bg-blue-500/10 rounded flex items-center justify-center border border-blue-500/20 text-blue-400">
+                                  <div className="w-10 h-10 bg-blue-500/10 rounded flex items-center justify-center border border-blue-500/20 text-blue-400 text-glow">
                                      <FileText className="w-5 h-5" />
                                   </div>
                                   <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${template.status === 'VERIFIED' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500 animate-pulse'}`}>
@@ -409,20 +540,10 @@ const App = () => {
                                </div>
                                <h3 className="text-sm font-black text-white uppercase mb-1 tracking-tight">{template.title}</h3>
                                <p className="text-[10px] text-gray-500 mb-4">{template.id}</p>
-                               <div className="space-y-2 mb-6">
-                                  <div className="flex items-center gap-2 text-[9px] text-gray-400">
-                                     <Shield className="w-3 h-3 text-blue-400/60" />
-                                     <span>{template.legislation}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-[9px] text-gray-400">
-                                     <Clock className="w-3 h-3 text-gray-600" />
-                                     <span>Last Audit: {template.last_audit}</span>
-                                  </div>
-                               </div>
                             </div>
                             <button 
                                onClick={() => setSelectedTemplate(template)}
-                               className="w-full py-2 bg-white/5 border border-white/10 text-gray-400 text-[10px] font-black uppercase rounded group-hover:bg-blue-500/10 group-hover:border-blue-500/30 group-hover:text-blue-400 transition-all"
+                               className="w-full py-2 bg-white/5 border border-white/10 text-gray-400 text-[10px] font-black uppercase rounded hover:bg-blue-500/10 hover:text-blue-400 transition-all"
                             >
                                Audit Instrument
                             </button>
@@ -430,18 +551,10 @@ const App = () => {
                       ))}
                    </div>
                 </div>
-
-                {/* Statutory Warning */}
-                <div className="p-6 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-start gap-4">
-                   <AlertTriangle className="w-5 h-5 text-blue-400 flex-shrink-0" />
-                   <p className="text-xs text-blue-300/60 leading-relaxed italic">
-                      "High Court Judges are responsible for ensuring that the legal bridge remains un-compromised. Modifying template logic without a formal PIP (Proxy Improvement Proposal) constitutes judicial misconduct."
-                   </p>
-                </div>
              </div>
           )}
 
-          {/* 3. TREASURY AUDIT VIEW (v2.5) */}
+          {/* 4. TREASURY AUDIT VIEW (v2.5) */}
           {activeTab === 'treasury' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -449,27 +562,19 @@ const App = () => {
                     <span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Net Reserves</span>
                     <p className="text-2xl font-black text-white">{(treasuryStats.net_reserves / 1000000).toFixed(1)}M <span className="text-xs text-gray-500 font-normal">SATS</span></p>
                   </div>
-                  <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-lg">
-                    <span className="text-[9px] text-blue-400 uppercase font-black block mb-2 tracking-widest">Insurance Depth</span>
-                    <p className="text-2xl font-black text-white">{(stats.insurance_pool_depth / 1000000).toFixed(1)}M <span className="text-xs text-gray-500 font-normal">SATS</span></p>
-                  </div>
-                  <div className="bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg">
-                    <span className="text-[9px] text-amber-400 uppercase font-black block mb-2 tracking-widest">Slash Revenue</span>
-                    <p className="text-2xl font-black text-white">{(treasuryStats.slashing_revenue / 1000000).toFixed(1)}M</p>
-                  </div>
-                  <div className="bg-red-500/5 border border-red-500/20 p-5 rounded-lg">
-                    <span className="text-[9px] text-red-400 uppercase font-black block mb-2 tracking-widest">Total Outflow</span>
-                    <p className="text-2xl font-black text-white">{(treasuryStats.total_outflow / 1000000).toFixed(1)}M</p>
+                  <div className="bg-emerald-500/5 border border-emerald-500/20 p-5 rounded-lg">
+                    <span className="text-[9px] text-emerald-400 uppercase font-black block mb-2 tracking-widest">Insurance Depth</span>
+                    <p className="text-2xl font-black text-white">{(stats.insurance_pool_depth / 1000000).toFixed(1)}M</p>
                   </div>
                </div>
                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden">
-                  <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs uppercase font-bold tracking-widest flex items-center gap-2"><History className="w-4 h-4 text-green-500" /> Recent Protocol Transactions</h3></div>
+                  <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center text-xs uppercase font-black text-gray-500">Recent Protocol Transactions</div>
                   <div className="divide-y divide-white/5">
                     {transactions.map((tx) => (
-                      <div key={tx.id} className="p-5 flex items-center justify-between hover:bg-white/[0.01]">
+                      <div key={tx.id} className="p-5 flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded bg-white/5 border border-white/10 ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-400'}`}>{tx.type === 'PAYOUT' ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}</div>
-                          <div><span className="text-sm font-bold text-white block mb-0.5">{tx.id} <span className="text-[8px] bg-white/5 px-1.5 py-0.5 rounded text-gray-500 uppercase">{tx.type}</span></span><p className="text-[9px] text-gray-600">{tx.node} • {tx.timestamp}</p></div>
+                          <div className={`p-2 rounded bg-white/5 ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-400'}`}>{tx.type === 'PAYOUT' ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}</div>
+                          <div><span className="text-sm font-bold text-white block mb-0.5">{tx.id} <span className="text-[8px] bg-white/5 px-1.5 py-0.5 rounded text-gray-500 uppercase">{tx.type}</span></span><p className="text-[9px] text-gray-600">{tx.timestamp}</p></div>
                         </div>
                         <p className={`text-sm font-black ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-500'}`}>{tx.type === 'PAYOUT' ? '-' : '+'}{tx.amount.toLocaleString()} SATS</p>
                       </div>
@@ -479,79 +584,66 @@ const App = () => {
             </div>
           )}
 
-          {/* 4. BROWNOUT CONTROL VIEW (v2.4) */}
+          {/* 5. BROWNOUT CONTROL VIEW (v2.4) */}
           {activeTab === 'brownout' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-4">Mempool Depth</span>
+                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-4 tracking-widest">Mempool Depth</span>
                      <div className="flex items-baseline gap-2">
                         <span className="text-3xl font-black text-white">{mempoolDepth.toLocaleString()}</span>
                         <span className="text-xs text-gray-500 uppercase tracking-widest">Tasks</span>
                      </div>
                   </div>
                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-4">Congestion Level</span>
+                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-4 tracking-widest text-glow">Congestion Level</span>
                      <div className="flex items-center gap-3">
                         <div className={`w-3 h-3 rounded-full animate-pulse ${
-                          brownoutLevel === 'GREEN' ? 'bg-green-500' : 
+                          brownoutLevel === 'GREEN' ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 
                           brownoutLevel === 'YELLOW' ? 'bg-yellow-500' : 
                           brownoutLevel === 'ORANGE' ? 'bg-orange-500' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
                         }`} />
                         <span className="text-2xl font-black text-white uppercase">{brownoutLevel}</span>
                      </div>
                   </div>
-                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
-                     <span className="text-[10px] text-gray-600 uppercase font-black block mb-2">Manual Override</span>
-                     <button onClick={() => setIsManualOverride(!isManualOverride)} className={`w-full py-2 rounded text-[10px] font-black uppercase tracking-widest ${isManualOverride ? 'bg-orange-500 text-black' : 'bg-white/5 border border-white/10 text-gray-400'}`}>{isManualOverride ? 'ENABLED' : 'DISABLED'}</button>
-                  </div>
                </div>
 
-               <div className="bg-[#0d0d0e] border border-orange-500/20 rounded-lg overflow-hidden">
-                  <div className="p-4 border-b border-orange-500/20 bg-orange-500/[0.02] flex justify-between items-center"><h3 className="text-xs uppercase font-black tracking-widest text-orange-400 flex items-center gap-2"><ShieldAlert className="w-4 h-4" /> Traffic Shedding Parameters</h3></div>
-                  <div className="p-8">
-                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        {['GREEN', 'YELLOW', 'ORANGE', 'RED'].map((level) => (
-                           <button 
-                              key={level} 
-                              disabled={!isManualOverride} 
-                              onClick={() => setBrownoutLevel(level)} 
-                              className={`p-6 border rounded-lg transition-all flex flex-col items-center text-center ${brownoutLevel === level ? 'bg-white/5 border-orange-500' : 'bg-black/40 border-white/5 opacity-40'} ${!isManualOverride && 'cursor-not-allowed opacity-20'}`}
-                           >
-                              <span className={`text-[9px] font-black uppercase mb-3 ${level === 'GREEN' ? 'text-green-500' : level === 'YELLOW' ? 'text-yellow-500' : level === 'ORANGE' ? 'text-orange-500' : 'text-red-500'}`}>{level}</span>
-                              <p className="text-[10px] text-gray-400 leading-tight">
-                                {level === 'GREEN' ? 'Normal Operations ( > 300 REP)' : 
-                                 level === 'YELLOW' ? 'Shed Probationary ( > 500 REP)' : 
-                                 level === 'ORANGE' ? 'Shed Non-Elite ( > 700 REP)' : 
-                                 'Whale Only ( > 900 REP)'}
-                              </p>
-                           </button>
-                        ))}
-                     </div>
-                  </div>
-               </div>
-
-               <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                  <h3 className="text-xs uppercase font-black text-gray-500 tracking-widest mb-6">Congestion Audit Log</h3>
-                  <div className="space-y-3 font-mono text-[9px]">
-                     <div className="flex justify-between text-gray-600"><span>[10:42:12] AUTO_SCALING: PROMOTED TO ORANGE (MEMPOOL {'>'} 5000)</span><span className="text-green-500 uppercase font-black">Verified</span></div>
-                     <div className="flex justify-between text-gray-600"><span>[10:45:00] SHEDDING_EXEC: DROPPED 422 TASKS FROM {'<'} 500 REP NODES</span><span className="text-green-500 uppercase font-black">Verified</span></div>
+               <div className="bg-[#0d0d0e] border border-orange-500/20 rounded-lg p-8">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                     {['GREEN', 'YELLOW', 'ORANGE', 'RED'].map((level) => (
+                        <button 
+                           key={level} 
+                           disabled={!isManualOverride} 
+                           onClick={() => setBrownoutLevel(level)} 
+                           className={`p-6 border rounded-lg transition-all flex flex-col items-center text-center ${brownoutLevel === level ? 'bg-white/5 border-orange-500 ring-1 ring-orange-500/20' : 'bg-black/40 border-white/5 opacity-40'} ${!isManualOverride && 'cursor-not-allowed opacity-20'}`}
+                        >
+                           <span className={`text-[9px] font-black uppercase mb-3 ${level === 'GREEN' ? 'text-green-500' : level === 'YELLOW' ? 'text-yellow-500' : level === 'ORANGE' ? 'text-orange-500' : 'text-red-500'}`}>{level}</span>
+                           <p className="text-[10px] text-gray-400 leading-tight">
+                             {level === 'GREEN' ? 'Normal Operations (&gt; 300 REP)' : 
+                              level === 'YELLOW' ? 'Shed Probationary (&gt; 500 REP)' : 
+                              level === 'ORANGE' ? 'Shed Non-Elite (&gt; 700 REP)' : 
+                              'Whale Only (&gt; 900 REP)'}
+                           </p>
+                        </button>
+                     ))}
                   </div>
                </div>
             </div>
           )}
 
-          {/* 5. SYBIL DEFENSE VIEW (v2.3) */}
+          {/* 6. SYBIL DEFENSE VIEW (v2.3) */}
           {activeTab === 'sybil' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
-                  <div className="bg-black/60 rounded-lg h-64 flex flex-col items-center justify-center relative overflow-hidden">
+                  <div className="bg-black/60 rounded-lg h-64 flex flex-col items-center justify-center relative overflow-hidden text-center">
                      <Globe className="w-12 h-12 text-red-500/40 mb-4" />
                      <h3 className="text-xs uppercase font-black text-gray-500 tracking-[0.4em]">Global Node Entropy Map</h3>
                   </div>
                </div>
                <div className="bg-[#0d0d0e] border border-red-500/20 rounded-lg overflow-hidden">
-                  <div className="p-4 border-b border-red-500/20 bg-red-500/[0.02] flex justify-between items-center"><h3 className="text-xs uppercase font-black tracking-widest text-red-400 flex items-center gap-2"><ZapOff className="w-4 h-4" /> Suspicious Node Clusters</h3></div>
+                  <div className="p-4 border-b border-red-500/20 bg-red-500/[0.02] flex justify-between items-center text-xs uppercase font-black text-red-400 tracking-widest">
+                    Suspicious Node Clusters
+                  </div>
                   <div className="divide-y divide-white/5">
                      {sybilClusters.map((cluster) => (
                         <div key={cluster.id} className="p-6 flex flex-col md:flex-row justify-between gap-6 hover:bg-white/[0.01] transition-colors">
@@ -559,7 +651,7 @@ const App = () => {
                               <div className="w-14 h-14 bg-red-500/10 rounded border border-red-500/30 flex flex-col items-center justify-center"><span className="text-[8px] text-red-500 uppercase font-black">Risk</span><span className="text-lg font-black text-white leading-none">{cluster.risk_score}</span></div>
                               <div className="space-y-1"><span className="text-sm font-bold text-white uppercase block">{cluster.id}</span><p className="text-xs text-gray-500 max-w-md">{cluster.logic}</p></div>
                            </div>
-                           <button className="px-4 py-2 bg-red-500/10 border border-red-500 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">Mass Slash</button>
+                           <button className="px-6 py-2 bg-red-500/10 border border-red-500 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">Mass Slash</button>
                         </div>
                      ))}
                   </div>
@@ -567,9 +659,8 @@ const App = () => {
             </div>
           )}
 
-          {/* DETAIL VIEWS (CASE / CLAIM / TEMPLATE) */}
+          {/* DETAIL VIEWS (TEMPLATE / CASE / CLAIM) */}
           
-          {/* v2.6 TEMPLATE AUDIT VIEW */}
           {selectedTemplate && (
              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <button onClick={() => setSelectedTemplate(null)} className="text-xs text-gray-500 hover:text-white mb-4 flex items-center gap-2 font-bold uppercase tracking-widest">
@@ -578,7 +669,7 @@ const App = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                    <div className="bg-[#0d0d0e] border border-blue-500/20 rounded-lg flex flex-col h-[500px]">
                       <div className="p-4 border-b border-blue-500/20 bg-blue-500/[0.02] flex justify-between items-center">
-                         <span className="text-[10px] text-blue-400 font-black uppercase">Instrument Preview (Markdown)</span>
+                         <span className="text-[10px] text-blue-400 font-black uppercase text-glow">Instrument Preview</span>
                          <span className="text-[9px] text-gray-600 mono">{selectedTemplate.jurisdiction}</span>
                       </div>
                       <div className="flex-1 p-8 overflow-y-auto bg-black/40 font-mono text-xs leading-relaxed text-gray-400 whitespace-pre-wrap">
@@ -586,60 +677,24 @@ const App = () => {
                       </div>
                    </div>
 
-                   <div className="space-y-6">
-                      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
+                      <div>
                          <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3">
                             <ShieldCheck className="w-5 h-5 text-green-500" /> Compliance Sign-off
                          </h3>
-                         <div className="space-y-4 mb-8">
-                            <p className="text-xs text-gray-500 leading-relaxed">
-                               Review the instrument body against the cited legislation: <span className="text-blue-400 underline">{selectedTemplate.legislation}</span>. 
-                               Affixing your signature confirms that this template is a valid delegation of authority under local law.
-                            </p>
-                            <div className="p-4 bg-white/5 rounded border border-white/10">
-                               <div className="flex justify-between items-center text-[10px] mb-2 uppercase font-black">
-                                  <span className="text-gray-600">Juror Standing</span>
-                                  <span className="text-green-500">Super-Elite</span>
-                               </div>
-                               <div className="flex justify-between items-center text-[10px] uppercase font-black">
-                                  <span className="text-gray-600">Signing Power</span>
-                                  <span className="text-white">Active</span>
-                               </div>
-                            </div>
-                         </div>
-                         
-                         <div className="space-y-3">
-                            <button 
-                               onClick={() => handleVote('SIGN')}
-                               disabled={isVoting}
-                               className="w-full py-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded flex items-center justify-center gap-3 text-green-500 font-black text-xs uppercase tracking-widest transition-all"
-                            >
-                               <FileSignature className="w-4 h-4" /> Notarize Template
-                            </button>
-                            <button 
-                               onClick={() => handleVote('REJECT')}
-                               disabled={isVoting}
-                               className="w-full py-2 text-gray-600 hover:text-red-500 text-[9px] uppercase font-bold transition-all"
-                            >
-                               Flag for Re-drafting
-                            </button>
-                         </div>
-                         {isVoting && <p className="text-[9px] text-blue-400 text-center mt-4 animate-pulse uppercase font-black">Broadcasting Judicial Acknowledgment...</p>}
+                         <p className="text-xs text-gray-500 leading-relaxed mb-6">
+                            Signature confirms that this instrument is a valid delegation of authority under <span className="text-blue-400 underline">{selectedTemplate.legislation}</span>.
+                         </p>
                       </div>
-
-                      {/* Version Control History */}
-                      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col">
-                         <span className="text-[9px] text-gray-600 uppercase font-black mb-4 tracking-widest">Audit Trail</span>
-                         <div className="space-y-3">
-                            <div className="flex justify-between items-center text-[9px] mono">
-                               <span className="text-green-500">v1.1 APPROVED</span>
-                               <span className="text-gray-700">2026-01-15</span>
-                            </div>
-                            <div className="flex justify-between items-center text-[9px] mono">
-                               <span className="text-yellow-500">v1.2 PROPOSED</span>
-                               <span className="text-gray-700">2026-02-11</span>
-                            </div>
-                         </div>
+                      <div className="space-y-3">
+                         <button 
+                            onClick={() => handleVote('SIGN')}
+                            disabled={isVoting}
+                            className="w-full py-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded flex items-center justify-center gap-3 text-green-500 font-black text-xs uppercase tracking-widest transition-all"
+                         >
+                            <FileSignature className="w-4 h-4" /> Notarize Template
+                         </button>
+                         {isVoting && <p className="text-[9px] text-blue-400 text-center mt-4 animate-pulse uppercase font-black tracking-widest">Broadcasting Judicial Acknowledgment...</p>}
                       </div>
                    </div>
                 </div>
@@ -652,19 +707,12 @@ const App = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 text-xs leading-relaxed italic text-gray-400">"{selectedCase.evidence.instructions}"</div>
                 <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                  <button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-4 mb-3 bg-green-500/10 border border-green-500/20 rounded text-green-500 font-black text-xs uppercase tracking-widest">Valid Work</button>
-                  <button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-4 bg-red-500/10 border border-red-500/20 rounded text-red-500 font-black text-xs uppercase tracking-widest">Fraudulent Proof</button>
+                  <h3 className="text-xs uppercase font-black text-white mb-6 tracking-widest">Cast Verified Verdict</h3>
+                  <div className="space-y-3">
+                    <button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-4 bg-green-500/10 border border-green-500/20 rounded text-green-500 font-black text-xs uppercase tracking-widest">Valid Work</button>
+                    <button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-4 bg-red-500/10 border border-red-500/20 rounded text-red-500 font-black text-xs uppercase tracking-widest">Fraudulent Proof</button>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {selectedClaim && (
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <button onClick={() => setSelectedClaim(null)} className="text-xs text-gray-500 hover:text-white mb-4 flex items-center gap-2 font-bold uppercase tracking-widest"><ArrowRight className="w-3 h-3 rotate-180" /> Back to Claims</button>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-[#0d0d0e] border border-cyan-500/20 rounded-lg p-6 mono text-[10px] text-red-400/80 leading-relaxed">{selectedClaim.proof_log}</div>
-                <button onClick={() => handleVote('APPROVE')} disabled={isVoting} className="w-full py-5 bg-cyan-500/10 border border-cyan-500/30 rounded text-cyan-400 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2"><CheckCircle2 className="w-4 h-4" /> Authorize Keysend</button>
               </div>
             </div>
           )}
