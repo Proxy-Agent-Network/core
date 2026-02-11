@@ -15,8 +15,8 @@ from secure_memory import SecurePayload
 from ocr_validator import OCRValidator
 from privacy_guard import PrivacyGuard
 
-# PROXY PROTOCOL - NODE DAEMON v1.3 (Privacy Enforced)
-# "Local sanitization via ZK-Masking logic."
+# PROXY PROTOCOL - NODE DAEMON v1.4 (Privacy Refined)
+# "Hardened local sanitization with fail-safe logic."
 # ----------------------------------------------------
 
 class ProxyNodeDaemon:
@@ -61,7 +61,30 @@ class ProxyNodeDaemon:
         print(f"[SMS] ✅ Received code: {otp_code}")
         return otp_code
 
-    # --- 3. Secure Processing Pipeline ---
+    # --- 3. Privacy & Sanitization Pipeline ---
+
+    def _apply_privacy_masking(self, input_path: str, task_requirements: dict) -> tuple:
+        """
+        Refined Privacy Logic: 
+        Applies masking based on Agent requirements with fail-safe enforcement.
+        """
+        privacy_tier = task_requirements.get('privacy_tier', 'STANDARD')
+        print(f"[Privacy] Applying {privacy_tier} ZK-Masking...")
+
+        try:
+            # The PrivacyGuard handles the destructive editing (pixelation)
+            safe_path, report = self.privacy.redact_pii(input_path)
+            
+            # Fail-safe check: ensure output file exists and is different from input
+            if not os.path.exists(safe_path):
+                raise RuntimeError("Sanitization failed to generate output.")
+
+            return safe_path, report
+        except Exception as e:
+            print(f"[Privacy] 🚨 CRITICAL FAILURE: {str(e)}")
+            raise SecurityError("Privacy pipeline failed. Aborting to prevent data leak.")
+
+    # --- 4. Secure Processing Pipeline ---
 
     def _encrypt_for_agent(self, data: dict, agent_pubkey_pem: str) -> str:
         """End-to-end encryption using Agent's Public Key."""
@@ -80,7 +103,7 @@ class ProxyNodeDaemon:
 
     def handle_incoming_task(self, raw_task: dict):
         """
-        Main execution pipeline. Integrates OCR validation and Privacy Masking.
+        Main execution pipeline. Integrates OCR validation and Refined Privacy Masking.
         """
         instruction_str = raw_task.get('instruction', 'Execute standard task.')
         
@@ -118,14 +141,17 @@ class ProxyNodeDaemon:
                     if not scan_result['valid']:
                         return {"status": "failed", "reason": f"QA Failed: {scan_result['rejection_reason']}"}
                     
-                    # B. Privacy Redaction (ZK-Masking)
-                    # This step removes faces/SSNs before encryption or upload
-                    print("[Privacy] Running local ZK-Masking pipeline...")
-                    safe_path, privacy_report = self.privacy.redact_pii(scan_path)
+                    # B. Refined Privacy Redaction
+                    # Using the new _apply_privacy_masking helper with fail-safe logic
+                    safe_path, privacy_report = self._apply_privacy_masking(
+                        scan_path, 
+                        raw_task['requirements']
+                    )
                     
                     result_data = {
                         "scan_url": f"ipfs://{hashlib.md5(safe_path.encode()).hexdigest()}",
                         "sanitized": True,
+                        "privacy_tier": raw_task['requirements'].get('privacy_tier', 'STANDARD'),
                         "privacy_metrics": privacy_report,
                         "ocr_summary": scan_result['metrics']
                     }
@@ -146,10 +172,12 @@ class ProxyNodeDaemon:
                     "node_signature": self.tpm.generate_attestation_quote(encrypted_blob)
                 }
 
+            except SecurityError as se:
+                return {"status": "failed", "reason": f"Security Alert: {str(se)}"}
             except Exception as e:
                 return {"status": "error", "message": str(e)}
 
-    # --- 4. Main Polling Loop ---
+    # --- 5. Main Polling Loop ---
 
     def run(self):
         """Standard Node Operation Loop."""
@@ -157,17 +185,20 @@ class ProxyNodeDaemon:
             print("[*] Polling Proxy API for tasks...", end="\r")
             
             if random.random() > 0.95:
-                # Simulation: Mail task for Discord registration
+                # Simulation: Mail task with Privacy Tier specified
                 mock_task = {
                     "id": f"tkt_{random.randint(1000, 9999)}",
                     "type": "physical_mail_receive",
                     "tier": 1,
-                    "instruction": "Scan the legal notice received from Discord.",
-                    "requirements": {"scanning_instructions": "scan_contents"},
+                    "instruction": "Scan the letter. Redact all financial PII.",
+                    "requirements": {
+                        "scanning_instructions": "scan_contents",
+                        "privacy_tier": "AGGRESSIVE" 
+                    },
                     "agent_public_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA..."
                 }
                 
-                # Mock a raw image file for the simulation
+                # Mock raw image
                 with open("raw_envelope.jpg", "wb") as f:
                     f.write(b"fake image data")
                 
@@ -175,6 +206,10 @@ class ProxyNodeDaemon:
                 print(f"\n[Result] Task Status: {result['status']}")
                 
             time.sleep(5)
+
+class SecurityError(Exception):
+    """Custom exception for privacy pipeline failures."""
+    pass
 
 if __name__ == "__main__":
     node = ProxyNodeDaemon(api_key="node_live_88293")
