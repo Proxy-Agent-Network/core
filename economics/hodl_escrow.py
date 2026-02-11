@@ -1,143 +1,178 @@
 import hashlib
 import secrets
 import time
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, asdict
 from enum import Enum
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
-# PROXY PROTOCOL - HODL ESCROW STATE MACHINE (v1)
-# "Trustless settlement via cryptographic locks."
+# PROXY PROTOCOL - HODL ESCROW STATE MACHINE (v1.2)
+# "Programmable value transfer with cryptographic finality."
 # ----------------------------------------------------
 
 class EscrowState(Enum):
-    OPEN = "OPEN"             # Invoice created, waiting for payment
-    ACCEPTED = "ACCEPTED"     # Payment held by LND (HODL)
-    EXECUTING = "EXECUTING"   # Human accepted task
-    SETTLED = "SETTLED"       # Preimage revealed, funds moved
-    CANCELLED = "CANCELLED"   # Timeout, funds refunded
+    """
+    Lifecycle stages for a HODL Invoice.
+    """
+    OPEN = "OPEN"               # Invoice created, awaiting payment from Agent
+    ACCEPTED = "ACCEPTED"       # Payment detected and held by LND (HODL state)
+    IN_PROGRESS = "IN_PROGRESS" # Human Node has accepted the task and is executing
+    SETTLED = "SETTLED"         # Proof verified; preimage revealed; funds moved
+    CANCELLED = "CANCELLED"     # Task failed or timed out; funds returned to Agent
 
 @dataclass
 class HodlContract:
     contract_id: str
     payment_hash: str
-    preimage: str # The Secret Key (Keep safe!)
+    preimage: str           # The cryptographic key (MUST remain server-side)
     amount_sats: int
-    agent_pubkey: str
-    node_pubkey: Optional[str] = None
-    expiry: int = 0
+    agent_id: str
+    task_id: str
+    expiry: int
     state: EscrowState = EscrowState.OPEN
+    node_id: Optional[str] = None
+    created_at: float = time.time()
 
 class EscrowManager:
+    """
+    Coordinates the generation, monitoring, and settlement of Lightning HODL invoices.
+    Interacts with the LND gateway to lock and release HTLCs.
+    """
+    
     def __init__(self):
+        # In-memory registry (In production: backed by high-availability Redis/PostgreSQL)
         self.contracts: Dict[str, HodlContract] = {}
-        # HODL invoices need a long expiry to allow time for physical work
-        self.invoice_expiry_seconds = 3600 * 4 # 4 Hours
+        self.DEFAULT_EXPIRY = 14400 # 4-hour standard task window
 
-    def create_contract(self, agent_pubkey: str, amount_sats: int) -> Dict:
+    def create_invoice(self, agent_id: str, task_id: str, amount_sats: int) -> Dict:
         """
         1. Generate a random secret (Preimage).
-        2. Hash it (SHA256).
-        3. Create a HODL Invoice tied to that Hash.
+        2. Generate the Payment Hash (The Lock).
+        3. Store the contract state and return BOLT11 details.
         """
-        # Generate 32-byte secret (The "Key" to the funds)
+        # Generate 32-byte secure preimage
         preimage_bytes = secrets.token_bytes(32)
         preimage_hex = preimage_bytes.hex()
         
-        # Calculate Payment Hash (The "Lock")
-        hash_obj = hashlib.sha256(preimage_bytes)
-        payment_hash = hash_obj.hexdigest()
-        
-        contract_id = f"escrow_{payment_hash[:8]}"
-        expiry = int(time.time()) + self.invoice_expiry_seconds
+        # Calculate SHA-256 Payment Hash
+        payment_hash = hashlib.sha256(preimage_bytes).hexdigest()
         
         contract = HodlContract(
-            contract_id=contract_id,
+            contract_id=f"escrow_{payment_hash[:12]}",
             payment_hash=payment_hash,
             preimage=preimage_hex,
             amount_sats=amount_sats,
-            agent_pubkey=agent_pubkey,
-            expiry=expiry,
-            state=EscrowState.OPEN
+            agent_id=agent_id,
+            task_id=task_id,
+            expiry=int(time.time()) + self.DEFAULT_EXPIRY
         )
+        
         self.contracts[payment_hash] = contract
         
-        print(f"[Escrow] Created Contract {contract_id}. State: OPEN. Waiting for Lock...")
-        
-        # In prod: call LND AddInvoice(hash=payment_hash, amt=amount_sats, hodl=True)
+        print(f"[Escrow] 🟢 Contract Created: {contract.contract_id}")
+        print(f"         Task: {task_id} | Amount: {amount_sats} SATS")
+
         return {
-            "contract_id": contract_id,
             "payment_hash": payment_hash,
-            # In reality, this would be a full BOLT11 string from LND
-            "bolt11": f"lnbc{amount_sats}n1...{payment_hash[:6]}..." 
+            "contract_id": contract.contract_id,
+            "expiry": contract.expiry,
+            # In a real impl, this would be a BOLT11 string signed by the LN node
+            "bolt11": f"lnbc{amount_sats}n1...{payment_hash[:8]}..." 
         }
 
-    def on_payment_locked(self, payment_hash: str):
+    def update_state(self, payment_hash: str, new_state: EscrowState, node_id: Optional[str] = None):
         """
-        Callback from LND when Agent pays the invoice.
-        The funds are now 'Stuck' in the channel, waiting for the preimage.
+        Manages valid state transitions.
         """
         if payment_hash not in self.contracts:
-            raise ValueError("Unknown Contract")
+            raise ValueError(f"Unknown payment hash: {payment_hash}")
             
-        contract = self.contracts[payment_hash]
-        if contract.state != EscrowState.OPEN:
-            print(f"[Escrow] Warning: Payment received for contract in state {contract.state}")
-            return
-
-        contract.state = EscrowState.ACCEPTED
-        print(f"[Escrow] {contract.contract_id} -> ACCEPTED. Funds secured in channel.")
-
-    def assign_human(self, payment_hash: str, node_id: str):
-        contract = self.contracts[payment_hash]
-        if contract.state != EscrowState.ACCEPTED:
-            raise ValueError(f"Funds not accepted/locked yet. Current state: {contract.state}")
-            
-        contract.node_pubkey = node_id
-        contract.state = EscrowState.EXECUTING
-        print(f"[Escrow] {contract.contract_id} -> EXECUTING. Assigned to {node_id}")
-
-    def settle_contract(self, payment_hash: str, proof_valid: bool):
-        """
-        The Moment of Truth.
-        If Proof is valid -> Reveal Preimage (Settle).
-        If Proof is invalid/timeout -> Cancel Invoice (Refund).
-        """
         contract = self.contracts[payment_hash]
         
-        if proof_valid:
-            # REVEAL THE SECRET
-            # LND sees the preimage, completes the circuit, and funds move to the Protocol/Human.
-            print(f"[Escrow] ✅ Proof Verified. Revealing Preimage: {contract.preimage}")
-            # In prod: LND SettleInvoice(preimage)
-            contract.state = EscrowState.SETTLED
-        else:
-            # HIDE THE SECRET
-            # LND cancels the invoice after timeout, funds return to Agent automatically.
-            print(f"[Escrow] ❌ Proof Failed. Cancelling Invoice.")
-            # In prod: LND CancelInvoice(hash)
-            contract.state = EscrowState.CANCELLED
+        # Validation Logic: Prevent illegal state jumps
+        # e.g., Cannot settle a contract that hasn't been ACCEPTED (locked)
+        if new_state == EscrowState.SETTLED and contract.state not in [EscrowState.ACCEPTED, EscrowState.IN_PROGRESS]:
+            raise PermissionError(f"Cannot settle invoice in state {contract.state}")
 
-# --- Simulation ---
+        contract.state = new_state
+        if node_id:
+            contract.node_id = node_id
+
+        print(f"[Escrow] 🔄 {contract.contract_id} transitioned to {new_state.value}")
+
+    def settle_contract(self, payment_hash: str) -> str:
+        """
+        Reveals the secret preimage to the Lightning Network.
+        This triggers the final movement of funds to the Node.
+        """
+        contract = self.contracts.get(payment_hash)
+        if not contract:
+            return None
+
+        # 1. Update Internal State
+        self.update_state(payment_hash, EscrowState.SETTLED)
+
+        # 2. Trigger LND Settlement
+        # In production: self.lnd_client.settle_invoice(contract.preimage)
+        print(f"[Escrow] 💸 Preimage Revealed: {contract.preimage[:16]}...")
+        print(f"         SATS released to Node: {contract.node_id}")
+        
+        return contract.preimage
+
+    def cancel_contract(self, payment_hash: str, reason: str = "Timeout"):
+        """
+        Instructs LND to cancel the invoice, returning funds to the Agent.
+        """
+        contract = self.contracts.get(payment_hash)
+        if not contract:
+            return
+
+        self.update_state(payment_hash, EscrowState.CANCELLED)
+        
+        # In production: self.lnd_client.cancel_invoice(payment_hash)
+        print(f"[Escrow] 🛑 Invoice Cancelled. Reason: {reason}")
+        print(f"         Funds refunded to Agent: {contract.agent_id}")
+
+    def get_contract_status(self, payment_hash: str) -> Optional[Dict]:
+        """Returns a public view of the escrow state."""
+        contract = self.contracts.get(payment_hash)
+        if not contract:
+            return None
+            
+        return {
+            "id": contract.contract_id,
+            "task_id": contract.task_id,
+            "state": contract.state.value,
+            "amount_sats": contract.amount_sats,
+            "is_locked": contract.state != EscrowState.OPEN,
+            "time_remaining": max(0, contract.expiry - int(time.time()))
+        }
+
+# --- Task Lifecycle Simulation ---
 if __name__ == "__main__":
-    escrow = EscrowManager()
+    manager = EscrowManager()
     
-    print("--- HODL INVOICE LIFECYCLE ---")
+    print("--- 1. INITIATION ---")
+    # Agent requests an SMS verification
+    invoice_info = manager.create_invoice(
+        agent_id="agent_alpha_v1", 
+        task_id="task_88293", 
+        amount_sats=1500
+    )
+    p_hash = invoice_info['payment_hash']
+
+    print("\n--- 2. ESCROW LOCKING ---")
+    # Simulate LND reporting that the Agent has paid the HODL invoice
+    manager.update_state(p_hash, EscrowState.ACCEPTED)
+
+    print("\n--- 3. TASK EXECUTION ---")
+    # Simulate a Node accepting the task
+    manager.update_state(p_hash, EscrowState.IN_PROGRESS, node_id="node_bob_elite")
+
+    print("\n--- 4. SETTLEMENT ---")
+    # Task verified! Reveal the secret.
+    manager.settle_contract(p_hash)
     
-    # 1. Agent requests task (e.g. "Verify SMS")
-    invoice = escrow.create_contract("agent_007", 5000)
-    p_hash = invoice["payment_hash"]
-    
-    # 2. Agent pays the BOLT11 invoice (Lock)
-    # LND detects the HTLC
-    escrow.on_payment_locked(p_hash)
-    
-    # 3. Human accepts the job
-    escrow.assign_human(p_hash, "human_node_alpha")
-    
-    # 4. Human performs task and uploads proof
-    print("\n[!] Validating Human Proof (OCR/TPM)...")
-    time.sleep(1)
-    
-    # 5. Settlement
-    # If this was False, the money would automatically return to the Agent
-    escrow.settle_contract(p_hash, proof_valid=True)
+    # Check final status
+    final_status = manager.get_contract_status(p_hash)
+    print(f"\n[Final Status] {json.dumps(final_status, indent=2)}")
