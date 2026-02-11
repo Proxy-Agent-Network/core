@@ -14,6 +14,11 @@ Your commit message should follow this structural pattern:
 [Optional Body]
 
 [Security & Protocol Context]
+Severity: <SEV-LEVEL>
+Protocol Version: <VERSION>
+Hardware Impact: <DESCRIPTION>
+Legal Impact: <DESCRIPTION>
+
 [Breaking Changes]
 [Ref]
 ```
@@ -68,7 +73,7 @@ Because our code interacts with physical hardware and legal instruments, you mus
 * Use the imperative mood: "Add feature" instead of "Added feature".
 
 ### Breaking Changes
-All breaking changes must be documented in the footer starting with `BREAKING CHANGE:` followed by a description of the change and the migration path.
+All breaking changes must be documented in the footer starting with `BREAKING CHANGE:` followed by a description of the change and migration path.
 
 ---
 
@@ -78,6 +83,59 @@ To ensure you always see the template when committing locally, run the following
 
 ```bash
 git config commit.template .gitmessage
+```
+
+---
+
+## 5. Automated Validation (Pre-commit Hook)
+
+To prevent invalid commits from reaching the repository, you can install the following validation script. This script checks for the correct type/scope format and the presence of mandatory security metadata.
+
+### Installation
+1. Create a file at `.git/hooks/commit-msg`.
+2. Paste the script below into that file.
+3. Make it executable: `chmod +x .git/hooks/commit-msg`.
+
+### Validation Script
+```bash
+#!/bin/bash
+
+# Proxy Protocol Commit Validator
+MSG_FILE=$1
+COMMIT_MSG=$(cat "$MSG_FILE")
+
+# 1. Regex for Conventional Commits: type(scope): subject
+# Matches: feat(core): add something
+REGEX="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)\((core|sdk-node|gov|hardware|ui)\): .+"
+
+if [[ ! $COMMIT_MSG =~ $REGEX ]]; then
+    echo "❌ ERROR: Invalid commit message format."
+    echo "Expected: <type>(<scope>): <subject>"
+    echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+    echo "Scopes: core, sdk-node, gov, hardware, ui"
+    exit 1
+fi
+
+# 2. Check for Mandatory Metadata
+METADATA_FIELDS=("Severity:" "Protocol Version:" "Hardware Impact:" "Legal Impact:")
+MISSING_FIELDS=()
+
+for field in "${METADATA_FIELDS[@]}"; do
+    if ! echo "$COMMIT_MSG" | grep -q "$field"; then
+        MISSING_FIELDS+=("$field")
+    fi
+done
+
+if [ ${#MISSING_FIELDS[@]} -ne 0 ]; then
+    echo "❌ ERROR: Missing mandatory Security & Protocol Context."
+    for missing in "${MISSING_FIELDS[@]}"; do
+        echo "   - Missing field: $missing"
+    done
+    exit 1
+fi
+
+echo "✅ Commit message validated."
+exit 0
 ```
 
 ---
