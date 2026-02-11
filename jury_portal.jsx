@@ -7,7 +7,8 @@ import {
   RefreshCw, Key, ShieldQuestion, Globe, Map, ZapOff, Waves, ShieldX, 
   PiggyBank, ArrowUpRight, ArrowDownRight, History, FileSignature, 
   Stamp, Wallet, Unlock, AlertOctagon, Wifi, Binary, ShieldEllipsis, 
-  Database, FileCode, CheckSquare, Layers, MapPin, Navigation
+  Database, FileCode, CheckSquare, Layers, MapPin, Navigation,
+  PenTool, FilePlus, Send, Archive
 } from 'lucide-react';
 
 // --- MODULAR COMPONENTS ---
@@ -19,8 +20,8 @@ const ProtocolHeader = ({ nodeId, reserves, tier }) => (
         <Gavel className="w-5 h-5 text-amber-500" />
       </div>
       <div>
-        <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest leading-none">Jury Tribunal v2.12</h1>
-        <p className="text-[9px] text-amber-500/70 uppercase tracking-widest mt-1">Geospatial Integrity Mapping Active</p>
+        <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest leading-none">Jury Tribunal v2.13</h1>
+        <p className="text-[9px] text-amber-500/70 uppercase tracking-widest mt-1">Governor's Proposal Forge Active</p>
       </div>
     </div>
     
@@ -69,7 +70,131 @@ const JudicialStanding = ({ stats }) => (
   </div>
 );
 
-// --- v2.12 NEW: Reputation Heatmap Dashboard ---
+// --- v2.13 NEW: Proposal Forge Dashboard ---
+const ProposalForgeTab = ({ nodeId, onDraftSubmit, isBroadcasting }) => {
+  const [draft, setDraft] = useState({
+    title: "",
+    category: "CORE",
+    content: "# PIP ABSTRACT\n\nProvide a summary of the proposed protocol change...\n\n# MOTIVATION\n\nWhy is this change necessary?"
+  });
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Editor Side */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
+              <h2 className="text-xs uppercase font-black tracking-widest flex items-center gap-2 text-white">
+                <PenTool className="w-4 h-4 text-amber-500" /> Draft Proxy Improvement Proposal
+              </h2>
+              <span className="text-[9px] text-gray-600 uppercase font-bold tracking-tighter">Standard: RFC-PIP-V1</span>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Proposal Title</label>
+                <input 
+                  type="text" 
+                  value={draft.title}
+                  onChange={(e) => setDraft({...draft, title: e.target.value})}
+                  placeholder="e.g., Increase Tier 3 Collateral to 2.5M SATS"
+                  className="w-full bg-black border border-white/10 rounded p-3 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Category</label>
+                  <select 
+                    value={draft.category}
+                    onChange={(e) => setDraft({...draft, category: e.target.value})}
+                    className="w-full bg-black border border-white/10 rounded p-2 text-xs text-gray-300 focus:outline-none"
+                  >
+                    <option value="CORE">CORE PROTOCOL</option>
+                    <option value="FEES">ECONOMIC FEES</option>
+                    <option value="LEGAL">LEGAL HUB</option>
+                    <option value="META">META GOVERNANCE</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Author ID</label>
+                  <div className="bg-white/5 border border-white/10 rounded p-2 text-xs text-gray-500 mono truncate">
+                    {nodeId}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Specification (Markdown)</label>
+                <textarea 
+                  value={draft.content}
+                  onChange={(e) => setDraft({...draft, content: e.target.value})}
+                  className="w-full h-64 bg-black border border-white/10 rounded p-4 text-[11px] mono text-gray-400 focus:outline-none focus:border-amber-500/50 transition-colors resize-none leading-relaxed"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-white/10 bg-white/[0.01] flex justify-between items-center">
+              <p className="text-[9px] text-gray-600 leading-tight italic max-w-sm">
+                "Submitting a PIP consumes 5,000 SATS as an anti-spam levy. Proposals require a 66% majority to activate."
+              </p>
+              <button 
+                onClick={() => onDraftSubmit(draft)}
+                disabled={isBroadcasting || !draft.title}
+                className="flex items-center gap-3 px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-500 hover:text-black transition-all disabled:opacity-30"
+              >
+                {isBroadcasting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isBroadcasting ? 'Broadcasting...' : 'Sign & Propose'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* History / Archive Side */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col">
+            <h3 className="text-xs font-black uppercase text-white mb-6 flex items-center gap-3">
+              <Archive className="w-4 h-4 text-gray-500" /> Active Proposals
+            </h3>
+            <div className="space-y-4">
+              <div className="p-4 bg-white/5 border border-white/10 rounded-lg group cursor-pointer hover:border-amber-500/30 transition-all">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[9px] text-amber-500 font-black tracking-widest uppercase">PIP-882</span>
+                  <span className="text-[8px] bg-green-500/10 text-green-500 px-1.5 rounded uppercase font-bold">Voting</span>
+                </div>
+                <p className="text-[11px] font-bold text-white mb-1">Standardize Singapore Notary Seals</p>
+                <div className="w-full bg-white/5 h-1 rounded-full mt-3 overflow-hidden">
+                  <div className="bg-green-500 h-full" style={{ width: '74%' }} />
+                </div>
+              </div>
+              
+              <div className="p-4 bg-white/5 border border-white/10 rounded-lg opacity-50">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[9px] text-gray-500 font-black tracking-widest uppercase">PIP-881</span>
+                  <span className="text-[8px] bg-white/10 text-gray-400 px-1.5 rounded uppercase font-bold">Passed</span>
+                </div>
+                <p className="text-[11px] font-bold text-gray-300 mb-1">Implement Latency Jitter Proof v1.4</p>
+              </div>
+            </div>
+            <button className="mt-8 text-[9px] text-gray-600 hover:text-white uppercase font-black tracking-[0.2em] transition-colors">
+              View All 124 Proposals &rarr;
+            </button>
+          </div>
+
+          <div className="p-6 bg-amber-500/5 border border-amber-500/10 rounded-lg flex items-start gap-4">
+             <ShieldAlert className="w-5 h-5 text-amber-500 flex-shrink-0" />
+             <p className="text-[10px] text-amber-200/40 leading-relaxed italic">
+                "Proposing radical changes without community rough consensus in the Governance forum often leads to reputation decay. Gauge sentiment before signing."
+             </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ReputationHeatmapTab = ({ regions }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
@@ -77,7 +202,6 @@ const ReputationHeatmapTab = ({ regions }) => (
         <div className="absolute inset-0 opacity-[0.07] pointer-events-none" 
              style={{ backgroundImage: 'radial-gradient(#00FF41 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
         
-        {/* Animated Map Markers */}
         <div className="absolute top-1/4 left-1/4 group cursor-help">
           <div className="w-3 h-3 bg-green-500 rounded-full animate-ping opacity-20 absolute" />
           <div className="w-3 h-3 bg-green-500 rounded-full relative" />
@@ -237,6 +361,7 @@ const App = () => {
   const [selectedCase, setSelectedCase] = useState(null);
   const [isVoting, setIsVoting] = useState(false);
   const [isSigningTx, setIsSigningTx] = useState(false);
+  const [isBroadcastingPIP, setIsBroadcastingPIP] = useState(false);
   
   // v2.10 Evidence Locker State
   const [isDecrypting, setIsDecrypting] = useState(false);
@@ -263,15 +388,6 @@ const App = () => {
       description: "Return of collateral for Node_Alpha (Exit-cooling period complete).",
       destination: "bc1q...x921",
       amount: 2000000,
-      sigs: 1,
-      signed_by_me: false
-    },
-    {
-      id: "MSIG-4422",
-      type: "INSURANCE_PAYOUT",
-      description: "Compensating Node_Gamma for SEV-2 LND Desync Event.",
-      destination: "bc1p...v012",
-      amount: 10000,
       sigs: 1,
       signed_by_me: false
     }
@@ -342,6 +458,14 @@ const App = () => {
     }, 2000);
   };
 
+  const handlePIPBroadcast = (draft) => {
+    setIsBroadcastingPIP(true);
+    setTimeout(() => {
+      setIsBroadcastingPIP(false);
+      setActiveTab('cases'); // Redirect after broadcast
+    }, 3000);
+  };
+
   const handleUnlockEvidence = () => {
     setIsDecrypting(true);
     setTimeout(() => {
@@ -362,6 +486,7 @@ const App = () => {
           <nav className="space-y-1">
             {[
               { id: 'cases', label: 'Open Disputes', icon: Activity, color: 'amber' },
+              { id: 'forge', label: 'Proposal Forge', icon: FilePlus, color: 'purple' },
               { id: 'multisig', label: 'Multi-Sig Sign', icon: CheckSquare, color: 'blue' },
               { id: 'heatmap', label: 'Reputation Map', icon: Globe, color: 'green' },
               { id: 'treasury', label: 'Treasury Audit', icon: PiggyBank, color: 'emerald' },
@@ -383,9 +508,9 @@ const App = () => {
             ))}
           </nav>
 
-          <div className="p-4 bg-green-500/5 border border-green-500/10 rounded-lg">
-            <p className="text-[10px] text-green-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
-              "Mapping regional honesty prevents territorial collusion and allows the protocol to dynamic-weight jury selection."
+          <div className="p-4 bg-purple-500/5 border border-purple-500/10 rounded-lg">
+            <p className="text-[10px] text-purple-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
+              "The Governor's Forge enables High Court Judges to define the future of the physical layer through on-chain PIPs."
             </p>
           </div>
         </aside>
@@ -424,7 +549,16 @@ const App = () => {
             </div>
           )}
 
-          {/* REPUTATION HEATMAP (v2.12 FEATURE) */}
+          {/* PROPOSAL FORGE (v2.13 FEATURE) */}
+          {activeTab === 'forge' && (
+             <ProposalForgeTab 
+                nodeId={nodeId} 
+                onDraftSubmit={handlePIPBroadcast} 
+                isBroadcasting={isBroadcastingPIP} 
+             />
+          )}
+
+          {/* REPUTATION HEATMAP */}
           {activeTab === 'heatmap' && <ReputationHeatmapTab regions={regionStats} />}
 
           {/* MULTI-SIG TAB */}
@@ -454,7 +588,7 @@ const App = () => {
                       </div>
                    </div>
                    <div className="lg:col-span-8 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[400px] flex flex-col relative shadow-2xl">
-                      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs font-black tracking-widest text-white flex items-center gap-2"><ShieldEllipsis className="w-5 h-5 text-amber-500" /> Secure Evidence Locker</h3><span className="text-[9px] text-gray-600 mono uppercase tracking-tighter">CID: {selectedCase.evidence.locked_blob_hash}</span></div>
+                      <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs font-black tracking-widest text-white flex items-center gap-2 text-glow"><ShieldEllipsis className="w-5 h-5 text-amber-500" /> Secure Evidence Locker</h3><span className="text-[9px] text-gray-600 mono uppercase tracking-tighter">CID: {selectedCase.evidence.locked_blob_hash}</span></div>
                       <div className="flex-1 p-8 flex flex-col items-center justify-center bg-black/40 relative z-10">
                          {!isEvidenceUnlocked ? (
                             <div className="text-center max-w-sm">
@@ -492,8 +626,8 @@ const App = () => {
                             <span className="text-[10px] text-gray-600 uppercase font-black block mb-2 tracking-widest">Active Bond</span>
                             <div className="flex items-baseline gap-2 font-black text-white"><span className="text-4xl">{(stats.staked_bond / 1000000).toFixed(2)}</span><span className="text-sm font-bold text-gray-500 uppercase tracking-widest">M SATS</span></div>
                          </div>
-                         <button onClick={initiateWithdrawal} disabled={isProcessingStake} className="w-full py-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-lg flex items-center justify-center gap-3 transition-all">
-                            <Unlock className="w-4 h-4 text-red-500" /><span className="text-xs font-black uppercase text-red-500 tracking-widest">{isProcessingStake ? 'Awaiting Multisig...' : 'Request Release'}</span>
+                         <button disabled className="w-full py-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-lg flex items-center justify-center gap-3 transition-all opacity-40 cursor-not-allowed">
+                            <Unlock className="w-4 h-4 text-red-500" /><span className="text-xs font-black uppercase text-red-500 tracking-widest">Request Release</span>
                          </button>
                       </div>
                    </div>
@@ -513,14 +647,6 @@ const App = () => {
                      <span className="text-[10px] text-gray-600 uppercase font-black block mb-4 tracking-widest">Congestion</span>
                      <div className="flex items-center gap-3"><div className={`w-3 h-3 rounded-full animate-pulse ${brownoutLevel === 'GREEN' ? 'bg-green-500' : 'bg-red-500'}`} /><span className="text-2xl font-black text-white uppercase">{brownoutLevel}</span></div>
                   </div>
-               </div>
-               <div className="bg-[#0d0d0e] border border-orange-500/20 rounded-lg p-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-                  {['GREEN', 'YELLOW', 'ORANGE', 'RED'].map((level) => (
-                    <button key={level} disabled className={`p-6 border rounded-lg transition-all flex flex-col items-center text-center ${brownoutLevel === level ? 'bg-white/5 border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.1)]' : 'bg-black/40 border-white/5 opacity-40'}`}>
-                      <span className={`text-[9px] font-black uppercase mb-3 ${level === 'GREEN' ? 'text-green-500' : 'text-red-500'}`}>{level}</span>
-                      <p className="text-[10px] text-gray-400 font-bold tracking-tighter leading-tight font-black uppercase">REP {'>'} {level === 'GREEN' ? '300' : '900'}</p>
-                    </button>
-                  ))}
                </div>
             </div>
           )}
