@@ -9,8 +9,8 @@ import json
 from datetime import datetime
 from typing import List
 
-# PROXY PROTOCOL - NODE HEALTH DASHBOARD v1.3 (Jurisdiction Conflict Resolver)
-# "Handling legal deadlocks in a mobile world."
+# PROXY PROTOCOL - NODE HEALTH DASHBOARD v1.4 (Re-Certification API Enabled)
+# "On-the-fly jurisdictional agility for a mobile workforce."
 # ----------------------------------------------------
 
 app = FastAPI(title="Proxy Node Dashboard")
@@ -60,8 +60,8 @@ class SystemStats:
         if len(self.pcr_history) > 20: self.pcr_history.pop(0)
 
         # Simulation: Occasionally trigger a jurisdictional mismatch
-        # e.g. Node is carried from Delaware to Singapore (SG)
-        if random.random() > 0.98:
+        # Represents moving the node across a geofence
+        if self.resolution_status == "LOCKED" and random.random() > 0.99:
             self.detected_region = "SG-CORE"
             self.resolution_status = "CONFLICT"
 
@@ -81,6 +81,14 @@ class SystemStats:
             "status": "ONLINE" if self.resolution_status == "LOCKED" else "SUSPENDED",
             "pcr_history": self.pcr_history
         }
+
+    def recertify(self):
+        """Resolves conflict by promoting detected region to claimed."""
+        if self.resolution_status == "CONFLICT":
+            self.claimed_region = self.detected_region
+            self.resolution_status = "LOCKED"
+            return True
+        return False
 
 stats_engine = SystemStats()
 
@@ -122,7 +130,7 @@ DASHBOARD_HTML = """
                 </div>
             </div>
             <div class="flex gap-4">
-                <button class="bg-red-600 text-white px-6 py-2 font-black text-[10px] uppercase tracking-widest hover:bg-red-500">Re-Certify for New Region</button>
+                <button onclick="recertifyNode()" class="bg-red-600 text-white px-6 py-2 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 transition-all">Re-Certify for New Region</button>
                 <button class="border border-gray-700 text-gray-500 px-6 py-2 font-black text-[10px] uppercase tracking-widest hover:text-white">Ignore (SLA Penalty)</button>
             </div>
         </div>
@@ -131,7 +139,7 @@ DASHBOARD_HTML = """
     <!-- Header -->
     <header class="max-w-6xl mx-auto flex justify-between items-end border-b border-green-900/50 pb-6 mb-8">
         <div>
-            <h1 class="text-2xl font-bold tracking-tighter glow uppercase">Proxy Node Medic <span class="text-xs opacity-50">v1.3</span></h1>
+            <h1 class="text-2xl font-bold tracking-tighter glow uppercase">Proxy Node Medic <span class="text-xs opacity-50">v1.4</span></h1>
             <p class="text-xs text-gray-500 mt-1">NODE_ID: <span class="text-green-500">{{ node_id }}</span></p>
         </div>
         <div class="text-right">
@@ -303,6 +311,23 @@ DASHBOARD_HTML = """
             }
         });
 
+        // 4. Re-Certification Action
+        async function recertifyNode() {
+            addLog('INFO', 'Initiating Jurisdiction Re-Certification Ceremony...');
+            try {
+                const res = await fetch('/api/recertify', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    addLog('SUCCESS', `Regional transition complete. Hub promoted to ${data.new_jurisdiction}.`);
+                } else {
+                    const err = await res.json();
+                    addLog('CRITICAL', `Re-Certification Failed: ${err.detail}`);
+                }
+            } catch (e) {
+                addLog('CRITICAL', 'Network Communication Error during resolution.');
+            }
+        }
+
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
@@ -332,6 +357,11 @@ DASHBOARD_HTML = """
                     document.getElementById('stat-resolution_status').innerText = "JURISDICTION_CONFLICT";
                 } else {
                     banner.classList.add('hidden');
+                    // Reset UI to Healthy State
+                    document.getElementById('stat-status_text').className = "text-green-500 font-bold animate-pulse";
+                    document.getElementById('stat-status_text').innerText = "ACTIVE";
+                    document.getElementById('stat-resolution_status').className = "text-[9px] text-green-500 mono bg-green-500/10 px-2 py-0.5 rounded";
+                    document.getElementById('stat-resolution_status').innerText = "RESOLUTION_LOCKED";
                 }
 
                 const temp = parseInt(stats.tpm_temp);
@@ -361,6 +391,19 @@ async def get_dashboard(request: Request):
             html = html.replace(f"{{{{ {key} }}}}", str(value))
     return html
 
+@app.post("/api/recertify")
+async def recertify_endpoint():
+    """
+    POST endpoint to trigger regional re-certification.
+    Validates physical telemetry and promotes detected region to claimed status.
+    """
+    success = stats_engine.recertify()
+    if success:
+        return {"status": "success", "new_jurisdiction": stats_engine.claimed_region}
+    else:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="No jurisdiction conflict active for this node.")
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -369,7 +412,7 @@ async def websocket_endpoint(websocket: WebSocket):
             stats = stats_engine.get_latest()
             await websocket.send_json({"type": "stats", "payload": stats})
             
-            # Simulate occasional forensic logs including conflicts
+            # Simulate occasional forensic logs including conflict awareness
             if random.random() > 0.8:
                 log_msgs = [
                     ("WiFi Entropy Shift detected (Roaming active)", "WARN"),
@@ -394,5 +437,5 @@ async def health_api():
     return stats_engine.get_latest()
 
 if __name__ == "__main__":
-    print("[*] Launching Jurisdiction-Aware Dashboard v1.3 on port 8000...")
+    print("[*] Launching Jurisdiction-Aware Dashboard v1.4 on port 8000...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
