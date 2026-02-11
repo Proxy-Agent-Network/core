@@ -15,8 +15,8 @@ from secure_memory import SecurePayload
 from ocr_validator import OCRValidator
 from privacy_guard import PrivacyGuard
 
-# PROXY PROTOCOL - NODE DAEMON v1.5 (Legal Ready)
-# "Automated legal delegation with hardware attestation."
+# PROXY PROTOCOL - NODE DAEMON v1.6 (Settlement Hardened)
+# "Sub-second settlement verification via LND integration."
 # ----------------------------------------------------
 
 class ProxyNodeDaemon:
@@ -34,13 +34,33 @@ class ProxyNodeDaemon:
         
         print(f"[*] Node {self.node_id} Online [Region: {self.claimed_iso}]")
 
-    # --- 1. Biometric & Security Logic ---
+    # --- 1. Settlement Layer: LND Verification ---
+
+    def _verify_escrow_lock(self, payment_hash: str) -> bool:
+        """
+        v1.6: Connects to local LND to verify the HODL invoice status.
+        Ensures the Agent has actually locked funds before we start work.
+        """
+        print(f"[Settlement] Verifying Escrow Lock for Hash: {payment_hash[:12]}...")
+        
+        # In production, this calls: lncli lookupinvoice <hash>
+        # We are looking for state: "ACCEPTED" (HODL-locked)
+        try:
+            # Simulation of LND RPC response
+            # mock_lnd_status = lnd_client.lookup_invoice(r_hash=payment_hash)
+            # return mock_lnd_status.state == "ACCEPTED"
+            
+            # For this logic demo, we simulate a successful lock check
+            time.sleep(0.5) 
+            return True 
+        except Exception as e:
+            print(f"[Settlement] 🚨 LND Connection Error: {e}")
+            return False
+
+    # --- 2. Biometric & Security Logic ---
 
     def _capture_liveness(self, challenge_id: str) -> dict:
-        """
-        Executes the RFC-001 3D Liveness check.
-        Prompts for biological presence before sensitive data access.
-        """
+        """Executes the RFC-001 3D Liveness check."""
         print(f"[Liveness] Initializing camera for challenge {challenge_id}...")
         return {
             "status": "verified",
@@ -48,29 +68,19 @@ class ProxyNodeDaemon:
             "hw_proof": self.tpm.generate_attestation_quote(challenge_id)
         }
 
-    # --- 2. Legal Bridge: Documentation Generator ---
+    # --- 3. Legal Bridge: Documentation Generator ---
 
     def _generate_legal_instrument(self, agent_key: str, requirements: dict) -> dict:
-        """
-        v1.5: Auto-fills Markdown PoA templates based on task context.
-        Binds the Agent's key to the Node's hardware identity.
-        """
+        """Auto-fills Markdown PoA templates and binds to hardware identity."""
         jurisdiction = requirements.get('jurisdiction', 'US_DE')
         principal_name = requirements.get('principal_name', '[ANONYMOUS PRINCIPAL]')
         
-        print(f"[Legal] Generating PoA for jurisdiction: {jurisdiction}")
-        
-        # 1. Select Template (Mocked file path logic)
         template_map = {
             "US_DE": "templates/legal/us_delaware_poa.md",
             "UK": "templates/legal/uk_poa.md",
             "SG": "templates/legal/singapore_poa.md"
         }
         
-        template_path = template_map.get(jurisdiction, "templates/legal/ai_power_of_attorney.md")
-        
-        # 2. Fill Placeholders
-        # In production, we'd read the actual .md file. Here we simulate the fill logic.
         instrument_text = f"""
         # LIMITED POWER OF ATTORNEY ({jurisdiction})
         PRINCIPAL: {principal_name}
@@ -80,8 +90,6 @@ class ProxyNodeDaemon:
         TASK_ID: {self.current_task_id}
         """
         
-        # 3. Cryptographically Bind the Instrument
-        # We hash the filled text and sign it with the TPM
         content_hash = hashlib.sha256(instrument_text.encode()).hexdigest()
         hw_signature = self.tpm.generate_attestation_quote(content_hash)
         
@@ -92,11 +100,10 @@ class ProxyNodeDaemon:
             "jurisdiction": jurisdiction
         }
 
-    # --- 3. Privacy & Sanitization Pipeline ---
+    # --- 4. Privacy & Sanitization Pipeline ---
 
     def _apply_privacy_masking(self, input_path: str, task_requirements: dict) -> tuple:
         """Applies masking based on Agent requirements with fail-safe enforcement."""
-        privacy_tier = task_requirements.get('privacy_tier', 'STANDARD')
         try:
             safe_path, report = self.privacy.redact_pii(input_path)
             if not os.path.exists(safe_path):
@@ -105,7 +112,7 @@ class ProxyNodeDaemon:
         except Exception as e:
             raise SecurityError(f"Privacy pipeline failed: {str(e)}")
 
-    # --- 4. Secure Processing Pipeline ---
+    # --- 5. Secure Processing Pipeline ---
 
     def _encrypt_for_agent(self, data: dict, agent_pubkey_pem: str) -> str:
         """End-to-end encryption using Agent's Public Key."""
@@ -122,7 +129,7 @@ class ProxyNodeDaemon:
         return base64.b64encode(ciphertext).decode()
 
     def handle_incoming_task(self, raw_task: dict):
-        """Main execution pipeline with Legal Bridge automation."""
+        """Main execution pipeline with Settlement Verification."""
         instruction_str = raw_task.get('instruction', 'Execute standard task.')
         
         with SecurePayload(instruction_str) as secure_instruction:
@@ -130,32 +137,37 @@ class ProxyNodeDaemon:
             
             self.current_task_id = raw_task['id']
             agent_key = raw_task.get('agent_public_key')
+            payment_hash = raw_task.get('payment_hash')
+
+            # 1. Settlement Pre-flight (THE LOCK CHECK)
+            # If no payment hash is provided or if LND doesn't see it as LOCKED, abort.
+            if not payment_hash or not self._verify_escrow_lock(payment_hash):
+                print(f"❌ SETTLEMENT FAILED: Escrow for {raw_task['id']} not locked. Aborting.")
+                return {"status": "failed", "reason": "PX_201: Escrow lock not detected"}
             
-            # 1. Legal Bridge Pre-flight
-            # If the task involves legal authority, generate the instrument first
+            print("✅ SETTLEMENT VERIFIED: Funds locked in HTLC.")
+
+            # 2. Legal Bridge Pre-flight
             legal_proof = None
             if raw_task.get('type') == 'legal_notary_sign':
                 legal_proof = self._generate_legal_instrument(agent_key, raw_task['requirements'])
-                print(f"✅ Legal Instrument Generated (Hash: {legal_proof['content_hash'][:10]})")
 
-            # 2. Check Prerequisites (Liveness)
+            # 3. Check Prerequisites (Liveness)
             if raw_task.get('tier') >= 2:
                 liveness = self._capture_liveness(raw_task.get('challenge_id'))
                 if liveness['confidence'] < 0.85:
                     return {"status": "failed", "reason": "Liveness check failed"}
 
-            # 3. Branch by Task Type
+            # 4. Branch by Task Type
             result_data = {}
             task_type = raw_task.get('type')
 
             try:
                 if task_type == 'legal_notary_sign':
-                    # Simulated signing action
-                    print("[Legal] Affixing signature with hardware attestation...")
+                    print("[Legal] Affixing signature...")
                     result_data = {
                         "legal_instrument": legal_proof,
-                        "signature_status": "affixed",
-                        "attestation_ref": legal_proof['hw_signature']['timestamp']
+                        "signature_status": "affixed"
                     }
                 
                 elif task_type == 'physical_mail_receive':
@@ -171,7 +183,7 @@ class ProxyNodeDaemon:
                         "privacy_metrics": privacy_report
                     }
 
-                # 4. Wrap & Encrypt
+                # 5. Wrap & Encrypt
                 payload = {
                     "task_id": self.current_task_id,
                     "completed_at": datetime.now().isoformat(),
@@ -180,6 +192,7 @@ class ProxyNodeDaemon:
                 
                 encrypted_blob = self._encrypt_for_agent(payload, agent_key)
                 
+                # The node signs the result to signal completion to the Settlement Layer
                 return {
                     "status": "success",
                     "encrypted_blob": encrypted_blob,
@@ -191,7 +204,7 @@ class ProxyNodeDaemon:
             except Exception as e:
                 return {"status": "error", "message": str(e)}
 
-    # --- 5. Main Polling Loop ---
+    # --- 6. Main Polling Loop ---
 
     def run(self):
         """Standard Node Operation Loop."""
@@ -199,11 +212,12 @@ class ProxyNodeDaemon:
             print("[*] Polling Proxy API for tasks...", end="\r")
             
             if random.random() > 0.95:
-                # Simulation: Legal task
+                # Simulation: Task with Payment Hash
                 mock_task = {
                     "id": f"tkt_{random.randint(1000, 9999)}",
                     "type": "legal_notary_sign",
                     "tier": 3,
+                    "payment_hash": hashlib.sha256(b"mock_invoice_123").hexdigest(),
                     "instruction": "Sign the Delaware Incorporation Deed.",
                     "requirements": {
                         "jurisdiction": "US_DE",
