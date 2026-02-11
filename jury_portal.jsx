@@ -45,7 +45,9 @@ import {
   AlertOctagon,
   Wifi,
   Binary,
-  ShieldEllipsis
+  ShieldEllipsis,
+  Database,
+  FileCode
 } from 'lucide-react';
 
 const App = () => {
@@ -55,6 +57,10 @@ const App = () => {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [isVoting, setIsVoting] = useState(false);
   
+  // v2.10 Evidence Locker State
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [isEvidenceUnlocked, setIsEvidenceUnlocked] = useState(false);
+
   // Hardware States
   const [isRotating, setIsRotating] = useState(false);
   const [keyRotationStep, setKeyRotationStep] = useState(0); 
@@ -70,7 +76,7 @@ const App = () => {
   const [mempoolDepth, setMempoolDepth] = useState(6402);
   const [isManualOverride, setIsManualOverride] = useState(false);
 
-  // Treasury Audit State (v2.9 Update)
+  // Treasury Audit State
   const [treasuryStats] = useState({
     total_inflow: 84290100,
     total_outflow: 12500000,
@@ -83,8 +89,30 @@ const App = () => {
   const [ledger] = useState([
     { id: "TX-99812", type: "SLASH", amount: 250000, timestamp: "2026-02-11 11:02:00", node: "NODE_MALICIOUS_X8", status: "CONFIRMED" },
     { id: "TX-99811", type: "TAX", amount: 4200, timestamp: "2026-02-11 10:58:12", node: "NODE_ELITE_X29", status: "CONFIRMED" },
-    { id: "TX-99810", type: "PAYOUT", amount: 10000, timestamp: "2026-02-11 10:45:00", node: "CLAIM-X01", status: "SETTLED" },
-    { id: "TX-99809", type: "SLASH", amount: 1200000, timestamp: "2026-02-11 09:12:44", node: "SYBIL_CLUSTER_A", status: "CONFIRMED" }
+    { id: "TX-99810", type: "PAYOUT", amount: 10000, timestamp: "2026-02-11 10:45:00", node: "CLAIM-X01", status: "SETTLED" }
+  ]);
+
+  // v2.10 Enriched Case Docket
+  const [cases] = useState([
+    {
+      id: "CASE-885-4",
+      type: "SMS_VERIFICATION",
+      status: "PENDING",
+      timestamp: "2026-02-11 12:12:00",
+      dispute_reason: "Agent claims code relay was incorrect.",
+      reward: 500,
+      evidence: {
+        instructions: "Relay the 6-digit code sent to +1 555-0199.",
+        locked_blob_hash: "0x7a2e...f91c",
+        decrypted_data: {
+          raw_payload: "Your Proxy code is: 882190",
+          human_input: "882190",
+          tpm_id: "OPTIGA_7721_RPI5",
+          carrier: "Verizon Wireless",
+          timestamp_ms: 1739268720000
+        }
+      }
+    }
   ]);
 
   // Network Context
@@ -105,7 +133,16 @@ const App = () => {
       setSelectedCase(null);
       setSelectedClaim(null);
       setSelectedTemplate(null);
+      setIsEvidenceUnlocked(false);
     }, 1200);
+  };
+
+  const handleUnlockEvidence = () => {
+    setIsDecrypting(true);
+    setTimeout(() => {
+      setIsDecrypting(false);
+      setIsEvidenceUnlocked(true);
+    }, 2000);
   };
 
   const initiateWithdrawal = () => {
@@ -157,8 +194,8 @@ const App = () => {
             <Gavel className="w-5 h-5 text-amber-500" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest">Jury Tribunal v2.9</h1>
-            <p className="text-[10px] text-amber-500/70 uppercase tracking-widest">Treasury Integrity Engine</p>
+            <h1 className="text-sm font-bold tracking-tighter text-white uppercase tracking-widest">Jury Tribunal v2.10</h1>
+            <p className="text-[10px] text-amber-500/70 uppercase tracking-widest">Evidence Locker Protocol Active</p>
           </div>
         </div>
         
@@ -242,12 +279,6 @@ const App = () => {
               <Binary className="w-4 h-4" /> Jitter Proof
             </button>
             <button 
-              onClick={() => { setActiveTab('sybil'); setSelectedCase(null); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'sybil' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
-            >
-              <Globe className="w-4 h-4" /> Sybil Defense
-            </button>
-            <button 
               onClick={() => { setActiveTab('security'); setSelectedCase(null); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${activeTab === 'security' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
             >
@@ -255,9 +286,9 @@ const App = () => {
             </button>
           </nav>
 
-          <div className="p-4 bg-green-500/5 border border-green-500/10 rounded-lg">
-            <p className="text-[10px] text-green-400/60 font-bold leading-relaxed uppercase tracking-tighter italic">
-              "Treasury audits ensure that the insurance pool funded by the 0.1% protocol tax remains mathematically solvent."
+          <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-lg">
+            <p className="text-[10px] text-amber-500/60 font-bold leading-relaxed uppercase tracking-tighter italic">
+              "Evidence lockers are ephemeral. Decrypted proofs are zeroed from RAM upon verdict broadcast or session timeout."
             </p>
           </div>
         </aside>
@@ -273,17 +304,168 @@ const App = () => {
                   <Activity className="w-4 h-4" /> Pending Case Docket
                 </h2>
               </div>
-              <div className="p-20 text-center">
-                <ShieldCheck className="w-12 h-12 text-gray-800 mx-auto mb-4" />
-                <p className="text-xs text-gray-500 uppercase tracking-widest font-bold">No active disputes require your attention</p>
+              <div className="divide-y divide-white/5">
+                 {cases.map((c) => (
+                    <div key={c.id} className="p-6 flex items-center justify-between hover:bg-white/[0.01] group transition-colors">
+                       <div className="flex items-center gap-6">
+                          <div className="w-12 h-12 bg-amber-500/10 rounded border border-amber-500/20 flex items-center justify-center text-amber-500">
+                             <Database className="w-6 h-6" />
+                          </div>
+                          <div>
+                             <div className="flex items-center gap-3 mb-1">
+                                <span className="text-white font-bold uppercase">{c.id}</span>
+                                <span className="text-[9px] bg-white/5 px-2 py-0.5 rounded text-gray-400 font-black tracking-widest">{c.type}</span>
+                             </div>
+                             <p className="text-xs text-gray-500">{c.dispute_reason}</p>
+                          </div>
+                       </div>
+                       <button 
+                          onClick={() => setSelectedCase(c)}
+                          className="px-6 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-black uppercase tracking-widest hover:border-amber-500 hover:text-white transition-all"
+                       >
+                          Enter Locker
+                       </button>
+                    </div>
+                 ))}
               </div>
             </div>
           )}
 
-          {/* 2. TREASURY AUDIT VIEW (v2.9 FEATURE) */}
+          {/* v2.10 CASE DETAIL VIEW + EVIDENCE LOCKER */}
+          {selectedCase && (
+             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+                <button 
+                   onClick={() => { setSelectedCase(null); setIsEvidenceUnlocked(false); }}
+                   className="text-xs text-gray-500 hover:text-white mb-2 flex items-center gap-2 font-black uppercase tracking-widest"
+                >
+                   <ArrowRight className="w-3 h-3 rotate-180" /> Back to Docket
+                </button>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                   
+                   {/* Left: Case Information */}
+                   <div className="lg:col-span-4 space-y-6">
+                      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                         <h3 className="text-xs font-black uppercase text-white mb-6 flex items-center gap-2">
+                            <Activity className="w-4 h-4 text-amber-500" /> Dispute Metadata
+                         </h3>
+                         <div className="space-y-4 text-[10px]">
+                            <div>
+                               <span className="text-gray-600 block uppercase font-bold mb-1">Incident Type</span>
+                               <span className="text-white">{selectedCase.type}</span>
+                            </div>
+                            <div>
+                               <span className="text-gray-600 block uppercase font-bold mb-1">Original Instructions</span>
+                               <p className="text-gray-400 leading-relaxed italic border-l-2 border-amber-500/20 pl-3">
+                                  "{selectedCase.evidence.instructions}"
+                               </p>
+                            </div>
+                            <div className="pt-4 border-t border-white/5">
+                               <div className="flex justify-between items-center text-green-500 font-black">
+                                  <span>POTENTIAL REWARD</span>
+                                  <span>+{selectedCase.reward} SATS</span>
+                               </div>
+                            </div>
+                         </div>
+                      </div>
+
+                      <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-6">
+                         <h3 className="text-xs font-black uppercase text-red-500 mb-4 flex items-center gap-2">
+                            <AlertOctagon className="w-4 h-4" /> Judicial Liability
+                         </h3>
+                         <p className="text-[10px] text-gray-500 leading-relaxed">
+                            Failure to properly audit the decrypted evidence before voting results in a <span className="text-white">30% bond burn</span> if your verdict deviates from the Schelling Point.
+                         </p>
+                      </div>
+                   </div>
+
+                   {/* Right: Cryptographic Evidence Locker */}
+                   <div className="lg:col-span-8 space-y-6">
+                      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[400px] flex flex-col">
+                         <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
+                            <h3 className="text-xs font-black uppercase tracking-widest text-white flex items-center gap-2 text-glow">
+                               <ShieldEllipsis className="w-5 h-5 text-amber-500" /> Secure Evidence Locker
+                            </h3>
+                            <span className="text-[9px] text-gray-600 mono uppercase tracking-tighter">Blob Hash: {selectedCase.evidence.locked_blob_hash}</span>
+                         </div>
+                         
+                         <div className="flex-1 p-8 flex flex-col items-center justify-center relative bg-black/40">
+                            {!isEvidenceUnlocked ? (
+                               <div className="text-center max-w-sm">
+                                  <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center border border-amber-500/20 mx-auto mb-6">
+                                     <Fingerprint className={`w-8 h-8 text-amber-500 ${isDecrypting ? 'animate-pulse' : ''}`} />
+                                  </div>
+                                  <h4 className="text-white font-bold uppercase mb-2">Evidence Sealed</h4>
+                                  <p className="text-xs text-gray-500 mb-8 leading-relaxed">
+                                     Proof-of-work payload is encrypted with the High Court Master Key. Authorized Super-Elite judge signature required to decrypt.
+                                  </p>
+                                  <button 
+                                     onClick={handleUnlockEvidence}
+                                     disabled={isDecrypting}
+                                     className="px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-amber-500 hover:text-black transition-all"
+                                  >
+                                     {isDecrypting ? 'Running RSA-OAEP Decryption...' : 'Affix TPM Signature to Unlock'}
+                                  </button>
+                               </div>
+                            ) : (
+                               <div className="w-full h-full animate-in zoom-in-95 duration-500">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full">
+                                     <div className="p-6 bg-white/[0.02] border border-white/5 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-4 text-green-500">
+                                           <FileCode className="w-4 h-4" />
+                                           <span className="text-[9px] font-black uppercase">Decrypted Proof Payload</span>
+                                        </div>
+                                        <pre className="text-[10px] text-gray-400 mono leading-relaxed whitespace-pre-wrap">
+                                           {JSON.stringify(selectedCase.evidence.decrypted_data, null, 2)}
+                                        </pre>
+                                     </div>
+                                     <div className="space-y-4">
+                                        <div className="p-4 bg-green-500/5 border border-green-500/20 rounded">
+                                           <span className="text-[9px] text-green-400 font-black uppercase block mb-1">Hardware Audit</span>
+                                           <p className="text-xs text-white">TPM Quote Valid. Instruction matched hardware input at T+42s.</p>
+                                        </div>
+                                        <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded">
+                                           <span className="text-[9px] text-blue-400 font-black uppercase block mb-1">Locality Verification</span>
+                                           <p className="text-xs text-white">Network Jitter Profile: Organic Residential.</p>
+                                        </div>
+                                        <div className="p-4 bg-black/40 border border-white/5 rounded flex-1">
+                                           <span className="text-[9px] text-gray-600 font-black uppercase block mb-2">Verdict Requisition</span>
+                                           <div className="space-y-2">
+                                              <button 
+                                                 onClick={() => handleVote('VALID')}
+                                                 disabled={isVoting}
+                                                 className="w-full py-3 bg-green-500/10 border border-green-500/30 text-green-500 font-black text-[10px] uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all"
+                                              >
+                                                 Valid Execution
+                                              </button>
+                                              <button 
+                                                 onClick={() => handleVote('FRAUD')}
+                                                 disabled={isVoting}
+                                                 className="w-full py-3 bg-red-500/10 border border-red-500/30 text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all"
+                                              >
+                                                 Fraudulent Proof
+                                              </button>
+                                           </div>
+                                        </div>
+                                     </div>
+                                  </div>
+                               </div>
+                            )}
+                         </div>
+
+                         {/* Forensic Grain Overly for Unlocked State */}
+                         {isEvidenceUnlocked && (
+                            <div className="absolute inset-0 pointer-events-none opacity-[0.02] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
+                         )}
+                      </div>
+                   </div>
+                </div>
+             </div>
+          )}
+
+          {/* 3. TREASURY AUDIT VIEW (v2.9) */}
           {activeTab === 'treasury' && (
              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-                {/* Protocol Liquidity Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                    <div className="bg-green-500/5 border border-green-500/20 p-5 rounded-lg">
                       <span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Net Reserves</span>
@@ -303,32 +485,10 @@ const App = () => {
                    </div>
                 </div>
 
-                {/* Economic Health Analysis */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
-                      <div>
-                         <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3">
-                            <TrendingUp className="w-5 h-5 text-green-500" /> Solvency Trajectory
-                         </h3>
-                         <p className="text-xs text-gray-500 leading-relaxed mb-6">
-                            The Treasury maintains a <span className="text-white font-bold">5.7x Reserve Ratio</span> relative to pending insurance claims. All slashing events are cryptographically verified by the High Court before funds are moved to the burn address.
-                         </p>
-                      </div>
-                      <div className="p-4 bg-white/5 rounded border border-white/10 space-y-3">
-                         <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                            <span className="text-gray-500">Weekly Tax Inflow</span>
-                            <span className="text-green-500">+1.2M SATS</span>
-                         </div>
-                         <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                            <span className="text-gray-500">Average Payout Value</span>
-                            <span className="text-red-400">12.5K SATS</span>
-                         </div>
-                      </div>
-                   </div>
-
-                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col lg:flex-row gap-8">
+                   <div className="flex-1">
                       <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3">
-                         <History className="w-5 h-5 text-blue-400" /> Protocol Ledger
+                         <History className="w-5 h-5 text-blue-400" /> Transaction Ledger
                       </h3>
                       <div className="space-y-4">
                          {ledger.map((tx) => (
@@ -353,7 +513,7 @@ const App = () => {
              </div>
           )}
 
-          {/* 3. BROWNOUT CONTROL VIEW (Syntax Fixed) */}
+          {/* 4. BROWNOUT CONTROL VIEW */}
           {activeTab === 'brownout' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -419,7 +579,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 4. STAKE MANAGEMENT VIEW */}
+          {/* 5. STAKE MANAGEMENT VIEW */}
           {activeTab === 'staking' && (
              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -445,15 +605,11 @@ const App = () => {
                          )}
                       </div>
                    </div>
-                   <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-                      <h3 className="text-xs uppercase font-black text-gray-400 mb-6 flex items-center gap-3"><AlertOctagon className="w-5 h-5 text-amber-500" /> Staking Policy v1.1</h3>
-                      <p className="text-[11px] text-gray-500 leading-relaxed mb-4">Collateral release is subject to a 14-day observation window to prevent exit-scamming of contested epochs.</p>
-                   </div>
                 </div>
              </div>
           )}
 
-          {/* 5. JITTER PROOF VIEW */}
+          {/* 6. JITTER PROOF VIEW */}
           {activeTab === 'jitter' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
@@ -464,22 +620,6 @@ const App = () => {
                     {[...Array(60)].map((_, i) => (
                       <div key={i} className="flex-1 bg-cyan-500/20 border-t border-cyan-400/40" style={{ height: `${15 + Math.random() * 70}%` }} />
                     ))}
-                  </div>
-                  <div className="mt-4 flex justify-between text-[9px] text-gray-600 uppercase font-black tracking-widest">
-                    <span>Target Jitter: Organic</span>
-                    <span>Status: Monitoring</span>
-                  </div>
-               </div>
-            </div>
-          )}
-
-          {/* 6. SYBIL DEFENSE VIEW */}
-          {activeTab === 'sybil' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-               <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
-                  <div className="bg-black/60 rounded-lg h-64 flex flex-col items-center justify-center relative overflow-hidden text-center">
-                     <Globe className="w-12 h-12 text-red-500/40 mb-4" />
-                     <h3 className="text-xs uppercase font-black text-gray-500 tracking-[0.4em]">Global Node Entropy Map</h3>
                   </div>
                </div>
             </div>
@@ -497,15 +637,6 @@ const App = () => {
                      <div className="space-y-6">
                         <div className="bg-black/60 p-4 border border-white/5 rounded mono text-xs text-blue-300 break-all select-all">{nodeId === "NODE_ELITE_X29" ? "0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd" : "0x81010002:fresh_" + nodeId}</div>
                         <button disabled={isRotating} onClick={startKeyRotation} className="w-full py-4 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-center justify-center gap-3 transition-all"><RefreshCw className={`w-4 h-4 text-blue-400 ${isRotating ? 'animate-spin' : ''}`} /><span className="text-xs font-black uppercase text-blue-400 tracking-widest">Rotate Hardware Identity</span></button>
-                     </div>
-                  </div>
-                  <div className="bg-[#0d0d0e] border border-white/10 rounded-lg flex flex-col">
-                     <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs uppercase font-black tracking-widest flex items-center gap-2"><Fingerprint className="w-4 h-4 text-gray-500" /> Binding Console</h3></div>
-                     <div className="flex-1 p-6 font-mono text-[10px] leading-relaxed overflow-y-auto bg-black/40">
-                        <p className="text-gray-600">[*] Hardware Root: OPTIGA TPM 2.0 Detected</p>
-                        {keyRotationStep >= 1 && <p className="text-yellow-500 mt-2">[*] Wiping handle 0x81010001... SUCCESS</p>}
-                        {keyRotationStep >= 2 && <p className="text-green-500 mt-1">[*] Primary Seed Generated (Silicon Entropy)</p>}
-                        {keyRotationStep >= 3 && <p className="text-white font-black mt-2">✅ BINDING CEREMONY COMPLETE.</p>}
                      </div>
                   </div>
                </div>
