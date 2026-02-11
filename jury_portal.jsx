@@ -27,14 +27,14 @@ const ProtocolHeader = ({ nodeId, reserves, brownoutLevel }) => (
     
     <div className="flex items-center gap-6 text-[11px]">
       <div className="flex flex-col items-end">
-        <span className="text-gray-500 uppercase font-bold tracking-tighter">Status</span>
+        <span className="text-gray-500 uppercase font-bold tracking-tighter text-[9px]">Status</span>
         <span className="text-green-500 flex items-center gap-1 font-bold">
           <ShieldCheck className="w-3 h-3" /> HIGH COURT ACTIVE
         </span>
       </div>
       <div className="h-8 w-px bg-white/10" />
       <div className="flex flex-col items-end">
-        <span className="text-gray-500 uppercase font-bold tracking-tighter">Treasury Reserves</span>
+        <span className="text-gray-500 uppercase font-bold tracking-tighter text-[9px]">Treasury</span>
         <span className="text-white font-bold">{(reserves / 100000000).toFixed(2)} BTC</span>
       </div>
       <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded border border-white/10">
@@ -70,6 +70,82 @@ const JudicialStanding = ({ stats }) => (
   </div>
 );
 
+const BrownoutControlTab = ({ mempoolDepth, brownoutLevel, setBrownoutLevel, isManualOverride, setIsManualOverride }) => (
+  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+        <span className="text-[10px] text-gray-600 uppercase font-black block mb-4 tracking-widest">Mempool Depth</span>
+        <div className="flex items-baseline gap-2">
+          <span className="text-3xl font-black text-white">{mempoolDepth.toLocaleString()}</span>
+          <span className="text-xs text-gray-500 uppercase tracking-widest">Tasks</span>
+        </div>
+        <div className="mt-4 h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+          <div className="bg-orange-500 h-full transition-all duration-700" style={{ width: `${Math.min((mempoolDepth / 12000) * 100, 100)}%` }} />
+        </div>
+      </div>
+      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 shadow-xl relative overflow-hidden">
+        <span className="text-[10px] text-gray-600 uppercase font-black block mb-4 tracking-widest text-glow">Congestion Level</span>
+        <div className="flex items-center gap-3">
+          <div className={`w-3 h-3 rounded-full animate-pulse ${
+            brownoutLevel === 'GREEN' ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 
+            brownoutLevel === 'YELLOW' ? 'bg-yellow-500' : 
+            brownoutLevel === 'ORANGE' ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.3)]' : 
+            'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+          }`} />
+          <span className="text-2xl font-black text-white uppercase">{brownoutLevel}</span>
+        </div>
+        {isManualOverride && <span className="absolute top-2 right-2 text-[8px] font-black bg-orange-500 text-black px-1 rounded">OVERRIDE ACTIVE</span>}
+      </div>
+      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
+        <span className="text-[10px] text-gray-600 uppercase font-black block mb-2">Manual Control</span>
+        <button 
+          onClick={() => setIsManualOverride(!isManualOverride)}
+          className={`w-full py-2 rounded text-[10px] font-black uppercase tracking-widest transition-all ${isManualOverride ? 'bg-orange-500 text-black' : 'bg-white/5 border border-white/10 text-gray-400'}`}
+        >
+          {isManualOverride ? 'Engage Auto' : 'Enable Override'}
+        </button>
+      </div>
+    </div>
+
+    <div className="bg-[#0d0d0e] border border-orange-500/20 rounded-lg p-8 shadow-2xl relative">
+      {!isManualOverride && <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center backdrop-blur-sm"><p className="text-[10px] font-black uppercase text-gray-500 tracking-widest">Enable Manual Override to Toggle Levels</p></div>}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {['GREEN', 'YELLOW', 'ORANGE', 'RED'].map((level) => (
+          <button 
+            key={level} 
+            onClick={() => setBrownoutLevel(level)} 
+            className={`p-6 border rounded-lg transition-all flex flex-col items-center text-center group ${brownoutLevel === level ? 'bg-white/5 border-orange-500 ring-1 ring-orange-500/20' : 'bg-black/40 border-white/5 opacity-40 hover:opacity-100'}`}
+          >
+            <span className={`text-[9px] font-black uppercase mb-3 ${
+              level === 'GREEN' ? 'text-green-500' : 
+              level === 'YELLOW' ? 'text-yellow-500' : 
+              level === 'ORANGE' ? 'text-orange-500' : 
+              'text-red-500'
+            }`}>{level}</span>
+            <p className="text-[10px] text-gray-400 font-bold leading-tight uppercase">
+              REP {' > '} {level === 'GREEN' ? '300' : level === 'YELLOW' ? '500' : level === 'ORANGE' ? '700' : '900'}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+      <h3 className="text-xs uppercase font-black text-gray-500 tracking-widest mb-6">Congestion Forensic Log</h3>
+      <div className="space-y-3 font-mono text-[9px]">
+        <div className="flex justify-between text-gray-600">
+          <span>[10:42:12] AUTO_SCALING: PROMOTED TO ORANGE (MEMPOOL {' > '} 5000)</span>
+          <span className="text-green-500 uppercase font-black">Verified</span>
+        </div>
+        <div className="flex justify-between text-gray-600">
+          <span>[10:45:00] SHEDDING_EXEC: DROPPED 422 TASKS FROM {' < '} 500 REP NODES</span>
+          <span className="text-green-500 uppercase font-black">Verified</span>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 const ReputationHeatmapTab = ({ regions }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
@@ -97,7 +173,7 @@ const ReputationHeatmapTab = ({ regions }) => (
 
 const LivenessHeatmapTab = ({ heartbeats }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1">
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-1 shadow-2xl">
       <div className="bg-black/60 rounded-lg h-[350px] relative overflow-hidden flex flex-col items-center justify-center border border-white/5">
         <div className="absolute inset-0 opacity-[0.1]" 
              style={{ backgroundImage: 'linear-gradient(#f43f5e 1px, transparent 1px), linear-gradient(90deg, #f43f5e 1px, transparent 1px)', backgroundSize: '25px 25px' }} />
@@ -107,7 +183,7 @@ const LivenessHeatmapTab = ({ heartbeats }) => (
     </div>
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {heartbeats.map((hb) => (
-        <div key={hb.region} className="bg-[#0d0d0e] border border-white/10 rounded-lg p-5">
+        <div key={hb.region} className="bg-[#0d0d0e] border border-white/10 rounded-lg p-5 group hover:border-rose-500/30 transition-all">
           <div className="flex justify-between items-center mb-2">
             <span className="text-[10px] text-gray-500 font-black uppercase">{hb.region}</span>
             <span className="text-white font-bold">{hb.intensity}% Vitality</span>
@@ -147,25 +223,14 @@ const MultiSigSignerTab = ({ pendingTx, onSign, isSigning }) => (
 
 const VotingAnalyticsTab = ({ votingStats }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 shadow-xl">
           <span className="text-[10px] text-gray-600 uppercase font-black tracking-widest block mb-4">Consensus Alignment</span>
           <div className="flex items-baseline gap-2"><span className="text-4xl font-black text-white">{votingStats.alignment_rate}%</span><TrendingUp className="w-5 h-5 text-green-500" /></div>
        </div>
-       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+       <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 shadow-xl">
           <span className="text-[10px] text-gray-600 uppercase font-black tracking-widest block mb-4">Schelling Saliency</span>
           <div className="flex items-baseline gap-2"><span className="text-4xl font-black text-indigo-400">{votingStats.saliency_score}</span><Target className="w-5 h-5 text-indigo-400" /></div>
-       </div>
-    </div>
-    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-       <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><PieChart className="w-5 h-5 text-indigo-400" /> Sector Accuracy</h3>
-       <div className="space-y-5">
-          {votingStats.sectors.map((s) => (
-             <div key={s.name}>
-                <div className="flex justify-between text-[10px] mb-2 uppercase font-black text-gray-500"><span>{s.name}</span><span className="text-white">{s.score}%</span></div>
-                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden"><div className="bg-green-500 h-full" style={{ width: `${s.score}%` }} /></div>
-             </div>
-          ))}
        </div>
     </div>
   </div>
@@ -179,8 +244,8 @@ const ProposalForgeTab = ({ nodeId, onDraftSubmit, isBroadcasting }) => {
       <div className="p-8 space-y-6">
         <input type="text" value={draft.title} onChange={(e) => setDraft({...draft, title: e.target.value})} placeholder="Proposal Title..." className="w-full bg-black border border-white/10 rounded p-4 text-sm text-white focus:outline-none focus:border-amber-500/50" />
         <textarea value={draft.content} onChange={(e) => setDraft({...draft, content: e.target.value})} className="w-full h-48 bg-black border border-white/10 rounded p-4 text-xs mono text-gray-400 focus:outline-none resize-none" />
-        <button onClick={() => onDraftSubmit(draft)} disabled={isBroadcasting || !draft.title} className="w-full py-4 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-widest hover:bg-amber-500 hover:text-black transition-all">
-          {isBroadcasting ? 'Broadcasting to Mesh...' : 'Sign & Broadcast PIP'}
+        <button onClick={() => onDraftSubmit(draft)} disabled={isBroadcasting || !draft.title} className="w-full py-4 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-widest hover:bg-amber-500 hover:text-black transition-all shadow-xl">
+          {isBroadcasting ? 'Broadcasting...' : 'Sign & Broadcast PIP'}
         </button>
       </div>
     </div>
@@ -189,8 +254,8 @@ const ProposalForgeTab = ({ nodeId, onDraftSubmit, isBroadcasting }) => {
 
 const InsuranceActuaryTab = ({ actuaryData, onAdjustRate, isAdjusting }) => (
   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-glow">
+      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between shadow-2xl">
         <div>
           <span className="text-[10px] text-gray-600 uppercase font-black tracking-widest block mb-4">Loss Ratio (90d)</span>
           <div className="flex items-baseline gap-2"><span className="text-4xl font-black text-white">{actuaryData.loss_ratio}%</span><span className="text-[10px] font-bold text-green-500 uppercase">Optimal</span></div>
@@ -200,8 +265,8 @@ const InsuranceActuaryTab = ({ actuaryData, onAdjustRate, isAdjusting }) => (
           <div className="flex justify-between"><span>Claims</span><span className="text-red-400">-{actuaryData.total_payouts.toLocaleString()} SATS</span></div>
         </div>
       </div>
-      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
-        <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><Calculator className="w-5 h-5 text-blue-400" /> Incident Probability</h3>
+      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 shadow-2xl">
+        <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><Calculator className="w-5 h-5 text-blue-400" /> Incident Prob.</h3>
         <div className="space-y-4">
           {actuaryData.risk_sectors.map((s) => (
             <div key={s.name}>
@@ -211,7 +276,7 @@ const InsuranceActuaryTab = ({ actuaryData, onAdjustRate, isAdjusting }) => (
           ))}
         </div>
       </div>
-      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between">
+      <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 flex flex-col justify-between shadow-2xl">
         <h3 className="text-xs uppercase font-black text-white mb-4">Tax Governance</h3>
         <button onClick={() => onAdjustRate(0.0008)} disabled={isAdjusting} className="w-full py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-black uppercase tracking-widest rounded hover:bg-blue-400 hover:text-black transition-all">
           {isAdjusting ? 'Broadcasting...' : 'Adjust Rate'}
@@ -222,14 +287,14 @@ const InsuranceActuaryTab = ({ actuaryData, onAdjustRate, isAdjusting }) => (
 );
 
 const TreasuryTab = ({ treasuryStats, ledger }) => (
-  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400 shadow-2xl">
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
       <div className="bg-green-500/5 border border-green-500/20 p-5 rounded-lg"><span className="text-[9px] text-green-400 uppercase font-black block mb-2 tracking-widest">Net Reserves</span><p className="text-2xl font-black text-white">{(treasuryStats.net_reserves / 1000000).toFixed(1)}M</p></div>
       <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-lg"><span className="text-[9px] text-blue-400 uppercase font-black block mb-2 tracking-widest">Insurance Depth</span><p className="text-2xl font-black text-white">{(treasuryStats.locked_insurance_pool / 1000000).toFixed(1)}M</p></div>
       <div className="bg-amber-500/5 border border-amber-500/20 p-5 rounded-lg"><span className="text-[9px] text-amber-400 uppercase font-black block mb-2 tracking-widest">Slash Revenue</span><p className="text-2xl font-black text-white">{(treasuryStats.slashing_revenue / 1000000).toFixed(1)}M</p></div>
       <div className="bg-red-500/5 border border-red-500/20 p-5 rounded-lg"><span className="text-[9px] text-red-400 uppercase font-black block mb-2 tracking-widest">Total Outflow</span><p className="text-2xl font-black text-white">{(treasuryStats.total_outflow / 1000000).toFixed(1)}M</p></div>
     </div>
-    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6">
+    <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-6 shadow-2xl">
       <h3 className="text-xs uppercase font-black text-white mb-6 flex items-center gap-3"><History className="w-5 h-5 text-blue-400" /> Protocol Ledger</h3>
       <div className="space-y-4">
         {ledger.map((tx) => (
@@ -238,7 +303,7 @@ const TreasuryTab = ({ treasuryStats, ledger }) => (
               <div className={`p-2 rounded bg-white/5 border border-white/10 ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-400'}`}>
                 {tx.type === 'PAYOUT' ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
               </div>
-              <div><span className="text-[10px] font-black text-white block mb-0.5">{tx.id}</span><span className="text-[8px] text-gray-600 uppercase font-bold">{tx.type} • {tx.timestamp}</span></div>
+              <div><span className="text-[10px] font-black text-white block mb-0.5 tracking-tighter">{tx.id}</span><span className="text-[8px] text-gray-600 uppercase font-bold">{tx.type} • {tx.timestamp}</span></div>
             </div>
             <span className={`text-xs font-black ${tx.type === 'PAYOUT' ? 'text-red-400' : 'text-green-500'}`}>{tx.type === 'PAYOUT' ? '-' : '+'}{tx.amount.toLocaleString()} SATS</span>
           </div>
@@ -261,31 +326,37 @@ const App = () => {
   const [isSigningTx, setIsSigningTx] = useState(false);
   const [isBroadcastingPIP, setIsBroadcastingPIP] = useState(false);
   
+  // v2.17 State Stabilization (Prevents crashes)
   const [mempoolDepth] = useState(6402);
-  const [brownoutLevel] = useState('GREEN');
+  const [brownoutLevel, setBrownoutLevel] = useState('GREEN');
+  const [isManualOverride, setIsManualOverride] = useState(false);
   const [nodeId, setNodeId] = useState("NODE_ELITE_X29");
 
-  // Mock State Buffers
+  // Multi-Sig State
   const [pendingTx, setPendingTx] = useState([
     { id: "MSIG-4421", type: "BOND_RELEASE", description: "Node Alpha 002 exit request.", sigs: 1, amount: 2000000, destination: "bc1q...", signed_by_me: false }
   ]);
 
+  // Reputation State
   const [regionStats] = useState([
     { name: "North America", score: 98.4, status: "HEALTHY", insight: "Minimal jitter deviation. Compliance optimal." },
     { name: "Asia-South", score: 64.2, status: "CRITICAL", insight: "Identical TPM firmware detected. Sybil risk high." }
   ]);
 
+  // Analytics State
   const [votingStats] = useState({
     alignment_rate: 98.2,
     saliency_score: 9.4,
     sectors: [{ name: "Digital", score: 100 }, { name: "Identity", score: 96 }]
   });
 
+  // Forensic State
   const [livenessHeartbeats] = useState([
     { region: "US_EAST", count: 442, intensity: 98, status: "ACTIVE" },
     { region: "ASIA_S", count: 128, intensity: 42, status: "DEGRADED" }
   ]);
 
+  // Actuary State
   const [actuaryData] = useState({
     loss_ratio: 14.8,
     total_premiums: 50290100,
@@ -293,6 +364,7 @@ const App = () => {
     risk_sectors: [{ name: "LND Desync", prob: 0.12 }, { name: "Physical Theft", prob: 0.82 }]
   });
 
+  // Treasury State
   const [treasuryStats] = useState({
     total_inflow: 84290100,
     total_outflow: 12500000,
@@ -370,8 +442,8 @@ const App = () => {
           <nav className="space-y-1">
             {[
               { id: 'cases', label: 'Open Disputes', icon: Activity, color: 'amber' },
+              { id: 'brownout', label: 'Traffic Control', icon: Waves, color: 'orange' },
               { id: 'analytics', label: 'Voting Analytics', icon: BarChart3, color: 'indigo' },
-              { id: 'forge', label: 'Proposal Forge', icon: FilePlus, color: 'purple' },
               { id: 'multisig', label: 'Multi-Sig Sign', icon: CheckSquare, color: 'blue' },
               { id: 'heatmap', label: 'Reputation Map', icon: Globe, color: 'green' },
               { id: 'liveness', label: 'Liveness Map', icon: HeartPulse, color: 'rose' },
@@ -386,7 +458,7 @@ const App = () => {
                   onClick={() => { setActiveTab(tab.id); setSelectedCase(null); }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-bold transition-all ${
                     activeTab === tab.id 
-                      ? `bg-${tab.color}-500/10 text-${tab.color}-500 border border-${tab.color}-500/20 shadow-[0_0_15px_rgba(0,0,0,0.5)]` 
+                      ? `bg-${tab.color}-500/10 text-${tab.color}-500 border border-${tab.color}-500/20 shadow-xl` 
                       : 'text-gray-500 hover:text-white hover:bg-white/5'
                   }`}
                 >
@@ -400,39 +472,48 @@ const App = () => {
         <main className="col-span-12 lg:col-span-9">
           {activeTab === 'cases' && !selectedCase && (
             <div className="bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden animate-in fade-in duration-300 shadow-2xl">
-              <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center text-glow">
+              <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center text-glow shadow-inner">
                 <h2 className="text-xs uppercase font-black tracking-widest flex items-center gap-2 text-amber-500"><Activity className="w-4 h-4" /> Pending Case Docket</h2>
               </div>
               <div className="divide-y divide-white/5">
                  {cases.map((c) => (
                     <div key={c.id} className="p-6 flex items-center justify-between hover:bg-white/[0.01] transition-colors group">
                        <div className="flex items-center gap-6"><div className="w-12 h-12 bg-amber-500/10 rounded border border-amber-500/20 flex items-center justify-center text-amber-500"><Database className="w-6 h-6" /></div><div><span className="text-white font-bold uppercase">{c.id}</span><p className="text-xs text-gray-500">{c.dispute_reason}</p></div></div>
-                       <button onClick={() => setSelectedCase(c)} className="px-6 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-black uppercase tracking-widest hover:border-amber-500 hover:text-white transition-all">Enter Locker</button>
+                       <button onClick={() => setSelectedCase(c)} className="px-6 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-black uppercase tracking-widest hover:border-amber-500 hover:text-white transition-all shadow-xl">Enter Locker</button>
                     </div>
                  ))}
               </div>
             </div>
           )}
 
+          {activeTab === 'brownout' && (
+            <BrownoutControlTab 
+              mempoolDepth={mempoolDepth} 
+              brownoutLevel={brownoutLevel} 
+              setBrownoutLevel={setBrownoutLevel} 
+              isManualOverride={isManualOverride} 
+              setIsManualOverride={setIsManualOverride} 
+            />
+          )}
+
           {activeTab === 'analytics' && <VotingAnalyticsTab votingStats={votingStats} />}
-          {activeTab === 'forge' && <ProposalForgeTab nodeId={nodeId} onDraftSubmit={handlePIPBroadcast} isBroadcasting={isBroadcastingPIP} />}
           {activeTab === 'multisig' && <MultiSigSignerTab pendingTx={pendingTx} onSign={handleSignTx} isSigning={isSigningTx} />}
           {activeTab === 'heatmap' && <ReputationHeatmapTab regions={regionStats} />}
           {activeTab === 'liveness' && <LivenessHeatmapTab heartbeats={livenessHeartbeats} />}
           {activeTab === 'actuary' && <InsuranceActuaryTab actuaryData={actuaryData} onAdjustRate={handleAdjustRate} isAdjusting={isAdjustingActuary} />}
           {activeTab === 'treasury' && <TreasuryTab treasuryStats={treasuryStats} ledger={ledger} />}
           {activeTab === 'security' && (
-            <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8 shadow-xl">
-               <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3 mb-8"><Key className="w-5 h-5 text-blue-400" /> TPM 2.0 Identity</h3>
-               <div className="bg-black/60 p-4 border border-white/5 rounded mono text-[11px] text-blue-300 break-all mb-6">0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd</div>
-               <button disabled={isRotating} onClick={() => { setIsRotating(true); setTimeout(() => setIsRotating(false), 3000); }} className="w-full py-4 bg-blue-500/5 border border-blue-500/10 rounded-lg flex items-center justify-center gap-3 hover:bg-blue-500/10 transition-all"><RefreshCw className={`w-4 h-4 text-blue-400 ${isRotating ? 'animate-spin' : ''}`} /><span className="text-xs font-black uppercase text-blue-400 tracking-widest">{isRotating ? 'Rotating...' : 'Rotate Handle'}</span></button>
+            <div className="bg-[#0d0d0e] border border-white/10 rounded-lg p-8 shadow-xl shadow-2xl">
+               <h3 className="text-xs uppercase font-black tracking-widest text-white flex items-center gap-3 mb-8"><Key className="w-5 h-5 text-blue-400" /> Hardware Identity</h3>
+               <div className="bg-black/60 p-4 border border-white/5 rounded mono text-[11px] text-blue-300 break-all mb-6 shadow-inner">0x81010001:5e884898da28047151d0e56f8dc6292773603d0d6aabbdd</div>
+               <button disabled className="w-full py-4 bg-blue-500/5 border border-blue-500/10 rounded-lg text-xs font-black uppercase tracking-widest opacity-40 cursor-not-allowed">Rotate Handle</button>
             </div>
           )}
 
           {selectedCase && (
              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
                 <button onClick={() => { setSelectedCase(null); setIsEvidenceUnlocked(false); }} className="text-xs text-gray-500 hover:text-white mb-2 flex items-center gap-2 font-black uppercase tracking-widest transition-colors"><ArrowRight className="w-3 h-3 rotate-180" /> Back to Docket</button>
-                <div className="lg:col-span-8 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[400px] flex flex-col relative shadow-2xl mx-auto">
+                <div className="lg:col-span-8 bg-[#0d0d0e] border border-white/10 rounded-lg overflow-hidden min-h-[400px] flex flex-col relative shadow-2xl mx-auto shadow-2xl">
                    <div className="p-4 border-b border-white/10 bg-white/[0.02] flex justify-between items-center"><h3 className="text-xs font-black tracking-widest text-white flex items-center gap-2"><ShieldEllipsis className="w-5 h-5 text-amber-500" /> Evidence Locker</h3></div>
                    <div className="flex-1 p-8 flex flex-col items-center justify-center bg-black/40 relative z-10">
                       {!isEvidenceUnlocked ? (
@@ -440,11 +521,11 @@ const App = () => {
                             <Fingerprint className={`w-16 h-16 text-amber-500 mx-auto mb-6 ${isDecrypting ? 'animate-pulse' : ''}`} />
                             <h4 className="text-white font-bold uppercase mb-2 tracking-widest">Evidence Sealed</h4>
                             <p className="text-xs text-gray-500 mb-8 leading-relaxed font-bold tracking-tighter uppercase">High Court hardware signature required to zero-knowledge decrypt the biological proof blob.</p>
-                            <button onClick={handleUnlockEvidence} disabled={isDecrypting} className="px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-amber-500 hover:text-black transition-all shadow-[0_0_20px_rgba(245,158,11,0.2)]">{isDecrypting ? 'RSA-OAEP Handshake...' : 'Unlock via TPM Signature'}</button>
+                            <button onClick={handleUnlockEvidence} disabled={isDecrypting} className="px-8 py-3 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg hover:bg-amber-500 hover:text-black transition-all shadow-2xl">{isDecrypting ? 'RSA-OAEP Decryption...' : 'Unlock via TPM Signature'}</button>
                          </div>
                       ) : (
                          <div className="w-full h-full animate-in zoom-in-95 duration-500 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="p-6 bg-white/[0.02] border border-white/5 rounded-lg overflow-y-auto"><FileCode className="w-4 h-4 text-green-500 mb-4" /><pre className="text-[10px] text-gray-400 mono leading-relaxed">{JSON.stringify(selectedCase.evidence.decrypted_data, null, 2)}</pre></div>
+                            <div className="p-6 bg-white/[0.02] border border-white/5 rounded-lg overflow-y-auto shadow-inner"><FileCode className="w-4 h-4 text-green-500 mb-4" /><pre className="text-[10px] text-gray-400 mono leading-relaxed">{JSON.stringify(selectedCase.evidence.decrypted_data, null, 2)}</pre></div>
                             <div className="space-y-4 flex flex-col"><div className="p-4 bg-green-500/5 border border-green-500/20 rounded text-[10px] text-white font-bold tracking-widest uppercase">Hardware Attestation Valid. Response generated in TEE.</div><div className="p-4 bg-black/40 border border-white/5 rounded flex-1 flex flex-col gap-2"><button onClick={() => handleVote('VALID')} disabled={isVoting} className="w-full py-3 bg-green-500/10 border border-green-500/30 text-green-500 font-black text-[10px] uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all">Verify Valid</button><button onClick={() => handleVote('FRAUD')} disabled={isVoting} className="w-full py-3 bg-red-500/10 border border-red-500/30 text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-black transition-all">Verify Fraud</button></div></div>
                          </div>
                       )}
