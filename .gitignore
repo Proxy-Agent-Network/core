@@ -31,4 +31,8 @@ yarn-debug.log*
 .vscode/
 .idea/
 Thumbs.db
+<<<<<<< HEAD
 .DS_Store
+=======
+.DS_Store
+>>>>>>> 3c4fba271065da0da8648892b70aa3c5997ffb95

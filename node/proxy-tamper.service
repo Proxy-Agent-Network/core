@@ -1,0 +1,43 @@
+/etc/systemd/system/proxy-tamper.service
+
+PROXY PROTOCOL - PHYSICAL SECURITY WATCHDOG (v1.0)
+
+[Unit]
+Description=Proxy Protocol Physical Tamper Listener
+Documentation=https://github.com/Proxy-Agent-Network/core
+
+Start as early as possible to protect the hardware
+
+After=local-fs.target
+DefaultDependencies=no
+
+[Service]
+Type=simple
+
+Must run as root for GPIO access and TPM2_Clear execution
+
+User=root
+Group=root
+
+WorkingDirectory=/app/core/node
+ExecStart=/usr/bin/python3 /app/core/node/tamper_listener.py
+
+Criticality: If the listener crashes, restart it instantly.
+
+Restart=always
+RestartSec=1
+StartLimitIntervalSec=0
+
+Security Hardening
+
+Ensure the process can trigger a system-wide halt/poweroff
+
+CapabilityBoundingSet=CAP_SYS_BOOT CAP_SYS_RAWIO
+ProtectHome=no
+ProtectSystem=no
+
+[Install]
+
+Enable during the basic system setup phase
+
+WantedBy=multi-user.target

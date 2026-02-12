@@ -1,0 +1,55 @@
+{
+"$schema": "http://json-schema.org/draft-07/schema#",
+"title": "Proxy Protocol Task Requirements",
+"description": "JSON Schemas for validating agent-submitted task requirements.",
+"definitions": {
+"sms_verification": {
+"type": "object",
+"properties": {
+"service": { "type": "string", "description": "The platform name (e.g., 'OpenAI', 'Twitter')" },
+"country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 2-letter country code" },
+"sender_id_filter": { "type": "string" },
+"instructions": { "type": "string" },
+"timeout_seconds": { "type": "integer", "default": 14400 }
+},
+"required": ["service", "country"]
+},
+"kyc_video": {
+"type": "object",
+"properties": {
+"platform_url": { "type": "string", "format": "uri" },
+"id_document_types": {
+"type": "array",
+"items": { "enum": ["passport", "drivers_license", "national_id"] }
+},
+"liveness_check": { "type": "boolean" },
+"instructions": { "type": "string" },
+"timeout_seconds": { "type": "integer", "default": 14400 }
+},
+"required": ["platform_url", "id_document_types", "liveness_check"]
+},
+"legal_notary": {
+"type": "object",
+"properties": {
+"jurisdiction": { "enum": ["US_DE", "UK", "SG"] },
+"document_url": { "type": "string", "format": "uri" },
+"signature_capacity": { "enum": ["witness", "attorney_in_fact", "notary"] },
+"notary_seal_required": { "type": "boolean" },
+"instructions": { "type": "string" },
+"timeout_seconds": { "type": "integer", "default": 14400 }
+},
+"required": ["jurisdiction", "document_url", "signature_capacity", "notary_seal_required"]
+},
+"physical_mail": {
+"type": "object",
+"properties": {
+"recipient_name": { "type": "string" },
+"scanning_instructions": { "enum": ["scan_envelope", "scan_contents", "forward_physical"] },
+"shred_after_scan": { "type": "boolean" },
+"instructions": { "type": "string" },
+"timeout_seconds": { "type": "integer", "default": 86400 }
+},
+"required": ["recipient_name", "scanning_instructions", "shred_after_scan"]
+}
+}
+}

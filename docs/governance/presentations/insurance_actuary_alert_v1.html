@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insurance Actuary Alert UI - Proxy Protocol Technical Archive</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;700&family=Lato:wght@400;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --bg-void: #050505;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --tile-bg: #0a0a0a;
+            --border-color: rgba(255, 255, 255, 0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            background-color: var(--bg-void); 
+            color: var(--text-main); 
+            font-family: 'Lato', sans-serif;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .mono { font-family: 'Fira Code', monospace; }
+
+        /* Container for the scrollable report */
+        .technical-report {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 80px 20px;
+        }
+
+        header {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 40px;
+            margin-bottom: 80px;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Urbanist', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: -0.5px;
+            font-weight: 900;
+        }
+
+        h1 { font-size: 4rem; line-height: 1.1; margin-bottom: 10px; }
+        h2 { font-size: 2rem; color: var(--accent-red); margin-bottom: 20px; border-left: 4px solid var(--accent-red); padding-left: 20px; }
+        h3 { font-size: 1.25rem; color: var(--accent-blue); margin-bottom: 15px; }
+
+        p { margin-bottom: 20px; color: var(--text-muted); font-size: 1.1rem; }
+
+        section {
+            margin-bottom: 100px;
+            scroll-margin-top: 100px;
+        }
+
+        /* Content Modules */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+        .module { background: var(--tile-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 40px; position: relative; }
+        
+        .alert-threshold {
+            background: linear-gradient(to bottom, rgba(239, 68, 68, 0.05), transparent);
+            border-left: 4px solid var(--accent-red);
+        }
+
+        /* Charts */
+        .chart-placeholder {
+            width: 100%;
+            height: 300px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 20px 0;
+            border: 1px dashed var(--border-color);
+        }
+
+        /* Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { text-align: left; padding: 15px; border-bottom: 2px solid var(--border-color); color: var(--accent-blue); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; }
+        td { padding: 15px; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
+        .status-critical { color: var(--accent-red); font-weight: 700; }
+        .status-stable { color: #10b981; font-weight: 700; }
+
+        /* Icon styling */
+        .icon-box { font-size: 2rem; color: var(--accent-red); margin-bottom: 20px; }
+
+        /* Navigation Dot Sidebar */
+        .nav-sidebar {
+            position: fixed;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 100;
+        }
+        .nav-sidebar a { width: 10px; height: 10px; border-radius: 50%; background: var(--border-color); transition: 0.3s; }
+        .nav-sidebar a:hover { background: var(--accent-red); transform: scale(1.5); }
+
+        footer {
+            text-align: center;
+            padding: 100px 20px;
+            border-top: 1px solid var(--border-color);
+            opacity: 0.5;
+        }
+
+        /* Animations */
+        .animate-pulse-red { animation: pulse-red 2s infinite; }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            h1 { font-size: 2.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-sidebar hidden lg:flex">
+        <a href="#intro" title="Introduction"></a>
+        <a href="#threat" title="The Threat"></a>
+        <a href="#barrier" title="Critical Barrier"></a>
+        <a href="#visuals" title="Visual Principles"></a>
+        <a href="#automation" title="Response Automation"></a>
+        <a href="#vulnerability" title="Vulnerability Analysis"></a>
+        <a href="#impact" title="Operational Impact"></a>
+    </nav>
+
+    <div class="technical-report">
+        
+        <header id="intro">
+            <span class="mono" style="color: var(--accent-red); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 3px; display: block; margin-bottom: 20px;">Protocol v2.8.9 Archive</span>
+            <h1>Insurance Actuary<br>Alert UI</h1>
+            <p class="mono" style="font-size: 0.9rem; margin-top: 20px;">[DOC_ID: GOV-PRES-2026-02-11]</p>
+            <p style="max-width: 800px; margin-top: 40px;">
+                This technical showcase outlines the design and logic of the Proxy Protocol’s systemic risk mitigation layer. By integrating Bayesian probability modeling with real-time hardware attestation, the Insurance Actuary Alert UI serves as the frontline defense against coordinated Sybil attacks and systemic network failure.
+            </p>
+        </header>
+
+        <!-- Threat Context -->
+        <section id="threat">
+            <h2>The Core Threat: Coordinated Failure</h2>
+            <div class="grid-2">
+                <div class="module">
+                    <div class="icon-box"><i class="fa-solid fa-users-rays"></i></div>
+                    <h3>Sybil Pulsing Patterns</h3>
+                    <p>
+                        Sophisticated attackers coordinate node clusters across shared subnets to accept tasks and fail them simultaneously. This "pulsing" logic aims to trigger insurance payouts or disrupt network reliability.
+                    </p>
+                </div>
+                <div class="module">
+                    <div class="icon-box"><i class="fa-solid fa-microchip"></i></div>
+                    <h3>Hardware Fingerprinting</h3>
+                    <p>
+                        Our detection engine correlates TPM signatures and IP prefixes to flag non-random spikes. Any cluster showing high temporal failure alignment is automatically flagged for SEV-2 investigation.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- The 0.5 Barrier -->
+        <section id="barrier">
+            <div class="module alert-threshold">
+                <h2>The 0.5 Critical Barrier</h2>
+                <div class="grid-2">
+                    <div>
+                        <p>
+                            The 0.5 threshold represents a calculated mathematical certainty that observed hub failures are non-random. This level is tuned to ignore standard network noise while capturing coordinated sabotage.
+                        </p>
+                        <ul class="mono" style="font-size: 0.8rem; list-style: none; margin-top: 20px;">
+                            <li style="margin-bottom: 10px; color: var(--text-main);"><i class="fa-solid fa-check-double text-red-500 mr-2"></i> > 0.5 = Active Containment</li>
+                            <li style="margin-bottom: 10px;"><i class="fa-solid fa-circle-info text-blue-500 mr-2"></i> 0.2 - 0.5 = Soft Monitoring</li>
+                            <li><i class="fa-solid fa-shield text-green-500 mr-2"></i> < 0.2 = System Nominal</li>
+                        </ul>
+                    </div>
+                    <div class="chart-container">
+                        <svg viewBox="0 0 1000 400" style="width: 100%; height: auto;">
+                            <defs>
+                                <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stop-color="#ef4444" stop-opacity="0.6"/>
+                                    <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+                                </linearGradient>
+                            </defs>
+                            <path fill="url(#riskGradient)" d="M0,340 C100,330 200,320 300,300 C400,280 500,250 600,180 C700,100 850,60 1000,50 L1000,350 L0,350 Z" />
+                            <line x1="0" y1="175" x2="1000" y2="175" stroke="#3b82f6" stroke-width="2" stroke-dasharray="10,5" />
+                            <path fill="none" stroke="#ef4444" stroke-width="4" d="M0,340 C100,330 200,320 300,300 C400,280 500,250 600,180 C700,100 850,60 1000,50" />
+                        </svg>
+                        <p class="mono text-center" style="font-size: 0.7rem; color: var(--accent-blue);">Probability Sensitivity Curve (SEV-2 Zone Highlighted)</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Design Principles -->
+        <section id="visuals">
+            <h2>Visual Design Principles</h2>
+            <div class="module">
+                <div class="grid-2" style="align-items: center;">
+                    <div>
+                        <h3>Action-First Interface</h3>
+                        <p>
+                            Optimized for high-stress NOC environments. High-contrast red overlays command attention without obscuring critical data, reducing "Time-to-Quarantine" (TTQ).
+                        </p>
+                        <div class="p-4 bg-black border border-white/5 rounded mono" style="font-size: 0.8rem;">
+                            UI_STATE: SEV_2_ACTIVE<br>
+                            TARGET_HUB: ASIA-SE-SG<br>
+                            ACTION: QUARANTINE_READY
+                        </div>
+                    </div>
+                    <div style="text-align: center;">
+                         <i class="fa-solid fa-desktop animate-pulse-red" style="font-size: 6rem; color: var(--accent-red); opacity: 0.8;"></i>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Automation Workflow -->
+        <section id="automation">
+            <h2>Response Workflow Automation</h2>
+            <div class="grid-2">
+                <div class="module">
+                    <h3>1. Global Alert</h3>
+                    <p>Instantaneous hardware and visual notification to the Core Team dashboard upon threshold breach (0.5+).</p>
+                </div>
+                <div class="module">
+                    <h3>2. Forensic Audit</h3>
+                    <p>Automated analysis of PCR stability and IP prefix clusters in the target regional hub initiates at T+15m.</p>
+                </div>
+                <div class="module">
+                    <h3>3. Active Quarantine</h3>
+                    <p>Isolation of the compromised hub from high-value agent routing to prevent further economic exposure.</p>
+                </div>
+                <div class="module">
+                    <h3>4. Restore & Purge</h3>
+                    <p>Verification of hub integrity followed by a Scorched Earth purge of session data after 24 hours.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Regional Data -->
+        <section id="vulnerability">
+            <h2>Regional Vulnerability Analysis</h2>
+            <div class="module">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Regional Hub</th>
+                            <th>Failure Rate</th>
+                            <th>Sybil Indicators</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>US-WEST (Phoenix)</td>
+                            <td>1.2%</td>
+                            <td>None</td>
+                            <td class="status-stable">STABLE</td>
+                        </tr>
+                        <tr>
+                            <td>US-EAST (Delaware)</td>
+                            <td>4.5%</td>
+                            <td>Low Frequency</td>
+                            <td style="color: var(--accent-blue);">MONITORING</td>
+                        </tr>
+                        <tr>
+                            <td>ASIA-SE (Singapore)</td>
+                            <td>28.4%</td>
+                            <td>High Coordinated</td>
+                            <td class="status-critical">CRITICAL ALERT</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Impact Measurement -->
+        <section id="impact">
+            <h2>Operational Impact Assessment</h2>
+            <div class="module">
+                <div class="grid-2">
+                    <div>
+                        <h3>92% Risk Reduction</h3>
+                        <p>
+                            Comparative analysis of projected fund loss during a coordinated Sybil attack. Automated alerting reduces financial exposure from $1.2M (Manual) to $95K (Actuarial).
+                        </p>
+                    </div>
+                    <div class="chart-placeholder flex-col" style="gap: 15px; padding: 20px;">
+                        <div class="w-full h-8 bg-white/5 rounded-full relative overflow-hidden">
+                            <div class="h-full bg-slate-700" style="width: 45%;"></div>
+                            <span class="absolute inset-0 flex items-center px-4 text-[10px] font-bold">MANUAL DETECTION: $1.2M</span>
+                        </div>
+                        <div class="w-full h-8 bg-white/5 rounded-full relative overflow-hidden">
+                            <div class="h-full bg-red-600" style="width: 90%;"></div>
+                            <span class="absolute inset-0 flex items-center px-4 text-[10px] font-bold">ACTUARIAL LAYER: $95K</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <div class="icon-box" style="color: var(--accent-blue);"><i class="fa-solid fa-shield-halved"></i></div>
+            <p class="mono text-sm uppercase tracking-widest font-black">Proxy Protocol Core Governance</p>
+            <p style="font-size: 0.8rem;">Archival Document // Wednesday, February 11, 2026 // security@proxyagent.network</p>
+        </footer>
+
+    </div>
+
+</body>
+</html>

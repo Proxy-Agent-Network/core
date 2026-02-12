@@ -36,4 +36,8 @@ List any breaking changes here, starting with "BREAKING CHANGE: "
 
 Fixes #IssueNumber
 
+<<<<<<< HEAD
 See: https://www.google.com/search?q=https://github.com/Proxy-Agent-Network/core/docs/...
+=======
+See: https://www.google.com/search?q=https://github.com/Proxy-Agent-Network/core/docs/...
+>>>>>>> 3c4fba271065da0da8648892b70aa3c5997ffb95

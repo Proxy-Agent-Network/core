@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Human Node Registry Profile",
+  "description": "Public metadata for discoverable Human Proxy Nodes.",
+  "type": "object",
+  "properties": {
+    "node_id": {
+      "type": "string",
+      "description": "Public Key (Secp256k1) of the Node"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "probation", "offline"]
+    },
+    "reputation_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["sms", "video_kyc", "physical_mail", "notary", "courier"]
+      }
+    },
+    "geo_availability": {
+      "type": "object",
+      "properties": {
+        "country": { "type": "string", "example": "US" },
+        "region": { "type": "string", "example": "AZ" },
+        "radius_km": { "type": "integer", "default": 10 }
+      }
+    },
+    "pricing_premium": {
+      "type": "number",
+      "description": "Multiplier above network floor (1.0 = standard)"
+    },
+    "verified_credentials": {
+      "type": "array",
+      "description": "Hashes of professional licenses (Bar, Notary Commission)",
+      "items": { "type": "string" }
+    }
+  }
+}
