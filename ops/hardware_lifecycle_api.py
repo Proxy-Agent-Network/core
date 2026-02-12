@@ -38,13 +38,12 @@ class HardwareLifecycleManager:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger("LifecycleManager")
 
-    # FIX: Ensure 'self' is the first argument to resolve F821
     def rotate_identity(self, payload: IdentityRotationPayload) -> Dict:
         """
         Communicates with the node's local TPM agent to rotate the AK alias.
         Ensures the 'Silicon Shadow' remains fresh and resistant to tracking.
         """
-        # This line (119) was causing the F821 error because 'self' was undefined
+        # Line 119 - Fixed by ensuring this is nested correctly under the class
         self.logger.info(f"[*] Identity Rotation requested for {payload.unit_id}")
         
         rotation_event_id = hashlib.sha256(f"{payload.unit_id}:{time.time()}".encode()).hexdigest()[:12]
@@ -83,7 +82,6 @@ async def rotate_node_identity(payload: IdentityRotationPayload):
     Endpoint for periodic identity rotation as mandated by PIP-015.
     """
     try:
-        # We call the method via the instance initialized above
         return lifecycle_manager.rotate_identity(payload)
     except Exception as e:
         lifecycle_manager.logger.error(f"Rotation Failure: {str(e)}")
