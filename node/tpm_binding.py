@@ -2,11 +2,12 @@ import os
 import hashlib
 import json
 import base64
+import time
 from typing import Dict, Optional
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-# PROXY PROTOCOL - TPM 2.0 NATIVE INTERFACE (v2.0)
+# PROXY PROTOCOL - TPM 2.0 NATIVE INTERFACE (v2.0.1)
 # "Hardened hardware binding via direct libtss2 calls."
 # ----------------------------------------------------
 # Dependencies: 
@@ -22,7 +23,7 @@ except ImportError:
 class TPMBinding:
     """
     Refactored to use tpm2-pytss for direct hardware interaction.
-    Removes reliance on shell-calling tpm2-tools.
+    Removes reliance on shell-calling tpm2-tools for increased security.
     """
     def __init__(self, tpm_path="/dev/tpm0"):
         self.tpm_path = tpm_path
@@ -59,13 +60,16 @@ class TPMBinding:
         print(f"[*] Native TPM 2.0 Quote Requested. Nonce: {nonce[:8]}...")
 
         # Convert hex string nonce to bytes
-        nonce_bytes = bytes.fromhex(nonce) if len(nonce) % 2 == 0 else nonce.encode()
+        try:
+            nonce_bytes = bytes.fromhex(nonce) if len(nonce) % 2 == 0 else nonce.encode()
+        except ValueError:
+            nonce_bytes = nonce.encode()
 
         try:
             with ESysContext() as ctx:
-                # 1. Load the Attestation Key (AK)
-                # In prod, the AK would be persisted at AK_HANDLE
-                ak_handle = ctx.tr_from_tpmpublic(self.AK_HANDLE)
+                # 1. Load the Attestation Key (AK) handle context
+                # For persistent handles, we address the handle directly
+                ak_handle = self.AK_HANDLE
 
                 # 2. Define PCR selection (0, 1, 7 for boot/config integrity)
                 pcr_selection = types.TPML_PCR_SELECTION(
@@ -88,7 +92,7 @@ class TPMBinding:
                     types.TPMT_SIG_SCHEME(scheme=constants.Alg.RSASSA)
                 )
 
-                # 4. Read PCR current values for verification
+                # 4. Read PCR current values for verification audit
                 _, _, pcr_values = ctx.pcr_read(pcr_selection)
 
                 return {
@@ -98,7 +102,8 @@ class TPMBinding:
                         "message": base64.b64encode(quoted.marshal()).decode('utf-8'),
                         "signature": base64.b64encode(signature.marshal()).decode('utf-8'),
                         "pcr_values": base64.b64encode(pcr_values.marshal()).decode('utf-8')
-                    }
+                    },
+                    "hw_secured": True
                 }
         except Exception as e:
             print(f"❌ TPM Library Error: {e}")
@@ -111,10 +116,9 @@ class TPMBinding:
             
         try:
             with ESysContext() as ctx:
-                # Read Public area of AK_HANDLE
-                ak_handle = ctx.tr_from_tpmpublic(self.AK_HANDLE)
-                public_blob, _, _ = ctx.read_public(ak_handle)
-                # Hash the public area to create the Node ID
+                # Read Public area of AK_HANDLE to derive ID
+                public_blob, _, _ = ctx.read_public(self.AK_HANDLE)
+                # Hash the public area to create the unique Node ID
                 return hashlib.sha256(public_blob.marshal()).hexdigest()[:16].upper()
         except Exception:
             return "NODE_ERR_HARDWARE"
@@ -123,8 +127,10 @@ class TPMBinding:
         """Fallback for development environments without physical TPMs."""
         return {
             "node_id": "NODE_SIM_VIRTUAL",
+            "timestamp": int(time.time()),
             "mock": True,
-            "nonce_echo": nonce
+            "nonce_echo": nonce,
+            "hw_secured": False
         }
 
 # --- Internal Ceremony Logic (v2.0 Only) ---
@@ -132,5 +138,8 @@ if __name__ == "__main__":
     tpm = TPMBinding()
     if tpm.check_availability():
         print(f"✅ Native TPM 2.0 Uplink Active: {tpm._get_public_key_fingerprint()}")
+        # Test Quote
+        test_quote = tpm.generate_attestation_quote("test_nonce")
+        print(f"[*] Attestation structure generated: {list(test_quote.keys())}")
     else:
         print("❌ Physical TPM not detected. Running simulation.")
