@@ -1,106 +1,102 @@
 import os
+import shutil
+import time
 import json
-import base64
-from typing import Dict, List, Optional
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
+import logging
+from datetime import datetime, timedelta
+from typing import List
 
-# PROXY PROTOCOL - JURY EVIDENCE LOCKER (v1.0)
-# "Confidential evidence delivery for High Court jurors."
+# PROXY PROTOCOL - EVIDENCE PURGE UTILITY (v1.0)
+# "Treating data as toxic waste."
 # ----------------------------------------------------
 
-class EvidenceLocker:
+class EvidencePurgeUtility:
     """
-    The Locker handles the multi-party encryption of dispute evidence.
-    It ensures that only the 7 jurors selected by the AppellateVRF
-    can access the sanitized task payload.
+    Cron-compatible service that wipes evidence shards from the filesystem
+    once the 24-hour legal retention window has closed.
     """
-    def __init__(self, storage_path: str = "/app/data/evidence_locker/"):
-        self.storage_path = storage_path
-        if not os.path.exists(self.storage_path):
-            os.makedirs(self.storage_path)
-
-    def seal_evidence(self, case_id: str, payload: Dict, juror_pubkeys: Dict[str, str]) -> bool:
-        """
-        Encrypts the evidence payload for each juror using their unique Public Key.
+    def __init__(self, 
+                 locker_path: str = "/app/data/evidence_locker/", 
+                 verdict_path: str = "/app/data/verdicts/"):
+        self.locker_path = locker_path
+        self.verdict_path = verdict_path
+        self.retention_hours = 24
         
-        Args:
-            case_id: The unique ID of the dispute.
-            payload: The sanitized data (OCR results, TPM quotes, task logs).
-            juror_pubkeys: Dict mapping node_id to PEM-encoded Public Key.
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger("EvidencePurge")
+
+    def run_purge_sweep(self):
         """
-        print(f"[*] Sealing evidence for Case {case_id} across {len(juror_pubkeys)} jurors...")
+        Iterates through the Evidence Locker and destroys shards for closed cases.
+        """
+        self.logger.info(f"[*] Starting Evidence Purge sweep (Retention: {self.retention_hours}h)...")
         
-        try:
-            raw_data = json.dumps(payload).encode('utf-8')
-            case_dir = os.path.join(self.storage_path, case_id)
-            if not os.path.exists(case_dir):
-                os.makedirs(case_dir)
+        # 1. Identify all cases currently in the locker
+        if not os.path.exists(self.locker_path):
+            self.logger.info("[!] Locker path not found. Nothing to purge.")
+            return
 
-            for node_id, pem_key in juror_pubkeys.items():
-                # Load Juror's Hardware-Bound Public Key
-                public_key = serialization.load_pem_public_key(pem_key.encode('utf-8'))
-                
-                # RSA-OAEP Encryption
-                ciphertext = public_key.encrypt(
-                    raw_data,
-                    padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                )
+        active_cases = [d for d in os.listdir(self.locker_path) if os.path.isdir(os.path.join(self.locker_path, d))]
+        
+        purged_count = 0
+        for case_id in active_cases:
+            if self._should_purge_case(case_id):
+                self._execute_scorched_earth(case_id)
+                purged_count += 1
 
-                # Store the encrypted shard for this specific node
-                shard_path = os.path.join(case_dir, f"{node_id}.shard")
-                with open(shard_path, "wb") as f:
-                    f.write(ciphertext)
-                
-            return True
-        except Exception as e:
-            print(f"[Locker] 🚨 Encryption Error: {str(e)}")
+        self.logger.info(f"[✓] Sweep complete. Purged {purged_count} cases.")
+
+    def _should_purge_case(self, case_id: str) -> bool:
+        """
+        Checks if a case is finalized and the window has passed.
+        """
+        # Look for the finalized verdict manifest
+        verdict_file = os.path.join(self.verdict_path, f"verdict_{case_id}.json")
+        
+        if not os.path.exists(verdict_file):
+            # Case might still be open; skip to be safe.
             return False
 
-    def fetch_shard(self, case_id: str, node_id: str) -> Optional[str]:
-        """
-        Retrieves the encrypted blob for a specific juror.
-        """
-        shard_path = os.path.join(self.storage_path, case_id, f"{node_id}.shard")
-        if not os.path.exists(shard_path):
-            return None
+        try:
+            with open(verdict_file, 'r') as f:
+                verdict_data = json.load(f)
+                
+            published_at_str = verdict_data.get('published_at')
+            if not published_at_str:
+                return False
+
+            published_at = datetime.fromisoformat(published_at_str)
+            cutoff_time = datetime.now() - timedelta(hours=self.retention_hours)
             
-        with open(shard_path, "rb") as f:
-            return base64.b64encode(f.read()).decode('utf-8')
+            # Return true only if the verdict is older than 24 hours
+            return published_at < cutoff_time
+            
+        except Exception as e:
+            self.logger.error(f"[!] Error parsing verdict for {case_id}: {str(e)}")
+            return False
 
-    def purge_case(self, case_id: str):
+    def _execute_scorched_earth(self, case_id: str):
         """
-        Scorched Earth: Wipes the evidence directory for a case after finality.
+        Irreversibly deletes the case directory.
         """
-        import shutil
-        case_dir = os.path.join(self.storage_path, case_id)
-        if os.path.exists(case_dir):
+        case_dir = os.path.join(self.locker_path, case_id)
+        try:
+            # Overwrite directory contents before deletion if high security is required
+            # shutil.rmtree is the standard implementation
             shutil.rmtree(case_dir)
-            print(f"[*] Case {case_id} purged from Evidence Locker.")
+            self.logger.info(f"[X] Case {case_id} shards destroyed.")
+        except Exception as e:
+            self.logger.error(f"[!] Failed to destroy {case_id}: {str(e)}")
 
-# --- Protocol Integration Test ---
+# --- Production Simulation ---
 if __name__ == "__main__":
-    locker = EvidenceLocker()
+    # Mocking the filesystem for demonstration
+    # In a real environment, this script is run by a systemd timer.
     
-    # Mock Data
-    case_id = "CASE_992_DISPUTE"
-    sanitized_evidence = {
-        "task_id": "T-882",
-        "human_proof_hash": "e3b0c442...",
-        "ocr_redacted_text": "DEED OF TRUST: [REDACTED]",
-        "tpm_attestation_status": "VERIFIED"
-    }
+    purge_tool = EvidencePurgeUtility()
     
-    # In a real flow, these come from the Node Registry for the selected jurors
-    mock_jurors = {
-        "NODE_ELITE_X29": "PEM_PUBLIC_KEY_DATA_HERE...",
-        "NODE_ALPHA_001": "PEM_PUBLIC_KEY_DATA_HERE..."
-    }
+    print("--- HIGH COURT PRIVACY ENFORCEMENT ---")
+    print(f"[*] Time: {datetime.now().isoformat()}")
     
-    # Simulation
-    print("--- EVIDENCE LOCKER CEREMONY ---")
-    # Note: This will fail in CLI without real PEM strings, but illustrates the logic.
+    # Run the sweep
+    purge_tool.run_purge_sweep()
