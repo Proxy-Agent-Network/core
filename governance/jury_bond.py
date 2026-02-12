@@ -1,10 +1,11 @@
 import time
-from dataclasses import dataclass
-from typing import Dict, List
+import logging
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple
 from enum import Enum
 
-# PROXY PROTOCOL - JURY BOND & SLASHING ENGINE (v1.1)
-# "Economic finality for the decentralized High Court."
+# PROXY PROTOCOL - JURY BOND & ELIGIBILITY ENGINE (v1.2)
+# "Economic gatekeeping for the Appellate Court."
 # ----------------------------------------------------
 
 class Vote(Enum):
@@ -15,156 +16,150 @@ class Vote(Enum):
 class JurorState:
     node_id: str
     staked_sats: int
-    active_cases: List[str]
+    active_cases: List[str] = field(default_factory=list)
     total_fees_earned: int = 0
     penalty_count: int = 0
+    is_locked: bool = False # Set to true if bond is currently in a 30-day exit lock
 
 class JuryBondEngine:
     """
-    Manages the collateral and economic rewards/penalties for the Jury Tribunal.
-    Aligns with the 'Super-Elite' tier (REP > 950) requirements.
+    Manages the collateral and economic eligibility for the Jury Tribunal.
+    v1.2 Update: Integrated mandatory eligibility check for High Court selection.
     """
     def __init__(self):
-        # Configuration as per specs/v1/economics.md
-        self.MIN_JURY_BOND = 2_000_000  # 2M Sats (~$2k USD) required for Judge status
-        self.SLASH_RATE = 0.30          # Burn 30% of bond if voting against consensus
-        self.JUROR_FEE_SHARE = 0.10     # Winners split 10% of the original dispute value
-        self.SLASH_REWARD = 0.50        # Winners split 50% of the slashed funds (Whistleblower Bonus)
-        self.TREASURY_TAX = 0.50        # Remaining 50% of slash goes to protocol burn
-
-        # Internal Ledger (In prod: backed by Lightning/On-chain multisig)
+        # Configuration as per specs/v1/economics.md and reputation.md
+        self.MIN_JURY_BOND = 2_000_000      # 2M Sats (~$2k USD) required for High Court
+        self.SLASH_RATE = 0.30              # Burn 30% of bond for dissenting against consensus
+        self.JUROR_FEE_SHARE = 0.10         # Winners split 10% of dispute value
+        
+        # Internal Ledger
         self.jurors: Dict[str, JurorState] = {}
+        
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger("JuryBond")
 
     def register_juror(self, node_id: str, deposit_sats: int) -> Dict:
         """
-        Locks funds to enable Jury eligibility.
-        Ensures the human has skin in the game before adjudicating AI instructions.
+        Locks funds to enable High Court eligibility.
+        Ensures the human has significant skin in the game.
         """
         if deposit_sats < self.MIN_JURY_BOND:
+            self.logger.warning(f"[Bond] Registration failed for {node_id}: Insufficient Sats.")
             return {
                 "status": "REJECTED", 
-                "reason": f"Insufficient Bond. Require {self.MIN_JURY_BOND} Sats."
+                "reason": f"Insufficient Bond. Require {self.MIN_JURY_BOND} Sats for High Court status."
             }
         
         self.jurors[node_id] = JurorState(
             node_id=node_id,
-            staked_sats=deposit_sats,
-            active_cases=[]
+            staked_sats=deposit_sats
         )
         
-        print(f"[Bond] Juror {node_id} registered with {deposit_sats:,} Sats.")
+        self.logger.info(f"[Bond] Juror {node_id} activated with {deposit_sats:,} Sats.")
         return {"status": "ACTIVE", "node_id": node_id, "staked": deposit_sats}
+
+    def verify_high_court_eligibility(self, node_id: str) -> Tuple[bool, str]:
+        """
+        CRITICAL GATE: Called by core/governance/appellate_vrf.py.
+        Verifies that a candidate node has an active and sufficient bond.
+        """
+        juror = self.jurors.get(node_id)
+        
+        if not juror:
+            return False, "Node not found in Bond Registry."
+        
+        if juror.staked_sats < self.MIN_JURY_BOND:
+            return False, f"Bond below threshold: {juror.staked_sats} < {self.MIN_JURY_BOND}"
+        
+        if juror.is_locked:
+            # Nodes attempting to withdraw their bond are ineligible for new cases
+            return False, "Bond is currently in withdrawal lock window."
+
+        return True, "ELIGIBLE"
 
     def adjudicate_case(self, case_id: str, votes: Dict[str, Vote], dispute_value: int) -> Dict:
         """
-        Determines the Schelling Point (Truth) based on majority consensus.
-        Slashes the minority to punish coordination failure.
-        Rewards the majority for honest validation.
+        Executes Schelling Point settlement.
+        Winners get paid; losers get slashed.
         """
-        # 1. Quorum Check
         total_votes = len(votes)
         if total_votes < 3:
-            return {"error": "Quorum not met (Min 3 jurors required)"}
+            return {"error": "Quorum not met (Min 3 required)"}
 
-        # 2. Tally Votes
+        # Tally and Consensus logic
         counts = {Vote.APPROVE: 0, Vote.REJECT: 0}
         for v in votes.values():
             counts[v] += 1
             
-        # 3. Determine Consensus (The "Truth")
         consensus_vote = Vote.APPROVE if counts[Vote.APPROVE] > counts[Vote.REJECT] else Vote.REJECT
         
-        winners = []
-        losers = []
-        
-        for node_id, vote in votes.items():
-            if vote == consensus_vote:
-                winners.append(node_id)
-            else:
-                losers.append(node_id)
+        winners = [nid for nid, v in votes.items() if v == consensus_vote]
+        losers = [nid for nid, v in votes.items() if v != consensus_vote]
 
-        # 4. Economic Settlement Logic
-        results = {
-            "case_id": case_id,
-            "verdict": consensus_vote.name,
-            "slashed_nodes": [],
-            "rewarded_nodes": [],
-            "summary": {
-                "total_jurors": total_votes,
-                "consensus": f"{max(counts.values())}/{total_votes}"
-            }
-        }
+        total_slashed = 0
+        slashed_details = []
 
-        # Step A: Slash the Dissenters (Minority)
-        total_slashed_pool = 0
+        # 1. Apply Slashes
         for node_id in losers:
             if node_id in self.jurors:
                 penalty = int(self.jurors[node_id].staked_sats * self.SLASH_RATE)
                 self.jurors[node_id].staked_sats -= penalty
                 self.jurors[node_id].penalty_count += 1
-                total_slashed_pool += penalty
-                results["slashed_nodes"].append({"id": node_id, "penalty": penalty})
+                total_slashed += penalty
+                slashed_details.append({"id": node_id, "penalty": penalty})
 
-        # Step B: Reward the Truth-Tellers (Majority)
+        # 2. Distribute Rewards
+        rewarded_details = []
         if winners:
-            # Base adjudication fee from the task escrow
-            base_fee_reward = int((dispute_value * self.JUROR_FEE_SHARE) / len(winners))
-            # Bonus from the pool of slashed funds
-            slash_bonus = int((total_slashed_pool * self.SLASH_REWARD) / len(winners))
+            # 50% of slashed funds go to winners (whistleblower bonus)
+            slash_bonus = int((total_slashed * 0.50) / len(winners))
+            base_fee = int((dispute_value * self.JUROR_FEE_SHARE) / len(winners))
             
-            total_payout_per_winner = base_fee_reward + slash_bonus
+            payout = slash_bonus + base_fee
             
             for node_id in winners:
                 if node_id in self.jurors:
-                    self.jurors[node_id].total_fees_earned += total_payout_per_winner
-                    # In production, this triggers a Lightning Keysend
-                    results["rewarded_nodes"].append({
-                        "id": node_id, 
-                        "payout": total_payout_per_winner,
-                        "breakdown": {"fee": base_fee_reward, "bonus": slash_bonus}
-                    })
+                    self.jurors[node_id].total_fees_earned += payout
+                    rewarded_details.append({"id": node_id, "payout": payout})
 
-        # Step C: Protocol Burn
-        results["treasury_burn"] = total_slashed_pool - (slash_bonus * len(winners))
+        self.logger.info(f"[Verdict] Case {case_id} settled. Consensus: {consensus_vote.name}")
 
-        return results
+        return {
+            "case_id": case_id,
+            "verdict": consensus_vote.name,
+            "slashed_nodes": slashed_details,
+            "rewarded_nodes": rewarded_details,
+            "treasury_burn": int(total_slashed * 0.50)
+        }
 
-# --- Protocol Simulation ---
+# --- Operational Simulation ---
 if __name__ == "__main__":
     engine = JuryBondEngine()
     
-    print("--- HIGH COURT ADJUDICATION SIMULATION ---")
+    print("--- HIGH COURT ELIGIBILITY AUDIT ---")
     
-    # 1. Setup Jury Pool
-    jurors = ["node_alpha", "node_beta", "node_gamma", "node_delta", "node_attacker"]
-    for j in jurors:
-        engine.register_juror(j, 2_000_000)
+    # 1. Register Elite Node
+    engine.register_juror("NODE_ELITE_X29", 2500000)
+    
+    # 2. Register Sub-threshold Node
+    engine.register_juror("NODE_POOR_01", 1000000)
 
-    # 2. Simulation Scenario: Case #992
-    # Agent claims a photo of a document is fake.
-    # 4 Jurors correctly identify it as REAL (APPROVE).
-    # 1 Juror (Attacker) tries to grief the human node (REJECT).
-    votes_cast = {
-        "node_alpha": Vote.APPROVE,
-        "node_beta": Vote.APPROVE,
-        "node_gamma": Vote.APPROVE,
-        "node_delta": Vote.APPROVE,
-        "node_attacker": Vote.REJECT  # Malicious/Dishonest vote
+    # 3. Test Eligibility for VRF Selection
+    for node in ["NODE_ELITE_X29", "NODE_POOR_01", "NODE_GHOST"]:
+        eligible, reason = engine.verify_high_court_eligibility(node)
+        status = "✅" if eligible else "❌"
+        print(f"[{status}] Node: {node:<15} | {reason}")
+
+    # 4. Simulate a Slash Event
+    print("\n[!] Event: Consensus Divergence on Case #882...")
+    votes = {
+        "NODE_ELITE_X29": Vote.APPROVE,
+        "NODE_VERIFIED_02": Vote.APPROVE,
+        "NODE_DISSENT_03": Vote.REJECT # This node will be slashed
     }
+    # Ensure all nodes are in registry for slash math
+    engine.register_juror("NODE_VERIFIED_02", 2000000)
+    engine.register_juror("NODE_DISSENT_03", 2000000)
     
-    # Value of contested task: 500,000 Sats
-    decision = engine.adjudicate_case("case_992", votes_cast, dispute_value=500_000)
-    
-    print(f"\nVerdict: {decision['verdict']} ({decision['summary']['consensus']})")
-    print("-" * 50)
-    
-    print("💀 SLASHED (Attacker Cluster):")
-    for s in decision['slashed_nodes']:
-        print(f"   - {s['id']}: -{s['penalty']:,} Sats")
-        
-    print("\n🏆 REWARDED (Truthful Elite):")
-    for r in decision['rewarded_nodes']:
-        print(f"   - {r['id']}: +{r['payout']:,} Sats")
-        
-    print("-" * 50)
-    print(f"🏦 Protocol Treasury Burn: {decision['treasury_burn']:,} Sats")
+    report = engine.adjudicate_case("CASE_882", votes, 500000)
+    print(f"    -> Slash Applied to {report['slashed_nodes'][0]['id']}: -{report['slashed_nodes'][0]['penalty']} Sats")
