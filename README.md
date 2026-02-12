@@ -66,7 +66,7 @@ The system returns a unique `ticket_id` to poll for completion.
 
 ## Security & Ethics
 * **Zero-Knowledge Context:** Proxies only see the specific task data, not the agent's core logic.
-* **Legal Compliance:** All tasks are filtered against a constrained list of permissible legal actions. See [COMPLIANCE.md](./legal/compliance.md) for details.
+* **Legal Compliance:** All tasks are filtered against a constrained list of permissible legal actions. See [COMPLIANCE.md](https://github.com/Proxy-Agent-Network/core/blob/main/COMPLIANCE.md) for details.
 
 ---
 
