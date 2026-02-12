@@ -80,4 +80,4 @@ class GeofenceController:
         }
 
 
-This file is now saved in your project structure at the specified path. It's ready to be imported by your main task-dispatching logic!
+This file is now saved in your project structure at the specified path. It is ready to be imported by your main task-dispatching logic!
