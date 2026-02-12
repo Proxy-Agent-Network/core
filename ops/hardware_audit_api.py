@@ -117,7 +117,8 @@ async def verify_ceremony(payload: HardwareCeremonyPayload):
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
-        self.logger.error(f"Internal Audit Error: {str(e)}")
+        # FIXED: Changed self.logger to auditor.logger as this is a global function
+        auditor.logger.error(f"Internal Audit Error: {str(e)}")
         raise HTTPException(status_code=500, detail="INTERNAL_ORACLE_ERROR")
 
 @app.get("/health")
