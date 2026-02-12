@@ -1,104 +1,136 @@
-import subprocess
 import os
 import hashlib
 import json
 import base64
 from typing import Dict, Optional
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-# PROXY PROTOCOL - TPM 2.0 HARDWARE INTERFACE (v1.2)
-# "Identity sealed in silicon. Verified by math."
+# PROXY PROTOCOL - TPM 2.0 NATIVE INTERFACE (v2.0)
+# "Hardened hardware binding via direct libtss2 calls."
 # ----------------------------------------------------
-# Dependencies: tpm2-tools (apt install tpm2-tools)
+# Dependencies: 
+#   apt install libtss2-dev
+#   pip install tpm2-pytss
+
+try:
+    from tpm2_pytss import ESysContext, TCTI, constants, types
+    LIBTSS_AVAILABLE = True
+except ImportError:
+    LIBTSS_AVAILABLE = False
 
 class TPMBinding:
+    """
+    Refactored to use tpm2-pytss for direct hardware interaction.
+    Removes reliance on shell-calling tpm2-tools.
+    """
     def __init__(self, tpm_path="/dev/tpm0"):
         self.tpm_path = tpm_path
-        self.working_dir = "/tmp/tpm_context"
-        os.makedirs(self.working_dir, exist_ok=True)
+        # Standard Handles for Proxy Identity
+        self.EK_HANDLE = 0x81010001 # Endorsement Key (Chip identity)
+        self.AK_HANDLE = 0x81010002 # Attestation Key (Node signing identity)
         
-        # Standard Handles
-        self.EK_HANDLE = "0x81010001" # Endorsement Key (The Chip's ID)
-        self.AK_HANDLE = "0x81010002" # Attestation Key (The Signing ID)
-
-    def _run_cmd(self, cmd_list: list, binary=False) -> str:
-        """Execute tpm2-tools command."""
-        try:
-            result = subprocess.check_output(cmd_list, stderr=subprocess.STDOUT)
-            return result if binary else result.decode('utf-8').strip()
-        except subprocess.CalledProcessError as e:
-            error_msg = e.output.decode('utf-8') if not binary else "Binary Error"
-            raise RuntimeError(f"TPM Error: {' '.join(cmd_list)}\n{error_msg}")
+        if not LIBTSS_AVAILABLE:
+            print("⚠️  tpm2-pytss not found. Critical security features will run in SIMULATION.")
 
     def check_availability(self) -> bool:
+        """Verifies access to the physical TPM device."""
         if not os.path.exists(self.tpm_path):
             return False
+        if not LIBTSS_AVAILABLE:
+            return False
+            
         try:
-            self._run_cmd(["tpm2_getcap", "properties-fixed"])
-            return True
-        except RuntimeError:
+            with ESysContext() as context:
+                # Get TPM properties to verify it's responsive
+                context.get_capability(constants.Capability.PROPERTIES_FIXED, 0, 1)
+                return True
+        except Exception:
             return False
 
     def generate_attestation_quote(self, nonce: str) -> Dict:
         """
-        CRITICAL: Generates a signed Quote of the PCRs (Platform Configuration Registers).
-        This proves the key is hardware-resident and the system boot is untampered.
-        
-        Args:
-            nonce: A random challenge from the server to prevent replay attacks.
+        Generates a hardware-signed Quote of the PCRs using libtss2.
+        Proves software integrity and hardware residency.
         """
-        # PCR Banks to Quote:
-        # 0: BIOS/Firmware
-        # 1: Host Configuration
-        # 7: Secure Boot State
-        pcr_selection = "sha256:0,1,7"
-        
-        msg_file = f"{self.working_dir}/quote.msg"
-        sig_file = f"{self.working_dir}/quote.sig"
-        pcr_file = f"{self.working_dir}/quote.pcr"
-        
-        print(f"[*] Generating TPM 2.0 Quote for nonce: {nonce[:8]}...")
-        
-        # 1. Run tpm2_quote
-        # -c: Key Handle
-        # -l: PCR Selection
-        # -q: Nonce (Challenge)
-        # -m: Message Output
-        # -s: Signature Output
-        # -o: PCR Values Output
-        self._run_cmd([
-            "tpm2_quote",
-            "-c", self.AK_HANDLE,
-            "-l", pcr_selection,
-            "-q", nonce,
-            "-m", msg_file,
-            "-s", sig_file,
-            "-o", pcr_file
-        ])
-        
-        # 2. Read Outputs
-        with open(msg_file, "rb") as f: quote_msg = f.read()
-        with open(sig_file, "rb") as f: quote_sig = f.read()
-        with open(pcr_file, "rb") as f: pcr_values = f.read()
-            
-        return {
-            "node_id": self._get_public_key_fingerprint(),
-            "timestamp": int(os.path.getmtime(sig_file)),
-            "quote": {
-                "message": base64.b64encode(quote_msg).decode('utf-8'),
-                "signature": base64.b64encode(quote_sig).decode('utf-8'),
-                "pcr_values": base64.b64encode(pcr_values).decode('utf-8')
-            }
-        }
+        if not self.check_availability():
+            return self._mock_quote(nonce)
+
+        print(f"[*] Native TPM 2.0 Quote Requested. Nonce: {nonce[:8]}...")
+
+        # Convert hex string nonce to bytes
+        nonce_bytes = bytes.fromhex(nonce) if len(nonce) % 2 == 0 else nonce.encode()
+
+        try:
+            with ESysContext() as ctx:
+                # 1. Load the Attestation Key (AK)
+                # In prod, the AK would be persisted at AK_HANDLE
+                ak_handle = ctx.tr_from_tpmpublic(self.AK_HANDLE)
+
+                # 2. Define PCR selection (0, 1, 7 for boot/config integrity)
+                pcr_selection = types.TPML_PCR_SELECTION(
+                    count=1,
+                    pcrSelections=[
+                        types.TPMS_PCR_SELECTION(
+                            hash=constants.Alg.SHA256,
+                            sizeofSelect=3,
+                            pcrSelect=[0, 1, 7]
+                        )
+                    ]
+                )
+
+                # 3. Request the Quote
+                # ctx.quote returns (quoted_data, signature)
+                quoted, signature = ctx.quote(
+                    ak_handle,
+                    pcr_selection,
+                    nonce_bytes,
+                    types.TPMT_SIG_SCHEME(scheme=constants.Alg.RSASSA)
+                )
+
+                # 4. Read PCR current values for verification
+                _, _, pcr_values = ctx.pcr_read(pcr_selection)
+
+                return {
+                    "node_id": self._get_public_key_fingerprint(),
+                    "timestamp": int(time.time()),
+                    "quote": {
+                        "message": base64.b64encode(quoted.marshal()).decode('utf-8'),
+                        "signature": base64.b64encode(signature.marshal()).decode('utf-8'),
+                        "pcr_values": base64.b64encode(pcr_values.marshal()).decode('utf-8')
+                    }
+                }
+        except Exception as e:
+            print(f"❌ TPM Library Error: {e}")
+            return self._mock_quote(nonce)
 
     def _get_public_key_fingerprint(self) -> str:
-        """Returns the SHA256 of the Public Key (Node ID)."""
-        pub_file = f"{self.working_dir}/ak.pem"
-        # Export if missing
-        if not os.path.exists(pub_file):
-            self._run_cmd(["tpm2_readpublic", "-c", self.AK_HANDLE, "-f", "pem", "-o", pub_file])
+        """Extracts the public key from hardware and returns an ID."""
+        if not self.check_availability():
+            return "NODE_SIM_DEADBEEF"
             
-        with open(pub_file, "rb") as f:
-            pub_data = f.read()
-        return hashlib.sha256(pub_data).hexdigest()[:16]
+        try:
+            with ESysContext() as ctx:
+                # Read Public area of AK_HANDLE
+                ak_handle = ctx.tr_from_tpmpublic(self.AK_HANDLE)
+                public_blob, _, _ = ctx.read_public(ak_handle)
+                # Hash the public area to create the Node ID
+                return hashlib.sha256(public_blob.marshal()).hexdigest()[:16].upper()
+        except Exception:
+            return "NODE_ERR_HARDWARE"
 
-    # ... (Previous create_keys code remains valid, just truncated for brevity)
+    def _mock_quote(self, nonce: str) -> Dict:
+        """Fallback for development environments without physical TPMs."""
+        return {
+            "node_id": "NODE_SIM_VIRTUAL",
+            "mock": True,
+            "nonce_echo": nonce
+        }
+
+# --- Internal Ceremony Logic (v2.0 Only) ---
+if __name__ == "__main__":
+    tpm = TPMBinding()
+    if tpm.check_availability():
+        print(f"✅ Native TPM 2.0 Uplink Active: {tpm._get_public_key_fingerprint()}")
+    else:
+        print("❌ Physical TPM not detected. Running simulation.")
