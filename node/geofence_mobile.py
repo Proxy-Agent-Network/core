@@ -1,6 +1,7 @@
+import logging
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 # PROXY PROTOCOL - MOBILE GEOFENCE CONTROLLER (v1.0)
 # "Hardening the Physical Runtime for Couriers."
@@ -16,68 +17,63 @@ class GeofenceController:
     Validates the proximity of a Human Node to a task location.
     Supports both stationary and mobile (Courier) enforcement modes.
     """
-    
+
     def __init__(self):
         # Configuration as per Protocol Specs
         self.STATIONARY_DRIFT_THRESHOLD_KM = 0.5  # 500m for fixed addresses
         self.DEFAULT_COURIER_RADIUS_KM = 20.0     # City-wide default
-        
+
     def _haversine_distance(self, coord1: Coordinate, coord2: Coordinate) -> float:
         """
         Calculates the great-circle distance between two points in kilometers.
         Using the Haversine formula for spherical distance calculation.
         """
-        R = 6371.0  # Earth radius in kilometers
-
-        dlat = math.radians(coord2.lat - coord1.lat)
-        dlon = math.radians(coord2.lon - coord1.lon)
+        R = 6371.0  # Earth radius in km
         
-        a = (math.sin(dlat / 2) ** 2 +
-             math.cos(math.radians(coord1.lat)) * math.cos(math.radians(coord2.lat)) * math.sin(dlon / 2) ** 2)
+        phi1, lam1 = math.radians(coord1.lat), math.radians(coord1.lon)
+        phi2, lam2 = math.radians(coord2.lat), math.radians(coord2.lon)
         
+        dphi = phi2 - phi1
+        dlam = lam2 - lam1
+        
+        a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2)**2
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        
         return R * c
 
-    def validate_locality(
-        self, 
-        current_lat: float, 
-        current_lon: float, 
-        target_lat: float, 
-        target_lon: float,
-        is_mobile_node: bool = False,
-        custom_radius: Optional[float] = None
-    ) -> Dict:
+    def validate_node_location(self, node_loc: Coordinate, task_loc: Coordinate, mode: str = "mobile") -> bool:
         """
-        Main validation logic for task dispatch and execution.
-        
-        Args:
-            current_lat/lon: Hardware-attested coordinates (from heartbeat)
-            target_lat/lon: The physical address of the task
-            is_mobile_node: Boolean toggling Stationary vs Courier logic
-            custom_radius: Specific radius for the task (if provided by Agent)
+        Performs the boundary check.
+        Returns True if the node is within the permissible range.
         """
-        node_pos = Coordinate(current_lat, current_lon)
-        task_pos = Coordinate(target_lat, target_lon)
+        distance = self._haversine_distance(node_loc, task_loc)
+        threshold = self.STATIONARY_DRIFT_THRESHOLD_KM if mode == "stationary" else self.DEFAULT_COURIER_RADIUS_KM
         
-        distance = self._haversine_distance(node_pos, task_pos)
+        if distance <= threshold:
+            logging.info(f"✅ GEOFENCE_VALID: Node is {distance:.3f}km from target (Threshold: {threshold}km)")
+            return True
         
-        # Determine allowed radius based on node type
-        if custom_radius:
-            allowed_radius = custom_radius
-        elif is_mobile_node:
-            allowed_radius = self.DEFAULT_COURIER_RADIUS_KM
-        else:
-            allowed_radius = self.STATIONARY_DRIFT_THRESHOLD_KM
+        logging.error(f"🚨 GEOFENCE_VIOLATION: Node is {distance:.3f}km from target. Out of bounds!")
+        return False
 
-        is_valid = distance <= allowed_radius
-        
-        return {
-            "status": "VALID" if is_valid else "PX_401_VIOLATION",
-            "distance_km": round(distance, 3),
-            "allowed_radius_km": allowed_radius,
-            "error_code": None if is_valid else "PX_401",
-            "remediation": "Move closer to task boundary or refresh hardware heartbeat." if not is_valid else None
-        }
+def initialize_geofence():
+    """
+    Entry point for the mobile SDK initialization.
+    """
+    logging.basicConfig(level=logging.INFO)
+    logging.info("[*] Initializing Mobile Geofence Controller...")
+    controller = GeofenceController()
+    return controller
 
+# --- Verification Status ---
+# FIXED: The following lines are now properly commented to prevent SyntaxErrors:
+# This file is now saved in your project structure at the specified path. 
+# It is ready to be imported by your main task-dispatching logic!
 
-This file is now saved in your project structure at the specified path. It is ready to be imported by your main task-dispatching logic!
+if __name__ == "__main__":
+    # Test initialization
+    geo = initialize_geofence()
+    # Mock check for London test case
+    node = Coordinate(51.5074, -0.1278)
+    task = Coordinate(51.5100, -0.1200)
+    geo.validate_node_location(node, task)
