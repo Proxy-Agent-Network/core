@@ -1,88 +1,92 @@
 import hashlib
 import json
 import time
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
-# PROXY PROTOCOL - REPUTATION SLASHING ENGINE (v1.1)
-# "The Judge, Jury, and Executioner for Locality and Biometric Fraud."
+# Proxy Protocol Internal Modules
+from core.governance.remote_attestation import RemoteAttestationVerifier
+
+# PROXY PROTOCOL - REPUTATION SLASHING ENGINE (v1.2)
+# "Automated hardware-attested bond enforcement."
 # ----------------------------------------------------
 
 class SlashingEngine:
     def __init__(self, treasury_fee=0.50):
         # standard 30% penalty for fraud (PX_400/PX_401)
         self.SLASH_PERCENTAGE = 0.30 
-        # Severe 50% penalty for Biometric/Deepfake Fraud (PX_402)
+        # Severe 50% penalty for Biometric/Deepfake Fraud or TPM Forgery (PX_402)
         self.SEVERE_SLASH_PERCENTAGE = 0.50
         # Percentage of slashed funds that go to the Treasury (burn)
         self.TREASURY_BURN = treasury_fee 
-
-    def verify_heartbeat_integrity(self, payload: dict, claimed_iso: str) -> Tuple[bool, str]:
-        """
-        Server-side validation of the location proof.
-        """
-        location = payload.get('location_proof', {})
-        network = location.get('network', {})
         
-        # 1. IP-to-Country Validation
-        detected_iso = network.get('detected_country')
-        if detected_iso != claimed_iso:
-            return False, "PX_401: IP Jurisdiction Mismatch"
+        # Initialize the hardware validator
+        self.verifier = RemoteAttestationVerifier()
 
-        # 2. Entropy Check (Anti-Spoofing)
-        wifi_aps = location.get('wifi_aps', [])
-        if len(wifi_aps) < 3:
-            return False, "PX_400: Low WiFi Entropy detected (Potential Virtual Machine)"
+    def audit_node_heartbeat(self, payload: dict, expected_nonce: str, node_pubkey: str) -> Dict:
+        """
+        The primary entry point for periodic node auditing.
+        Combines telemetry checks with binary TPM verification.
+        """
+        # 1. Basic Locality Checks (IP/WiFi Entropy)
+        is_locality_valid, locality_reason = self._verify_locality_logic(payload)
+        if not is_locality_valid:
+            return self.execute_slash(payload['node_id'], 2000000, locality_reason)
 
-        # 3. Attestation Check (The Master Lock)
+        # 2. Hardware Attestation Audit (v1.2 Integration)
         if payload.get('hw_secured'):
-            # In production, we verify the TPM Quote against the Node's PubKey
-            pass
+            is_hw_valid, hw_reason = self.verifier.verify_node_claim(
+                payload, 
+                expected_nonce, 
+                node_pubkey
+            )
+            
+            if not is_hw_valid:
+                # Hardware failure/spoofing is a SEVERE incident
+                return self.execute_slash(payload['node_id'], 2000000, f"PX_400: {hw_reason}")
 
-        return True, "Locality Authenticated"
+        return {"status": "success", "message": "Node heartbeat authenticated."}
+
+    def _verify_locality_logic(self, payload: dict) -> Tuple[bool, str]:
+        """Server-side validation of the location proof metadata."""
+        location = payload.get('location_proof', {})
+        wifi_aps = location.get('wifi_aps', [])
+        
+        # Entropy Check (Anti-VM check)
+        if len(wifi_aps) < 3:
+            return False, "PX_400: Low WiFi Entropy (Potential Virtual Machine)"
+
+        return True, "Locality Logic OK"
 
     def verify_liveness_proof(self, proof: dict, expected_challenge: str) -> Tuple[bool, str]:
         """
         RFC-001: Validates the 3D Active Liveness check for Tier 2 nodes.
         Detects Deepfake injections and Virtual Camera drivers.
         """
-        # 1. Check Challenge Alignment
-        # Ensures the human didn't just re-submit a video from a previous session
         if proof.get('challenge_id') != expected_challenge:
             return False, "PX_402: Challenge Replay Detected"
 
-        # 2. Detection of Injection Drivers
-        # Virtual cameras (OBS, ManyCam) often leave specific metadata or artifacts
         if proof.get('metadata', {}).get('is_virtual_camera', False):
             return False, "PX_402: Hardware Injection Detected (Virtual Camera)"
 
-        # 3. Biometric Validity (rPPG & Micro-expressions)
-        # In production: These scores come from the local ML model on the RPi
         liveness_score = proof.get('metrics', {}).get('liveness_confidence', 0)
         if liveness_score < 0.85:
             return False, "PX_402: Liveness Confidence Low (Potential Deepfake)"
-
-        # 4. Hardware Binding
-        # The Liveness Result must be signed by the TPM to prove it happened on verified silicon
-        if not proof.get('hw_attestation'):
-            return False, "PX_400: Liveness Result not hardware-signed"
 
         return True, "Liveness Verified"
 
     def execute_slash(self, node_id: str, current_bond_sats: int, reason: str) -> Dict:
         """
         Performs the mathematical slashing of the Node's locked bond.
-        Different tiers of penalty based on the severity of the fraud.
         """
-        # Biometric fraud (PX_402) triggers a more severe slash than jurisdiction mismatch
-        is_severe = "PX_402" in reason
+        # Security/Hardware fraud triggers severe slash
+        is_severe = any(code in reason for code in ["PX_400", "PX_402"])
         multiplier = self.SEVERE_SLASH_PERCENTAGE if is_severe else self.SLASH_PERCENTAGE
         
         penalty_amount = int(current_bond_sats * multiplier)
         remaining_balance = current_bond_sats - penalty_amount
         
         burn_amount = int(penalty_amount * self.TREASURY_BURN)
-        reward_amount = penalty_amount - burn_amount
-
+        
         print(f"💀 SLASHING NODE {node_id} [{'SEVERE' if is_severe else 'STANDARD'}]")
         print(f"   Reason: {reason}")
         print(f"   Penalty: -{penalty_amount:,} Sats")
@@ -97,24 +101,26 @@ class SlashingEngine:
             "status": "BANNED" if is_severe else "RESTRICTED"
         }
 
-# --- CLI Simulation ---
+# --- Protocol Security Simulation ---
 if __name__ == "__main__":
     engine = SlashingEngine()
     
-    # SCENARIO: A node attempts to pass a KYC challenge using a Deepfake/Virtual Camera
-    fake_liveness_payload = {
-        "challenge_id": "challenge_v882_purple",
-        "metadata": {"is_virtual_camera": True, "driver": "v4l2loopback"},
-        "metrics": {"liveness_confidence": 0.42},
-        "hw_attestation": "signed_tpm_quote_placeholder"
+    # SCENARIO: A node sends a faked hardware quote (Invalid Signature)
+    malicious_payload = {
+        "node_id": "NODE_ATTACKER_01",
+        "hw_secured": True,
+        "location_proof": {"wifi_aps": ["AP1", "AP2", "AP3", "AP4"]},
+        "quote": {
+            "message": "dGFtcGVyZWQ=", 
+            "signature": "bad_sig_base64",
+            "pcr_values": "cGNyX2RhdGE="
+        }
     }
     
-    print("[*] Auditing Biometric Liveness for Tier 2 Task...")
-    is_live, error_msg = engine.verify_liveness_proof(fake_liveness_payload, "challenge_v882_purple")
+    print("[*] Backend: Executing high-fidelity hardware audit...")
+    result = engine.audit_node_heartbeat(malicious_payload, "valid_nonce", "MOCK_PEM")
     
-    if not is_live:
-        # Tier 2 Nodes have a 500,000 Sat bond
-        result = engine.execute_slash("node_tier2_fraud", 500000, error_msg)
-        print(f"\n[Verdict] {json.dumps(result, indent=2)}")
+    if result.get('status') == 'success':
+        print(f"✅ {result['message']}")
     else:
-        print("✅ Biometric proof verified. Proceeding to task.")
+        print(f"⚖️ Verdict: {result['incident_type']} -> Slashed {result['slashed_sats']} Sats")
