@@ -20,8 +20,4 @@ def run_preflight():
         sys.exit(1)
 
 if __name__ == "__main__":
-<<<<<<< HEAD
     run_preflight()
-=======
-    run_preflight()
->>>>>>> 3c4fba271065da0da8648892b70aa3c5997ffb95
