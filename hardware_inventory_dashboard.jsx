@@ -21,7 +21,8 @@ import {
   Fingerprint,
   Layers,
   Archive,
-  MoreHorizontal
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 
 /**
@@ -138,7 +139,7 @@ const App = () => {
                 <span className="text-[9px] text-gray-600 uppercase font-black tracking-widest block mb-2">{kpi.label}</span>
                 <div className="flex items-baseline gap-2">
                   <span className="text-3xl font-black text-white tracking-tighter">{kpi.val}</span>
-                  <span className={`text-[9px] font-black uppercase text-${kpi.color}-500`}>{kpi.sub}</span>
+                  <span className={`text-[9px] font-black uppercase text-${kpi.color}-500 ml-2`}>{kpi.sub}</span>
                 </div>
              </div>
            ))}
@@ -374,7 +375,7 @@ const App = () => {
          </div>
          <div className="flex gap-8 text-[9px] font-black uppercase text-gray-700 tracking-widest">
             <span>[*] REGISTRY_STATE: LOCKED</span>
-            <span>[*] VERSION: v3.0.3</span>
+            <span>[*] VERSION: v3.0.4</span>
          </div>
       </footer>
 
