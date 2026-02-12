@@ -1,140 +1,118 @@
 import json
 import hashlib
+import logging
+import time
+from datetime import datetime
 from typing import Dict, List, Optional
 from enum import Enum
-from datetime import datetime
 
 # Proxy Protocol Internal Modules
-from core.governance.jury_bond import JuryBondEngine, Vote
-from core.economics.hodl_escrow import EscrowManager
+from core.governance.verdict_aggregator import CaseStatus
+from core.economics.hodl_escrow import EscrowManager, EscrowState
 
-# PROXY PROTOCOL - APPELLATE VERDICT AGGREGATOR (v1.0)
-# "The final coordination point for High Court consensus."
+# PROXY PROTOCOL - HIGH COURT VERDICT PUBLISHER (v1.0)
+# "Turning consensus into finality."
 # ----------------------------------------------------
 
-class CaseStatus(Enum):
-    COLLECTING = "COLLECTING"
-    FINALIZED = "FINALIZED"
-    EXPIRED = "EXPIRED"
+class SettlementType(str, Enum):
+    RELEASE = "RELEASE_TO_NODE"
+    SLASH = "BURN_AND_REFUND"
 
-class AppellateVerdictAggregator:
+class VerdictPublisher:
     """
-    Collects and validates hardware-signed votes from the 7 jurors 
-    selected by the AppellateVRF.
+    The closing engine of the High Court. It takes the output of the 
+    VerdictAggregator and broadcasts the final result to the network.
     """
-    def __init__(self, bond_engine: JuryBondEngine, escrow_manager: EscrowManager):
-        self.bond_engine = bond_engine
+    def __init__(self, escrow_manager: EscrowManager):
         self.escrow = escrow_manager
+        self.verdict_archive_path = "/app/data/verdicts/"
         
-        # In-memory store for active cases
-        # Format: { case_id: { "assigned_jurors": [], "votes": {}, "status": CaseStatus } }
-        self.active_cases: Dict[str, Dict] = {}
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger("VerdictPublisher")
 
-    def open_appellate_case(self, case_id: str, assigned_juror_ids: List[str], dispute_value: int):
+    def publish_verdict(self, case_id: str, consensus_data: Dict) -> Dict:
         """
-        Initializes the collection window for a new High Court case.
+        Generates the final signed manifest and executes the Satoshi movement.
         """
-        self.active_cases[case_id] = {
-            "assigned_jurors": assigned_juror_ids,
-            "dispute_value": dispute_value,
-            "votes": {},
-            "status": CaseStatus.COLLECTING,
-            "opened_at": datetime.now().isoformat()
+        self.logger.info(f"[*] Publishing final verdict for Case: {case_id}")
+
+        verdict = consensus_data.get('verdict') # 'APPROVE' or 'REJECT'
+        dispute_value = consensus_data.get('economic_report', {}).get('summary', {}).get('dispute_value', 0)
+        
+        # 1. Determine Settlement Action
+        action = SettlementType.RELEASE if verdict == "APPROVE" else SettlementType.SLASH
+        
+        # 2. Generate Legal Proof (JSON Manifest)
+        # In a production environment, this is converted to a PDF/A and signed by the Foundation
+        manifest = {
+            "case_id": case_id,
+            "published_at": datetime.now().isoformat(),
+            "protocol_version": "v2.7.2",
+            "consensus_stats": consensus_data.get('economic_report', {}).get('summary'),
+            "verdict": verdict,
+            "settlement_action": action.value,
+            "signatures_collected": len(consensus_data.get('economic_report', {}).get('rewarded_nodes', [])),
+            "final_status": "CLOSED"
         }
-        print(f"[Aggregator] ⚖️ Appellate Case {case_id} OPEN. Awaiting 7 signatures.")
 
-    def submit_signed_vote(self, case_id: str, node_id: str, verdict: str, hardware_signature: str) -> Dict:
-        """
-        Receives a vote, verifies the juror assignment, and checks for finality.
-        """
-        case = self.active_cases.get(case_id)
-        if not case:
-            return {"error": "Case not found."}
-        
-        if case["status"] != CaseStatus.COLLECTING:
-            return {"error": "Case is no longer accepting votes."}
+        manifest_hash = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+        manifest['manifest_hash'] = manifest_hash
 
-        # 1. Juror Assignment Check
-        if node_id not in case["assigned_jurors"]:
-            return {"error": "Node not assigned to this tribunal."}
+        # 3. Trigger Lightning Settlement
+        # Logic: We talk to the EscrowManager to reveal the preimage or cancel the HTLC.
+        payout_success = self._execute_lightning_settlement(case_id, action)
 
-        # 2. Signature Verification (Simplified for Logic Proof)
-        # In production, this uses cryptography.hazmat to verify hardware_signature 
-        # against the node's public key registered in the Protocol Registry.
-        is_sig_valid = self._verify_hardware_proof(node_id, verdict, hardware_signature)
-        if not is_sig_valid:
-            return {"error": "Invalid hardware signature. Proof of presence failed."}
-
-        # 3. Record Vote (Double-Blind Enforcement)
-        case["votes"][node_id] = Vote.APPROVE if verdict == "APPROVE" else Vote.REJECT
-        print(f"[Aggregator] Signature received from {node_id} for Case {case_id}.")
-
-        # 4. Check for Finality (Quorum reached)
-        if len(case["votes"]) == len(case["assigned_jurors"]):
-            return self._finalize_case(case_id)
-
-        return {"status": "accepted", "votes_received": len(case["votes"]), "total_required": 7}
-
-    def _finalize_case(self, case_id: str) -> Dict:
-        """
-        Triggers economic settlement and protocol-level enforcement.
-        """
-        case = self.active_cases[case_id]
-        case["status"] = CaseStatus.FINALIZED
-        
-        print(f"[Aggregator] Quorum reached for {case_id}. Executing verdict...")
-
-        # 1. Execute Economic Settlement (Slashing & Rewards)
-        # This calls the JuryBondEngine to burn funds and pay jurors.
-        economics = self.bond_engine.adjudicate_case(
-            case_id, 
-            case["votes"], 
-            case["dispute_value"]
-        )
-
-        # 2. Execute Escrow Action
-        # If majority is APPROVE, release SATs to the Human Node.
-        # If majority is REJECT, refund SATs to the Agent.
-        payment_hash = self.escrow.task_map.get(case_id.split('_')[0]) # Mapping logic
-        
-        if economics["verdict"] == "APPROVE":
-            self.escrow.release_preimage(payment_hash)
-            settlement_status = "SETTLED"
+        if payout_success:
+            self.logger.info(f"[✓] Economic settlement finalized for {case_id}")
+            return manifest
         else:
-            self.escrow.cancel_contract(payment_hash, reason="Appellate rejection")
-            settlement_status = "REFUNDED"
+            self.logger.error(f"[!] Settlement failed for {case_id}. Manual intervention required.")
+            return {"error": "SETTLEMENT_FAILURE", "manifest": manifest}
 
-        return {
-            "status": "FINALIZED",
-            "verdict": economics["verdict"],
-            "settlement": settlement_status,
-            "economic_report": economics
-        }
+    def _execute_lightning_settlement(self, case_id: str, action: SettlementType) -> bool:
+        """
+        Interface with the LND gateway to move the Sats.
+        """
+        # Mapping logic to find the payment hash associated with the case
+        # Simulation: Normally fetched from a TaskContext DB
+        payment_hash = f"phash_{case_id[:8]}" 
 
-    def _verify_hardware_proof(self, node_id: str, verdict: str, sig: str) -> bool:
-        """Internal shim for TPM signature verification."""
-        return True # Mock success for architectural flow
+        if action == SettlementType.RELEASE:
+            # RELEASE: Call Escrow Manager to reveal preimage to settle the HODL invoice
+            # return self.escrow.release_preimage(payment_hash)
+            return True
+        else:
+            # SLASH: Call Escrow Manager to cancel HTLC and return funds to Agent
+            # return self.escrow.cancel_invoice(payment_hash)
+            return True
 
-# --- Integration Simulation ---
+# --- Simulation ---
 if __name__ == "__main__":
-    # Initialize Core Engines
-    bond = JuryBondEngine()
+    from core.economics.hodl_escrow import EscrowManager
+    
+    # Initialize mock environment
     escrow = EscrowManager()
-    aggregator = AppellateVerdictAggregator(bond, escrow)
+    publisher = VerdictPublisher(escrow)
 
-    # Mock Setup: Register 7 jurors
-    jurors = [f"NODE_ELITE_{i}" for i in range(7)]
-    for j in jurors: bond.register_juror(j, 2000000)
+    # Mock consensus data coming from the Aggregator
+    mock_consensus = {
+        "verdict": "APPROVE",
+        "economic_report": {
+            "summary": {
+                "total_jurors": 7,
+                "consensus": "6/7",
+                "dispute_value": 500000
+            },
+            "rewarded_nodes": ["NODE_ELITE_0", "NODE_ELITE_1", "NODE_ELITE_2", "NODE_ELITE_3", "NODE_ELITE_4", "NODE_ELITE_5"]
+        }
+    }
 
-    # Start Case
-    aggregator.open_appellate_case("CASE_882_APP", jurors, 500000)
-
-    # Simulate 7 signatures arriving
-    for i, j in enumerate(jurors):
-        # Last juror tries to dissent (REJECT)
-        verdict = "APPROVE" if i < 6 else "REJECT"
-        result = aggregator.submit_signed_vote("CASE_882_APP", j, verdict, "SIG_DATA")
-        
-        if result.get("status") == "FINALIZED":
-            print("\n--- FINAL APPELLATE VERDICT ---")
-            print(json.dumps(result, indent=2))
+    print("--- CASE FINALIZATION CEREMONY (v1.0) ---")
+    verdict_report = publisher.publish_verdict("CASE_8829_APP", mock_consensus)
+    
+    print("\n[⚖️] FINAL JUDGMENT PUBLISHED")
+    print(f"    Case:       {verdict_report['case_id']}")
+    print(f"    Verdict:    {verdict_report['verdict']}")
+    print(f"    Action:     {verdict_report['settlement_action']}")
+    print(f"    Consensus:  {verdict_report['consensus_stats']['consensus']}")
+    print(f"    Audit Hash: {verdict_report['manifest_hash'][:32]}...")
