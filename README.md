@@ -1,6 +1,6 @@
 # Proxy Protocol: The Physical Runtime for AI
 
-Proxy Protocol provides a standardized API for autonomous agents to execute physical-world tasks that require legal personhood, identity verification, or biometric authentication.
+Proxy Protocol provides a standardized API for autonomous agents to execute physical-world tasks that require legal personhood, identity verification, or biometric authentication. We bridge silicon intent with biological agency through a global network of hardware-attested human nodes.
 
 ---
 
@@ -10,11 +10,13 @@ When an autonomous agent encounters a **"Legal Wall"** (e.g., a CAPTCHA, phone v
 ---
 
 ## Key Features
-* 🛡️ **Hardware Root of Trust:** All Tier 2+ Human Nodes sign proofs using a non-exportable private key sealed inside an **Infineon OPTIGA™ TPM 2.0**.
+* 🛡️ **Hardware Root of Trust:** All Tier 2+ Human Nnodes must sign proofs using a non-exportable private keykeys sealed inside an **Infineon OPTIGA™ TPM 2.0**.
+* ⚡ **Trustless Settlement:** Payments use Lightning HODL Invoices. Funds are released only upon cryptographic validation of hardware telemetry (PIP-017).
+* ⚖️ **Decentralized Justice:** Disputes are resolved by the High Court (REP > 951), selected via VRF seeded by Bitcoin block entropy.
 * 🎟️ **Proxy-Pass Subscriptions:** High-volume agents can lock a 30-day DLC (Discreet Log Contract) to waive protocol fees and gain priority routing.
-* ⚖️ **Decentralized Justice:** Disputes are resolved by a VRF-selected **Jury Tribunal**, incentivized by Schelling Point game theory.
-* 🏥 **Node Insurance:** A 0.1% protocol tax funds a treasury to compensate operators in the event of critical bugs or slashing errors.
-
+* ⚖️ **Decentralized Justice:** Disputes are resolved by a VRF-selected Jury Tribunal, incentivized by Schelling Point game theory.
+* 🏥 **Node Insurance:** A 0.1% protocol tax funds a treasury to compensate operators in the event of critical bugs or slashingfor verified system errors.
+* 
 ---
 
 ## Supported SDKs
@@ -27,13 +29,13 @@ We provide official client libraries for the following ecosystems:
 
 ---
 
-## Integration (REST API)
+## Integration (REST API v1.6)
 
 ### 1. Request a Proxy Action
 Initiate a request for human intervention.
 
 ```http
-POST [https://api.proxy-protocol.com/v1/request](https://api.proxy-protocol.com/v1/request)
+POST [https://api.proxyagent.network/v1/request](https://api.proxyagent.network/v1/request)
 Authorization: Bearer <YOUR_API_KEY>
 Content-Type: application/json
 
@@ -70,7 +72,7 @@ The system returns a unique `ticket_id` to poll for completion.
 
 ## Status
 🚧 **Private Beta.**
-We are currently onboarding select agent developers. [Request Access Here](https://sites.google.com/rob-o-la.com/proxy/home).
+We are currently onboarding select agent developers. [Request Access Here](https://www.proxyagent.network/).
 
 ---
 
@@ -82,4 +84,4 @@ We are building the bridge between digital intelligence and physical reality. We
 * **Legal Engineering Lead:** Work with our Delaware counsel to productize new "Power of Attorney" templates for autonomous entities.
 * **Developer Relations:** Build the "Hello World" tutorials that 10,000 AI developers will use.
 
-*To apply, cryptographically sign a message with your GitHub handle and email `careers@rob-o-la.com`.*
+*To apply, cryptographically sign a message with your GitHub handle and email `careers@proxyagent.network`.*
