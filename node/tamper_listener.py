@@ -3,90 +3,118 @@ import subprocess
 import signal
 import sys
 import os
+import cv2
+import numpy as np
+import hashlib
+from typing import List, Dict, Optional
 
-# PROXY PROTOCOL - PHYSICAL TAMPER LISTENER (v1.0)
-# "The hardware watchdog for the Scorched Earth protocol."
+# PROXY PROTOCOL - TAMPER LISTENER v1.1 (Hardware + Evidence Integrity)
+# "Defending the silicon and the proof."
 # ----------------------------------------------------
 
 try:
     import RPi.GPIO as GPIO
 except ImportError:
-    # Fallback for development/non-Pi environments
     GPIO = None
 
 class TamperListener:
     """
-    Monitors a physical GPIO pin connected to a chassis intrusion switch.
-    If the circuit is broken (chassis opened), it triggers the 
-    irreversible 'tamper_response.sh' script.
+    Enhanced watchdog that monitors physical chassis intrusion AND 
+    performs perceptual hashing on incoming evidence to detect fraud.
     """
     
     def __init__(self, pin=26, response_script="/app/core/scripts/tamper_response.sh"):
-        """
-        Args:
-            pin: The BCM GPIO pin number (Default 26 / Physical 37).
-            response_script: Path to the 'Scorched Earth' bash execution.
-        """
         self.TAMPER_PIN = pin
         self.RESPONSE_SCRIPT = response_script
         self.is_monitoring = True
         
+        # Local cache of previously used proof hashes to prevent reuse
+        # Format: { "hash": timestamp }
+        self.evidence_history_cache: Dict[str, float] = {}
+        
         if GPIO is None:
-            print("[!] GPIO library not detected. Running in SIMULATION MODE.")
+            print("[!] GPIO library not detected. Running hardware monitoring in SIMULATION.")
         else:
             self._setup_gpio()
 
+    # --- 1. HARDWARE INTEGRITY (Physical Tamper) ---
+
     def _setup_gpio(self):
-        """
-        Configures the GPIO pin with an internal pull-up resistor.
-        
-        CIRCUIT DESIGN:
-        - Switch connects the pin to GROUND when the chassis is CLOSED (Pin = 0/LOW).
-        - If the case is OPENED, the circuit breaks.
-        - The Pull-Up resistor forces the pin to 3.3V (Pin = 1/HIGH).
-        """
+        """Configures physical intrusion detection circuit."""
         GPIO.setmode(GPIO.BCM)
-        # Pull-up forces the default state to HIGH (1)
         GPIO.setup(self.TAMPER_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        
-        # Detection on RISING edge (Transition from Ground to 3.3V)
         GPIO.add_event_detect(
             self.TAMPER_PIN, 
             GPIO.RISING, 
             callback=self.trigger_scorched_earth, 
-            bouncetime=200 # Debounce to prevent false positives from vibration
+            bouncetime=200
         )
-        print(f"[*] Hardware Watchdog Active: Monitoring GPIO {self.TAMPER_PIN}...")
+        print(f"[*] Hardware Watchdog Active: Monitoring GPIO {self.TAMPER_PIN}")
 
     def trigger_scorched_earth(self, channel=None):
-        """
-        The point of no return. Triggers hardware wipe and process kill.
-        """
-        print("\n" + "!"*45)
-        print("🚨 CRITICAL: PHYSICAL CHASSIS INTRUSION DETECTED!")
-        print("🚨 INITIATING SCORCHED EARTH PROTOCOL...")
-        print("!"*45 + "\n")
-        
-        # 1. Immediate local log entry
-        with open("/var/log/proxy_tamper.log", "a") as f:
-            f.write(f"[{time.ctime()}] INTRUSION INTERRUPT ON GPIO {self.TAMPER_PIN}\n")
-
-        # 2. Execute the Scrubber
-        # This script (previously defined in the Canvas) wipes TPM and shreds secrets.
+        """Irreversible hardware wipe and process termination."""
+        print("\n🚨 CRITICAL: CHASSIS INTRUSION DETECTED! INITIATING WIPE.")
         try:
             if os.path.exists(self.RESPONSE_SCRIPT):
-                # Using Popen so the script continues to run even if this process is killed
                 subprocess.Popen(["/bin/bash", self.RESPONSE_SCRIPT])
             else:
-                print(f"[ERROR] Logic Failure: {self.RESPONSE_SCRIPT} not found.")
-                # EMERGENCY FALLBACK: Just kill the sensitive daemon processes
                 subprocess.run(["pkill", "-9", "-f", "node_daemon.py"])
-        except Exception as e:
-            print(f"[CRITICAL] OS-Level failure during tamper response: {e}")
+        except Exception:
             sys.exit(1)
 
+    # --- 2. EVIDENCE INTEGRITY (Perceptual Hashing) ---
+
+    def compute_perceptual_hash(self, image_path: str) -> Optional[str]:
+        """
+        Calculates a Difference Hash (dHash) for the image.
+        dHash is resistant to resizing, brightness shifts, and format changes.
+        """
+        try:
+            image = cv2.imread(image_path)
+            if image is None: return None
+            
+            # 1. Grayscale and resize to 9x8 for dHash
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            resized = cv2.resize(gray, (9, 8), interpolation=cv2.INTER_AREA)
+            
+            # 2. Compute differences between adjacent pixels
+            diff = resized[:, 1:] > resized[:, :-1]
+            
+            # 3. Convert boolean array to hex string
+            return hashlib.md5(diff.tobytes()).hexdigest()
+        except Exception as e:
+            print(f"[Tamper] Hash calculation failed: {e}")
+            return None
+
+    def audit_evidence_integrity(self, image_path: str) -> Dict:
+        """
+        Pre-filter check for task evidence.
+        Detects if this image has been used before (Fraud Replay).
+        """
+        p_hash = self.compute_perceptual_hash(image_path)
+        if not p_hash:
+            return {"status": "ERROR", "reason": "UNREADABLE_IMAGE"}
+
+        # Check for reuse
+        if p_hash in self.evidence_history_cache:
+            print(f"🚨 TAMPER ALERT: Perceptual match detected for {image_path}. Probable fraud.")
+            return {
+                "status": "TAMPERED", 
+                "reason": "REUSED_EVIDENCE_DETECTED",
+                "original_seen": self.evidence_history_cache[p_hash]
+            }
+
+        # Record for future comparison
+        self.evidence_history_cache[p_hash] = time.time()
+        
+        return {
+            "status": "VALID", 
+            "p_hash": p_hash,
+            "msg": "Evidence unique. Proceeding to OCR validation."
+        }
+
     def run(self):
-        """Main loop to keep the listener process in the background."""
+        """Main background loop."""
         try:
             while self.is_monitoring:
                 time.sleep(1)
@@ -94,21 +122,30 @@ class TamperListener:
             self.cleanup()
 
     def cleanup(self):
-        print("\n[*] Deactivating Hardware Watchdog...")
         self.is_monitoring = False
-        if GPIO:
-            GPIO.cleanup()
+        if GPIO: GPIO.cleanup()
 
+# --- Operational Simulation ---
 if __name__ == "__main__":
-    # Check for root privileges (Required for GPIO/Wiping)
-    if os.geteuid() != 0 and GPIO is not None:
-        print("❌ PERMISSION DENIED: Tamper listener must run as root.")
-        sys.exit(1)
-        
     listener = TamperListener()
     
-    # Feature for remote security testing
-    if len(sys.argv) > 1 and sys.argv[1] == "--simulate-intrusion":
-        listener.trigger_scorched_earth()
-    else:
-        listener.run()
+    print("--- PROTOCOL EVIDENCE INTEGRITY TEST ---")
+    
+    # 1. Create a mock image
+    dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+    cv2.putText(dummy_img, "VALID PROOF", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    cv2.imwrite("proof_alpha.jpg", dummy_img)
+
+    # 2. First submission (Should be VALID)
+    print("[*] Node submitting first proof...")
+    audit_1 = listener.audit_evidence_integrity("proof_alpha.jpg")
+    print(f"    -> Result: {audit_1['status']}")
+
+    # 3. Second submission of the same visual content (Should be TAMPERED)
+    # Even if saved as a different file or resized, dHash will catch it.
+    print("\n[*] Attacker submitting duplicate visual proof...")
+    audit_2 = listener.audit_evidence_integrity("proof_alpha.jpg")
+    print(f"    -> Result: {audit_2['status']} (Reason: {audit_2.get('reason')})")
+
+    if audit_2['status'] == "TAMPERED":
+        print("✅ FRAUD BLOCKED: Pre-broadcasting filter successful.")
