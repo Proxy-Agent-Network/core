@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# PROXY PROTOCOL - FLEET DASHBOARD INSTALLER (v1.0)
-# "Deploy the Command Center in seconds."
+# PROXY PROTOCOL - FLEET DASHBOARD INSTALLER (v1.1)
+# "Deploy the FastAPI/React Command Center."
 # ----------------------------------------------------
 # Usage: ./install_fleet_dashboard.sh
 
@@ -24,7 +24,11 @@ if ! command -v node &> /dev/null; then
     echo "❌ Node.js is not installed. Please install Node.js v18+."
     exit 1
 fi
-echo "   -> Node.js detected."
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python3 is not installed."
+    exit 1
+fi
+echo "   -> Node.js and Python detected."
 
 # 2. Project Scaffolding
 TARGET_DIR="proxy-fleet-ui"
@@ -38,12 +42,13 @@ cat > package.json <<EOF
 {
   "name": "proxy-fleet-dashboard",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "uvicorn fleet_backend:app --reload --port 8000"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -64,11 +69,50 @@ cat > package.json <<EOF
 }
 EOF
 
-# 4. Install Dependencies
-echo -e "${BLUE}[*] Installing dependencies (this may take a minute)...${NC}"
+# 4. Initialize Backend (FastAPI)
+echo -e "${BLUE}[*] Scaffolding FastAPI Orchestrator...${NC}"
+cat > fleet_backend.py <<EOF
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+app = FastAPI(title="Proxy Fleet Orchestrator")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/api/health")
+async def get_fleet_health():
+    # In production, this aggregates data from nodes listed in config.yaml
+    return {
+        "status": "online",
+        "node_count": 42,
+        "global_reputation": 962
+    }
+
+@app.get("/api/nodes")
+async def list_nodes():
+    return [
+        {"id": "NODE-001", "status": "ONLINE", "temp": 45, "load": "12%"},
+        {"id": "NODE-002", "status": "ONLINE", "temp": 48, "load": "34%"}
+    ]
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+EOF
+
+# 5. Install Dependencies
+echo -e "${BLUE}[*] Installing Node dependencies...${NC}"
 npm install
 
-# 5. Configuration Files
+echo -e "${BLUE}[*] Installing Python dependencies...${NC}"
+pip3 install fastapi uvicorn
+
+# 6. Configuration Files
 echo -e "${BLUE}[*] Writing configuration files...${NC}"
 
 # Tailwind Config
@@ -96,7 +140,7 @@ export default {
 }
 EOF
 
-# Vite Config
+# Vite Config (with Proxy to Backend)
 cat > vite.config.js <<EOF
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -104,13 +148,16 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true, // Expose to local network
-    port: 3000
+    host: true,
+    port: 3000,
+    proxy: {
+      '/api': 'http://localhost:8000'
+    }
   }
 })
 EOF
 
-# 6. Source Code Structure
+# 7. Source Code Structure
 echo -e "${BLUE}[*] Creating source structure...${NC}"
 mkdir -p src
 
@@ -157,16 +204,13 @@ cat > index.html <<EOF
 </html>
 EOF
 
-# 7. Inject Dashboard Code
-# We check if the jsx file exists in the parent repo, otherwise create a placeholder.
+# 8. Inject Dashboard Code
 SOURCE_JSX="../../node_fleet_dashboard.jsx"
 if [ -f "$SOURCE_JSX" ]; then
     echo -e "${BLUE}[*] Copying dashboard code from repository...${NC}"
     cp "$SOURCE_JSX" src/App.jsx
 else
-    echo -e "${BLUE}[*] Source JSX not found in parent directory. Creating placeholder...${NC}"
-    echo -e "    -> ⚠️  Please paste the content of 'node_fleet_dashboard.jsx' into '$TARGET_DIR/src/App.jsx'"
-    
+    echo -e "${BLUE}[*] Source JSX not found. Creating placeholder...${NC}"
     cat > src/App.jsx <<EOF
 import React from 'react';
 export default function App() {
@@ -185,9 +229,10 @@ fi
 echo ""
 echo -e "${GREEN}✅ INSTALLATION COMPLETE${NC}"
 echo "------------------------------------------------"
-echo "To start the dashboard:"
-echo "  cd $TARGET_DIR"
-echo "  npm run dev"
+echo "To start the Fleet Dashboard stack:"
+echo "  1. Start Backend: npm run server"
+echo "  2. Start Frontend: npm run dev"
 echo ""
-echo "Access via: http://localhost:3000"
+echo "Access Frontend: http://localhost:3000"
+echo "Access API:      http://localhost:8000/docs"
 echo "------------------------------------------------"
