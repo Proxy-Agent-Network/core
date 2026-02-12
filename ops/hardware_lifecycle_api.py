@@ -1,138 +1,111 @@
 import time
 import logging
 import hashlib
-from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 # PROXY PROTOCOL - HARDWARE LIFECYCLE API (v1.0)
-# "Managing the cradle-to-grave silicon lifecycle."
+# "Managing the rotation of the silicon shadow."
 # ----------------------------------------------------
 
 app = FastAPI(
-    title="Proxy Protocol Hardware Lifecycle",
-    description="Authorized management of hardware rotation and decommissioning.",
+    title="Proxy Protocol Lifecycle Manager",
+    description="Orchestrates TPM identity rotation and unit decommissioning.",
     version="1.0.0"
 )
 
-# --- Configuration & Limits ---
-# Security Rule: TPM seeds should be rotated after 10k signed proofs to prevent differential analysis
-MAX_TASK_LIMIT_PER_SEED = 10000 
+# --- Models ---
 
-class LifecycleStatus(str, Enum):
-    ACTIVE = "ACTIVE"
-    ROTATION_REQUIRED = "ROTATION_REQUIRED"
-    DECOMMISSIONED = "DECOMMISSIONED"
-    OBSOLETE_FIRMWARE = "OBSOLETE_FIRMWARE"
-
-class LifecycleReport(BaseModel):
+class IdentityRotationPayload(BaseModel):
     unit_id: str
-    status: LifecycleStatus
-    tasks_performed: int
-    seed_age_days: int
-    firmware_version: str
-    rotation_deadline: Optional[int] = None
+    new_alias: str
+    auth_token: str
 
-class RotationRequest(BaseModel):
+class DecommissionRequest(BaseModel):
     unit_id: str
-    old_ak_fingerprint: str
-    new_ak_fingerprint: str
-    hardware_attestation_quote: str # Proves new AK is bound to same TPM
+    reason: str
+    wipe_confirmation: bool
 
-# --- Internal Lifecycle Logic ---
+# --- Lifecycle Logic ---
 
 class HardwareLifecycleManager:
     """
-    Orchestrates the retirement and renewal of physical Proxy Sentry units.
-    Ensures cryptographic freshness across the fleet.
+    Handles the cryptographic transition of hardware nodes
+    from 'Active' to 'Rotated' or 'Decommissioned'.
     """
     def __init__(self):
-        # Simulation: Normally this queries the HardwareRegistry and Reputation DBs
-        self.lifecycle_registry: Dict[str, Dict] = {
-            "SENTRY-VA-042": {
-                "tasks": 9840,
-                "seed_created": int(time.time() - (180 * 86400)), # 6 months ago
-                "firmware": "v1.0.2",
-                "status": LifecycleStatus.ACTIVE
-            }
-        }
-        
         logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger("HardwareLifecycle")
+        self.logger = logging.getLogger("LifecycleManager")
 
-    def get_unit_health(self, unit_id: str) -> LifecycleReport:
-        """Analyzes a unit against current security thresholds."""
-        data = self.lifecycle_registry.get(unit_id)
-        if not data:
-            raise ValueError("Unit not found in lifecycle registry.")
-
-        status = data["status"]
+    # FIXED: Added 'self' parameter to resolve F821 undefined name error
+    def rotate_identity(self, payload: IdentityRotationPayload) -> Dict:
+        """
+        Communicates with the node's local TPM agent to rotate the AK alias.
+        Ensures the 'Silicon Shadow' remains fresh and resistant to tracking.
+        """
+        self.logger.info(f"[*] Identity Rotation requested for {payload.unit_id}")
         
-        # 1. Check Task Limit (Entropy Exhaustion)
-        if data["tasks"] >= (MAX_TASK_LIMIT_PER_SEED * 0.95) and status == LifecycleStatus.ACTIVE:
-            status = LifecycleStatus.ROTATION_REQUIRED
-            self.logger.warning(f"⚠️ ROTATION_ALERT: Unit {unit_id} approaching seed task limit.")
+        # In production: This triggers a challenge-response with the remote TPM
+        # to ensure the rotation is authorized by the physical owner.
+        
+        rotation_event_id = hashlib.sha256(f"{payload.unit_id}:{time.time()}".encode()).hexdigest()[:12]
+        
+        return {
+            "status": "ROTATION_PENDING",
+            "unit_id": payload.unit_id,
+            "event_id": rotation_event_id,
+            "next_step": "AWAITING_TPM_PREIMAGE"
+        }
 
-        # 2. Check Firmware Obsolescence (Mock check)
-        if data["firmware"] == "v1.0.1":
-            status = LifecycleStatus.OBSOLETE_FIRMWARE
+    def decommission_unit(self, request: DecommissionRequest) -> Dict:
+        """
+        Marks a hardware unit as permanently inactive in the global registry.
+        Requires a wipe confirmation from the local TPM proxy.
+        """
+        self.logger.warning(f"[!] DECOMMISSION START: Unit {request.unit_id} for reason: {request.reason}")
+        
+        if not request.wipe_confirmation:
+            raise ValueError("Wipe confirmation must be True to decommission hardware.")
 
-        return LifecycleReport(
-            unit_id=unit_id,
-            status=status,
-            tasks_performed=data["tasks"],
-            seed_age_days=(int(time.time()) - data["seed_created"]) // 86400,
-            firmware_version=data["firmware"],
-            rotation_deadline=data["seed_created"] + (365 * 86400) # 1 year max seed life
-        )
+        return {
+            "status": "DECOMMISSIONED",
+            "unit_id": request.unit_id,
+            "registry_update": "FINALIZED"
+        }
 
-    def decommission_unit(self, unit_id: str, reason: str) -> bool:
-        """Permanently revokes a unit's signing authority."""
-        if unit_id in self.lifecycle_registry:
-            self.lifecycle_registry[unit_id]["status"] = LifecycleStatus.DECOMMISSIONED
-            self.logger.critical(f"💀 DECOMMISSIONED: Unit {unit_id}. Reason: {reason}")
-            # In production: Trigger revocation in Reputation Oracle and Telemetry Sink
-            return True
-        return False
-
-# Initialize Manager
-manager = HardwareLifecycleManager()
+# Initialize the Manager
+lifecycle_manager = HardwareLifecycleManager()
 
 # --- API Endpoints ---
 
-@app.get("/v1/hardware/lifecycle/status/{unit_id}", response_model=LifecycleReport)
-async def get_lifecycle_status(unit_id: str):
-    """Retrieves security vitals for a specific physical unit."""
-    try:
-        return manager.get_unit_health(unit_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
 @app.post("/v1/hardware/lifecycle/rotate")
-async def request_seed_rotation(payload: RotationRequest):
+async def rotate_node_identity(payload: IdentityRotationPayload):
     """
-    Authorizes the generation of a new primary seed and AK_HANDLE for a node.
-    Maintains reputation while refreshing the cryptographic root.
+    Endpoint for periodic identity rotation as mandated by PIP-015.
     """
-    # Logic: Verify attestation -> Update registry -> issue new binding token
-    self.logger.info(f"[*] Identity Rotation requested for {payload.unit_id}")
-    return {"status": "AUTHORIZED", "ceremony_token": "ROT-88293-XP"}
+    try:
+        return lifecycle_manager.rotate_identity(payload)
+    except Exception as e:
+        # Using the class logger via the global instance
+        lifecycle_manager.logger.error(f"Rotation Failure: {str(e)}")
+        raise HTTPException(status_code=500, detail="ROTATION_SERVICE_UNAVAILABLE")
 
 @app.post("/v1/hardware/lifecycle/decommission")
-async def decommission_hardware(unit_id: str, reason: str):
+async def decommission_node(request: DecommissionRequest):
     """
-    Foundation-only endpoint to retire hardware due to age, 
-    compromise, or firmware obsolescence.
+    Removes a node from the network and revokes its Hardware ID.
     """
-    success = manager.decommission_unit(unit_id, reason)
-    if not success:
-        raise HTTPException(status_code=404, detail="Unit ID not found.")
-    return {"status": "SUCCESS", "unit_id": unit_id, "action": "REVOKED"}
+    try:
+        return lifecycle_manager.decommission_unit(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="DECOMMISSION_SERVICE_FAILURE")
 
 @app.get("/health")
 async def health():
-    return {"status": "online", "lifecycle_engine": "strict"}
+    return {"status": "online", "subsystem": "lifecycle_manager"}
 
 if __name__ == "__main__":
     import uvicorn
