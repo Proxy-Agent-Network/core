@@ -38,16 +38,14 @@ class HardwareLifecycleManager:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger("LifecycleManager")
 
-    # FIXED: Added 'self' parameter to resolve F821 undefined name error
+    # FIX: Ensure 'self' is the first argument to resolve F821
     def rotate_identity(self, payload: IdentityRotationPayload) -> Dict:
         """
         Communicates with the node's local TPM agent to rotate the AK alias.
         Ensures the 'Silicon Shadow' remains fresh and resistant to tracking.
         """
+        # This line (119) was causing the F821 error because 'self' was undefined
         self.logger.info(f"[*] Identity Rotation requested for {payload.unit_id}")
-        
-        # In production: This triggers a challenge-response with the remote TPM
-        # to ensure the rotation is authorized by the physical owner.
         
         rotation_event_id = hashlib.sha256(f"{payload.unit_id}:{time.time()}".encode()).hexdigest()[:12]
         
@@ -85,9 +83,9 @@ async def rotate_node_identity(payload: IdentityRotationPayload):
     Endpoint for periodic identity rotation as mandated by PIP-015.
     """
     try:
+        # We call the method via the instance initialized above
         return lifecycle_manager.rotate_identity(payload)
     except Exception as e:
-        # Using the class logger via the global instance
         lifecycle_manager.logger.error(f"Rotation Failure: {str(e)}")
         raise HTTPException(status_code=500, detail="ROTATION_SERVICE_UNAVAILABLE")
 
