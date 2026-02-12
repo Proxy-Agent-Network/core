@@ -3,6 +3,7 @@ import secrets
 import time
 import requests
 import os
+import base64
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Dict, List
@@ -12,10 +13,10 @@ from typing import Optional, Dict, List
 # ----------------------------------------------------
 
 class EscrowState(Enum):
-    OPEN = "OPEN"               # Invoice created, awaiting payment
+    OPEN = "OPEN"               # Invoice created, awaiting payer
     ACCEPTED = "ACCEPTED"       # Payment HELD by LND (HTLC locked)
-    IN_PROGRESS = "IN_PROGRESS" # Node is working
-    SETTLED = "SETTLED"         # Preimage revealed; funds moved
+    IN_PROGRESS = "IN_PROGRESS" # Human Node has accepted work
+    SETTLED = "SETTLED"         # Preimage revealed; Satoshis moved
     CANCELLED = "CANCELLED"     # Timed out or manually cancelled
 
 @dataclass
@@ -48,11 +49,14 @@ class EscrowManager:
         """Helper to communicate with the physical LND node."""
         url = f"https://{self.lnd_host}{path}"
         headers = {"Grpc-Metadata-macaroon": self.macaroon}
-        verify = self.cert if self.cert else False
+        verify = self.cert if self.cert and os.path.exists(self.cert) else False
         
-        if method == "POST":
-            return requests.post(url, json=body, headers=headers, verify=verify).json()
-        return requests.get(url, headers=headers, verify=verify).json()
+        try:
+            if method == "POST":
+                return requests.post(url, json=body, headers=headers, verify=verify, timeout=10).json()
+            return requests.get(url, headers=headers, verify=verify, timeout=10).json()
+        except Exception as e:
+            return {"error": str(e)}
 
     def create_hodl_invoice(self, agent_id: str, task_id: str, amount: int) -> Dict:
         """
@@ -61,8 +65,7 @@ class EscrowManager:
         preimage = secrets.token_bytes(32)
         payment_hash = hashlib.sha256(preimage).hexdigest()
         
-        # 1. Register with LND
-        # Endpoint: POST /v2/invoices/hodl
+        # 1. Register with LND (HODL endpoint)
         lnd_payload = {
             "hash": base64.b64encode(bytes.fromhex(payment_hash)).decode(),
             "value": amount,
@@ -70,9 +73,11 @@ class EscrowManager:
             "expiry": 14400 # 4 hours
         }
         
-        # Note: In real LND REST, this is often the /v1/invoices/hodl path
         lnd_response = self._lnd_request("POST", "/v1/invoices/hodl", lnd_payload)
         bolt11 = lnd_response.get("payment_request")
+
+        if not bolt11:
+            raise RuntimeError(f"Failed to generate HODL invoice: {lnd_response.get('error')}")
 
         # 2. Store internal state
         contract = HodlContract(
