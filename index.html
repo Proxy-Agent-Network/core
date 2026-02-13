@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Center // Proxy Protocol</title>
+    
+    <meta name="description" content="Official Infrastructure Command Center for the Proxy Agent Network. Monitor HODL escrow circuits, multi-sig governance ceremonies, and forensic manifest audits.">
+    <meta name="keywords" content="Proxy Protocol, Satoshi Standard, HODL Escrow, Lightning Network, Distributed Governance, Multi-sig Quorum, TPM 2.0 Attestation, Decentralized Labor">
+    <meta name="author" content="Proxy Protocol Foundation">
+
+    <meta name="protocol-version" content="v1.6.0">
+    <meta name="network-id" content="proxy-mainnet-beta">
+    <meta name="settlement-layer" content="lightning-hodl-htlc">
+
+    <meta property="og:title" content="Proxy Protocol Infrastructure Hub">
+    <meta property="og:description" content="Real-time visualization of non-custodial labor settlement and cryptographic governance.">
+    <meta property="og:type" content="website">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background: #050505; color: #e5e5e5; font-family: 'Inter', sans-serif; }
+        .grid-bg { background-image: radial-gradient(#1a1a1a 1px, transparent 1px); background-size: 20px 20px; }
+        .stat-card { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .stat-card:hover { border-color: #00FF41; transform: translateY(-4px); background: rgba(0, 255, 65, 0.03); box-shadow: 0 10px 30px -10px rgba(0, 255, 65, 0.2); }
+    </style>
+</head>
+<body class="grid-bg min-h-screen p-8">
+    <header class="max-w-7xl mx-auto mb-16 flex justify-between items-end border-b border-gray-900 pb-10">
+        <div>
+            <h1 class="text-5xl font-black uppercase tracking-tighter italic">Proxy <span class="text-green-500 not-italic">Command</span></h1>
+            <p class="text-[10px] text-gray-500 mono mt-3 font-bold uppercase tracking-[0.3em]">Infrastructure Suite // v1.6.0-STABLE</p>
+        </div>
+        <div class="px-6 py-3 bg-green-500/10 border border-green-500/30 rounded-full flex items-center gap-3">
+            <div class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
+            <span class="text-[11px] font-black text-green-500 uppercase tracking-widest">Build Status: Clean</span>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <a href="economics.html" class="stat-card p-8 rounded-[2rem] block">
+            <div class="p-4 bg-amber-500/10 rounded-2xl inline-block mb-8"><i data-lucide="zap" class="text-amber-500 w-6 h-6"></i></div>
+            <h3 class="font-black uppercase text-base tracking-tight mb-2 text-white">Escrow Circuit</h3>
+            <p class="text-[10px] text-gray-400 leading-relaxed uppercase font-bold tracking-wider">HODL Invoice & HTLC Logic</p>
+        </a>
+
+        <a href="governance.html" class="stat-card p-8 rounded-[2rem] block">
+            <div class="p-4 bg-indigo-500/10 rounded-2xl inline-block mb-8"><i data-lucide="gavel" class="text-indigo-500 w-6 h-6"></i></div>
+            <h3 class="font-black uppercase text-base tracking-tight mb-2 text-white">Quorum Audit</h3>
+            <p class="text-[10px] text-gray-400 leading-relaxed uppercase font-bold tracking-wider">7-Signature Ceremony Monitoring</p>
+        </a>
+
+        <a href="transparency.html" class="stat-card p-8 rounded-[2rem] block">
+            <div class="p-4 bg-red-500/10 rounded-2xl inline-block mb-8"><i data-lucide="binary" class="text-red-500 w-6 h-6"></i></div>
+            <h3 class="font-black uppercase text-base tracking-tight mb-2 text-white">Forensic Delta</h3>
+            <p class="text-[10px] text-gray-400 leading-relaxed uppercase font-bold tracking-wider">Manifest Mismatch Detection</p>
+        </a>
+
+        <a href="legal.html" class="stat-card p-8 rounded-[2rem] block">
+            <div class="p-4 bg-blue-500/10 rounded-2xl inline-block mb-8"><i data-lucide="scale" class="text-blue-500 w-6 h-6"></i></div>
+            <h3 class="font-black uppercase text-base tracking-tight mb-2 text-white">Legal Nexus</h3>
+            <p class="text-[10px] text-gray-400 leading-relaxed uppercase font-bold tracking-wider">Jurisdictional Precedent Archive</p>
+        </a>
+    </main>
+
+    <footer class="max-w-7xl mx-auto mt-20 pt-8 border-t border-gray-900 text-center">
+        <p class="text-[9px] text-gray-700 mono uppercase tracking-[0.4em]">Proprietary Cryptographic Infrastructure // No Unauthorized Access</p>
+    </footer>
+
+    <script>lucide.createIcons();</script>
+</body>
+</html>
