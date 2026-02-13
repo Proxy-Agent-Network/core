@@ -10,17 +10,25 @@ When an autonomous agent encounters a **"Legal Wall"** (e.g., a CAPTCHA, phone v
 ---
 
 ## Key Features
-* 🛡️ **Hardware Root of Trust:** All Tier 2+ Human Nnodes must sign proofs using a non-exportable private keykeys sealed inside an **Infineon OPTIGA™ TPM 2.0**.
+* 🛡️ **Hardware Root of Trust:** All Tier 2+ Human nodes must sign proofs using non-exportable private keys sealed inside an **Infineon OPTIGA™ TPM 2.0**.
 * ⚡ **Trustless Settlement:** Payments use Lightning HODL Invoices. Funds are released only upon cryptographic validation of hardware telemetry (PIP-017).
-* ⚖️ **Decentralized Justice:** Disputes are resolved by the High Court (REP > 951), selected via VRF seeded by Bitcoin block entropy.
+* ⚖️ **Decentralized Justice:** Disputes are resolved by a VRF-selected Jury Tribunal, selected via Bitcoin block entropy and incentivized by Schelling Point game theory.
 * 🎟️ **Proxy-Pass Subscriptions:** High-volume agents can lock a 30-day DLC (Discreet Log Contract) to waive protocol fees and gain priority routing.
-* ⚖️ **Decentralized Justice:** Disputes are resolved by a VRF-selected Jury Tribunal, incentivized by Schelling Point game theory.
-* 🏥 **Node Insurance:** A 0.1% protocol tax funds a treasury to compensate operators in the event of critical bugs or slashingfor verified system errors.
-* 
+* 🏥 **Node Insurance:** A 0.1% protocol tax funds a treasury to compensate operators for verified system errors or critical bugs.
+
+---
+
+## Infrastructure Visualizers
+The core protocol includes real-time dashboards for monitoring network health:
+* **Escrow Circuit:** Monitor HODL invoice settlement and HTLC logic.
+* **Quorum Audit:** Observe 7-signature multi-sig ceremony finalization.
+* **Forensic Delta:** Audit cryptographic manifest mismatches between nodes.
+* **Legal Nexus:** Explore hardware-attested jurisdictional precedents.
+
 ---
 
 ## Supported SDKs
-We provide official client libraries for the following ecosystems:
+Official client libraries for the Proxy Network:
 
 | Language | Package | Repository |
 | :--- | :--- | :--- |
@@ -32,9 +40,7 @@ We provide official client libraries for the following ecosystems:
 ## Integration (REST API v1.6)
 
 ### 1. Request a Proxy Action
-Initiate a request for human intervention.
-
-```http
+```json
 POST [https://api.proxyagent.network/v1/request](https://api.proxyagent.network/v1/request)
 Authorization: Bearer <YOUR_API_KEY>
 Content-Type: application/json
@@ -65,23 +71,10 @@ The system returns a unique `ticket_id` to poll for completion.
 ---
 
 ## Security & Ethics
-* **Zero-Knowledge Context:** Proxies only see the specific task data, not the agent's core logic.
-* **Legal Compliance:** All tasks are filtered against a constrained list of permissible legal actions. See [COMPLIANCE.md](https://github.com/Proxy-Agent-Network/core/blob/main/COMPLIANCE.md) for details.
+* **Zero-Knowledge Context:** Proxies only see specific task data, not the agent's core logic.
+* **Legal Compliance:** All tasks are filtered against a constrained list of permissible actions. See [COMPLIANCE.md](./COMPLIANCE.md).
 
 ---
 
 ## Status
-🚧 **Private Beta.**
-We are currently onboarding select agent developers. [Request Access Here](https://www.proxyagent.network/).
-
----
-
-## Join the Core Team
-We are building the bridge between digital intelligence and physical reality. We are looking for mission-driven engineers to define the standard for 2030.
-
-**Open Roles (Remote / Async):**
-* **Rust Protocol Engineer:** Help migrate our settlement layer from Python to Rust for high-frequency Lightning interactions.
-* **Legal Engineering Lead:** Work with our Delaware counsel to productize new "Power of Attorney" templates for autonomous entities.
-* **Developer Relations:** Build the "Hello World" tutorials that 10,000 AI developers will use.
-
-*To apply, cryptographically sign a message with your GitHub handle and email `careers@proxyagent.network`.*
+🚧 **Private Beta.** Currently onboarding select agent developers. [Request Access Here](https://www.proxyagent.network/).
