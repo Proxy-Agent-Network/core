@@ -118,7 +118,11 @@ const App = () => {
                    const isSigned = i < signedCount;
                    return (
                      <div key={i} className="flex flex-col items-center gap-4">
-                        <div className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all duration-700 relative ${isSigned ? 'bg-amber-500/10 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'bg-black border-white/5 opacity-40'}`}>
+                        <div className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all duration-700 relative ${
+                          isSigned 
+                            ? 'bg-amber-500/10 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]' 
+                            : 'bg-black border-white/5 opacity-40'
+                        }`}>
                            <Fingerprint className={`w-7 h-7 ${isSigned ? 'text-amber-500' : 'text-gray-800'}`} />
                            {isSigned && (
                              <div className="absolute -top-1 -right-1">
@@ -211,8 +215,10 @@ const App = () => {
 
                  <div className="mt-8 pt-8 border-t border-white/5">
                     <button 
-                      className={`w-full py-4 rounded-lg font-black text-xs uppercase tracking-widest transition-all ${isSettled ? 'bg-indigo-600 text-white shadow-xl hover:bg-indigo-500' : 'bg-white/5 border border-white/10 text-gray-700 cursor-not-allowed'}`}
-                      disabled={{!isSettled}}
+                      className={`w-full py-4 rounded-lg font-black text-xs uppercase tracking-widest transition-all ${
+                        isSettled ? 'bg-indigo-600 text-white shadow-xl hover:bg-indigo-500' : 'bg-white/5 border border-white/10 text-gray-700 cursor-not-allowed'
+                      }`}
+                      disabled={!isSettled}
                     >
                        View Final Forensic Report
                     </button>
