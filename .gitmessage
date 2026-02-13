@@ -1,6 +1,6 @@
 <type>(<scope>): <subject>
 
-Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert, ops, viz
 
 Scope: sdk-node, core, gov, hardware, ui, etc.
 
@@ -36,8 +36,4 @@ List any breaking changes here, starting with "BREAKING CHANGE: "
 
 Fixes #IssueNumber
 
-<<<<<<< HEAD
-See: https://www.google.com/search?q=https://github.com/Proxy-Agent-Network/core/docs/...
-=======
-See: https://www.google.com/search?q=https://github.com/Proxy-Agent-Network/core/docs/...
->>>>>>> 3c4fba271065da0da8648892b70aa3c5997ffb95
+See: https://github.com/Proxy-Agent-Network/core/docs/
