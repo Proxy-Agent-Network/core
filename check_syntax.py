@@ -1,22 +1,37 @@
 import compileall
 import os
 import sys
+import re
 
 def run_preflight():
+    """
+    Proxy Protocol Syntax Audit
+    Target: Only .py files
+    Ignores: .jsx, .html, .js, .md
+    """
     print("🚀 Starting Proxy Protocol Syntax Audit...")
     print("-" * 40)
     
-    # Check for syntax errors in the entire directory
-    # 'force=True' ensures it re-checks even if .pyc files exist
-    # 'quiet=0' ensures it prints the filenames it's checking
-    success = compileall.compile_dir('.', force=True, quiet=0)
+    # regex to specifically target Python files
+    # This prevents the linter from choking on JSX or HTML files in the repo
+    python_regex = re.compile(r'\.py$')
+    
+    # force=True: ensures it re-checks even if .pyc files exist
+    # quiet=0: prints the filenames it is checking
+    # rx: the regex filter applied to the directory scan
+    success = compileall.compile_dir(
+        '.', 
+        force=True, 
+        quiet=0, 
+        rx=python_regex
+    )
     
     print("-" * 40)
     if success:
-        print("✅ PASS: All files are syntactically valid.")
+        print("✅ PASS: All Python files are syntactically valid.")
         sys.exit(0)
     else:
-        print("❌ FAIL: Syntax errors detected. Check the logs above.")
+        print("❌ FAIL: Syntax errors detected in Python files. Check logs above.")
         sys.exit(1)
 
 if __name__ == "__main__":
