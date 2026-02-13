@@ -113,7 +113,8 @@ async def compare_cases(
     Calculates the forensic delta between two High Court judgments.
     Powers the comparison logic in the UI.
     """
-    self.logger.info(f"[*] Analyzing Forensic Distance: {case_a} vs {case_b}")
+    # Updated from self.logger to engine.logger to fix F821 error
+    engine.logger.info(f"[*] Analyzing Forensic Distance: {case_a} vs {case_b}")
 
     # 1. Fetch Manifests (Simulation: Normally calls AdjudicationArchivist)
     # We mock the retrieval for the architectural proof
