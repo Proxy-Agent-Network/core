@@ -116,7 +116,7 @@ class QuarantineManager:
         self.action_history.append(receipt.dict())
         return receipt
 
-# Initialize Engine
+# Initialize Manager
 manager = QuarantineManager()
 
 # --- API Endpoints ---
