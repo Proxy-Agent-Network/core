@@ -17,6 +17,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# --- UI Component Definitions (Wrapped to prevent Syntax Errors) ---
+# These are used by the dashboard to render the governance status.
+
+GOVERNANCE_WIDGET_TEMPLATE = """
+<div className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${prop.severity === 'CRITICAL' ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-amber-500/10 border-amber-500/20 text-amber-500'}`}>
+    {prop.label}
+</div>
+"""
+
 # --- Models ---
 
 class FeeOverride(BaseModel):
@@ -93,7 +102,6 @@ class InsuranceGovernanceManager:
         self.action_history.append(event)
         self.logger.critical(f"🚨 LIQUIDITY_FREEZE: Executed by {data.juror_id}. Scope: {data.freeze_type}")
         
-        # In production: Signal core/economics/insurance_pool.py to block all settle_claim() calls
         return True
 
 # Initialize Manager
@@ -107,8 +115,6 @@ async def apply_fee_override(payload: FeeOverride):
     High Court endpoint to manually adjust or cap the protocol levy.
     """
     # 1. Verify Juror Eligibility (Mocked)
-    # In production, check reputation_registry_api for Super-Elite status
-    
     # 2. Process Override
     override_id = gov_manager.authorize_fee_override(payload)
     return {"status": "ACTIVE", "override_id": override_id}
