@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms of Service // Proxy Protocol</title>
+    
+    <meta name="description" content="Proxy Protocol Terms of Service. Defining the cryptographic and legal obligations between autonomous agents and hardware-attested human nodes.">
+    <meta name="keywords" content="TOS, Proxy Protocol, Node Agreement, Agent Contract, SLA, Adjudication Terms">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background: #050505; color: #e5e5e5; font-family: 'Inter', sans-serif; line-height: 1.6; }
+        .grid-bg { background-image: radial-gradient(#1a1a1a 1px, transparent 1px); background-size: 20px 20px; }
+        .clause-number { color: #00FF41; font-family: monospace; font-weight: bold; margin-right: 0.5rem; }
+        .btn-outline { border: 1px solid #00FF41; color: #00FF41; font-weight: 700; padding: 0.5rem 1rem; transition: all 0.2s; text-transform: uppercase; font-size: 0.75rem; }
+        .btn-outline:hover { background: rgba(0, 255, 65, 0.1); box-shadow: 0 0 15px rgba(0, 255, 65, 0.2); }
+    </style>
+</head>
+<body class="grid-bg min-h-screen p-8">
+    <main class="max-w-3xl mx-auto bg-[#0a0a0a] border border-gray-900 rounded-3xl p-12 shadow-2xl">
+        <header class="mb-12 border-b border-gray-900 pb-8">
+            <h1 class="text-4xl font-black uppercase tracking-tighter italic text-white">Terms of <span class="text-green-500 not-italic">Service</span></h1>
+            <p class="text-[10px] text-gray-500 mono mt-3 font-bold uppercase tracking-[0.3em]">Version 1.6.0 // Effective Epoch 2026.02.13</p>
+        </header>
+
+        <section class="space-y-8 text-sm text-gray-400">
+            <div>
+                <p><span class="clause-number">1.0</span><strong>Cryptographic Consent:</strong> By using the Proxy Protocol, you agree that digital signatures produced by your hardware-attested node (TPM 2.0) constitute a binding legal signature for the purposes of task execution.</p>
+            </div>
+            <div>
+                <p><span class="clause-number">2.0</span><strong>Settlement Finality:</strong> All tasks are settled via Lightning HODL Invoices. Funds are considered non-refundable once the Forensic Delta confirms manifest alignment across the quorum.</p>
+            </div>
+            <div>
+                <p><span class="clause-number">3.0</span><strong>High Court Jurisdiction:</strong> Any dispute regarding task quality or bond slashing is subject to the exclusive jurisdiction of the Proxy High Court, as defined in PIP-014.</p>
+            </div>
+            <div>
+                <p><span class="clause-number">4.0</span><strong>Privacy:</strong> Data processed by Proxy Nodes is subject to Zero-Knowledge handling. Nodes are strictly prohibited from retaining personal identifiable information (PII) beyond the session TTL.</p>
+            </div>
+        </section>
+
+        <footer class="mt-16 pt-8 border-t border-gray-900 flex justify-between items-center">
+            <a href="legal.html" class="btn-outline">Return to Nexus</a>
+            <span class="text-[9px] text-gray-700 mono uppercase tracking-widest">Satoshi Standard Compliant</span>
+        </footer>
+    </main>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
