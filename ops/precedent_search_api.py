@@ -151,7 +151,8 @@ async def search_archive(
             search_time_ms=round(duration_ms, 2)
         )
     except Exception as e:
-        self.logger.error(f"Search failed: {str(e)}")
+        # Fixed F821 error by referencing search_engine.logger instead of self.logger
+        search_engine.logger.error(f"Search failed: {str(e)}")
         raise HTTPException(status_code=500, detail="INTERNAL_SEARCH_ENGINE_ERROR")
 
 @app.get("/v1/forensics/search/trending")
