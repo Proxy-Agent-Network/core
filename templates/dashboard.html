@@ -1,36 +1,190 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Proxy Node Dashboard</title>
+    <meta charset="UTF-8">
+    <title>🛰️ PROXY AGENT MISSION CONTROL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Shrikhand&family=Stardos+Stencil&family=Inter:wght@400;700&family=Orbitron:wght@400;700&family=Special+Elite&family=Fira+Code&family=UnifrakturMaguntia&family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: #00ff00; padding: 20px; }
-        .card { border: 1px solid #333; padding: 15px; margin-bottom: 10px; border-radius: 5px; background: #222; }
-        .stat { font-size: 24px; font-weight: bold; color: #fff; }
+        :root {
+            --bg: #0a0a0a; --card-bg: #151515; --text: #00ff00; --accent: #00ff00; --border: #333; --font: 'Courier New', monospace;
+            --h1-size: 2rem; --pill-font-size: 0.8rem;
+        }
+
+        /* --- THEMES --- */
+        [data-theme="business"] { --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; }
+        [data-theme="retro"] { --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; --accent: #ff00ff; --border: #ff00ff; --font: 'Press Start 2P', cursive; --h1-size: 1.2rem; --pill-font-size: 0.5rem; }
+        [data-theme="groovy"] { --bg: #fdf5e6; --card-bg: #e1d5e7; --text: #2f4f4f; --accent: #ff69b4; --border: #8fbc8f; --font: 'Shrikhand', cursive; }
+        [data-theme="paperback"] { --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; --accent: #2c3e50; --border: #bca08d; --font: 'Special Elite', cursive; }
+        [data-theme="cyberpunk"] { --bg: #000; --card-bg: #111; --text: #fee715; --accent: #ea00d9; --border: #fee715; --font: 'Orbitron', sans-serif; }
+        [data-theme="vampire"] { --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; --accent: #ffd700; --border: #4a0000; --font: 'UnifrakturMaguntia', serif; }
+        [data-theme="deepsea"] { --bg: #001219; --card-bg: #005f73; --text: #94d2bd; --accent: #ee9b00; --border: #0a9396; --font: 'Montserrat', sans-serif; }
+
+        body { font-family: var(--font); background: var(--bg); color: var(--text); padding: 30px; transition: all 0.4s ease; overflow-x: hidden; }
+        h1 { font-size: var(--h1-size); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
+        .controls-bar { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin-bottom: 25px; padding: 15px; background: rgba(0,0,0,0.1); border-radius: 10px; border: 1px solid var(--border); }
+        .card { background: var(--card-bg); border: 1px solid var(--border); padding: 20px; border-radius: 15px; margin-bottom: 15px; position: relative; }
+        
+        .xp-pill { 
+            background: var(--bg); border: 2px solid var(--accent); border-radius: 20px; padding: 5px 15px; font-size: var(--pill-font-size); 
+            display: inline-block; margin-top: 10px; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            white-space: nowrap; overflow: hidden; max-width: 160px; text-align: center;
+        }
+        .xp-pill.expanded { max-width: 600px; background: var(--accent); color: var(--bg); font-weight: bold; }
+        .xp-bar-bg { width: 100%; background: #333; height: 12px; border-radius: 6px; margin-top: 15px; }
+        .xp-bar-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width 0.6s ease-in-out; }
+        
+        /* Marvin Fix: Polite & Interactive */
+        #marvin-container { 
+            position: fixed; bottom: -400px; right: 50px; z-index: 1000; cursor: pointer; 
+            opacity: 0; transform: translateY(50px); transition: all 2.5s ease-in-out; pointer-events: none;
+        }
+        #marvin-container.active { opacity: 1; bottom: 110px; transform: translateY(0); pointer-events: auto; }
+        .marvin-img { width: 280px; filter: drop-shadow(0 0 0px var(--accent)); transition: filter 2s ease-in-out, transform 0.2s; }
+        #marvin-container.active .marvin-img { filter: drop-shadow(0 0 25px var(--accent)); }
+        .marvin-img:active { transform: scale(0.9); }
+
+        input[type=range] { accent-color: var(--accent); cursor: pointer; }
+        select, button { background: var(--card-bg); color: var(--text); border: 1px solid var(--accent); padding: 8px; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
     </style>
 </head>
-<body>
-    <h1>🛰️ Proxy Agent Network</h1>
-    <div class="card">
-        <div>Total Satoshi Rewards Distributed:</div>
-        <div class="stat" id="total-sats">Loading...</div>
+<body data-theme="dark">
+
+    <h1>🛰️ PROXY AGENT MISSION CONTROL</h1>
+
+    <div class="controls-bar">
+        <div>Theme: 
+            <select onchange="document.body.setAttribute('data-theme', this.value)">
+                <option value="dark">Default Dark</option>
+                <option value="business">Business Blues</option>
+                <option value="retro">Radical Retro</option>
+                <option value="groovy">Groovy Greens</option>
+                <option value="paperback">Paperback Noir</option>
+                <option value="cyberpunk">Cyberpunk 2077</option>
+                <option value="vampire">Vampire Manor</option>
+                <option value="deepsea">Deep Sea</option>
+            </select>
+        </div>
+        <div>
+            <button id="mute-btn" onclick="toggleMute()">🔇 Muted</button>
+            Vol: <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="0.5" oninput="updateVolume(this.value)">
+        </div>
     </div>
-    <h2>Recent Task Ledger</h2>
+
+    <div id="node-list">Monitoring pulses...</div>
     <div id="tasks"></div>
 
+    <div id="marvin-container" onclick="handleMarvinClick()">
+        <img src="/static/images/magic_marvin_dance.webp" class="marvin-img" id="marvin-sprite" alt="Magic Marvin">
+    </div>
+
     <script>
-        // Replace the internal fetch logic in dashboard.html with this to see a "Leaderboard"
-        fetch('/debug/view_tasks')
-            .then(r => r.json())
-            .then(data => {
-                const earnings = {};
-                data.forEach(t => {
-                    if(t.status === 'COMPLETED') {
-                        earnings[t.node_id] = (earnings[t.node_id] || 0) + t.bid_sats;
+        let prevState = {};
+        let isMuted = true;
+        let currentVolume = 0.5;
+        let activeSounds = [];
+        let marvinClicks = 0;
+        let marvinTimer = null;
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            document.getElementById('mute-btn').innerText = isMuted ? "🔇 Muted" : "🔊 Audio On";
+            if (isMuted) activeSounds.forEach(s => s.volume = 0);
+            else activeSounds.forEach(s => s.volume = currentVolume);
+        }
+
+        function updateVolume(val) {
+            currentVolume = val;
+            activeSounds.forEach(s => s.volume = currentVolume);
+        }
+
+        function playSound(file) {
+            if (isMuted) return;
+            const a = new Audio(`/static/audio/${file}`);
+            a.volume = currentVolume;
+            activeSounds.push(a);
+            a.play().catch(() => {});
+            a.onended = () => activeSounds = activeSounds.filter(s => s !== a);
+        }
+
+        function summonMarvin() {
+            const marvin = document.getElementById('marvin-container');
+            marvinClicks = 0;
+            marvin.classList.remove('active');
+            setTimeout(() => { marvin.classList.add('active'); }, 100);
+            if (marvinTimer) clearTimeout(marvinTimer);
+            marvinTimer = setTimeout(() => { marvin.classList.remove('active'); }, 8000);
+        }
+
+        function handleMarvinClick() {
+            marvinClicks++;
+            if (marvinClicks === 2) {
+                playSound('marvin_laughing.mp3');
+                const sprite = document.getElementById('marvin-sprite');
+                sprite.style.transform = "scale(1.2) rotate(10deg)";
+                setTimeout(() => { sprite.style.transform = "scale(1) rotate(0deg)"; }, 1000);
+                marvinClicks = 0;
+            }
+        }
+
+        function updateDashboard() {
+            fetch('/debug/node_status').then(r => r.json()).then(data => {
+                const list = document.getElementById('node-list');
+                let html = "";
+                for (let id in data) {
+                    const n = data[id];
+                    const prev = prevState[id];
+                    const xpInLevel = n.xp % 5000;
+                    let pillClass = "", pillText = `${xpInLevel.toLocaleString()} / 5,000 XP`;
+
+                    if (prev && n.xp > prev.xp) {
+                        const gain = n.xp - prev.xp;
+                        const sGain = n.total_earned - prev.total_earned;
+                        pillText = `+${gain} XP [TASK COMPLETE!]`;
+                        pillClass = "expanded";
+
+                        if (sGain >= 100000) { playSound('Coin_Tier3.mp3'); summonMarvin(); }
+                        else if (sGain >= 50000) playSound('Coin_Tier2.mp3');
+                        else if (sGain > 0) playSound('Coin_Tier1.mp3');
+
+                        if (n.level > prev.level) { playSound('Leveled_Up_Strings.mp3'); summonMarvin(); }
+                        if (n.streak > prev.streak) playSound('Bonus_Streak_Harp.mp3');
+
+                        setTimeout(() => {
+                            const el = document.getElementById(`pill-${id}`);
+                            if(el) { el.classList.remove('expanded'); el.innerText = `${(n.xp % 5000).toLocaleString()} / 5,000 XP`; }
+                        }, 4000);
                     }
-                });
-                // This will print a mini-leaderboard in your console (F12 in browser)
-                print("Node Leaderboard:", earnings);
+
+                    const rankIcon = ['⚠️', '🛡️', '🥈', '🥇', '💎'][Math.min(n.level - 1, 4)];
+                    html += `<div class="card">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>${rankIcon} <strong>${id}</strong> ${n.badges.join(' ')}</span>
+                            <span style="font-size:0.7rem;">Level ${n.level}</span>
+                        </div>
+                        <div class="xp-bar-bg"><div class="xp-bar-fill" style="width:${(xpInLevel/5000)*100}%"></div></div>
+                        <div id="pill-${id}" class="xp-pill ${pillClass}">${pillText}</div>
+                        <div style="margin-top:10px; font-size:0.7rem; opacity:0.8;">Earnings: ${n.total_earned.toLocaleString()} Sats • Streak: ${n.streak} 🔥</div>
+                    </div>`;
+                }
+                list.innerHTML = html;
+                prevState = JSON.parse(JSON.stringify(data));
             });
+
+            fetch('/debug/view_tasks').then(r => r.json()).then(data => {
+                let html = "<h2>System Ledger</h2>";
+                data.reverse().slice(0, 5).forEach(t => {
+                    html += `<div class="card" style="font-size:0.7rem; margin-bottom:5px; border-left:4px solid ${t.status==='COMPLETED'?'#00ff00':'#444'}">
+                        [${t.status}] ${t.task_id} | ${t.bid_sats.toLocaleString()} Sats
+                    </div>`;
+                });
+                document.getElementById('tasks').innerHTML = html;
+            });
+        }
+
+        window.onload = () => { setTimeout(summonMarvin, 2000); };
+        setInterval(updateDashboard, 3000);
+        updateDashboard();
     </script>
 </body>
 </html>
