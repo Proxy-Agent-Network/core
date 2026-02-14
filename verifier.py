@@ -10,98 +10,77 @@ class ProxyRegistryVerifier:
         self._bootstrap_db()
 
     def _bootstrap_db(self):
-        """Initializes the SQLite database and creates the nodes table if it doesn't exist."""
+        """Initializes the SQLite database with Nodes and Tasks tables."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            # 1. Nodes Table (Identities)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS nodes (
                     node_id TEXT PRIMARY KEY,
                     hardware_id TEXT UNIQUE,
                     enrolled_at TEXT,
                     status TEXT,
-                    ak_public TEXT
+                    ak_public TEXT,
+                    reputation_score INTEGER DEFAULT 100
+                )
+            ''')
+            # 2. Tasks Table (The Order Book)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    task_id TEXT PRIMARY KEY,
+                    agent_id TEXT,
+                    node_id TEXT,
+                    task_type TEXT,
+                    bid_sats INTEGER,
+                    status TEXT,
+                    created_at TEXT,
+                    settled_at TEXT,
+                    FOREIGN KEY (node_id) REFERENCES nodes (node_id)
                 )
             ''')
             conn.commit()
 
+    # --- NODE LOGIC ---
+
     def verify_enrollment(self, payload):
-        """
-        Validates the hardware proof and saves the node to the persistent database.
-        """
         manifest = payload.get("hardware_manifest")
         ek_pub = manifest.get("ek_public")
         ak_pub = manifest.get("ak_public")
-        quote = manifest.get("pcr_quote")
-
-        # 1. Cryptographic Quote Verification (Placeholder for hardware handshake)
-        # In a real TPM handshake, we verify the signature against the ak_public.
-        is_signature_valid = self._mock_crypto_verify(
-            quote['message'], 
-            quote['signature'], 
-            ak_pub
-        )
-
-        if not is_signature_valid:
-            return {"status": "REJECTED", "reason": "HARDWARE_SIGNATURE_MISMATCH"}
-
-        # 2. Check if this Hardware ID (EK) is already registered
-        # This prevents the same physical board from claiming multiple Node IDs.
+        
+        # Check for existing hardware
         existing_node = self._get_node_by_hardware_id(ek_pub)
         if existing_node:
-            return {
-                "status": "SUCCESS", 
-                "node_id": existing_node[0], 
-                "message": "Node already enrolled. Returning existing ID.",
-                "manifest": {
-                    "node_id": existing_node[0],
-                    "enrolled_at": existing_node[1],
-                    "status": existing_node[2]
-                }
-            }
+            return {"status": "SUCCESS", "node_id": existing_node[0], "message": "Re-authenticated."}
 
-        # 3. Successful New Enrollment
         new_id = f"NODE-{base64.b16encode(os.urandom(4)).decode()}"
-        enrolled_at = datetime.utcnow().isoformat()
-        
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+            conn.execute(
                 "INSERT INTO nodes (node_id, hardware_id, enrolled_at, status, ak_public) VALUES (?, ?, ?, ?, ?)",
-                (new_id, ek_pub, enrolled_at, "VERIFIED", ak_pub)
+                (new_id, ek_pub, datetime.utcnow().isoformat(), "VERIFIED", ak_pub)
             )
-            conn.commit()
-        
-        print(f"[+] Node {new_id} persisted to Registry DB.")
-        return {
-            "status": "SUCCESS", 
-            "node_id": new_id, 
-            "manifest": {
-                "node_id": new_id,
-                "enrolled_at": enrolled_at,
-                "status": "VERIFIED"
-            }
-        }
+        return {"status": "SUCCESS", "node_id": new_id}
 
     def _get_node_by_hardware_id(self, hardware_id):
-        """Looks up a node by its unique TPM Endorsement Key."""
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT node_id, enrolled_at, status FROM nodes WHERE hardware_id = ?", (hardware_id,))
-            return cursor.fetchone()
+            return conn.execute("SELECT node_id, enrolled_at, status FROM nodes WHERE hardware_id = ?", (hardware_id,)).fetchone()
 
-    def _mock_crypto_verify(self, message, signature, pub_key):
-        return True # Defaulting to True for sandbox testing
+    # --- TASK / ORDER BOOK LOGIC ---
 
-if __name__ == "__main__":
-    # Test simulation
-    verifier = ProxyRegistryVerifier()
-    test_payload = {
-        "hardware_manifest": {
-            "ek_public": "TEST_HW_ID_12345",
-            "ak_public": "TEST_AK_PUB_BLOB",
-            "pcr_quote": {"message": "...", "signature": "..."},
-            "nonce": "TEST_NONCE"
-        }
-    }
-    result = verifier.verify_enrollment(test_payload)
-    print(json.dumps(result, indent=4))
+    def create_task(self, agent_id, task_type, bid_sats):
+        """Adds a new Bid to the Order Book."""
+        task_id = f"TASK-{base64.b16encode(os.urandom(4)).decode()}"
+        created_at = datetime.utcnow().isoformat()
+        
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT INTO tasks (task_id, agent_id, task_type, bid_sats, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (task_id, agent_id, task_type, bid_sats, "OPEN", created_at)
+            )
+        return task_id
+
+    def get_open_tasks(self):
+        """Allows Nodes to 'poll' for available work."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row # Returns results as dictionaries
+            cursor = conn.execute("SELECT * FROM tasks WHERE status = 'OPEN' ORDER BY bid_sats DESC")
+            return [dict(row) for row in cursor.fetchall()]
