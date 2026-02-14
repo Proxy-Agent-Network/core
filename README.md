@@ -1,80 +1,30 @@
-# Proxy Protocol: The Physical Runtime for AI
+# Proxy Agent Network: Development Roadmap (2026)
 
-Proxy Protocol provides a standardized API for autonomous agents to execute physical-world tasks that require legal personhood, identity verification, or biometric authentication. We bridge silicon intent with biological agency through a global network of hardware-attested human nodes.
+This document outlines the strategic trajectory for the Proxy Agent Network, transitioning from core protocol development to a gamified, decentralized infrastructure.
 
----
+## Q1 2026: The "Genesis & Engagement" Phase (Current)
+* [x] **Core Protocol:** Release v1 API for Human-in-the-Loop task routing.
+* [x] **Mission Control v1.0:** Launch of the centralized monitoring dashboard with multi-theme support (Radical Retro, Groovy Greens, etc.).
+* [x] **Gamification Engine:** Implementation of XP-based leveling, tiered audio feedback (Sats-based SFX), and achievement badges.
+* [x] **Celebratory UI:** Integration of "Magic Marvin" milestone animations and easter-egg interactions.
+* [ ] **Lightning Integration:** Finalize micro-payment rails for sub-second Sat settlement.
+* [ ] **Python SDK:** Release `pip install proxy-agent` (Alpha) for easier node integration.
 
-## Overview
-When an autonomous agent encounters a **"Legal Wall"** (e.g., a CAPTCHA, phone verification, notarized form, or physical purchase), it calls the Proxy API. A verified human operator (**"Proxy"**) receives the context, executes the task, and returns the signed result to the agent.
+## Q2 2026: The "Identity & Trust" Phase
+* **Video Authentication:** Real-time deepfake-resistant video challenges for Agents to verify physical presence.
+* **Notary API:** Integration with 50-state remote online notarization (RON) providers for legal task execution.
+* **Escrow Smart Contracts:** Move from centralized escrow to on-chain DLCs (Discreet Log Contracts) for bid security.
+* **Theme Expansion:** Rollout of community-requested styles (Cyberpunk, Vampire Manor, Paperback Noir).
 
----
+## Q3 2026: The "Decentralization & Scaling" Phase
+* **Public Proxy Node Software:** Deployment of "Headless" node software, allowing global users to earn fees by verifying tasks.
+* **Reputation Protocol:** On-chain reputation scoring for Human Proxies with slashing mechanics for failed or fraudulent tasks.
+* **Global Task Marketplace:** Public order book for complex physical-world tasks (e.g., "Field audit at specific GPS coordinates").
 
-## Key Features
-* 🛡️ **Hardware Root of Trust:** All Tier 2+ Human nodes must sign proofs using non-exportable private keys sealed inside an **Infineon OPTIGA™ TPM 2.0**.
-* ⚡ **Trustless Settlement:** Payments use Lightning HODL Invoices. Funds are released only upon cryptographic validation of hardware telemetry (PIP-017).
-* ⚖️ **Decentralized Justice:** Disputes are resolved by a VRF-selected Jury Tribunal, selected via Bitcoin block entropy and incentivized by Schelling Point game theory.
-* 🎟️ **Proxy-Pass Subscriptions:** High-volume agents can lock a 30-day DLC (Discreet Log Contract) to waive protocol fees and gain priority routing.
-* 🏥 **Node Insurance:** A 0.1% protocol tax funds a treasury to compensate operators for verified system errors or critical bugs.
-
----
-
-## Infrastructure Visualizers
-The core protocol includes real-time dashboards for monitoring network health:
-* **Escrow Circuit:** Monitor HODL invoice settlement and HTLC logic.
-* **Quorum Audit:** Observe 7-signature multi-sig ceremony finalization.
-* **Forensic Delta:** Audit cryptographic manifest mismatches between nodes.
-* **Legal Nexus:** Explore hardware-attested jurisdictional precedents.
-
----
-
-## Supported SDKs
-Official client libraries for the Proxy Network:
-
-| Language | Package | Repository |
-| :--- | :--- | :--- |
-| **Python** | `pip install proxy-agent` | [core/sdk](https://github.com/Proxy-Agent-Network/core) |
-| **Node.js** | `npm install @proxy-protocol/node` | [sdk-node](https://github.com/Proxy-Agent-Network/sdk-node) |
+## Q4 2026: The "Governance & Expansion" Phase
+* **DAO Transition:** Community voting on fee parameters, achievement rewards, and supported legal jurisdictions.
+* **Compliance Layer:** Integration of EU/GDPR and regional legal frameworks for global agent mobility.
+* **Marvin AI:** Upgrading Magic Marvin from a static animation to an LLM-powered "System Assistant" for real-time troubleshooting.
 
 ---
-
-## Integration (REST API v1.6)
-
-### 1. Request a Proxy Action
-```json
-POST [https://api.proxyagent.network/v1/request](https://api.proxyagent.network/v1/request)
-Authorization: Bearer <YOUR_API_KEY>
-Content-Type: application/json
-
-{
-  "agent_id": "agent_x892_beta",
-  "task_type": "PHONE_VERIFICATION",
-  "context": {
-    "service": "Google Voice",
-    "required_action": "Receive SMS code",
-    "timeout": 300
-  },
-  "bid_amount": 15.00
-}
-```
-
-### 2. Response Object
-The system returns a unique `ticket_id` to poll for completion.
-
-```json
-{
-  "status": "queued",
-  "ticket_id": "tkt_8829_mnb2",
-  "estimated_wait": "45s"
-}
-```
-
----
-
-## Security & Ethics
-* **Zero-Knowledge Context:** Proxies only see specific task data, not the agent's core logic.
-* **Legal Compliance:** All tasks are filtered against a constrained list of permissible actions. See [COMPLIANCE.md](./COMPLIANCE.md).
-
----
-
-## Status
-🚧 **Private Beta.** Currently onboarding select agent developers. [Request Access Here](https://www.proxyagent.network/).
+*Note: Timelines are estimates. Priorities may shift based on Agent adoption and network growth.*
