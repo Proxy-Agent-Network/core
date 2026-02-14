@@ -18,16 +18,18 @@
     <div id="tasks"></div>
 
     <script>
+        // Replace the internal fetch logic in dashboard.html with this to see a "Leaderboard"
         fetch('/debug/view_tasks')
             .then(r => r.json())
             .then(data => {
-                let total = 0;
-                const container = document.getElementById('tasks');
+                const earnings = {};
                 data.forEach(t => {
-                    if(t.status === 'COMPLETED') total += t.bid_sats;
-                    container.innerHTML += `<div class="card">[${t.status}] ${t.task_id} - ${t.bid_sats} Sats</div>`;
+                    if(t.status === 'COMPLETED') {
+                        earnings[t.node_id] = (earnings[t.node_id] || 0) + t.bid_sats;
+                    }
                 });
-                document.getElementById('total-sats').innerText = total.toLocaleString();
+                // This will print a mini-leaderboard in your console (F12 in browser)
+                print("Node Leaderboard:", earnings);
             });
     </script>
 </body>

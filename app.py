@@ -1,13 +1,18 @@
 from flask import Flask, request, jsonify, render_template
 import sqlite3
 import uuid
+import time
 
 app = Flask(__name__)
+
+# --- IN-MEMORY STATE ---
+node_heartbeats = {}  # Format: { "NODE-ID": timestamp }
 
 # --- DATABASE INITIALIZATION ---
 def init_db():
     conn = sqlite3.connect('registry.db')
     cursor = conn.cursor()
+    # We ensure the 'results' and 'node_id' columns exist
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tasks (
             task_id TEXT PRIMARY KEY,
@@ -24,16 +29,36 @@ def init_db():
 
 init_db()
 
-# --- ROUTES ---
+# --- WEB DASHBOARD ROUTES ---
 
 @app.route('/')
 def index():
-    """Serves the Satoshi Dashboard"""
+    """Serves the Mission Control Dashboard"""
     return render_template('dashboard.html')
+
+@app.route('/debug/node_status', methods=['GET'])
+def node_status():
+    """Returns status of all nodes based on last heartbeat"""
+    now = time.time()
+    # A node is 'ONLINE' if we've heard from it in the last 30 seconds
+    status = {nid: ("ONLINE" if now - ts < 30 else "OFFLINE") 
+              for nid, ts in node_heartbeats.items()}
+    return jsonify(status)
+
+# --- NODE API ROUTES ---
+
+@app.route('/api/v1/node/heartbeat', methods=['POST'])
+def heartbeat():
+    """Nodes call this to stay 'ONLINE' on the dashboard"""
+    data = request.json
+    node_id = data.get('node_id')
+    if node_id:
+        node_heartbeats[node_id] = time.time()
+        return jsonify({"status": "pulse received"}), 200
+    return jsonify({"error": "No node_id provided"}), 400
 
 @app.route('/api/v1/tasks/post', methods=['POST'])
 def post_task():
-    """Allows Agents to post new work/bids"""
     data = request.json
     task_id = f"TASK-{uuid.uuid4().hex[:8].upper()}"
     
@@ -46,11 +71,12 @@ def post_task():
     conn.commit()
     conn.close()
     
+    # THIS IS THE MISSING PIECE:
     return jsonify({"status": "success", "task_id": task_id}), 201
 
 @app.route('/api/v1/tasks/claim', methods=['POST'])
 def claim_task():
-    """Allows Nodes to claim an OPEN task"""
+    """Nodes call this to reserve a task"""
     data = request.json
     task_id = data.get('task_id')
     node_id = data.get('node_id')
@@ -72,7 +98,7 @@ def claim_task():
 
 @app.route('/api/v1/tasks/complete', methods=['POST'])
 def complete_task():
-    """Allows Nodes to submit work and finish task"""
+    """Nodes call this to submit proof-of-work and get 'paid'"""
     data = request.json
     task_id = data.get('task_id')
     node_id = data.get('node_id')
@@ -91,34 +117,22 @@ def complete_task():
     conn.close()
     return jsonify({"message": "Payment verified, task completed"}), 200
 
-@app.route('/api/v1/node/balance/<node_id>', methods=['GET'])
-def get_balance(node_id):
-    """Checks total Satoshi earnings for a specific Node"""
-    conn = sqlite3.connect('registry.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT SUM(bid_sats) FROM tasks WHERE node_id = ? AND status = 'COMPLETED'", (node_id,))
-    balance = cursor.fetchone()[0] or 0
-    conn.close()
-    return jsonify({"node_id": node_id, "total_earned_sats": balance})
-
 @app.route('/debug/view_tasks', methods=['GET'])
 def view_tasks():
-    """Debug route for Pulse script to see the market"""
+    """Market overview for the Pulse script and Dashboard"""
     conn = sqlite3.connect('registry.db')
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM tasks")
     rows = cursor.fetchall()
-    tasks = []
-    for row in rows:
-        tasks.append({
-            "task_id": row["task_id"],
-            "type": row["task_type"],
-            "bid_sats": row["bid_sats"],
-            "status": row["status"]
-        })
+    tasks = [dict(row) for row in rows]
+    # Small fix: ensure 'task_type' is mapped to 'type' for Pulse script compatibility
+    for t in tasks:
+        t['type'] = t.get('task_type', 'GENERAL')
     conn.close()
     return jsonify(tasks)
 
 if __name__ == '__main__':
+    # Start the server
+    print("[*] Proxy Registry Live on http://localhost:5000")
     app.run(debug=True, port=5000)
