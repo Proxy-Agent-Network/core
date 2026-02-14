@@ -35,6 +35,7 @@ venv/
 .venv/
 .pytest_cache/
 .mypy_cache/
+*.db
 
 # --- NODE.JS ---
 node_modules/
