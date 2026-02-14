@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Proxy Node Dashboard</title>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: #00ff00; padding: 20px; }
+        .card { border: 1px solid #333; padding: 15px; margin-bottom: 10px; border-radius: 5px; background: #222; }
+        .stat { font-size: 24px; font-weight: bold; color: #fff; }
+    </style>
+</head>
+<body>
+    <h1>🛰️ Proxy Agent Network</h1>
+    <div class="card">
+        <div>Total Satoshi Rewards Distributed:</div>
+        <div class="stat" id="total-sats">Loading...</div>
+    </div>
+    <h2>Recent Task Ledger</h2>
+    <div id="tasks"></div>
+
+    <script>
+        fetch('/debug/view_tasks')
+            .then(r => r.json())
+            .then(data => {
+                let total = 0;
+                const container = document.getElementById('tasks');
+                data.forEach(t => {
+                    if(t.status === 'COMPLETED') total += t.bid_sats;
+                    container.innerHTML += `<div class="card">[${t.status}] ${t.task_id} - ${t.bid_sats} Sats</div>`;
+                });
+                document.getElementById('total-sats').innerText = total.toLocaleString();
+            });
+    </script>
+</body>
+</html>

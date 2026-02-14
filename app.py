@@ -1,138 +1,124 @@
-from flask import Flask, request, jsonify
-from verifier import ProxyRegistryVerifier
+from flask import Flask, request, jsonify, render_template
+import sqlite3
 import uuid
-from datetime import datetime
 
 app = Flask(__name__)
-# This assumes verifier.py is in the same folder
-verifier = ProxyRegistryVerifier()
 
-issued_nonces = {}
+# --- DATABASE INITIALIZATION ---
+def init_db():
+    conn = sqlite3.connect('registry.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tasks (
+            task_id TEXT PRIMARY KEY,
+            agent_id TEXT,
+            task_type TEXT,
+            bid_sats INTEGER,
+            status TEXT,
+            node_id TEXT,
+            results TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-@app.route('/api/v1/auth/challenge', methods=['GET'])
-def get_challenge():
-    nonce = uuid.uuid4().hex
-    issued_nonces[nonce] = True 
-    return jsonify({"nonce": nonce, "ttl": 300})
+init_db()
 
-@app.route('/api/v1/nodes/enroll', methods=['POST'])
-def enroll_node():
-    payload = request.json
-    nonce = payload.get("hardware_manifest", {}).get("nonce")
-    if nonce not in issued_nonces:
-        return jsonify({"error": "Invalid or expired nonce"}), 403
-    result = verifier.verify_enrollment(payload)
-    return jsonify(result)
+# --- ROUTES ---
 
-# --- THE CRITICAL ROUTE ---
+@app.route('/')
+def index():
+    """Serves the Satoshi Dashboard"""
+    return render_template('dashboard.html')
+
 @app.route('/api/v1/tasks/post', methods=['POST'])
 def post_task():
+    """Allows Agents to post new work/bids"""
     data = request.json
-    agent_id = data.get("agent_id", "UNKNOWN_AGENT")
-    task_type = data.get("type", "GENERAL")
-    bid_sats = data.get("bid_sats", 0)
-
-    # This calls the create_task function in your verifier.py
-    task_id = verifier.create_task(agent_id, task_type, bid_sats)
+    task_id = f"TASK-{uuid.uuid4().hex[:8].upper()}"
     
-    print(f"[*] Task Created: {task_id} for {agent_id}")
-    return jsonify({
-        "status": "SUCCESS",
-        "task_id": task_id,
-        "message": "Task posted to Order Book"
-    }), 201
+    conn = sqlite3.connect('registry.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO tasks (task_id, agent_id, task_type, bid_sats, status)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (task_id, data.get('agent_id'), data.get('type'), data.get('bid_sats'), 'OPEN'))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"status": "success", "task_id": task_id}), 201
+
+@app.route('/api/v1/tasks/claim', methods=['POST'])
+def claim_task():
+    """Allows Nodes to claim an OPEN task"""
+    data = request.json
+    task_id = data.get('task_id')
+    node_id = data.get('node_id')
+
+    conn = sqlite3.connect('registry.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT status FROM tasks WHERE task_id = ?", (task_id,))
+    task = cursor.fetchone()
+
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    if task[0] != 'OPEN':
+        return jsonify({"error": "Task already claimed"}), 409
+
+    cursor.execute("UPDATE tasks SET status = 'CLAIMED', node_id = ? WHERE task_id = ?", (node_id, task_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Task claimed successfully"}), 200
+
+@app.route('/api/v1/tasks/complete', methods=['POST'])
+def complete_task():
+    """Allows Nodes to submit work and finish task"""
+    data = request.json
+    task_id = data.get('task_id')
+    node_id = data.get('node_id')
+    results = data.get('results')
+
+    conn = sqlite3.connect('registry.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT node_id, status FROM tasks WHERE task_id = ?", (task_id,))
+    task = cursor.fetchone()
+
+    if not task or task[0] != node_id:
+        return jsonify({"error": "Unauthorized claim"}), 403
+
+    cursor.execute("UPDATE tasks SET status = 'COMPLETED', results = ? WHERE task_id = ?", (results, task_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Payment verified, task completed"}), 200
+
+@app.route('/api/v1/node/balance/<node_id>', methods=['GET'])
+def get_balance(node_id):
+    """Checks total Satoshi earnings for a specific Node"""
+    conn = sqlite3.connect('registry.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT SUM(bid_sats) FROM tasks WHERE node_id = ? AND status = 'COMPLETED'", (node_id,))
+    balance = cursor.fetchone()[0] or 0
+    conn.close()
+    return jsonify({"node_id": node_id, "total_earned_sats": balance})
 
 @app.route('/debug/view_tasks', methods=['GET'])
 def view_tasks():
-    import sqlite3
+    """Debug route for Pulse script to see the market"""
     conn = sqlite3.connect('registry.db')
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM tasks")
     rows = cursor.fetchall()
-    
     tasks = []
     for row in rows:
-        # We manually map the keys to be 100% sure Pulse can read them
         tasks.append({
             "task_id": row["task_id"],
-            "agent_id": row["agent_id"],
-            "type": row["task_type"] if "task_type" in row.keys() else row.get("type", "UNKNOWN"),
+            "type": row["task_type"],
             "bid_sats": row["bid_sats"],
             "status": row["status"]
         })
     conn.close()
     return jsonify(tasks)
 
-@app.route('/api/v1/tasks/claim', methods=['POST'])
-def claim_task():
-    data = request.json
-    task_id = data.get('task_id')
-    node_id = data.get('node_id')
-
-    if not task_id or not node_id:
-        return jsonify({"error": "Missing task_id or node_id"}), 400
-
-    import sqlite3
-    conn = sqlite3.connect('registry.db')
-    cursor = conn.cursor()
-
-    # Verify task is still OPEN
-    cursor.execute("SELECT status FROM tasks WHERE task_id = ?", (task_id,))
-    task = cursor.fetchone()
-
-    if not task:
-        return jsonify({"error": "Task not found"}), 404
-    
-    if task[0] != 'OPEN':
-        return jsonify({"error": "Task already claimed or completed"}), 409
-
-    # Update status to CLAIMED and assign to the node
-    cursor.execute("""
-        UPDATE tasks 
-        SET status = 'CLAIMED', node_id = ? 
-        WHERE task_id = ?
-    """, (node_id, task_id))
-    
-    conn.commit()
-    conn.close()
-
-    print(f"[!] Task {task_id} successfully CLAIMED by {node_id}")
-    return jsonify({"message": f"Task {task_id} claimed successfully"}), 200
-
-@app.route('/api/v1/tasks/complete', methods=['POST'])
-def complete_task():
-    data = request.json
-    task_id = data.get('task_id')
-    node_id = data.get('node_id')
-    results = data.get('results', "No data provided")
-
-    import sqlite3
-    conn = sqlite3.connect('registry.db')
-    cursor = conn.cursor()
-
-    # Check if the node actually holds the claim
-    cursor.execute("SELECT node_id, status FROM tasks WHERE task_id = ?", (task_id,))
-    task = cursor.fetchone()
-
-    if not task:
-        return jsonify({"error": "Task not found"}), 404
-    if task[1] != 'CLAIMED' or task[0] != node_id:
-        return jsonify({"error": "Unauthorized: Node does not hold this claim"}), 403
-
-    # Mark as COMPLETED
-    cursor.execute("""
-        UPDATE tasks 
-        SET status = 'COMPLETED'
-        WHERE task_id = ?
-    """, (task_id,))
-    
-    conn.commit()
-    conn.close()
-
-    print(f"[✔] Task {task_id} COMPLETED by {node_id}. Data: {results}")
-    return jsonify({"message": "Work accepted. Satoshi transfer initiated."}), 200
-
 if __name__ == '__main__':
-    # host 0.0.0.0 lets your Raspberry Pi find this later
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True, port=5000)
