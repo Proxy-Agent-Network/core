@@ -1,83 +1,107 @@
 import base64
 import json
-from dataclasses import dataclass
+import sqlite3
 from datetime import datetime
-
-@dataclass
-class VerifiedNode:
-    node_id: str
-    hardware_id: str
-    enrolled_at: str
-    status: str
+import os
 
 class ProxyRegistryVerifier:
-    def __init__(self):
-        # In prod, this would be a database (SQLite or PostgreSQL)
-        self.registry = {}
-        self.issued_nonces = set()
+    def __init__(self, db_path="registry.db"):
+        self.db_path = db_path
+        self._bootstrap_db()
+
+    def _bootstrap_db(self):
+        """Initializes the SQLite database and creates the nodes table if it doesn't exist."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS nodes (
+                    node_id TEXT PRIMARY KEY,
+                    hardware_id TEXT UNIQUE,
+                    enrolled_at TEXT,
+                    status TEXT,
+                    ak_public TEXT
+                )
+            ''')
+            conn.commit()
 
     def verify_enrollment(self, payload):
         """
-        Validates the hardware proof from the node script.
+        Validates the hardware proof and saves the node to the persistent database.
         """
-        node_id_candidate = payload.get("node_id")
         manifest = payload.get("hardware_manifest")
-        
-        # 1. Nonce Integrity Check
-        # Prevents an attacker from reusing a valid old signature
-        nonce = manifest.get("nonce")
-        # if nonce not in self.issued_nonces:
-        #    return {"status": "REJECTED", "reason": "INVALID_OR_EXPIRED_NONCE"}
-
-        # 2. Cryptographic Quote Verification
-        # In a real TPM handshake, we use OpenSSL to verify the signature blob
-        # against the AK public key.
+        ek_pub = manifest.get("ek_public")
+        ak_pub = manifest.get("ak_public")
         quote = manifest.get("pcr_quote")
+
+        # 1. Cryptographic Quote Verification (Placeholder for hardware handshake)
+        # In a real TPM handshake, we verify the signature against the ak_public.
         is_signature_valid = self._mock_crypto_verify(
             quote['message'], 
             quote['signature'], 
-            manifest['ak_public']
+            ak_pub
         )
 
         if not is_signature_valid:
             return {"status": "REJECTED", "reason": "HARDWARE_SIGNATURE_MISMATCH"}
 
-        # 3. Successful Enrollment
-        new_id = f"NODE-{base64.b16encode(datetime.now().strftime('%f').encode()).decode()[:8]}"
-        
-        node_data = VerifiedNode(
-            node_id=new_id,
-            hardware_id=manifest['ek_public'], # Using EK as unique HW fingerprint
-            enrolled_at=datetime.utcnow().isoformat(),
-            status="VERIFIED"
-        )
+        # 2. Check if this Hardware ID (EK) is already registered
+        # This prevents the same physical board from claiming multiple Node IDs.
+        existing_node = self._get_node_by_hardware_id(ek_pub)
+        if existing_node:
+            return {
+                "status": "SUCCESS", 
+                "node_id": existing_node[0], 
+                "message": "Node already enrolled. Returning existing ID.",
+                "manifest": {
+                    "node_id": existing_node[0],
+                    "enrolled_at": existing_node[1],
+                    "status": existing_node[2]
+                }
+            }
 
-        self.registry[new_id] = node_data
+        # 3. Successful New Enrollment
+        new_id = f"NODE-{base64.b16encode(os.urandom(4)).decode()}"
+        enrolled_at = datetime.utcnow().isoformat()
         
-        print(f"[+] Node {new_id} added to the Satoshi Standard Registry.")
-        return {"status": "SUCCESS", "node_id": new_id, "manifest": vars(node_data)}
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO nodes (node_id, hardware_id, enrolled_at, status, ak_public) VALUES (?, ?, ?, ?, ?)",
+                (new_id, ek_pub, enrolled_at, "VERIFIED", ak_pub)
+            )
+            conn.commit()
+        
+        print(f"[+] Node {new_id} persisted to Registry DB.")
+        return {
+            "status": "SUCCESS", 
+            "node_id": new_id, 
+            "manifest": {
+                "node_id": new_id,
+                "enrolled_at": enrolled_at,
+                "status": "VERIFIED"
+            }
+        }
+
+    def _get_node_by_hardware_id(self, hardware_id):
+        """Looks up a node by its unique TPM Endorsement Key."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT node_id, enrolled_at, status FROM nodes WHERE hardware_id = ?", (hardware_id,))
+            return cursor.fetchone()
 
     def _mock_crypto_verify(self, message, signature, pub_key):
-        """
-        Placeholder for the actual RSA-PSS verification logic.
-        Once hardware arrives, we replace this with the 'tpm2_checkquote' wrapper.
-        """
         return True # Defaulting to True for sandbox testing
 
 if __name__ == "__main__":
     # Test simulation
     verifier = ProxyRegistryVerifier()
-    
-    # Mock payload coming from the client enroll.py
     test_payload = {
-        "node_id": "PENDING",
         "hardware_manifest": {
-            "ek_public": "INF_TPM_EK_BLOB_882",
-            "ak_public": "INF_TPM_AK_BLOB_004",
+            "ek_public": "TEST_HW_ID_12345",
+            "ak_public": "TEST_AK_PUB_BLOB",
             "pcr_quote": {"message": "...", "signature": "..."},
-            "nonce": "TEST_NONCE_123"
+            "nonce": "TEST_NONCE"
         }
     }
-    
     result = verifier.verify_enrollment(test_payload)
     print(json.dumps(result, indent=4))
