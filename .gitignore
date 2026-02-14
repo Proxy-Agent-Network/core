@@ -3,14 +3,26 @@
 *.pem
 *.key
 proxy_api_secret.txt
+# Added to prevent accidental credential leaks
+secrets/
+config.local.yaml
+
+# --- TPM 2.0 HARDWARE (VITAL) ---
+# Protecting the Hardware Root of Trust
+*.ctx
+*.priv
+*.pub
+*.bin
+*.session
 
 # --- PROJECT LOGS ---
 *.log
 proxy_heartbeat.log
 active_tasks.log
+# Catch-all for telemetry data
+telemetry/
 
 # --- BINARIES & LARGE ASSETS ---
-# Protecting against the "Viking Funeral" repeat
 *.psd
 *.raw
 website/images/raw images/
@@ -21,16 +33,19 @@ __pycache__/
 *$py.class
 venv/
 .venv/
+.pytest_cache/
+.mypy_cache/
 
 # --- NODE.JS ---
 node_modules/
 npm-debug.log*
 yarn-debug.log*
+.npm/
 
 # --- SYSTEM & IDE ---
 .vscode/
 .idea/
 Thumbs.db
-
 .DS_Store
-
+*.swp
+*~
