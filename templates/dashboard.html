@@ -10,48 +10,95 @@
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Shrikhand&family=Special+Elite&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
 
     <style>
-        /* 🎨 FULL THEME ENGINE RESTORED */
-        :root { --h1-size: 1.5rem; --pill-font-size: 0.8rem; }
-        [data-theme="business"] { --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; }
-        [data-theme="retro"] { --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; --accent: #ff00ff; --border: #ff00ff; --font: 'Press Start 2P', cursive; --h1-size: 1.0rem; --pill-font-size: 0.5rem; }
+        /* 🎨 THEME ENGINE - FINAL BALANCED CONFIG */
+        :root { 
+            --h1-size: 1.5rem; 
+            --pill-font-size: 0.8rem; 
+            --xp-text: var(--text); 
+            --xp-bar-empty: rgba(0,0,0,0.1);
+            --xp-glow: rgba(255,255,255,0.6);
+        }
+
+        [data-theme="business"] { 
+            --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; 
+        }
+        [data-theme="retro"] { 
+            --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; --accent: #ff00ff; --border: #ff00ff; 
+            --font: 'Press Start 2P', cursive; --h1-size: 0.85rem; --pill-font-size: 0.5rem;
+            --xp-text: #2b033d; 
+        }
         [data-theme="groovy"] { --bg: #fdf5e6; --card-bg: #e1d5e7; --text: #2f4f4f; --accent: #ff69b4; --border: #8fbc8f; --font: 'Shrikhand', cursive; }
-        [data-theme="paperback"] { --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; --accent: #2c3e50; --border: #bca08d; --font: 'Special Elite', cursive; }
-        [data-theme="cyberpunk"] { --bg: #000; --card-bg: #111; --text: #fee715; --accent: #ea00d9; --border: #fee715; --font: 'Orbitron', sans-serif; }
+        [data-theme="paperback"] { 
+            --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; --accent: #2c3e50; --border: #bca08d; 
+            --font: 'Special Elite', cursive;
+            --xp-text: #ffffff;
+            --xp-bar-empty: #8d6e63; /* 🎯 Medium Brown empty bar */
+            --xp-glow: transparent;  /* 🎯 No glow for cleaner type */
+        }
+        [data-theme="cyberpunk"] { 
+            --bg: #000; --card-bg: #111; --text: #fee715; --accent: #ea00d9; --border: #fee715; 
+            --font: 'Orbitron', sans-serif;
+            --xp-text: #ffffff; 
+            --xp-glow: #ea00d9; 
+        }
         [data-theme="vampire"] { --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; --accent: #ffd700; --border: #4a0000; --font: 'UnifrakturMaguntia', serif; }
         [data-theme="deepsea"] { --bg: #001219; --card-bg: #005f73; --text: #94d2bd; --accent: #ee9b00; --border: #0a9396; --font: 'Montserrat', sans-serif; }
 
         body { background-color: var(--bg); color: var(--text); font-family: var(--font); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; transition: all 0.5s ease; }
         
-        /* 🕵️ HACKER OVERLAY */
-        #hack-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 10, 0, 0.98); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; text-align: center; font-family: 'Courier Prime', monospace; }
-        .glitch-text { font-size: 4rem; font-weight: bold; color: #0f0; text-shadow: 4px 4px #00ff00; animation: glitch 0.2s infinite; }
-        @keyframes glitch { 0% { text-shadow: 2px 2px #0f0; transform: translate(0,0); } 20% { text-shadow: -2px -2px #f00; transform: translate(-2px, 2px); } 40% { text-shadow: 2px -2px #0f0; transform: translate(2px, -2px); } 60% { text-shadow: -2px 2px #f00; transform: translate(-2px, 2px); } 80% { text-shadow: 2px 2px #0f0; transform: translate(0,0); } 100% { text-shadow: -2px -2px #0f0; transform: translate(2px, -2px); } }
-
-        /* HEADER & CONTROLS */
+        /* UI COMPONENTS */
         .header { width: 100%; max-width: 900px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 15px; margin-bottom: 30px; }
+        h1 { font-size: var(--h1-size); margin: 0; }
         .controls-panel { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
         .audio-rack { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.05); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); }
         input[type=range] { cursor: pointer; height: 4px; accent-color: var(--accent); }
         
-        /* GRID & PANELS */
         .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; width: 100%; max-width: 900px; }
         .panel { background: var(--card-bg); border: 1px solid var(--border); padding: 20px; border-radius: 8px; box-shadow: 4px 4px 0px var(--border); transition: all 0.5s ease; }
-        .panel h2 { margin-top: 0; border-bottom: 1px dashed var(--border); padding-bottom: 10px; font-size: 1.1rem; opacity: 0.9; }
 
-        /* XP PROGRESS BAR */
-        .xp-container { background: rgba(0,0,0,0.1); border: 2px solid var(--border); height: 26px; border-radius: 13px; overflow: hidden; position: relative; margin-top: 15px; }
-        .xp-fill { background: var(--accent); height: 100%; width: 0%; transition: width 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        .xp-text { position: absolute; width: 100%; text-align: center; top: 4px; font-size: var(--pill-font-size); color: var(--text); filter: contrast(150%); font-weight: bold; }
+        /* 🎯 XP PROGRESS BAR */
+        .xp-container { 
+            background: var(--xp-bar-empty); 
+            border: 2px solid var(--border); 
+            height: 32px; 
+            border-radius: 16px; 
+            overflow: hidden; 
+            position: relative; 
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .xp-fill { background: var(--accent); height: 100%; width: 0%; position: absolute; left: 0; transition: width 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .xp-text { 
+            position: relative; 
+            z-index: 10;
+            font-size: calc(var(--pill-font-size) + 0.1rem);
+            font-weight: bold;
+            color: var(--xp-text);
+            text-shadow: 
+                -1px -1px 0 #fff,  
+                 1px -1px 0 #fff,
+                -1px  1px 0 #fff,
+                 1px  1px 0 #fff,
+                 0 0 10px var(--xp-glow);
+        }
 
-        /* LEDGER ACTIVITY */
+        /* 🎯 THEME SPECIFIC OVERRIDES */
+        [data-theme="retro"] .xp-text { font-size: 0.75rem; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; }
+        [data-theme="retro"] #node-list, [data-theme="retro"] #rank-name, [data-theme="retro"] #level-info, [data-theme="retro"] li { font-size: 0.5rem !important; line-height: 1.4; }
+        
+        [data-theme="cyberpunk"] .xp-text { text-shadow: 0 0 15px #fff, 0 0 10px var(--xp-glow), 0 0 5px var(--xp-glow); }
+        
+        [data-theme="paperback"] .xp-text { text-shadow: none; font-size: calc(var(--pill-font-size) + 0.15rem); }
+
         ul { list-style: none; padding: 0; }
-        li { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; transition: background 0.3s; }
+        li { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; }
         .sats-badge { background: var(--bg); padding: 4px 10px; border-radius: 4px; color: var(--accent); font-weight: bold; border: 1px solid var(--border); font-size: var(--pill-font-size); }
         
-        .tier-3 { border-left: 4px solid var(--accent); font-weight: bold; }
-        .tier-hack { background: rgba(0, 255, 0, 0.1); border-left: 4px solid #0f0; }
-
-        #magic-marvin { position: fixed; bottom: -300px; right: 20px; width: 140px; cursor: pointer; z-index: 100; transition: bottom 1s cubic-bezier(0.68, -0.55, 0.27, 1.55), transform 0.5s; filter: drop-shadow(0 0 5px var(--accent)); }
+        #magic-marvin { position: fixed; bottom: -300px; right: 20px; width: 140px; cursor: pointer; z-index: 100; transition: bottom 1s cubic-bezier(0.68, -0.55, 0.27, 1.55), transform 0.5s; }
+        #hack-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 10, 0, 0.98); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; text-align: center; font-family: 'Courier Prime', monospace; }
+        .glitch-text { font-size: 4rem; font-weight: bold; color: #0f0; text-shadow: 4px 4px #00ff00; }
     </style>
 </head>
 <body>
@@ -89,33 +136,33 @@
     <div class="dashboard-grid">
         <div class="panel">
             <h2>Active Telemetry</h2>
-            <div id="node-list">Initializing Uplink...</div>
+            <div id="node-list">Initializing...</div>
         </div>
 
         <div class="panel">
             <h2>Agent Clearance</h2>
-            <div id="level-info" style="font-size: 1.3rem;">Level 1</div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="rank-icon" style="font-size: 1.5rem;">🎖️</span>
+                <div id="level-info" style="font-size: 1.3rem;">Level 1</div>
+            </div>
             <div class="xp-container">
                 <div id="xp-bar" class="xp-fill"></div>
                 <div id="xp-text" class="xp-text">0 / 5000 XP</div>
             </div>
-            <p style="font-size: 0.8rem; opacity: 0.7; margin-top: 10px;">
-                Status: <span id="rank-name" style="color: var(--accent)">Processing...</span>
+            <p style="font-size: 0.8rem; opacity: 0.8; margin-top: 10px; font-weight: bold;">
+                Status: <span id="rank-name" style="color: var(--accent)">Probationary Agent</span>
             </p>
         </div>
 
         <div class="panel" style="grid-column: span 2;">
             <h2>Recent Ledger Activity</h2>
-            <ul id="task-list"><li>Waiting for blockchain sync...</li></ul>
+            <ul id="task-list"><li>Syncing...</li></ul>
         </div>
     </div>
 
     <img id="magic-marvin" src="/static/images/magic_marvin_dance.webp" alt="Magic Marvin">
 
     <script>
-        // -------------------------------------------------------
-        // 🔊 AUDIO ENGINE & AV RACK
-        // -------------------------------------------------------
         let isMuted = localStorage.getItem('muted') === 'true';
         let globalVolume = localStorage.getItem('volume') || 0.5;
 
@@ -141,9 +188,6 @@
             updateVolume(globalVolume);
         }
 
-        // -------------------------------------------------------
-        // 🎨 THEME ENGINE
-        // -------------------------------------------------------
         function changeTheme(theme) {
             document.documentElement.setAttribute('data-theme', theme);
             const marvin = document.getElementById('magic-marvin');
@@ -151,16 +195,13 @@
             localStorage.setItem('theme', theme);
         }
 
-        // -------------------------------------------------------
-        // ⚙️ LOGIC & DATA POLLING
-        // -------------------------------------------------------
         let previousTotalXP = 0;
 
         function fetchStatus() {
             fetch('/debug/node_status').then(r => r.json()).then(data => {
-                const firstNodeId = Object.keys(data)[0];
-                if (!firstNodeId) return;
-                const node = data[firstNodeId];
+                const nodeId = Object.keys(data)[0];
+                if (!nodeId) return;
+                const node = data[nodeId];
                 
                 const currentTotalXP = node.xp || 0;
                 const currentLevel = Math.floor(currentTotalXP / 5000) + 1;
@@ -168,14 +209,20 @@
                 const xpTowardsNext = currentTotalXP % 5000;
                 const percent = (xpTowardsNext / 5000) * 100;
 
-                // Update UI Elements
+                let rank = "Probationary Agent";
+                let icon = "🎖️";
+                if (currentLevel >= 10) { rank = "Diamond Executive"; icon = "💎"; }
+                else if (currentLevel >= 5) { rank = "Platinum Lead"; icon = "🏆"; }
+                else if (currentLevel >= 3) { rank = "Gold Veteran"; icon = "🥇"; }
+                else if (currentLevel >= 2) { rank = "Bronze Specialist"; icon = "🥉"; }
+
                 document.getElementById('level-info').innerText = `Level ${currentLevel} Operator`;
                 document.getElementById('xp-bar').style.width = `${percent}%`;
                 document.getElementById('xp-text').innerText = `${xpTowardsNext} / 5000 XP`;
-                document.getElementById('rank-name').innerText = currentLevel > 1 ? "Bronze Specialist" : "Probationary Agent";
-                document.getElementById('node-list').innerHTML = `<div><b>${firstNodeId}</b> <span style="color:var(--accent); float:right;">● ONLINE</span></div>`;
+                document.getElementById('rank-name').innerText = rank;
+                document.getElementById('rank-icon').innerText = icon;
+                document.getElementById('node-list').innerHTML = `<div><b>${nodeId}</b> <span style="color:var(--accent); float:right;">● ONLINE</span></div>`;
 
-                // 🔊 Audio Trigger Logic
                 if (currentTotalXP > previousTotalXP) {
                     if (currentLevel > previousLevel) {
                         sounds.levelup.play().catch(e => {});
@@ -196,25 +243,24 @@
             fetch('/debug/view_tasks').then(r => r.json()).then(tasks => {
                 const list = document.getElementById('task-list');
                 list.innerHTML = tasks.slice(0, 6).map(t => {
-                    // 🛠️ FIX: Check all possible keys for the payout value
                     const pay = t.payout || t.bid_sats || t.value || 0;
-                    
-                    // 🛠️ FIX: Use the 'pay' variable for the gold tier check
                     let tierClass = t.task_id === 'KONAMI-DEV-CHEAT' ? 'tier-hack' : (pay >= 5000 ? 'tier-3' : '');
-                    
-                    return `<li class="${tierClass}">
-                                <span><b>${t.task_id}</b></span>
-                                <span class="sats-badge">+${pay} Sats</span>
-                            </li>`;
+                    return `<li class="${tierClass}"><span><b>${t.task_id}</b></span><span class="sats-badge">+${pay} Sats</span></li>`;
                 }).join('');
             });
         }
 
         const marvin = document.getElementById('magic-marvin');
-        marvin.addEventListener('click', () => { sounds.marvin.play(); marvin.style.transform = "rotate(360deg)"; setTimeout(() => marvin.style.transform="none", 500); });
-        function summonMarvin() { if(marvin.style.display !== 'none') { marvin.style.bottom = "0px"; setTimeout(() => marvin.style.bottom = "-300px", 4000); } }
+        marvin.addEventListener('dblclick', () => {
+            sounds.marvin.currentTime = 0;
+            sounds.marvin.play();
+            marvin.style.transform = "scale(1.2) rotate(360deg)";
+            setTimeout(() => marvin.style.transform = "none", 500);
+        });
 
-        // Konami Code 
+        function summonMarvin() { if(marvin.style.display !== 'none') { marvin.style.bottom = "20px"; setTimeout(() => marvin.style.bottom = "-300px", 5000); } }
+
+        // Konami Code
         let konamiIndex = 0;
         const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
         document.addEventListener('keydown', (e) => {
