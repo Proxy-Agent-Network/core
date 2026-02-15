@@ -1,0 +1,51 @@
+/* 🎨 THEME ENGINE */
+:root { 
+    --h1-size: 1.5rem; 
+    --panel-h2-size: 1.1rem; 
+    --pill-font-size: 0.8rem; 
+    --xp-text: var(--text); 
+    --xp-bar-empty: rgba(0,0,0,0.1); 
+    --xp-glow: rgba(255,255,255,0.6);
+    --bonus-color: #ffd700; 
+    --secret-color: #0f0; 
+    --ledger-font: 0.85rem; 
+    --ledger-nested-font: 0.7rem;
+    --ledger-nested-margin: -10px; /* 🎯 Global Default */
+}
+
+/* 👔 BUSINESS (Light Mode - Dark Text) */
+[data-theme="business"] { 
+    --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; 
+    --bonus-color: #b8860b; --secret-color: #006400; 
+}
+
+/* 👾 RETRO ARCADE (Pixel Fonts - Smaller Sizing & Relaxed Spacing) */
+[data-theme="retro"] { 
+    --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; --accent: #ff00ff; --border: #ff00ff; --font: 'Press Start 2P', cursive; 
+    --h1-size: 1.1rem; --panel-h2-size: 0.95rem; --pill-font-size: 0.55rem; --xp-text: #2b033d; 
+    --ledger-font: 0.55rem;       
+    --ledger-nested-font: 0.45rem; 
+    --ledger-nested-margin: -6px; /* 🎯 Relaxed for blocky font */
+}
+
+/* 📜 PAPERBACK (Light Mode - Earth Tones) */
+[data-theme="paperback"] { 
+    --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; --accent: #2c3e50; --border: #bca08d; --font: 'Special Elite', cursive; 
+    --xp-text: #ffffff; --xp-bar-empty: #8d6e63; --xp-glow: transparent; 
+    --bonus-color: #a0522d; --secret-color: #2e8b57; 
+}
+
+/* 🦾 CYBERPUNK (Dark Mode - Neon) */
+[data-theme="cyberpunk"] { --bg: #000; --card-bg: #111; --text: #fee715; --accent: #ea00d9; --border: #fee715; --font: 'Orbitron', sans-serif; --xp-text: #ffffff; --xp-glow: #ea00d9; }
+
+/* 🌊 DEEP SEA (Dark Mode - Teal) */
+[data-theme="deepsea"] { --bg: #001219; --card-bg: #005f73; --text: #94d2bd; --accent: #ee9b00; --border: #0a9396; --font: 'Montserrat', sans-serif; --xp-text: #001219; }
+
+/* 🧛 VAMPIRE (Dark Mode - Gothic) */
+[data-theme="vampire"] { --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; --accent: #ffd700; --border: #4a0000; --font: 'UnifrakturMaguntia', serif; --xp-text: #4a0000; --h1-size: 2.2rem; }
+
+/* 🕺 GROOVY (Light Mode - Retro) */
+[data-theme="groovy"] { 
+    --bg: #fdf5e6; --card-bg: #e1d5e7; --text: #2f4f4f; --accent: #ff69b4; --border: #8fbc8f; --font: 'Shrikhand', cursive; --xp-text: #2f4f4f; 
+    --bonus-color: #d35400; --secret-color: #228b22; 
+}
