@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="business"> <head>
+<html lang="en" data-theme="business">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mission Control | Proxy Agent Network</title>
@@ -9,230 +10,70 @@
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Shrikhand&family=Special+Elite&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
 
     <style>
-        /* 🎨 THEME DEFINITIONS */
-        :root {
-            /* Fallback/Base variables */
-            --h1-size: 1.5rem;
-            --pill-font-size: 0.8rem;
-        }
+        /* 🎨 FULL THEME ENGINE RESTORED */
+        :root { --h1-size: 1.5rem; --pill-font-size: 0.8rem; }
+        [data-theme="business"] { --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; }
+        [data-theme="retro"] { --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; --accent: #ff00ff; --border: #ff00ff; --font: 'Press Start 2P', cursive; --h1-size: 1.0rem; --pill-font-size: 0.5rem; }
+        [data-theme="groovy"] { --bg: #fdf5e6; --card-bg: #e1d5e7; --text: #2f4f4f; --accent: #ff69b4; --border: #8fbc8f; --font: 'Shrikhand', cursive; }
+        [data-theme="paperback"] { --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; --accent: #2c3e50; --border: #bca08d; --font: 'Special Elite', cursive; }
+        [data-theme="cyberpunk"] { --bg: #000; --card-bg: #111; --text: #fee715; --accent: #ea00d9; --border: #fee715; --font: 'Orbitron', sans-serif; }
+        [data-theme="vampire"] { --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; --accent: #ffd700; --border: #4a0000; --font: 'UnifrakturMaguntia', serif; }
+        [data-theme="deepsea"] { --bg: #001219; --card-bg: #005f73; --text: #94d2bd; --accent: #ee9b00; --border: #0a9396; --font: 'Montserrat', sans-serif; }
 
-        [data-theme="business"] { 
-            --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; 
-            --accent: #2980b9; --border: #dcdde1; 
-            --font: 'Inter', sans-serif; 
-        }
-
-        [data-theme="retro"] { 
-            --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; 
-            --accent: #ff00ff; --border: #ff00ff; 
-            --font: 'Press Start 2P', cursive; 
-            --h1-size: 1.0rem; --pill-font-size: 0.5rem; /* Pixel font adjustments */
-        }
-
-        [data-theme="groovy"] { 
-            --bg: #fdf5e6; --card-bg: #e1d5e7; --text: #2f4f4f; 
-            --accent: #ff69b4; --border: #8fbc8f; 
-            --font: 'Shrikhand', cursive; 
-        }
-
-        [data-theme="paperback"] { 
-            --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; 
-            --accent: #2c3e50; --border: #bca08d; 
-            --font: 'Special Elite', cursive; 
-        }
-
-        [data-theme="cyberpunk"] { 
-            --bg: #000; --card-bg: #111; --text: #fee715; 
-            --accent: #ea00d9; --border: #fee715; 
-            --font: 'Orbitron', sans-serif; 
-        }
-
-        [data-theme="vampire"] { 
-            --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; 
-            --accent: #ffd700; --border: #4a0000; 
-            --font: 'UnifrakturMaguntia', serif; 
-        }
-
-        [data-theme="deepsea"] { 
-            --bg: #001219; --card-bg: #005f73; --text: #94d2bd; 
-            --accent: #ee9b00; --border: #0a9396; 
-            --font: 'Montserrat', sans-serif; 
-        }
-
-        /* Core Layout */
-        body {
-            background-color: var(--bg);
-            color: var(--text);
-            font-family: var(--font);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            transition: all 0.5s ease;
-        }
-
-        /* ------------------------------------------------------- */
-        /* 🕵️ HACKER OVERLAY (Always Matrix Style) */
-        /* ------------------------------------------------------- */
-        #hack-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background-color: rgba(0, 10, 0, 0.98);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            text-align: center;
-            font-family: 'Courier Prime', monospace;
-        }
-
-        .glitch-text {
-            font-size: 4rem;
-            font-weight: bold;
-            color: #0f0;
-            text-shadow: 4px 4px #00ff00;
-            animation: glitch 0.2s infinite;
-        }
-
-        @keyframes glitch {
-            0% { text-shadow: 2px 2px #0f0; transform: translate(0,0); }
-            20% { text-shadow: -2px -2px #f00; transform: translate(-2px, 2px); }
-            40% { text-shadow: 2px -2px #0f0; transform: translate(2px, -2px); }
-            60% { text-shadow: -2px 2px #f00; transform: translate(-2px, 2px); }
-            80% { text-shadow: 2px 2px #0f0; transform: translate(0,0); }
-            100% { text-shadow: -2px -2px #0f0; transform: translate(2px, -2px); }
-        }
-
-        /* ------------------------------------------------------- */
-        /* UI COMPONENTS */
-        /* ------------------------------------------------------- */
-        .header {
-            width: 100%; max-width: 900px;
-            display: flex; justify-content: space-between; align-items: center;
-            border-bottom: 2px solid var(--border);
-            padding-bottom: 15px; margin-bottom: 30px;
-            text-transform: uppercase;
-        }
+        body { background-color: var(--bg); color: var(--text); font-family: var(--font); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; transition: all 0.5s ease; }
         
-        h1 { margin: 0; font-size: var(--h1-size); }
+        /* 🕵️ HACKER OVERLAY */
+        #hack-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 10, 0, 0.98); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; text-align: center; font-family: 'Courier Prime', monospace; }
+        .glitch-text { font-size: 4rem; font-weight: bold; color: #0f0; text-shadow: 4px 4px #00ff00; animation: glitch 0.2s infinite; }
+        @keyframes glitch { 0% { text-shadow: 2px 2px #0f0; transform: translate(0,0); } 20% { text-shadow: -2px -2px #f00; transform: translate(-2px, 2px); } 40% { text-shadow: 2px -2px #0f0; transform: translate(2px, -2px); } 60% { text-shadow: -2px 2px #f00; transform: translate(-2px, 2px); } 80% { text-shadow: 2px 2px #0f0; transform: translate(0,0); } 100% { text-shadow: -2px -2px #0f0; transform: translate(2px, -2px); } }
 
-        /* THEME SELECTOR */
-        select {
-            background: var(--card-bg);
-            color: var(--text);
-            border: 1px solid var(--border);
-            padding: 5px 10px;
-            font-family: var(--font);
-            cursor: pointer;
-            border-radius: 4px;
-            outline: none;
-            box-shadow: 2px 2px var(--border);
-        }
+        /* HEADER & CONTROLS */
+        .header { width: 100%; max-width: 900px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 15px; margin-bottom: 30px; }
+        .controls-panel { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+        .audio-rack { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.05); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); }
+        input[type=range] { cursor: pointer; height: 4px; accent-color: var(--accent); }
+        
+        /* GRID & PANELS */
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; width: 100%; max-width: 900px; }
+        .panel { background: var(--card-bg); border: 1px solid var(--border); padding: 20px; border-radius: 8px; box-shadow: 4px 4px 0px var(--border); transition: all 0.5s ease; }
+        .panel h2 { margin-top: 0; border-bottom: 1px dashed var(--border); padding-bottom: 10px; font-size: 1.1rem; opacity: 0.9; }
 
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 25px;
-            width: 100%; max-width: 900px;
-        }
+        /* XP PROGRESS BAR */
+        .xp-container { background: rgba(0,0,0,0.1); border: 2px solid var(--border); height: 26px; border-radius: 13px; overflow: hidden; position: relative; margin-top: 15px; }
+        .xp-fill { background: var(--accent); height: 100%; width: 0%; transition: width 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .xp-text { position: absolute; width: 100%; text-align: center; top: 4px; font-size: var(--pill-font-size); color: var(--text); filter: contrast(150%); font-weight: bold; }
 
-        .panel {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 4px 4px 0px var(--border); /* Retro shadow feel */
-            transition: all 0.5s ease;
-        }
-
-        .panel h2 {
-            margin-top: 0;
-            border-bottom: 1px dashed var(--border);
-            padding-bottom: 10px;
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        /* XP BAR */
-        .xp-container {
-            background: rgba(0,0,0,0.1); /* Neutral */
-            border: 2px solid var(--border);
-            height: 24px;
-            border-radius: 12px;
-            overflow: hidden;
-            position: relative;
-            margin-top: 15px;
-        }
-        .xp-fill {
-            background: var(--accent);
-            height: 100%; width: 0%;
-            transition: width 0.5s ease-out;
-        }
-        .xp-text {
-            position: absolute; width: 100%; text-align: center; top: 2px;
-            font-size: var(--pill-font-size); 
-            color: var(--text);
-            filter: contrast(200%); /* Ensure readability */
-            font-weight: bold;
-        }
-
-        /* TASK LIST & TIERS */
+        /* LEDGER ACTIVITY */
         ul { list-style: none; padding: 0; }
-        li {
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
-            display: flex; justify-content: space-between;
-            align-items: center;
-            font-size: 0.9rem;
-        }
-
-        /* Sats Badge */
-        .sats-badge {
-            background: var(--bg);
-            padding: 4px 8px;
-            border-radius: 4px;
-            color: var(--accent);
-            font-weight: bold;
-            border: 1px solid var(--border);
-            font-size: var(--pill-font-size);
-        }
-
-        /* Tier Indicators (Using Accent/Border logic) */
-        .tier-3 { color: var(--accent); font-weight: bold; }
+        li { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; transition: background 0.3s; }
+        .sats-badge { background: var(--bg); padding: 4px 10px; border-radius: 4px; color: var(--accent); font-weight: bold; border: 1px solid var(--border); font-size: var(--pill-font-size); }
+        
+        .tier-3 { border-left: 4px solid var(--accent); font-weight: bold; }
         .tier-hack { background: rgba(0, 255, 0, 0.1); border-left: 4px solid #0f0; }
 
-        /* MAGIC MARVIN */
-        #magic-marvin {
-            position: fixed; bottom: -300px; right: 20px;
-            width: 140px; cursor: pointer; z-index: 100;
-            transition: bottom 1s cubic-bezier(0.68, -0.55, 0.27, 1.55), transform 0.5s;
-            filter: drop-shadow(0 0 5px var(--accent));
-        }
+        #magic-marvin { position: fixed; bottom: -300px; right: 20px; width: 140px; cursor: pointer; z-index: 100; transition: bottom 1s cubic-bezier(0.68, -0.55, 0.27, 1.55), transform 0.5s; filter: drop-shadow(0 0 5px var(--accent)); }
     </style>
 </head>
 <body>
 
     <div id="hack-overlay">
         <div class="glitch-text">>>> SYSTEM BYPASS <<<</div>
-        <div style="margin-top: 30px; font-size: 1.8rem; color: #0f0;">
-            ROOT_ACCESS: <span style="background:#0f0; color:#000; padding: 2px 5px;">GRANTED</span>
-        </div>
         <div style="margin-top: 15px; color: #fff; font-size: 1.2rem;">
-            BONUS_REWARD: <span style="color: #ffd700; font-weight:bold;">+30 XP</span>
+            BONUS_REWARD: <span style="color: #ffd700; font-weight:bold;">+30 XP (On next Task Completion)</span>
         </div>
     </div>
 
     <div class="header">
         <div>
             <h1>Mission Control</h1>
-            <small style="opacity:0.7">Proxy Agent Network v1.2</small>
+            <small style="opacity:0.7">Proxy Agent Network v1.3</small>
         </div>
         
-        <div>
+        <div class="controls-panel">
+            <div class="audio-rack">
+                <button id="mute-btn" onclick="toggleMute()" style="background:none; border:none; cursor:pointer; font-size:1.1rem;">🔊</button>
+                <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5" oninput="updateVolume(this.value)">
+            </div>
             <select id="theme-selector" onchange="changeTheme(this.value)">
                 <option value="business">👔 Business</option>
                 <option value="cyberpunk">🦾 Cyberpunk</option>
@@ -242,9 +83,6 @@
                 <option value="paperback">📜 Paperback</option>
                 <option value="groovy">🕺 Groovy</option>
             </select>
-            <div style="margin-top:5px; text-align:right; font-size:0.7rem; opacity:0.8;">
-                ● ONLINE
-            </div>
         </div>
     </div>
 
@@ -262,15 +100,13 @@
                 <div id="xp-text" class="xp-text">0 / 5000 XP</div>
             </div>
             <p style="font-size: 0.8rem; opacity: 0.7; margin-top: 10px;">
-                Next Promotion: <span style="color: var(--accent)">Bronze Specialist</span>
+                Status: <span id="rank-name" style="color: var(--accent)">Processing...</span>
             </p>
         </div>
 
         <div class="panel" style="grid-column: span 2;">
             <h2>Recent Ledger Activity</h2>
-            <ul id="task-list">
-                <li style="opacity:0.6">Waiting for blockchain sync...</li>
-            </ul>
+            <ul id="task-list"><li>Waiting for blockchain sync...</li></ul>
         </div>
     </div>
 
@@ -278,40 +114,11 @@
 
     <script>
         // -------------------------------------------------------
-        // 🎨 THEME ENGINE
+        // 🔊 AUDIO ENGINE & AV RACK
         // -------------------------------------------------------
-        function changeTheme(theme) {
-            // 1. Set the Data Attribute on HTML tag
-            document.documentElement.setAttribute('data-theme', theme);
-            
-            // 2. Handle Marvin Visibility
-            // Hidden in "Business" (Serious) and "Paperback" (Noir/Minimal)
-            const marvin = document.getElementById('magic-marvin');
-            if (marvin) {
-                if (theme === 'business' || theme === 'paperback') {
-                    marvin.style.display = 'none';
-                } else {
-                    marvin.style.display = 'block';
-                }
-            }
-            
-            // 3. Save preference
-            localStorage.setItem('theme', theme);
-        }
+        let isMuted = localStorage.getItem('muted') === 'true';
+        let globalVolume = localStorage.getItem('volume') || 0.5;
 
-        // Restore Theme on Load
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme) {
-            document.getElementById('theme-selector').value = savedTheme;
-            changeTheme(savedTheme);
-        }
-
-        // -------------------------------------------------------
-        // ⚙️ LOGIC & CONFIG
-        // -------------------------------------------------------
-        let previousXP = 0;
-
-        // Audio Assets
         const sounds = {
             coin1: new Audio('/static/audio/Coin_Tier1.mp3'),
             coin2: new Audio('/static/audio/Coin_Tier2.mp3'),
@@ -321,146 +128,117 @@
             hack: new Audio('/static/audio/Secret_PowerUp1.mp3') 
         };
 
-        const marvin = document.getElementById('magic-marvin');
-        if (marvin) {
-            marvin.addEventListener('click', () => {
-                sounds.marvin.play().catch(e => console.log(e));
-                marvin.style.transform = "rotate(720deg) scale(1.2)";
-                setTimeout(() => marvin.style.transform = "none", 1000);
-            });
+        function updateVolume(val) {
+            globalVolume = val;
+            localStorage.setItem('volume', val);
+            Object.values(sounds).forEach(s => s.volume = isMuted ? 0 : val);
         }
 
-        function summonMarvin() {
-            if (!marvin || marvin.style.display === 'none') return; 
-            marvin.style.bottom = "0px";
-            setTimeout(() => marvin.style.bottom = "-300px", 4000);
+        function toggleMute() {
+            isMuted = !isMuted;
+            localStorage.setItem('muted', isMuted);
+            document.getElementById('mute-btn').innerText = isMuted ? '🔇' : '🔊';
+            updateVolume(globalVolume);
         }
+
+        // -------------------------------------------------------
+        // 🎨 THEME ENGINE
+        // -------------------------------------------------------
+        function changeTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            const marvin = document.getElementById('magic-marvin');
+            if (marvin) marvin.style.display = (theme === 'business' || theme === 'paperback') ? 'none' : 'block';
+            localStorage.setItem('theme', theme);
+        }
+
+        // -------------------------------------------------------
+        // ⚙️ LOGIC & DATA POLLING
+        // -------------------------------------------------------
+        let previousTotalXP = 0;
 
         function fetchStatus() {
-            fetch('/debug/node_status')
-                .then(r => r.json())
-                .then(data => {
-                    updateNodes(data);
-                    updateTasks();
-                });
-        }
+            fetch('/debug/node_status').then(r => r.json()).then(data => {
+                const firstNodeId = Object.keys(data)[0];
+                if (!firstNodeId) return;
+                const node = data[firstNodeId];
+                
+                const currentTotalXP = node.xp || 0;
+                const currentLevel = Math.floor(currentTotalXP / 5000) + 1;
+                const previousLevel = Math.floor(previousTotalXP / 5000) + 1;
+                const xpTowardsNext = currentTotalXP % 5000;
+                const percent = (xpTowardsNext / 5000) * 100;
 
-        function updateNodes(nodes) {
-            const list = document.getElementById('node-list');
-            const xpBar = document.getElementById('xp-bar');
-            const xpText = document.getElementById('xp-text');
-            const levelInfo = document.getElementById('level-info');
+                // Update UI Elements
+                document.getElementById('level-info').innerText = `Level ${currentLevel} Operator`;
+                document.getElementById('xp-bar').style.width = `${percent}%`;
+                document.getElementById('xp-text').innerText = `${xpTowardsNext} / 5000 XP`;
+                document.getElementById('rank-name').innerText = currentLevel > 1 ? "Bronze Specialist" : "Probationary Agent";
+                document.getElementById('node-list').innerHTML = `<div><b>${firstNodeId}</b> <span style="color:var(--accent); float:right;">● ONLINE</span></div>`;
 
-            const firstNodeId = Object.keys(nodes)[0];
-            if (!firstNodeId) return;
-
-            const node = nodes[firstNodeId];
-            const streak = node.streak_days !== undefined ? node.streak_days : 0;
-            const trust = node.trust_score !== undefined ? node.trust_score : 100;
-
-            const currentLevel = Math.floor(node.xp / 5000) + 1;
-            const currentXP = node.xp % 5000;
-            const percent = (currentXP / 5000) * 100;
-
-            levelInfo.innerText = `Level ${currentLevel} Operator`;
-            xpBar.style.width = `${percent}%`;
-            xpText.innerText = `${currentXP} / 5000 XP`;
-
-            list.innerHTML = `
-                <div style="font-size: 1.1rem; margin-bottom:5px;">
-                    ${firstNodeId} <span style="color:var(--accent); float:right;">● ONLINE</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; opacity:0.8; font-size:0.9rem;">
-                    <span>Streak: <b>${streak} Days</b></span>
-                    <span>Trust: <b>${trust}%</b></span>
-                </div>
-            `;
-
-            if (node.xp > previousXP) {
-                const diff = node.xp - previousXP;
-                if (diff >= 5000) sounds.levelup.play();
-                else if (diff >= 50) sounds.coin3.play();
-                else if (diff >= 20) sounds.coin2.play();
-                else sounds.coin1.play();
-
-                if (diff >= 100) summonMarvin();
-            }
-            previousXP = node.xp;
+                // 🔊 Audio Trigger Logic
+                if (currentTotalXP > previousTotalXP) {
+                    if (currentLevel > previousLevel) {
+                        sounds.levelup.play().catch(e => {});
+                        summonMarvin();
+                    } else {
+                        const diff = currentTotalXP - previousTotalXP;
+                        if (diff >= 50) sounds.coin3.play().catch(e => {});
+                        else if (diff >= 20) sounds.coin2.play().catch(e => {});
+                        else sounds.coin1.play().catch(e => {});
+                    }
+                }
+                previousTotalXP = currentTotalXP;
+                updateTasks();
+            });
         }
 
         function updateTasks() {
-            fetch('/debug/view_tasks')
-                .then(r => r.json())
-                .then(tasks => {
-                    const list = document.getElementById('task-list');
-                    if (tasks.length === 0) return;
+            fetch('/debug/view_tasks').then(r => r.json()).then(tasks => {
+                const list = document.getElementById('task-list');
+                list.innerHTML = tasks.slice(0, 6).map(t => {
+                    // 🛠️ FIX: Check all possible keys for the payout value
+                    const pay = t.payout || t.bid_sats || t.value || 0;
                     
-                    list.innerHTML = tasks.slice(0, 6).map(t => {
-                        let tierClass = '';
-                        if (t.task_id === 'KONAMI-DEV-CHEAT') tierClass = 'tier-hack';
-                        else if (t.payout >= 5000) tierClass = 'tier-3'; 
-                        
-                        const id = t.task_id || t.id || 'Unknown';
-                        const type = t.type || 'Generic';
-                        const pay = t.payout || t.value || 0;
-
-                        return `
-                        <li class="${tierClass}">
-                            <span>
-                                <b>${id}</b> 
-                                <span style="margin-left:15px; opacity:0.7">${type}</span>
-                            </span>
-                            <span class="sats-badge">+${pay} Sats</span>
-                        </li>
-                        `;
-                    }).join('');
-                });
-        }
-
-        // 🤫 KONAMI CODE LOGIC
-        const konamiCode = [
-            'ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 
-            'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 
-            'b', 'a'
-        ];
-        let konamiIndex = 0;
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === konamiCode[konamiIndex]) {
-                konamiIndex++;
-                if (konamiIndex === konamiCode.length) {
-                    triggerCheatCode();
-                    konamiIndex = 0;
-                }
-            } else {
-                konamiIndex = 0;
-            }
-        });
-
-        function triggerCheatCode() {
-            sounds.hack.volume = 0.8;
-            sounds.hack.play().catch(e => console.log(e));
-            const overlay = document.getElementById('hack-overlay');
-            overlay.style.display = 'flex';
-            fetch('/api/v1/tasks/complete', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    task_id: "KONAMI-DEV-CHEAT", 
-                    node_id: "NODE-ADMIN-001",
-                    payout: 300 
-                })
-            })
-            .then(() => {
-                setTimeout(() => {
-                    overlay.style.display = 'none';
-                    fetchStatus(); 
-                }, 3000);
+                    // 🛠️ FIX: Use the 'pay' variable for the gold tier check
+                    let tierClass = t.task_id === 'KONAMI-DEV-CHEAT' ? 'tier-hack' : (pay >= 5000 ? 'tier-3' : '');
+                    
+                    return `<li class="${tierClass}">
+                                <span><b>${t.task_id}</b></span>
+                                <span class="sats-badge">+${pay} Sats</span>
+                            </li>`;
+                }).join('');
             });
         }
 
+        const marvin = document.getElementById('magic-marvin');
+        marvin.addEventListener('click', () => { sounds.marvin.play(); marvin.style.transform = "rotate(360deg)"; setTimeout(() => marvin.style.transform="none", 500); });
+        function summonMarvin() { if(marvin.style.display !== 'none') { marvin.style.bottom = "0px"; setTimeout(() => marvin.style.bottom = "-300px", 4000); } }
+
+        // Konami Code 
+        let konamiIndex = 0;
+        const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+        document.addEventListener('keydown', (e) => {
+            if (e.key === konamiCode[konamiIndex]) { konamiIndex++; if (konamiIndex === konamiCode.length) { triggerCheat(); konamiIndex = 0; } } else { konamiIndex = 0; }
+        });
+
+        function triggerCheat() {
+            sounds.hack.play();
+            const overlay = document.getElementById('hack-overlay');
+            overlay.style.display = 'flex';
+            fetch('/api/v1/tasks/complete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ task_id: "KONAMI-DEV-CHEAT", node_id: "NODE-ADMIN-001", payout: 300 })})
+            .then(() => setTimeout(() => overlay.style.display = 'none', 3000));
+        }
+
         setInterval(fetchStatus, 2000);
-        window.onload = () => { summonMarvin(); fetchStatus(); };
+        window.onload = () => {
+            document.getElementById('volume-slider').value = globalVolume;
+            document.getElementById('mute-btn').innerText = isMuted ? '🔇' : '🔊';
+            const savedTheme = localStorage.getItem('theme') || 'business';
+            document.getElementById('theme-selector').value = savedTheme;
+            changeTheme(savedTheme);
+            updateVolume(globalVolume);
+            fetchStatus();
+        };
     </script>
 </body>
 </html>
