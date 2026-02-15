@@ -55,6 +55,68 @@ def reset_me():
 
 # --- CORE API ROUTES ---
 
+@app.route('/api/v1/market/clear_lowest', methods=['POST'])
+def clear_lowest_bid():
+    conn = sqlite3.connect('registry.db')
+    cursor = conn.cursor()
+    
+    # Find the ID of the lowest pending bid
+    cursor.execute("SELECT bid_id FROM marketplace_bids WHERE status = 'PENDING' ORDER BY sats_offered ASC LIMIT 1")
+    result = cursor.fetchone()
+    
+    if result:
+        bid_id = result[0]
+        cursor.execute("DELETE FROM marketplace_bids WHERE bid_id = ?", (bid_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": f"Cleared Bid #{bid_id}"})
+    
+    conn.close()
+    return jsonify({"success": False, "message": "No bids to clear"}), 404
+
+@app.route('/api/v1/market/trends')
+def market_trends():
+    conn = sqlite3.connect('registry.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    # Fetch the last 10 bids to show a trend
+    cursor.execute('''
+        SELECT sats_offered, created_at 
+        FROM marketplace_bids 
+        ORDER BY created_at ASC 
+        LIMIT 20
+    ''')
+    data = cursor.fetchall()
+    conn.close()
+    
+    return jsonify({
+        "labels": [row['created_at'].split(' ')[1] for row in data], # Just the time
+        "prices": [row['sats_offered'] for row in data]
+    })
+
+@app.route('/marketplace', methods=['GET', 'POST'])
+def marketplace():
+    conn = sqlite3.connect('registry.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    if request.method == 'POST':
+        # Logic for a user placing a new bid for network resources
+        requester = request.form.get('requester_id')
+        sats = request.form.get('sats')
+        task_type = request.form.get('task_type')
+        
+        cursor.execute('INSERT INTO marketplace_bids (requester_id, sats_offered, task_type, status) VALUES (?, ?, ?, ?)',
+                       (requester, sats, task_type, 'PENDING'))
+        conn.commit()
+
+    cursor.execute("SELECT * FROM marketplace_bids WHERE status = 'PENDING' ORDER BY sats_offered DESC")
+    open_bids = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    return render_template('marketplace.html', bids=open_bids)
+
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_panel():
     conn = sqlite3.connect('registry.db')
