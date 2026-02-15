@@ -55,6 +55,30 @@ def reset_me():
 
 # --- CORE API ROUTES ---
 
+@app.route('/admin', methods=['GET', 'POST'])
+def admin_panel():
+    conn = sqlite3.connect('registry.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'post_task':
+            task_id = request.form.get('task_id')
+            bid = request.form.get('bid_sats')
+            # Insert the manual task into the DB
+            cursor.execute('INSERT INTO tasks (task_id, bid_sats, status) VALUES (?, ?, ?)', 
+                           (task_id, bid, 'OPEN'))
+            conn.commit()
+            
+    # Fetch all nodes to show their status in the admin view
+    cursor.execute("SELECT * FROM nodes")
+    nodes = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    
+    return render_template('admin.html', nodes=nodes)
+
 @app.route('/api/v1/tasks/post', methods=['POST'])
 def post_task():
     data = request.json
