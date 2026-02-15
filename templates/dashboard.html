@@ -10,101 +10,105 @@
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Shrikhand&family=Special+Elite&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
 
     <style>
-        /* 🎨 THEME ENGINE - FINAL BALANCED CONFIG */
+        /* 🎨 THEME ENGINE - THE FINAL DEFINITIVE CONFIG */
         :root { 
             --h1-size: 1.5rem; 
+            --panel-h2-size: 1.1rem;
             --pill-font-size: 0.8rem; 
             --xp-text: var(--text); 
             --xp-bar-empty: rgba(0,0,0,0.1);
             --xp-glow: rgba(255,255,255,0.6);
+            --sub-text-style: opacity: 0.7;
         }
 
-        [data-theme="business"] { 
-            --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; 
-        }
+        [data-theme="business"] { --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; }
+        
         [data-theme="retro"] { 
             --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; --accent: #ff00ff; --border: #ff00ff; 
-            --font: 'Press Start 2P', cursive; --h1-size: 0.85rem; --pill-font-size: 0.5rem;
+            --font: 'Press Start 2P', cursive; 
+            --h1-size: 1.1rem;         /* 🎯 Restored Large Title */
+            --panel-h2-size: 0.95rem;  /* 🎯 Keeping Approved Header Size */
+            --pill-font-size: 0.55rem; /* 🎯 Approved Small Body Text */
             --xp-text: #2b033d; 
         }
-        [data-theme="groovy"] { --bg: #fdf5e6; --card-bg: #e1d5e7; --text: #2f4f4f; --accent: #ff69b4; --border: #8fbc8f; --font: 'Shrikhand', cursive; }
+
         [data-theme="paperback"] { 
             --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; --accent: #2c3e50; --border: #bca08d; 
-            --font: 'Special Elite', cursive;
-            --xp-text: #ffffff;
-            --xp-bar-empty: #8d6e63; /* 🎯 Medium Brown empty bar */
-            --xp-glow: transparent;  /* 🎯 No glow for cleaner type */
+            --font: 'Special Elite', cursive; --xp-text: #ffffff; --xp-bar-empty: #8d6e63;
         }
+
         [data-theme="cyberpunk"] { 
             --bg: #000; --card-bg: #111; --text: #fee715; --accent: #ea00d9; --border: #fee715; 
-            --font: 'Orbitron', sans-serif;
-            --xp-text: #ffffff; 
-            --xp-glow: #ea00d9; 
+            --font: 'Orbitron', sans-serif; --xp-text: #ffffff; --xp-glow: #ea00d9; 
         }
-        [data-theme="vampire"] { --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; --accent: #ffd700; --border: #4a0000; --font: 'UnifrakturMaguntia', serif; }
-        [data-theme="deepsea"] { --bg: #001219; --card-bg: #005f73; --text: #94d2bd; --accent: #ee9b00; --border: #0a9396; --font: 'Montserrat', sans-serif; }
+
+        [data-theme="deepsea"] { 
+            --bg: #001219; --card-bg: #005f73; --text: #94d2bd; --accent: #ee9b00; --border: #0a9396; 
+            --font: 'Montserrat', sans-serif; --xp-text: #001219;
+        }
+
+        [data-theme="vampire"] { 
+            --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; --accent: #ffd700; --border: #4a0000; 
+            --font: 'UnifrakturMaguntia', serif; --xp-text: #4a0000;
+            --h1-size: 2.2rem; --sub-text-style: color: #bca08d; opacity: 1;
+        }
+
+        [data-theme="groovy"] { 
+            --bg: #fdf5e6; --card-bg: #e1d5e7; --text: #2f4f4f; --accent: #ff69b4; --border: #8fbc8f; 
+            --font: 'Shrikhand', cursive; --xp-text: #2f4f4f; /* 🎯 Dark XP Color */
+        }
 
         body { background-color: var(--bg); color: var(--text); font-family: var(--font); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; transition: all 0.5s ease; }
         
-        /* UI COMPONENTS */
+        /* 🕵️ SYSTEM BYPASS - LOCKED */
+        #hack-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 10, 0, 0.98); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; text-align: center; font-family: 'Courier Prime', monospace; }
+        .glitch-container { position: relative; animation: shake 0.15s infinite; white-space: nowrap; }
+        .glitch-text { font-size: 4rem; font-weight: bold; line-height: 1; }
+        .glitch-top { color: #0f0; position: relative; z-index: 2; }
+        .glitch-bottom { color: #f00; position: absolute; top: 4px; left: 4px; z-index: 1; opacity: 0.9; width: 100%; }
+        @keyframes shake { 0% { transform: translate(0,0); } 25% { transform: translate(-2px, 2px); } 50% { transform: translate(2px, -2px); } 75% { transform: translate(-2px, -2px); } 100% { transform: translate(2px, 2px); } }
+
+        /* HEADER */
         .header { width: 100%; max-width: 900px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 15px; margin-bottom: 30px; }
         h1 { font-size: var(--h1-size); margin: 0; }
+        .sub-header { font-size: 0.8rem; margin: 0; filter: brightness(1.2); }
         .controls-panel { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
         .audio-rack { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.05); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); }
         input[type=range] { cursor: pointer; height: 4px; accent-color: var(--accent); }
         
+        /* GRID & PANELS */
         .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; width: 100%; max-width: 900px; }
         .panel { background: var(--card-bg); border: 1px solid var(--border); padding: 20px; border-radius: 8px; box-shadow: 4px 4px 0px var(--border); transition: all 0.5s ease; }
+        .panel h2 { margin-top: 0; border-bottom: 1px dashed var(--border); padding-bottom: 10px; font-size: var(--panel-h2-size); opacity: 0.9; }
 
-        /* 🎯 XP PROGRESS BAR */
-        .xp-container { 
-            background: var(--xp-bar-empty); 
-            border: 2px solid var(--border); 
-            height: 32px; 
-            border-radius: 16px; 
-            overflow: hidden; 
-            position: relative; 
-            margin-top: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+        /* XP PROGRESS BAR */
+        .xp-container { background: var(--xp-bar-empty); border: 2px solid var(--border); height: 32px; border-radius: 16px; overflow: hidden; position: relative; margin-top: 15px; display: flex; align-items: center; justify-content: center; }
         .xp-fill { background: var(--accent); height: 100%; width: 0%; position: absolute; left: 0; transition: width 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .xp-text { 
-            position: relative; 
-            z-index: 10;
-            font-size: calc(var(--pill-font-size) + 0.1rem);
-            font-weight: bold;
-            color: var(--xp-text);
-            text-shadow: 
-                -1px -1px 0 #fff,  
-                 1px -1px 0 #fff,
-                -1px  1px 0 #fff,
-                 1px  1px 0 #fff,
-                 0 0 10px var(--xp-glow);
+            position: relative; z-index: 10; font-size: calc(var(--pill-font-size) + 0.15rem); font-weight: bold; color: var(--xp-text); 
+            text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 10px var(--xp-glow); 
         }
 
-        /* 🎯 THEME SPECIFIC OVERRIDES */
-        [data-theme="retro"] .xp-text { font-size: 0.75rem; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; }
-        [data-theme="retro"] #node-list, [data-theme="retro"] #rank-name, [data-theme="retro"] #level-info, [data-theme="retro"] li { font-size: 0.5rem !important; line-height: 1.4; }
-        
+        /* 🎯 SPECIFIC THEME OVERRIDES */
+        [data-theme="retro"] #node-list, [data-theme="retro"] li { font-size: var(--pill-font-size) !important; line-height: 1.6; }
+        [data-theme="retro"] #level-info, [data-theme="retro"] #rank-name { font-size: 0.8rem !important; } /* 🎯 Bumped Size for Retro Operator/Status */
+        [data-theme="paperback"] .xp-text { text-shadow: none !important; }
         [data-theme="cyberpunk"] .xp-text { text-shadow: 0 0 15px #fff, 0 0 10px var(--xp-glow), 0 0 5px var(--xp-glow); }
-        
-        [data-theme="paperback"] .xp-text { text-shadow: none; font-size: calc(var(--pill-font-size) + 0.15rem); }
 
         ul { list-style: none; padding: 0; }
         li { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; }
         .sats-badge { background: var(--bg); padding: 4px 10px; border-radius: 4px; color: var(--accent); font-weight: bold; border: 1px solid var(--border); font-size: var(--pill-font-size); }
         
         #magic-marvin { position: fixed; bottom: -300px; right: 20px; width: 140px; cursor: pointer; z-index: 100; transition: bottom 1s cubic-bezier(0.68, -0.55, 0.27, 1.55), transform 0.5s; }
-        #hack-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 10, 0, 0.98); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; text-align: center; font-family: 'Courier Prime', monospace; }
-        .glitch-text { font-size: 4rem; font-weight: bold; color: #0f0; text-shadow: 4px 4px #00ff00; }
     </style>
 </head>
 <body>
 
     <div id="hack-overlay">
-        <div class="glitch-text">>>> SYSTEM BYPASS <<<</div>
+        <div class="glitch-container">
+            <div class="glitch-text glitch-top">>>> SYSTEM BYPASS <<<</div>
+            <div class="glitch-text glitch-bottom">>>> SYSTEM BYPASS <<<</div>
+        </div>
         <div style="margin-top: 15px; color: #fff; font-size: 1.2rem;">
             BONUS_REWARD: <span style="color: #ffd700; font-weight:bold;">+30 XP (On next Task Completion)</span>
         </div>
@@ -113,7 +117,7 @@
     <div class="header">
         <div>
             <h1>Mission Control</h1>
-            <small style="opacity:0.7">Proxy Agent Network v1.3</small>
+            <p class="sub-header" style="filter: brightness(1.2); opacity: 0.8;">Proxy Agent Network v1.3</p>
         </div>
         
         <div class="controls-panel">
@@ -211,9 +215,9 @@
 
                 let rank = "Probationary Agent";
                 let icon = "🎖️";
-                if (currentLevel >= 10) { rank = "Diamond Executive"; icon = "💎"; }
-                else if (currentLevel >= 5) { rank = "Platinum Lead"; icon = "🏆"; }
-                else if (currentLevel >= 3) { rank = "Gold Veteran"; icon = "🥇"; }
+                if (currentLevel >= 15) { rank = "Diamond Executive"; icon = "💎"; }
+                else if (currentLevel >= 10) { rank = "Platinum Lead"; icon = "🏆"; }
+                else if (currentLevel >= 5) { rank = "Gold Veteran"; icon = "🥇"; }
                 else if (currentLevel >= 2) { rank = "Bronze Specialist"; icon = "🥉"; }
 
                 document.getElementById('level-info').innerText = `Level ${currentLevel} Operator`;
@@ -251,16 +255,9 @@
         }
 
         const marvin = document.getElementById('magic-marvin');
-        marvin.addEventListener('dblclick', () => {
-            sounds.marvin.currentTime = 0;
-            sounds.marvin.play();
-            marvin.style.transform = "scale(1.2) rotate(360deg)";
-            setTimeout(() => marvin.style.transform = "none", 500);
-        });
-
+        marvin.addEventListener('dblclick', () => { sounds.marvin.currentTime = 0; sounds.marvin.play(); marvin.style.transform = "scale(1.2) rotate(360deg)"; setTimeout(() => marvin.style.transform = "none", 500); });
         function summonMarvin() { if(marvin.style.display !== 'none') { marvin.style.bottom = "20px"; setTimeout(() => marvin.style.bottom = "-300px", 5000); } }
 
-        // Konami Code
         let konamiIndex = 0;
         const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
         document.addEventListener('keydown', (e) => {
