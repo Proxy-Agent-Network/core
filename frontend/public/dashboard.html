@@ -441,11 +441,42 @@
         setInterval(updateLeaderboard, 10000);
 
         function completeTask(id, reward) {
-            document.getElementById('audio-success').play();
+            // --- FIX: REWIND AUDIO SO IT ALWAYS PLAYS ---
+            const audio = document.getElementById('audio-success');
+            audio.currentTime = 0; // Rewind to the start immediately
+            audio.play();          // Now play it (even if it was already playing)
+            
+            // Visual feedback immediately
+            addLog(`<span>Verifying proof for task ${id}...</span>`);
+            
+            // ... (rest of the function stays the same) ...
+            
+            // Call the new L2 Settlement Endpoint
             fetch('/api/v1/tasks/complete', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                // We inject the node ID from the server template
                 body: JSON.stringify({ task_id: id, node_id: "{{ node.id }}", payout: reward })
-            }).then(() => refreshDashboard());
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    // 1. Show the Blockchain Receipt (The "Proof")
+                    addLog(`<b style="color:#2ecc71">✔ SETTLED:</b> <span style="font-family:monospace; opacity:0.8">${data.tx_hash}</span>`);
+                    
+                    // 2. Trigger visual success effect
+                    flashPulse('success');
+                    
+                    // 3. Update the balances
+                    refreshDashboard();
+                } else {
+                    addLog(`<span style="color:var(--danger)">❌ ERROR: Settlement Failed</span>`);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                addLog(`<span style="color:var(--danger)">❌ NETWORK ERROR</span>`);
+            });
         }
 
         function generateContract(taskId, type, reward) {

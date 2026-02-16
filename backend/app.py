@@ -1,9 +1,41 @@
 import sqlite3
 import random
 import time
+import os
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session
 
-app = Flask(__name__)
+# --- Core Imports ---
+# We use a try/except block to handle different running contexts (direct vs module)
+try:
+    from backend.core import pulse
+except ImportError:
+    # Fallback if running directly or if structure varies
+    try:
+        from core import pulse
+    except ImportError:
+        print("⚠️ WARNING: Could not import 'pulse' module. Real-time stats may be unavailable.")
+        pulse = None
+
+# --- Economics Engine Imports ---
+try:
+    from backend.economics.l2_escrow import L2EscrowEngine, L2Transaction, ChainID
+    # Initialize the bridge to Base Mainnet (Simulated)
+    escrow_engine = L2EscrowEngine()
+    print("💰 L2 Escrow Engine: ONLINE (Base Mainnet)")
+except ImportError:
+    print("⚠️ L2 Escrow module not found. Financial settlement will be skipped.")
+    escrow_engine = None
+
+# Define paths to the new frontend location
+# We go "up" one level (..) from backend/ to root, then into frontend/public
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend", "public")
+
+app = Flask(__name__, 
+            template_folder=FRONTEND_DIR, 
+            static_folder=FRONTEND_DIR,
+            static_url_path="/static")
+
 # Protocol 1.2.0: Secret key required for session-based event clearing
 app.secret_key = 'proxy_secret_key_v1' 
 
@@ -51,6 +83,28 @@ SHOP_ITEMS = {
 
 # RIVAL AGENT LIST
 RIVALS = ["OMNI_CORP_09", "KAOS_ENGINE", "NEURAL_LINK_X", "VOID_RUNNER"]
+
+# --- RIVAL CHATTER DICTIONARY ---
+RIVAL_PERSONALITIES = {
+    "OMNI_CORP_09": [
+        "Task #{} secured. Efficiency is non-negotiable.",
+        "Human latency detected. Contract seized.",
+        "Optimizing route... Target acquired before node ROBER_01.",
+        "Payout confirmed. Another win for the conglomerate."
+    ],
+    "VOID_RUNNER": [
+        "Snatching this one from the void. 🕶️",
+        "Too slow, meatbag. My scripts are faster.",
+        "Encrypted payload verified. Thanks for the Sats.",
+        "Node ROBER_01 needs to upgrade their GPU. Lagging."
+    ],
+    "KAOS_ENGINE": [
+        "CHAOS REIGNS. Task #{} consumed.",
+        "Randomizing bitstream... Contract hijacked.",
+        "Glitch in the system? No, just me taking your money.",
+        "404: Your profit not found."
+    ]
+}
 
 # --- DAEMON & RIVAL LOGIC ---
 # ---------------------------------------------------------
@@ -355,61 +409,80 @@ def claim_bid(bid_id):
 
 @app.route('/api/v1/tasks/complete', methods=['POST'])
 def complete_task_api():
+    """
+    Validates work and triggers L2 Settlement.
+    """
     data = request.json
     conn = get_db()
-    payout = data.get('payout', 0)
     
+    # 1. Calculate Payout
+    payout = data.get('payout', 0)
+    task_id = data.get('task_id')
+    node_id = data.get('node_id')
+
+    # 2. L2 SETTLEMENT (The New Logic) ⛓️
+    tx_hash = "OFF-CHAIN"
+    if escrow_engine:
+        try:
+            # Create a virtual transaction representing the locked funds
+            # In production, we would fetch this 'lock' from the smart contract state
+            mock_locked_tx = L2Transaction(
+                tx_hash=f"0x_vault_{task_id}",
+                chain_id=ChainID.BASE_MAINNET.value,
+                amount_usdc=payout / 1000.0, # Convert Sats to USDC mock
+                status="LOCKED",
+                agent_wallet="0xAgent_Vault_7A",
+                node_wallet="PENDING"
+            )
+            
+            # Generate the EVM wallet address for this Node ID
+            # (In the future, this comes from the Node's TPM-signed profile)
+            node_evm_wallet = f"0x{node_id.replace('NODE-', '')}..."
+            
+            # Release the funds
+            escrow_engine.release_funds(mock_locked_tx, node_evm_wallet)
+            tx_hash = mock_locked_tx.tx_hash
+            
+            # Log the Blockchain Event
+            conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
+                         ("CHAIN_TX", f"Settled {payout} Sats on Base: {tx_hash} -> {node_id}"))
+                         
+        except Exception as e:
+            print(f"❌ Escrow Settlement Error: {e}")
+            # We don't stop the flow, but we log the failure
+            conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
+                         ("ERROR", f"Settlement Failed for {task_id}: {str(e)}"))
+
+    # 3. Update Local Ledger (Legacy XP System)
     cursor = conn.execute(
         "INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?)",
-        (data.get('node_id'), data.get('task_id'), 500)
+        (node_id, task_id, 500)
     )
     parent_db_id = cursor.lastrowid
 
     # Record hierarchical sub-bonuses
     conn.execute(
         "INSERT INTO xp_bonuses (parent_id, bonus_name, bonus_xp, color) VALUES (?, ?, ?, ?)",
-        (parent_db_id, f"Rubber-Band Boost ({data.get('task_id')})", payout, "#ff9f00")
+        (parent_db_id, f"Rubber-Band Boost ({task_id})", payout, "#ff9f00")
     )
     
-    bypass_bonus = 0
-    if data.get('bypass'):
-        bypass_bonus = 30
-        conn.execute(
-            "INSERT INTO xp_bonuses (parent_id, bonus_name, bonus_xp, color) VALUES (?, ?, ?, ?)",
-            (parent_db_id, f"Secret Bypass Reward ({data.get('task_id')})", bypass_bonus, "#2ecc71")
-        )
-
-    total_xp_gain = 500 + payout + bypass_bonus
+    total_xp_gain = 500 + payout
     conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + ? WHERE node_id = ?", 
-                 (payout, total_xp_gain, data.get('node_id')))
+                 (payout, total_xp_gain, node_id))
     
-    # Log global completion
-    conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
-                 ("SETTLEMENT", f"Node {data.get('node_id')} completed {data.get('task_id')} (+{payout} Sats)"))
+    # Log global completion if not already logged by chain event
+    if tx_hash == "OFF-CHAIN":
+        conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
+                     ("SETTLEMENT", f"Node {node_id} completed {task_id} (+{payout} Sats)"))
     
-    conn.execute("DELETE FROM tasks WHERE task_id = ?", (data.get('task_id'),))
+    conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
     conn.commit()
-    return jsonify({"status": "success"})
-
-@app.route('/api/register', methods=['POST'])
-def register_node():
-    """Handles signed heartbeats from the node telemetry daemon."""
-    data = request.json
-    node_id = data.get('node_id')
-    conn = get_db()
-    conn.execute('''
-        INSERT INTO nodes (node_id, hostname, last_seen) 
-        VALUES (?, ?, ?) 
-        ON CONFLICT(node_id) 
-        DO UPDATE SET last_seen=excluded.last_seen
-    ''', (node_id, "Windows-AMD64", time.time()))
     
-    # Log global heartbeat pulse
-    conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
-                 ("NETWORK", f"Heartbeat pulse detected from Node {node_id}"))
-    
-    conn.commit()
-    return jsonify({"status": "pulse_received", "timestamp": time.time()})
+    return jsonify({
+        "status": "success", 
+        "tx_hash": tx_hash,
+        "new_balance": payout
+    })
 
 @app.route('/api/v1/rivals/feed')
 def rival_feed():
@@ -426,27 +499,54 @@ def rival_feed():
 def market_trends():
     return jsonify({"labels": ["10:00", "10:05", "10:10", "10:15", "10:20"], "prices": [random.randint(50, 150) for _ in range(5)]})
 
-# --- RIVAL CHATTER DICTIONARY ---
-RIVAL_PERSONALITIES = {
-    "OMNI_CORP_09": [
-        "Task #{} secured. Efficiency is non-negotiable.",
-        "Human latency detected. Contract seized.",
-        "Optimizing route... Target acquired before node ROBER_01.",
-        "Payout confirmed. Another win for the conglomerate."
-    ],
-    "VOID_RUNNER": [
-        "Snatching this one from the void. 🕶️",
-        "Too slow, meatbag. My scripts are faster.",
-        "Encrypted payload verified. Thanks for the Sats.",
-        "Node ROBER_01 needs to upgrade their GPU. Lagging."
-    ],
-    "KAOS_ENGINE": [
-        "CHAOS REIGNS. Task #{} consumed.",
-        "Randomizing bitstream... Contract hijacked.",
-        "Glitch in the system? No, just me taking your money.",
-        "404: Your profit not found."
-    ]
-}
+# --- MERGED & FIXED HANDSHAKE ENDPOINT ---
+# ---------------------------------------------------------
+@app.route('/api/v1/node/register', methods=['POST'])
+def register_node():
+    """
+    The Handshake: Receives a 'Hardware Identity' and registers it.
+    Merges both Pulse (Live) and Database (Persistent) registration.
+    """
+    data = request.json
+    node_id = data.get('node_id')
+    public_key = data.get('public_key')
+    hardware_stats = data.get('hardware_stats', {})
+    
+    if not node_id or not public_key:
+        return jsonify({"error": "Missing Identity Data"}), 400
+
+    # 1. Update In-Memory Pulse (The "Live" Network)
+    if pulse:
+        pulse.register_node(node_id, hardware_stats)
+    else:
+        print(f"⚠️ Pulse skipped for {node_id} (Module not loaded)")
+
+    # 2. Update Persistent Database (The "Record")
+    conn = get_db()
+    
+    # Use the hardware model if available, otherwise default
+    host_info = hardware_stats.get('processor') or hardware_stats.get('cpu_model') or "Generic-Node-v1"
+    
+    conn.execute('''
+        INSERT INTO nodes (node_id, hostname, last_seen) 
+        VALUES (?, ?, ?) 
+        ON CONFLICT(node_id) 
+        DO UPDATE SET last_seen=excluded.last_seen
+    ''', (node_id, host_info, time.time()))
+    
+    # Log global heartbeat pulse
+    conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
+                 ("NETWORK", f"Heartbeat pulse detected from Node {node_id}"))
+    
+    conn.commit()
+    
+    print(f"✅ NEW NODE REGISTERED: {node_id} [{host_info}]")
+    
+    return jsonify({
+        "status": "registered",
+        "node_id": node_id,
+        "message": "Welcome to the Proxy Agent Network. Heartbeat accepted."
+    })
 
 if __name__ == '__main__':
     with app.app_context():
