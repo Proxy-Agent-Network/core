@@ -7,281 +7,303 @@
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Shrikhand&family=Special+Elite&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Special+Elite&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+    
+    <style>
+        /* --- CORE DASHBOARD STYLES --- */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); }
+        th:last-child, td:last-child { text-align: right; }
+        td:nth-child(3) { width: 40%; font-family: monospace; opacity: 0.8; word-break: break-all; }
+
+        /* --- MERLIN / MARVIN SPRITE --- */
+        #marvin-sprite-container {
+            display: none; /* Hidden by default */
+            position: fixed; 
+            bottom: -200px; /* Start below view for slide-up */
+            right: 20px; 
+            width: 300px; 
+            z-index: 9000; 
+            cursor: pointer; 
+            filter: drop-shadow(0 0 15px var(--accent));
+            transition: opacity 1s, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Active State: Slide up 200px and Fade In */
+        #marvin-sprite-container.active { 
+            display: block;
+            opacity: 1; 
+            transform: translateY(-200px);
+            pointer-events: auto; 
+        }
+
+        #marvin-image { width: 100%; height: auto; animation: idle-float 3s ease-in-out infinite; }
+        
+        @keyframes idle-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(3deg); } }
+        .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
+        @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
+
+        /* --- SYSTEM BYPASS OVERLAY (KONAMI) --- */
+        #bypass-overlay {
+            display: none; 
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.95);
+            z-index: 9999;
+            flex-direction: column; justify-content: center; align-items: center;
+            font-family: 'Courier Prime', monospace;
+        }
+
+        .bypass-title {
+            font-size: 4rem; 
+            font-weight: bold; 
+            color: #00ff00; 
+            text-shadow: 6px 6px #ff0000; 
+            margin-bottom: 20px;
+            letter-spacing: -2px;
+            text-align: center;
+        }
+
+        .bypass-subtitle {
+            font-size: 1.5rem; 
+            color: #ffffff; 
+            font-weight: bold;
+            font-family: 'Courier Prime', monospace;
+        }
+
+        .live-dot {
+            height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%;
+            display: inline-block; margin-right: 5px;
+            animation: pulse-live 1.5s infinite;
+        }
+        @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    </style>
 </head>
 <body>
 
-    <div id="xp-modal">
-        <div class="modal-content">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <h2 style="border:none; margin:0;">Session XP Ledger</h2>
-                <button onclick="toggleXPModal()" style="padding:5px 15px; cursor:pointer; background:var(--accent); color:#fff; border:none; border-radius:4px;">CLOSE</button>
-            </div>
-            <div id="xp-history-list">
-                <div style="opacity:0.5; text-align:center; padding:20px;">No gains recorded this session...</div>
-            </div>
+    <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
+    <audio id="audio-success" src="{{ url_for('static', filename='audio/success.mp3') }}"></audio>
+    <audio id="audio-marvin" src="{{ url_for('static', filename='audio/marvin_laughing.mp3') }}"></audio>
+    <audio id="audio-powerup" src="{{ url_for('static', filename='audio/Secret_PowerUp1.mp3') }}"></audio>
+
+    <div id="bypass-overlay">
+        <div class="bypass-title">&gt;&gt;&gt;SYSTEM BYPASS&lt;&lt;&lt;</div>
+        <div class="bypass-subtitle">
+            BONUS_REWARD: <span style="color:#f1c40f;">+30 XP</span> (On next Task Completion)
         </div>
     </div>
 
-    <div id="hack-overlay">
-        <div class="glitch-container">
-            <div class="glitch-text glitch-top">>>> SYSTEM BYPASS <<<</div>
-            <div class="glitch-text glitch-bottom">>>> SYSTEM BYPASS <<<</div>
-        </div>
-        <div style="margin-top: 15px; color: #fff; font-size: 1.2rem;">
-            BONUS_REWARD: <span style="color: #ffd700; font-weight:bold;">+30 XP (On next Task Completion)</span>
-        </div>
+    <div id="marvin-sprite-container" onclick="handleMarvinClick()" ondblclick="marvinLaugh()">
+        <img id="marvin-image" src="{{ url_for('static', filename='images/magic_marvin_dance.webp') }}" alt="Magic Marvin">
     </div>
 
     <div class="header">
         <div>
             <h1>Mission Control</h1>
-            <small style="opacity:0.7">Proxy Agent Network v1.3</small>
+            <small id="node-id-display" style="opacity: 0.7;">NODE: {{ node.id }}</small>
         </div>
-        
-        <div class="controls-panel" style="display: flex; align-items: center; gap: 15px; margin-left: auto;">
-            <div class="audio-rack">
-                <button id="mute-btn" onclick="toggleMute()" style="background:none; border:none; cursor:pointer; font-size:1.1rem;">🔊</button>
-                <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5" oninput="updateVolume(this.value)">
-            </div>
-           <select id="common-theme-selector" class="theme-picker-ui"></select>
+        <div class="controls-panel" style="display: flex; align-items: center; gap: 20px; margin-left: auto;">
+            <a href="/shop" style="color: var(--accent); font-weight: bold; text-decoration: none;">Provisioning</a>
+            <a href="/marketplace" style="color: var(--accent); font-weight: bold; text-decoration: none;">Marketplace</a>
+            <select id="common-theme-selector" class="theme-picker-ui">
+                <option>Loading Themes...</option>
+            </select>
         </div>
     </div>
 
     <div class="dashboard-grid">
         <div class="panel">
-            <h2>Active Telemetry</h2>
-            <div id="node-list">Initializing...</div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Node Identity</h2>
+                <div class="sats-badge"><span id="live-balance">{{ node.sats_balance }}</span> SATS</div>
+            </div>
+            <p><strong>Status:</strong> <span style="color: var(--accent);">{{ node.status }}</span></p>
+            <p><strong>Tier:</strong> <span id="tier-display" style="font-weight: bold;">Probationary Agent</span></p>
+            
+            <div style="margin-top: 20px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem;">
+                    <span>Experience</span>
+                    <span id="xp-text">0 / 5000 XP</span>
+                </div>
+                <div class="xp-container">
+                    <div id="xp-bar" class="xp-bar" style="width: 0%;"></div>
+                </div>
+            </div>
         </div>
 
         <div class="panel">
-            <h2>Agent Clearance</h2>
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <span id="rank-icon" style="font-size: 1.5rem;">🎖️</span>
-                <div id="level-info" style="font-size: 1.3rem;">Level 1</div>
+            <h2>Magic Marvin</h2>
+            <div id="marvin-display" style="height: 100px; display: flex; align-items: center; justify-content: center; text-align: center; font-style: italic; font-family: 'Courier Prime'; border: 1px dashed var(--border); border-radius: 8px; padding: 10px; transition: all 0.2s;">
+                "The silicon is quiet tonight..."
             </div>
-            <div class="xp-container" onclick="toggleXPModal()">
-                <div id="xp-bar" class="xp-fill"></div>
-                <div id="xp-text" class="xp-text">0 / 5000 XP</div>
-            </div>
-            <p style="font-size: 0.8rem; opacity: 0.8; margin-top: 10px; font-weight: bold;">
-                Status: <span id="rank-name" style="color: var(--accent)">Probationary Agent</span>
-            </p>
+            <button onclick="askMarvin()" class="theme-btn-primary" style="width: 100%; margin-top: 15px;">CONSULT THE ORACLE</button>
         </div>
 
         <div class="panel" style="grid-column: span 2;">
-            <h2>Recent Ledger Activity</h2>
-            <ul id="task-list"><li>Syncing Ledger...</li></ul>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <h2><span class="live-dot"></span>Live Task Feed</h2>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Task ID</th>
+                        <th>Type</th>
+                        <th>Payload</th>
+                        <th>Reward</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="task-table-body">
+                    {% for task in tasks %}
+                    <tr>
+                        <td>{{ task.id }}</td>
+                        <td>{{ task.type }}</td>
+                        <td><code>WAITING_FOR_EXEC</code></td>
+                        <td><span class="sats-badge">{{ task.reward }}</span></td>
+                        <td><button class="theme-btn-primary" onclick="completeTask('{{ task.id }}', {{ task.reward }})">COMPLETE</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 
-    <img id="magic-marvin" src="/static/images/magic_marvin_dance.webp" alt="Magic Marvin">
-
     <script>
-        let isMuted = localStorage.getItem('muted') === 'true';
-        let globalVolume = localStorage.getItem('volume') || 0.5;
-        let xpHistorian = [];
-        
-        let previousServerXP = parseFloat(localStorage.getItem('lastServerXP')) || 0; 
-        let sessionBonusXP = parseFloat(localStorage.getItem('sessionBonusXP')) || 0;
-        let stagedBonus = 0;
-
-        const sounds = {
-            coin1: new Audio('/static/audio/Coin_Tier1.mp3'),
-            coin2: new Audio('/static/audio/Coin_Tier2.mp3'),
-            coin3: new Audio('/static/audio/Coin_Tier3.mp3'),
-            levelup: new Audio('/static/audio/Leveled_Up_Strings.mp3'),
-            marvin: new Audio('/static/audio/marvin_laughing.mp3'),
-            hack: new Audio('/static/audio/Secret_PowerUp1.mp3') 
-        };
-
-        function updateVolume(val) {
-            globalVolume = val;
-            localStorage.setItem('volume', val);
-            Object.values(sounds).forEach(s => s.volume = isMuted ? 0 : val);
-        }
-
-        function toggleMute() {
-            isMuted = !isMuted;
-            localStorage.setItem('muted', isMuted);
-            document.getElementById('mute-btn').innerText = isMuted ? '🔇' : '🔊';
-            updateVolume(globalVolume);
-        }
-
-        function toggleXPModal() {
-            const modal = document.getElementById('xp-modal');
-            modal.style.display = (modal.style.display === 'flex') ? 'none' : 'flex';
-        }
-
-        function fetchStatus() {
-            fetch('/debug/node_status').then(r => r.json()).then(data => {
-                const nodeId = Object.keys(data)[0];
-                if (!nodeId) return;
-                const node = data[nodeId];
-                
-                let currentServerXP = node.xp || 0;
-                
-                if (localStorage.getItem('lastServerXP') === null) {
-                    previousServerXP = currentServerXP;
-                    localStorage.setItem('lastServerXP', currentServerXP);
-                }
-
-                if (currentServerXP < previousServerXP) {
-                    sessionBonusXP = 0; stagedBonus = 0; xpHistorian = [];
-                    localStorage.setItem('sessionBonusXP', 0);
-                    localStorage.setItem('lastXP', 0);
-                    localStorage.setItem('lastServerXP', 0);
-                    previousServerXP = 0;
-                }
-
-                if (currentServerXP > previousServerXP) {
-                    const baseGain = currentServerXP - previousServerXP;
-                    const timestamp = new Date().toLocaleTimeString([], { hour12: false });
-                    
-                    fetch('/debug/view_tasks').then(r => r.json()).then(tasks => {
-                        const latestTask = tasks[tasks.length - 1]; 
-                        const source = latestTask ? latestTask.task_id : "Inbound Reward";
-
-                        if (stagedBonus > 0) {
-                            xpHistorian.unshift({ source: `Secret Bypass Reward (${source})`, gain: stagedBonus, time: timestamp, type: 'secret' });
-                            sessionBonusXP += stagedBonus;
-                            stagedBonus = 0;
-                        }
-
-                        let effectiveTotal = currentServerXP + sessionBonusXP;
-                        if ((Math.floor(effectiveTotal / 5000) + 1) < 5) {
-                            xpHistorian.unshift({ source: `Rubber-Band Boost (${source})`, gain: baseGain, time: timestamp, type: 'bonus' });
-                            sessionBonusXP += baseGain;
-                        }
-
-                        xpHistorian.unshift({ source: source, gain: baseGain, time: timestamp, type: 'base' });
-                        
-                        localStorage.setItem('sessionBonusXP', sessionBonusXP);
-                        if (xpHistorian.length > 30) xpHistorian.splice(30);
-                        updateHistoryUI();
-                        updateTasks();
-                    });
-                    
-                    let displayTotal = currentServerXP + sessionBonusXP;
-                    let previousDisplayTotal = previousServerXP + (sessionBonusXP - baseGain); 
-                    if ((Math.floor(displayTotal / 5000) + 1) > (Math.floor(previousDisplayTotal / 5000) + 1)) {
-                        sounds.levelup.play().catch(e => {});
-                        summonMarvin();
-                    } else {
-                        if (baseGain >= 100) sounds.coin3.play().catch(e => {});
-                        else if (baseGain >= 50) sounds.coin2.play().catch(e => {});
-                        else sounds.coin1.play().catch(e => {});
-                    }
-                } else {
-                    updateTasks();
-                }
-
-                let displayTotalXP = currentServerXP + sessionBonusXP;
-                localStorage.setItem('lastXP', displayTotalXP);
-                localStorage.setItem('lastServerXP', currentServerXP); 
-                previousServerXP = currentServerXP;
-
-                const currentLevel = Math.floor(displayTotalXP / 5000) + 1;
-                const xpTowardsNext = displayTotalXP % 5000;
-                const percent = (xpTowardsNext / 5000) * 100;
-
-                let rank = "Probationary Agent"; let icon = "🎖️";
-                if (currentLevel >= 15) { rank = "Diamond Executive"; icon = "💎"; }
-                else if (currentLevel >= 10) { rank = "Platinum Lead"; icon = "🏆"; }
-                else if (currentLevel >= 5) { rank = "Gold Veteran"; icon = "🥇"; }
-                else if (currentLevel >= 2) { rank = "Bronze Specialist"; icon = "🥉"; }
-
-                document.getElementById('level-info').innerText = `Level ${currentLevel} Operator`;
-                document.getElementById('xp-bar').style.width = `${percent}%`;
-                document.getElementById('xp-text').innerText = `${xpTowardsNext} / 5000 XP`;
-                document.getElementById('rank-name').innerText = rank;
-                document.getElementById('rank-icon').innerText = icon;
-                document.getElementById('node-list').innerHTML = `<div><b>${nodeId}</b> <span style="color:var(--accent); float:right;">● ONLINE</span></div>`;
-            });
-        }
-
-        function updateHistoryUI() {
-            const list = document.getElementById('xp-history-list');
-            list.innerHTML = xpHistorian.map(entry => {
-                let indent = "";
-                let rowClass = "history-item"; 
-                let typeClass = "";
-                
-                if (entry.type === 'secret') {
-                    indent = "└─ ⚡ ";
-                    rowClass += " nested-reward";
-                    typeClass = "type-secret";
-                } else if (entry.type === 'bonus') {
-                    indent = "└─ 📈 ";
-                    rowClass += " nested-reward";
-                    typeClass = "type-bonus";
-                } else {
-                    typeClass = "type-base";
-                }
-
-                return `<div class="${rowClass} ${typeClass}">
-                    <span class="history-label">
-                        ${indent ? indent : `[${entry.time}] `}<i>${entry.source}</i>
-                    </span>
-                    <b class="history-amount">+${entry.gain} XP</b>
-                </div>`;
-            }).join('');
-        }
-
-        function updateTasks() {
-            fetch('/debug/view_tasks').then(r => r.json()).then(tasks => {
-                const list = document.getElementById('task-list');
-                const recentTasks = tasks.slice().reverse().slice(0, 6);
-                list.innerHTML = recentTasks.map(t => {
-                    const pay = t.payout || t.bid_sats || t.value || 0;
-                    let tierClass = t.task_id === 'KONAMI-DEV-CHEAT' ? 'tier-hack' : (pay >= 5000 ? 'tier-3' : '');
-                    return `<li class="${tierClass}"><span><b>${t.task_id}</b></span><span class="sats-badge">+${pay} Sats</span></li>`;
-                }).join('');
-            });
-        }
-
-        const marvin = document.getElementById('magic-marvin');
-        marvin.addEventListener('dblclick', () => { sounds.marvin.currentTime = 0; sounds.marvin.play(); marvin.style.transform = "scale(1.2) rotate(360deg)"; setTimeout(() => marvin.style.transform = "none", 500); });
-        function summonMarvin() { if(marvin.style.display !== 'none') { marvin.style.bottom = "20px"; setTimeout(() => marvin.style.bottom = "-300px", 5000); } }
-
+        // --- 1. KONAMI CODE LOGIC ---
+        const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
         let konamiIndex = 0;
-        const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+
         document.addEventListener('keydown', (e) => {
-            if (e.key === konamiCode[konamiIndex]) { konamiIndex++; if (konamiIndex === konamiCode.length) { triggerCheat(); konamiIndex = 0; } } else { konamiIndex = 0; }
+            if (e.key === konamiCode[konamiIndex]) {
+                konamiIndex++;
+                if (konamiIndex === konamiCode.length) {
+                    activateSystemBypass();
+                    konamiIndex = 0;
+                }
+            } else {
+                konamiIndex = 0;
+            }
         });
 
-        function triggerCheat() {
-            sounds.hack.play();
-            const overlay = document.getElementById('hack-overlay');
+        function activateSystemBypass() {
+            const overlay = document.getElementById('bypass-overlay');
             overlay.style.display = 'flex';
-            stagedBonus = 30; 
-            fetch('/api/v1/tasks/complete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ task_id: "KONAMI-DEV-CHEAT", node_id: "NODE-ADMIN-001", payout: 300 })})
-            .then(() => setTimeout(() => overlay.style.display = 'none', 3000));
+            document.getElementById('audio-powerup').play();
+            localStorage.setItem('xp_bonus_active', 'true');
+            setTimeout(() => { overlay.style.display = 'none'; }, 3000);
         }
 
-        setInterval(fetchStatus, 1000);
-        
-        window.onload = () => {
-            document.getElementById('volume-slider').value = globalVolume;
-            document.getElementById('mute-btn').innerText = isMuted ? '🔇' : '🔊';
-            updateVolume(globalVolume);
+        // --- 2. MARVIN VISIBILITY & ANIMATION ---
+        function summonMarvin() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const sprite = document.getElementById('marvin-sprite-container');
             
-            // 🎯 Ensure Theme Picker is initialized
-            if (typeof ThemeEngine !== 'undefined') {
-                ThemeEngine.init('common-theme-selector');
-            }
+            // Do not show on professional themes
+            if (currentTheme === 'business' || currentTheme === 'paperback') return;
 
-            let savedLastXP = parseFloat(localStorage.getItem('lastXP')) || 0;
-            if (savedLastXP > 0) {
-                 const percent = (savedLastXP % 5000) / 50;
-                 document.getElementById('xp-bar').style.width = `${percent}%`;
-                 document.getElementById('xp-text').innerText = `${savedLastXP % 5000} / 5000 XP`;
-                 document.getElementById('level-info').innerText = `Level ${Math.floor(savedLastXP / 5000) + 1} Operator`;
-            }
+            sprite.style.display = 'block';
+            
+            // Allow display block to render, then animate
+            setTimeout(() => {
+                sprite.classList.add('active');
+            }, 50);
+
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                sprite.classList.remove('active');
+                // Fully hide display after animation finishes
+                setTimeout(() => { sprite.style.display = 'none'; }, 1000);
+            }, 5000);
+        }
+
+        // --- 3. LIVE POLLING ---
+        setInterval(refreshDashboard, 3000); 
+
+        function refreshDashboard() {
+            fetch('/api/v1/dashboard/live')
+                .then(r => r.json())
+                .then(data => {
+                    const balanceEl = document.getElementById('live-balance');
+                    if (balanceEl.innerText != data.balance) {
+                        balanceEl.innerText = data.balance;
+                        balanceEl.style.color = "#2ecc71";
+                        setTimeout(() => balanceEl.style.color = "", 500);
+                    }
+
+                    const xp = data.xp;
+                    const percent = (xp % 5000) / 50;
+                    document.getElementById('xp-bar').style.width = `${percent}%`;
+                    document.getElementById('xp-text').innerText = `${xp % 5000} / 5000 XP`;
+
+                    // Check for level up event to summon Merlin
+                    if (localStorage.getItem('last_level') && xp > localStorage.getItem('last_level')) {
+                        summonMarvin();
+                    }
+                    localStorage.setItem('last_level', xp);
+
+                    const tbody = document.getElementById('task-table-body');
+                    let html = '';
+                    data.tasks.forEach(task => {
+                        html += `
+                        <tr>
+                            <td>${task.id}</td>
+                            <td>${task.type}</td>
+                            <td><code>WAITING_FOR_EXEC</code></td>
+                            <td><span class="sats-badge">${task.reward}</span></td>
+                            <td><button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">COMPLETE</button></td>
+                        </tr>`;
+                    });
+                    
+                    if(tbody.innerHTML.length !== html.length) {
+                        tbody.innerHTML = html;
+                    }
+                });
+        }
+
+        // --- 4. TASK COMPLETION ---
+        function completeTask(id, reward) {
+            document.getElementById('audio-success').play();
+            localStorage.removeItem('xp_bonus_active');
+            fetch('/api/v1/tasks/complete', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ task_id: id, node_id: "{{ node.id }}", payout: reward })
+            }).then(() => {
+                refreshDashboard();
+            });
+        }
+
+        // --- 5. MARVIN INTERACTIONS ---
+        function askMarvin() {
+            document.getElementById('audio-click').play();
+            fetch('/api/v1/marvin').then(r => r.json()).then(d => {
+                document.getElementById('marvin-display').innerText = `"${d.thought}"`;
+            });
+            summonMarvin();
+        }
+
+        function handleMarvinClick() {
+            const img = document.getElementById('marvin-image');
+            img.style.transform = "scale(1.1) rotate(5deg)";
+            setTimeout(() => img.style.transform = "scale(1) rotate(0deg)", 150);
+        }
+
+        function marvinLaugh() {
+            const audio = document.getElementById('audio-marvin');
+            audio.currentTime = 0;
+            audio.play();
+            const img = document.getElementById('marvin-image');
+            img.classList.add('laughing-anim');
+            setTimeout(() => img.classList.remove('laughing-anim'), 1000);
+        }
+
+        window.onload = () => {
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('common-theme-selector');
+            refreshDashboard();
         };
     </script>
 </body>

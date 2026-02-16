@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <title>Service Provisioning | Proxy Agent Network</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+    
+    <style>
+        .shop-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .item-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: border-color 0.2s;
+            position: relative;
+        }
+
+        .item-card:hover { border-color: var(--accent); }
+
+        .item-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
+
+        .item-icon {
+            font-size: 2rem;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(128,128,128,0.1);
+            border-radius: 4px;
+        }
+
+        .item-name { font-weight: bold; font-size: 1.1rem; color: var(--text); }
+        .item-desc { font-size: 0.9rem; opacity: 0.7; margin-bottom: 20px; line-height: 1.5; }
+        
+        .price-tag {
+            font-family: 'Inter', sans-serif;
+            font-weight: bold;
+            color: var(--accent);
+            font-size: 1rem;
+            margin-bottom: 15px;
+            padding: 5px 10px;
+            background: rgba(128,128,128,0.05);
+            display: inline-block;
+            border-radius: 4px;
+        }
+
+        .buy-btn {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .buy-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+        .buy-btn:disabled { background: var(--bg); border-color: transparent; cursor: default; opacity: 0.5; }
+
+        .status-active { color: #2ecc71; font-weight: bold; font-size: 0.8rem; display: flex; align-items: center; gap: 5px; }
+        .status-active::before { content: "●"; }
+
+        /* HEADER LAYOUT ADJUSTMENTS */
+        .controls-panel {
+            display: flex;
+            gap: 30px; /* Space between links and the right stack */
+            margin-left: auto;
+            align-items: center;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 20px;
+        }
+
+        .nav-link {
+            color: var(--accent);
+            font-weight: bold;
+            text-decoration: none;
+            font-size: 1rem;
+            white-space: nowrap;
+        }
+
+        /* The vertical stack for Sats + Theme */
+        .header-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* Small gap between box and dropdown */
+            min-width: 160px; /* Minimum width to look good */
+        }
+
+        .sats-badge-header {
+            /* Inherits badge look but ensures full width */
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-family: 'Orbitron', sans-serif;
+            text-align: center;
+            width: 100%;
+            box-sizing: border-box; /* Important for alignment */
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        .theme-picker-header {
+            width: 100%;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <audio id="kaching" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
+
+    <div class="header">
+        <div>
+            <h1>Service Provisioning</h1>
+            <small style="opacity:0.7">Network Resource Allocation</small>
+        </div>
+        
+        <div class="controls-panel">
+            <div class="nav-links">
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/marketplace" class="nav-link">Marketplace</a>
+            </div>
+
+            <div class="header-stack">
+                <div class="sats-badge-header">
+                    <span id="balance-display">{{ balance }}</span> SATS
+                </div>
+                <select id="common-theme-selector" class="theme-picker-ui theme-picker-header">
+                    <option>Loading...</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="panel" style="grid-column: span 2;">
+            <h2>Service Catalog</h2>
+            <div class="shop-grid">
+                {% for key, item in items.items() %}
+                <div class="item-card">
+                    <div class="item-header">
+                        <div class="item-icon">{{ item.icon }}</div>
+                        <div class="item-name">{{ item.name }}</div>
+                    </div>
+                    <div class="item-desc">{{ item.desc }}</div>
+                    
+                    {% if item.id in owned %}
+                        <div style="margin-top: auto;">
+                            <div class="status-active">LICENSE ACTIVE</div>
+                            <button class="buy-btn" disabled style="margin-top: 10px;">PROVISIONED</button>
+                        </div>
+                    {% else %}
+                        <div style="margin-top: auto;">
+                            <div class="price-tag">{{ item.price }} SATS</div>
+                            {% if balance >= item.price %}
+                                <button class="buy-btn" onclick="buyItem('{{ item.id }}')">PROVISION RESOURCE</button>
+                            {% else %}
+                                <button class="buy-btn" disabled>INSUFFICIENT FUNDS</button>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function buyItem(itemId) {
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = "ALLOCATING...";
+            btn.disabled = true;
+
+            fetch('/api/v1/shop/buy', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ item_id: itemId, node_id: "{{ node_id }}" })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.success) {
+                    document.getElementById('kaching').play();
+                    btn.innerText = "PROVISIONED";
+                    document.getElementById('balance-display').innerText = data.new_balance;
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    alert("Provisioning Failed: " + data.error);
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof ThemeEngine !== 'undefined') {
+                ThemeEngine.init('common-theme-selector'); 
+            }
+        });
+    </script>
+</body>
+</html>

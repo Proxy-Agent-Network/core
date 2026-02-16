@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <title>Node Inspection | Network Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+    <style>
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 20px;
+            border-radius: 4px;
+        }
+
+        .terminal-window {
+            background: #000;
+            border: 1px solid #333;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            color: #00ff00;
+            font-size: 0.9rem;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .log-entry { opacity: 0.8; }
+        .log-timestamp { color: #888; margin-right: 10px; }
+        .log-warn { color: #f1c40f; }
+        .log-error { color: #ff4757; }
+
+        .action-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .action-btn:hover {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .status-dot {
+            height: 10px; width: 10px; 
+            background-color: #2ecc71; 
+            border-radius: 50%; 
+            display: inline-block;
+            margin-right: 8px;
+            box-shadow: 0 0 5px #2ecc71;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>Node Inspection</h1>
+            <small style="opacity:0.7">ID: {{ node.node_id }}</small>
+        </div>
+        <div class="controls-panel">
+            <a href="/admin" style="color: var(--accent); font-weight: bold; text-decoration: none;">Back to Registry</a>
+        </div>
+    </div>
+
+    <div class="detail-grid">
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div class="stat-card" style="display: flex; justify-content: space-between;">
+                <div>
+                    <small>STATUS</small>
+                    <div style="font-size: 1.2rem; margin-top: 5px;">
+                        <span class="status-dot"></span>ONLINE
+                    </div>
+                </div>
+                <div>
+                    <small>TOTAL THROUGHPUT</small>
+                    <div style="font-size: 1.2rem; margin-top: 5px;">{{ node.total_earned }} SATS</div>
+                </div>
+                <div>
+                    <small>UPTIME</small>
+                    <div style="font-size: 1.2rem; margin-top: 5px;">99.9%</div>
+                </div>
+            </div>
+
+            <div class="terminal-window" id="terminal">
+                <div class="log-entry"><span class="log-timestamp">[SYSTEM]</span> Connection established to secure socket layer.</div>
+                <div class="log-entry"><span class="log-timestamp">[SYSTEM]</span> Retrieving kernel telemetry...</div>
+            </div>
+        </div>
+
+        <div>
+            <div class="panel">
+                <h2>Remote Management</h2>
+                <button class="action-btn" onclick="logAction('Rebooting system kernel...')">
+                    ↻ REBOOT NODE
+                </button>
+                <button class="action-btn" onclick="logAction('Flushing local task cache...')">
+                    ⌫ FLUSH CACHE
+                </button>
+                <button class="action-btn" onclick="logAction('Running diagnostic ping...')">
+                    ⟳ PING DIAGNOSTIC
+                </button>
+                <hr style="border: 0; border-top: 1px dashed var(--border); margin: 20px 0;">
+                <button class="action-btn" style="border-color: var(--danger); color: var(--danger);" onclick="confirmBan()">
+                    ⚠ BAN IDENTIFIER
+                </button>
+            </div>
+
+            <div class="panel" style="margin-top: 20px;">
+                <h2>Provisioned Resources</h2>
+                {% if purchases %}
+                    <ul style="padding-left: 20px;">
+                    {% for p in purchases %}
+                        <li style="margin-bottom: 5px;">{{ p.item_id }}</li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    <p style="opacity: 0.6; font-style: italic;">No resources allocated.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // SIMULATED LIVE LOGS
+        const terminal = document.getElementById('terminal');
+        const messages = [
+            "Validating hash block 0x938...",
+            "Heartbeat signal received.",
+            "Memory integrity check: OK.",
+            "Optimizing thread pool allocation.",
+            "Packet loss: 0.00%",
+            "Syncing ledger with mainnet..."
+        ];
+
+        function addLog(msg) {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            const time = new Date().toLocaleTimeString('en-US', {hour12: false});
+            div.innerHTML = `<span class="log-timestamp">[${time}]</span> ${msg}`;
+            terminal.appendChild(div);
+            terminal.scrollTop = terminal.scrollHeight; // Auto-scroll
+        }
+
+        function logAction(msg) {
+            addLog(`<span style="color:cyan">${msg}</span>`);
+        }
+
+        function confirmBan() {
+            if(confirm("Revoke credentials for this node? This will terminate all active sessions.")) {
+                logAction("<span class='log-error'>CRITICAL: REVOCATION SIGNAL SENT</span>");
+            }
+        }
+
+        // Randomly add background noise logs
+        setInterval(() => {
+            if(Math.random() > 0.6) {
+                const msg = messages[Math.floor(Math.random() * messages.length)];
+                addLog(msg);
+            }
+        }, 2000);
+
+        window.onload = () => {
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('common-theme-selector');
+        };
+    </script>
+</body>
+</html>
