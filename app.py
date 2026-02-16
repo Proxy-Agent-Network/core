@@ -45,6 +45,35 @@ SHOP_ITEMS = {
     }
 }
 
+# RIVAL AGENT LOGIC
+# ---------------------------------------------------------
+RIVALS = ["OMNI_CORP_09", "KAOS_ENGINE", "NEURAL_LINK_X", "VOID_RUNNER"]
+
+def simulate_rival_activity():
+    """Logic to randomly delete open tasks to simulate rivals 'snatching' them."""
+    conn = get_db()
+    # 20% chance a rival takes an open task during a polling cycle
+    if random.random() < 0.20:
+        conn.execute("DELETE FROM tasks WHERE status='OPEN' LIMIT 1")
+        conn.commit()
+
+@app.route('/api/v1/network/events')
+def network_events():
+    """Simulates real-time chatter and activity from rival nodes."""
+    rival = random.choice(RIVALS)
+    actions = [
+        f"secured a high-value contract ({random.randint(5000, 20000)} Sats)",
+        "synchronized with mainnet",
+        "upgraded compute instance to Tier 3",
+        "failed handshake on Red-tier data",
+        "optimized routing table",
+        "detected unauthorized intrusion attempt"
+    ]
+    return jsonify({
+        "event": f"[{rival}] {random.choice(actions)}",
+        "timestamp": time.strftime("%H:%M:%S")
+    })
+
 # DATABASE HELPER FUNCTIONS
 # ---------------------------------------------------------
 def get_db():
@@ -67,7 +96,6 @@ def close_connection(exception):
 def dashboard():
     """Main Dashboard View."""
     conn = get_db()
-    
     target_node = "ROBER_NODE_01"
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
     
@@ -98,7 +126,6 @@ def dashboard():
 @app.route('/marketplace', methods=['GET', 'POST'])
 def marketplace():
     conn = get_db()
-    
     try:
         conn.execute('ALTER TABLE marketplace_bids ADD COLUMN color TEXT')
     except sqlite3.OperationalError:
@@ -133,7 +160,6 @@ def marketplace():
 @app.route('/shop')
 def shop():
     conn = get_db()
-    
     conn.execute('''
         CREATE TABLE IF NOT EXISTS purchases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -196,7 +222,6 @@ def admin_panel():
 @app.route('/node/<node_id>')
 def node_detail(node_id):
     conn = get_db()
-    
     node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (node_id,)).fetchone()
     
     if not node:
@@ -225,20 +250,19 @@ def reset_network():
 # API ENDPOINTS
 # ---------------------------------------------------------
 
-# --- NEW: LIVE DASHBOARD POLLING ---
 @app.route('/api/v1/dashboard/live')
 def dashboard_live():
-    conn = get_db()
+    # TRIGGER RIVAL COMPETITION
+    simulate_rival_activity()
     
-    # 1. Get Balance for Main Node
+    conn = get_db()
     target_node = "ROBER_NODE_01"
     my_node = conn.execute('SELECT total_earned, xp FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
     balance = my_node['total_earned'] if my_node else 0
     xp = my_node['xp'] if my_node else 0
 
-    # 2. Get Recent Tasks
     tasks = []
-    db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
+    db_tasks = conn.execute("SELECT * FROM tasks WHERE status='OPEN' OR status='PENDING' ORDER BY ROWID DESC LIMIT 5").fetchall()
     for t in db_tasks:
         tasks.append({
             'id': t['task_id'],
@@ -309,7 +333,16 @@ def claim_market_task(bid_id):
 @app.route('/api/v1/tasks/complete', methods=['POST'])
 def complete_task():
     data = request.json
-    return jsonify({"status": "success", "reward": data.get('payout', 0)})
+    payout = data.get('payout', 0)
+    node_id = data.get('node_id', "ROBER_NODE_01")
+    
+    conn = get_db()
+    # Actual ledger update for completing a task
+    conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + 100 WHERE node_id = ?", (payout, node_id))
+    conn.execute("DELETE FROM tasks WHERE task_id = ?", (data.get('task_id'),))
+    conn.commit()
+    
+    return jsonify({"status": "success", "reward": payout})
 
 @app.route('/api/v1/xp/status')
 def xp_status():
