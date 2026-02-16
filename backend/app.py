@@ -2,6 +2,7 @@ import sqlite3
 import random
 import time
 import os
+from functools import wraps
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session
 
@@ -52,6 +53,10 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev_key_fallback_do_not_use')
 DATABASE = 'registry.db'
 # UPDATED: Real Hardware ID from attestation script
 MY_NODE_ID = "NODE_79F9F798"
+
+# --- ACCESS CONTROL CONFIG ---
+ADMIN_USER = os.getenv('ADMIN_USER', 'admin')
+ADMIN_PASS = os.getenv('ADMIN_PASS', 'hunter2')
 
 # SERVICE CATALOG (Professional Names)
 SHOP_ITEMS = {
@@ -113,6 +118,16 @@ RIVAL_PERSONALITIES = {
         "404: Your profit not found."
     ]
 }
+
+# --- THE GATEKEEPER (Auth Decorator) ---
+# This protects routes from unauthorized access
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # --- DAEMON & RIVAL LOGIC ---
 # ---------------------------------------------------------
@@ -234,10 +249,31 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
+# AUTH ROUTES
+# ---------------------------------------------------------
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        # Verify against credentials loaded from .env
+        if request.form['username'] != ADMIN_USER or request.form['password'] != ADMIN_PASS:
+            error = 'Invalid Credentials. Intrusion Detected.'
+        else:
+            session['logged_in'] = True
+            session['user'] = ADMIN_USER
+            return redirect(url_for('dashboard'))
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
+
 # FRONTEND ROUTES
 # ---------------------------------------------------------
 
 @app.route('/')
+@login_required # <--- PROTECTED
 def dashboard():
     """Main Dashboard View."""
     conn = get_db()
@@ -257,6 +293,7 @@ def dashboard():
     return render_template('dashboard.html', node=my_node, tasks=[])
 
 @app.route('/marketplace', methods=['GET', 'POST'])
+@login_required # <--- PROTECTED
 def marketplace():
     conn = get_db()
     if request.method == 'POST':
@@ -298,6 +335,7 @@ def marketplace():
     return render_template('marketplace.html', bids=filtered_bids, unlock_auto=bool(has_auto), current_radius=max_radius)
 
 @app.route('/shop')
+@login_required # <--- PROTECTED
 def shop():
     conn = get_db()
     target_node = MY_NODE_ID 
@@ -365,6 +403,7 @@ def get_xp_ledger(node_id):
     return jsonify(ledger)
 
 @app.route('/api/v1/dashboard/live')
+@login_required # <--- PROTECTED (Data Feed)
 def dashboard_live():
     conn = get_db()
     target_node = MY_NODE_ID 
@@ -425,6 +464,7 @@ def dashboard_live():
     })
 
 @app.route('/api/v1/market/claim/<int:bid_id>', methods=['POST'])
+@login_required # <--- PROTECTED
 def claim_bid(bid_id):
     conn = get_db()
     bid = conn.execute("SELECT * FROM marketplace_bids WHERE bid_id=?", (bid_id,)).fetchone()
@@ -443,6 +483,7 @@ def claim_bid(bid_id):
     return jsonify({'success': False, 'error': 'Task already claimed or invalid'})
 
 @app.route('/api/v1/tasks/complete', methods=['POST'])
+@login_required # <--- PROTECTED
 def complete_task_api():
     """
     Validates work and triggers L2 Settlement.
