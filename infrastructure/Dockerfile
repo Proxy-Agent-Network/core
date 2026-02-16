@@ -1,41 +1,28 @@
-# Proxy Protocol Physical Node - Reference Implementation
-# Base image: Lightweight Python for IoT/Edge devices
-FROM python:3.11-slim-buster
+# Use a lightweight Python base
+FROM python:3.11-slim
 
-# Set Metadata
-LABEL maintainer="engineering@proxy.agent.network"
-LABEL version="1.0.0"
-LABEL description="Official container for running a Proxy Protocol Physical Verification Node"
-
-# Environment Variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PROXY_ENV=production
-
-# Install System Dependencies (TPM2 tools, Tesseract OCR, ZBar for QR)
-RUN apt-get update && apt-get install -y \
-    tpm2-tools \
-    libtpm2-pkcs11-1 \
-    tesseract-ocr \
-    libzbar0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set Work Directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Install Python Dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 1. Install Dependencies first (Caching layer)
+# We copy the requirements file from the host's backend folder
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+RUN pip install python-dotenv
 
-# Copy Source Code
-COPY . .
+# 2. Copy the Application Code
+# We copy the 'backend' folder
+COPY backend /app/backend
+# We copy the 'frontend' folder (so Flask can find the HTML/CSS)
+COPY frontend /app/frontend
+# We copy the 'hardware-node' folder (for shared modules if needed)
+COPY hardware-node /app/hardware-node
 
-# Create non-root user for security
-RUN useradd -m proxyuser && chown -R proxyuser:proxyuser /app
-USER proxyuser
+# 3. Network & Environment
+ENV PYTHONPATH=/app
+ENV FLASK_APP=backend.app
+EXPOSE 5000
 
-# Expose Metrics Port
-EXPOSE 9090
-
-# Entrypoint: Start the Node Daemon
-CMD ["python", "node_daemon.py"]
+# 4. The Launch Command
+# We use the module flag (-m) to ensure imports work correctly
+CMD ["python", "-m", "backend.app"]

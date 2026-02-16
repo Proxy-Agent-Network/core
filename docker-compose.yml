@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # The Core Brain (Python + Flask)
+  proxy-core:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount the code live so you can edit without rebuilding
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+      - ./hardware-node:/app/hardware-node
+      # Persistent Database (so you don't lose your balance on restart)
+      - proxy_data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - FLASK_SECRET_KEY=docker_dev_key
+    networks:
+      - proxy-net
+
+# Persistent Volumes
+volumes:
+  proxy_data:
+
+# Internal Network
+networks:
+  proxy-net:
+    driver: bridge

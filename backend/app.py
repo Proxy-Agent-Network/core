@@ -2,19 +2,26 @@ import sqlite3
 import random
 import time
 import os
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session
+
+# 1. Load Environment Variables (Security First)
+load_dotenv()
 
 # --- Core Imports ---
 # We use a try/except block to handle different running contexts (direct vs module)
 try:
     from backend.core import pulse
+    from backend.core import rivals # Rival Logic Import
 except ImportError:
     # Fallback if running directly or if structure varies
     try:
         from core import pulse
+        from core import rivals
     except ImportError:
-        print("⚠️ WARNING: Could not import 'pulse' module. Real-time stats may be unavailable.")
+        print("⚠️ WARNING: Could not import core modules (pulse/rivals). Real-time stats may be unavailable.")
         pulse = None
+        rivals = None
 
 # --- Economics Engine Imports ---
 try:
@@ -26,18 +33,19 @@ except ImportError:
     print("⚠️ L2 Escrow module not found. Financial settlement will be skipped.")
     escrow_engine = None
 
-# Define paths to the new frontend location
+# 2. Define Paths to the Frontend
 # We go "up" one level (..) from backend/ to root, then into frontend/public
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend", "public")
 
+# 3. Initialize the Application
 app = Flask(__name__, 
             template_folder=FRONTEND_DIR, 
             static_folder=FRONTEND_DIR,
             static_url_path="/static")
 
-# Protocol 1.2.0: Secret key required for session-based event clearing
-app.secret_key = 'proxy_secret_key_v1' 
+# 4. Configure Secrets (Safe from GitHub leaks)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev_key_fallback_do_not_use')
 
 # CONFIGURATION
 # ---------------------------------------------------------
@@ -108,23 +116,6 @@ RIVAL_PERSONALITIES = {
 
 # --- DAEMON & RIVAL LOGIC ---
 # ---------------------------------------------------------
-
-def simulate_rival_snatch():
-    conn = get_db()
-    # Reduce snatch probability to 5% for more stable testing
-    if random.random() < 0.05: 
-        conn.execute("""
-            DELETE FROM tasks 
-            WHERE rowid IN (
-                SELECT rowid FROM tasks 
-                WHERE status='OPEN' AND task_type='MANUAL' 
-                LIMIT 1
-            )
-        """)
-        # Log global snatch event
-        conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
-                     ("SECURITY", "Unauthorized task interception by Rival Agent"))
-        conn.commit()
 
 def run_automation_daemon(node_id):
     """Automatically claims marketplace tasks and stores a one-time event message."""
@@ -262,10 +253,8 @@ def dashboard():
             'status': 'ONLINE'
         }
 
-    db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
-    tasks = [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks]
-
-    return render_template('dashboard.html', node=my_node, tasks=tasks)
+    # Initial load doesn't need tasks, they are fetched via JS
+    return render_template('dashboard.html', node=my_node, tasks=[])
 
 @app.route('/marketplace', methods=['GET', 'POST'])
 def marketplace():
@@ -379,17 +368,60 @@ def get_xp_ledger(node_id):
 def dashboard_live():
     conn = get_db()
     target_node = MY_NODE_ID 
-    simulate_rival_snatch()
+    
+    # --- RIVAL LOGIC ENGINE (HUNTER-KILLER) ---
+    snatched = []
+    if rivals:
+        snatched = rivals.run_rival_logic(conn)
+    # -----------------------
+
     run_automation_daemon(target_node) 
+    
+    # Check if we have a Rival Notification
+    rival_event = None
+    if snatched:
+        last_snatch = snatched[-1]
+        rival_event = f"⚠️ {last_snatch['rival']} stole {last_snatch['sats']} Sats!"
+
     daemon_event = session.pop('daemon_msg', None)
+    
+    # --- UPDATED FEED LOGIC: MERGE BIDS & TASKS ---
+    # 1. Get Pending Bids (The "Race")
+    pending_bids = conn.execute("SELECT * FROM marketplace_bids WHERE status='PENDING' ORDER BY created_at DESC LIMIT 3").fetchall()
+    # 2. Get Active Tasks (The "Work")
+    active_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 3').fetchall()
+
+    combined_feed = []
+    
+    # Add Bids (Action: CLAIM)
+    for bid in pending_bids:
+        combined_feed.append({
+            'id': f"BID-{bid['bid_id']}", # Virtual ID
+            'real_id': bid['bid_id'],
+            'type': bid['task_type'],
+            'reward': bid['sats_offered'],
+            'status': 'OPPORTUNITY' # Special flag for frontend
+        })
+        
+    # Add Tasks (Action: COMPLETE)
+    for task in active_tasks:
+        combined_feed.append({
+            'id': task['task_id'],
+            'real_id': task['task_id'],
+            'type': task['task_type'],
+            'reward': task['bid_sats'],
+            'status': 'ACTIVE'
+        })
+    # ---------------------------------------------
+
     my_node = conn.execute('SELECT total_earned, xp FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
-    db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
     
     return jsonify({
         'balance': my_node['total_earned'] if my_node else 0,
         'xp': my_node['xp'] if my_node else 0,
-        'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks],
-        'daemon_event': daemon_event
+        'tasks': combined_feed, # Now includes BIDS
+        'daemon_event': daemon_event,
+        'rival_event': rival_event 
     })
 
 @app.route('/api/v1/market/claim/<int:bid_id>', methods=['POST'])
@@ -399,7 +431,10 @@ def claim_bid(bid_id):
     if bid and bid['status'] == 'PENDING':
         conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid_id,))
         target_node = request.json.get('node_id', MY_NODE_ID) 
-        conn.execute("UPDATE nodes SET total_earned = total_earned + ? WHERE node_id=?", (bid['sats_offered'], target_node))
+        
+        # NOTE: We do not pay immediately. We convert to a Task.
+        # conn.execute("UPDATE nodes SET total_earned = total_earned + ? WHERE node_id=?", (bid['sats_offered'], target_node))
+        
         new_task_id = f"TASK-{random.randint(1000, 9999)}"
         conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', ?)", 
                      (new_task_id, bid['sats_offered'], bid['task_type']))
@@ -415,52 +450,40 @@ def complete_task_api():
     data = request.json
     conn = get_db()
     
-    # 1. Calculate Payout
     payout = data.get('payout', 0)
     task_id = data.get('task_id')
     node_id = data.get('node_id')
 
-    # 2. L2 SETTLEMENT (The New Logic) ⛓️
+    # L2 SETTLEMENT
     tx_hash = "OFF-CHAIN"
     if escrow_engine:
         try:
-            # Create a virtual transaction representing the locked funds
-            # In production, we would fetch this 'lock' from the smart contract state
             mock_locked_tx = L2Transaction(
                 tx_hash=f"0x_vault_{task_id}",
                 chain_id=ChainID.BASE_MAINNET.value,
-                amount_usdc=payout / 1000.0, # Convert Sats to USDC mock
+                amount_usdc=payout / 1000.0,
                 status="LOCKED",
                 agent_wallet="0xAgent_Vault_7A",
                 node_wallet="PENDING"
             )
-            
-            # Generate the EVM wallet address for this Node ID
-            # (In the future, this comes from the Node's TPM-signed profile)
             node_evm_wallet = f"0x{node_id.replace('NODE-', '')}..."
-            
-            # Release the funds
             escrow_engine.release_funds(mock_locked_tx, node_evm_wallet)
             tx_hash = mock_locked_tx.tx_hash
             
-            # Log the Blockchain Event
             conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                          ("CHAIN_TX", f"Settled {payout} Sats on Base: {tx_hash} -> {node_id}"))
-                         
         except Exception as e:
             print(f"❌ Escrow Settlement Error: {e}")
-            # We don't stop the flow, but we log the failure
             conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                          ("ERROR", f"Settlement Failed for {task_id}: {str(e)}"))
 
-    # 3. Update Local Ledger (Legacy XP System)
+    # Update Local Ledger
     cursor = conn.execute(
         "INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?)",
         (node_id, task_id, 500)
     )
     parent_db_id = cursor.lastrowid
 
-    # Record hierarchical sub-bonuses
     conn.execute(
         "INSERT INTO xp_bonuses (parent_id, bonus_name, bonus_xp, color) VALUES (?, ?, ?, ?)",
         (parent_db_id, f"Rubber-Band Boost ({task_id})", payout, "#ff9f00")
@@ -470,7 +493,6 @@ def complete_task_api():
     conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + ? WHERE node_id = ?", 
                  (payout, total_xp_gain, node_id))
     
-    # Log global completion if not already logged by chain event
     if tx_hash == "OFF-CHAIN":
         conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                      ("SETTLEMENT", f"Node {node_id} completed {task_id} (+{payout} Sats)"))
@@ -505,26 +527,19 @@ def market_trends():
 def register_node():
     """
     The Handshake: Receives a 'Hardware Identity' and registers it.
-    Merges both Pulse (Live) and Database (Persistent) registration.
     """
     data = request.json
     node_id = data.get('node_id')
     public_key = data.get('public_key')
     hardware_stats = data.get('hardware_stats', {})
     
-    if not node_id or not public_key:
+    if not node_id:
         return jsonify({"error": "Missing Identity Data"}), 400
 
-    # 1. Update In-Memory Pulse (The "Live" Network)
     if pulse:
         pulse.register_node(node_id, hardware_stats)
-    else:
-        print(f"⚠️ Pulse skipped for {node_id} (Module not loaded)")
 
-    # 2. Update Persistent Database (The "Record")
     conn = get_db()
-    
-    # Use the hardware model if available, otherwise default
     host_info = hardware_stats.get('processor') or hardware_stats.get('cpu_model') or "Generic-Node-v1"
     
     conn.execute('''
@@ -534,13 +549,9 @@ def register_node():
         DO UPDATE SET last_seen=excluded.last_seen
     ''', (node_id, host_info, time.time()))
     
-    # Log global heartbeat pulse
     conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                  ("NETWORK", f"Heartbeat pulse detected from Node {node_id}"))
-    
     conn.commit()
-    
-    print(f"✅ NEW NODE REGISTERED: {node_id} [{host_info}]")
     
     return jsonify({
         "status": "registered",
@@ -551,12 +562,9 @@ def register_node():
 if __name__ == '__main__':
     with app.app_context():
         db = get_db()
-        # Seed my node if it doesn't exist
         db.execute("INSERT OR IGNORE INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, 0, 0, ?)", 
                    (MY_NODE_ID, time.time()))
-        
-        # Log protocol boot event
         db.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                    ("SYSTEM", "Proxy Protocol v1.4.1 initialized. Registry online."))
         db.commit()
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')

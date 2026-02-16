@@ -22,6 +22,10 @@
         th:last-child, td:last-child { text-align: right; }
         td:nth-child(3) { width: 40%; font-family: monospace; opacity: 0.8; word-break: break-all; }
 
+        /* --- GAME LOOP BUTTONS --- */
+        .btn-claim { background-color: #f1c40f !important; color: black !important; font-weight: bold; border: none; padding: 6px 16px; cursor: pointer; border-radius: 4px; box-shadow: 0 0 10px rgba(241, 196, 15, 0.3); }
+        .btn-claim:hover { transform: scale(1.05); box-shadow: 0 0 20px #f1c40f; }
+        
         /* --- NETWORK LOG STYLE --- */
         #activity-log, #global-log {
             height: 150px;
@@ -139,7 +143,6 @@
         .ledger-children { margin-left: 45px; margin-top: 5px; border-left: 2px solid rgba(255, 159, 0, 0.3); padding-left: 15px; position: relative; }
         .ledger-child { display: flex; justify-content: space-between; margin-bottom: 4px; position: relative; }
         
-        /* The "Tree" Line Connector matching the screenshot */
         .ledger-child::before {
             content: "└─";
             position: absolute;
@@ -153,10 +156,17 @@
 </head>
 <body>
 
+    <div id="audio-unlock-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:black; z-index:99999; display:flex; justify-content:center; align-items:center; flex-direction:column;">
+        <h1 style="color: #8e44ad; font-family:'Courier Prime'; margin-bottom:20px; font-size: 2rem; letter-spacing: 2px;">PROXY // NETWORK</h1>
+        <div style="color: #666; margin-bottom: 30px; font-family: 'Inter', sans-serif;">ESTABLISHING SECURE CONNECTION...</div>
+        <button onclick="unlockAudio()" style="padding:15px 30px; font-size:1.2rem; background:#8e44ad; color:white; border:none; cursor:pointer; font-family:'Courier Prime'; font-weight:bold; border-radius: 4px; box-shadow: 0 0 15px rgba(142, 68, 173, 0.5);">INITIALIZE UPLINK</button>
+    </div>
+
     <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
     <audio id="audio-success" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
     <audio id="audio-marvin" src="{{ url_for('static', filename='audio/marvin_laughing.mp3') }}"></audio>
     <audio id="audio-powerup" src="{{ url_for('static', filename='audio/Secret_PowerUp1.mp3') }}"></audio>
+    <audio id="audio-failure" src="{{ url_for('static', filename='audio/incorrect.mp3') }}" preload="auto"></audio>
 
     <div id="bypass-overlay">
         <div class="bypass-title">&gt;&gt;&gt;SYSTEM BYPASS&lt;&lt;&lt;</div>
@@ -256,13 +266,13 @@
         </div>
 
         <div class="panel" style="grid-column: span 2;">
-            <h2><span class="live-dot"></span>Live Task Feed</h2>
+            <h2><span class="live-dot"></span>Live Task Feed (Race Against Rivals)</h2>
             <table>
                 <thead>
                     <tr>
-                        <th>Task ID</th>
+                        <th>ID</th>
                         <th>Type</th>
-                        <th>Payload</th>
+                        <th>Status</th>
                         <th>Reward</th>
                         <th>Action</th>
                     </tr>
@@ -299,6 +309,21 @@
     <script>
         let lastDaemonMsg = ""; 
         let lastTaskCount = {{ tasks|length }};
+
+        // --- AUDIO UNLOCK LOGIC (RUNS ON LOAD) ---
+        if (sessionStorage.getItem('audioUnlocked')) {
+            document.getElementById('audio-unlock-overlay').style.display = 'none';
+        }
+
+        function unlockAudio() {
+            ['audio-click', 'audio-success', 'audio-failure', 'audio-marvin', 'audio-powerup'].forEach(id => {
+                const el = document.getElementById(id);
+                el.play().then(() => el.pause()).catch(() => {});
+            });
+            document.getElementById('audio-unlock-overlay').style.display = 'none';
+            sessionStorage.setItem('audioUnlocked', 'true');
+            document.getElementById('audio-click').play();
+        }
 
         // --- TAB SWITCH LOGIC ---
         function switchTab(tab) {
@@ -346,6 +371,9 @@
             document.getElementById('bypass-overlay').style.display = 'flex';
             document.getElementById('audio-powerup').play();
             setTimeout(() => { document.getElementById('bypass-overlay').style.display = 'none'; }, 3000);
+            const marvin = document.getElementById('marvin-sprite-container');
+            marvin.classList.add('active');
+            setTimeout(() => { marvin.classList.remove('active'); }, 5000);
         }
 
         function addLog(msg) {
@@ -387,40 +415,61 @@
                 });
         }
 
-        setInterval(refreshDashboard, 3000); 
+        setInterval(refreshDashboard, 2000); 
         function refreshDashboard() {
             fetch('/api/v1/dashboard/live')
                 .then(r => r.json())
                 .then(data => {
+                    // 1. DAEMON EVENT
                     if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
                         document.getElementById('audio-success').play();
+                        addLog(`<span style="color:#f1c40f">🤖 DAEMON: ${data.daemon_event}</span>`);
                         flashPulse('success');
-                        addLog(`<span style="color:#f1c40f">DAEMON: ${data.daemon_event}</span>`);
                         lastDaemonMsg = data.daemon_event;
                     }
-                    if (data.tasks.length < lastTaskCount && !data.daemon_event) {
+                    
+                    // 2. RIVAL EVENT
+                    if (data.rival_event) {
+                        addLog(`<span style="color:var(--danger)">⚠️ RIVAL: ${data.rival_event}</span>`);
                         flashPulse('rival');
-                        addLog(`<span style="color:#e74c3c">WARNING: Task hijacked by rival agent</span>`);
+                        const audioFail = document.getElementById('audio-failure');
+                        if (audioFail) { audioFail.currentTime = 0; audioFail.play().catch(e => console.log("Audio play failed:", e)); }
                     }
-                    lastTaskCount = data.tasks.length;
+
+                    // Update Stats
                     document.getElementById('live-balance').innerText = data.balance;
                     document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
                     document.getElementById('xp-text').innerText = `${data.xp % 5000} / 5000`;
 
+                    // Update Task List (With Claim Buttons)
                     const tbody = document.getElementById('task-table-body');
                     let html = '';
-                    data.tasks.forEach(task => {
-                        html += `<tr>
-                            <td>${task.id}</td>
-                            <td>${task.type}</td>
-                            <td><code>WAITING_FOR_EXEC</code></td>
-                            <td><span class="sats-badge">${task.reward}</span></td>
-                            <td>
-                                <button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">COMPLETE</button>
-                                <button class="theme-btn-primary" style="background:var(--bg); border:1px solid var(--accent); margin-left:5px;" onclick="generateContract('${task.id}', '${task.type}', '${task.reward}')">📄</button>
-                            </td>
-                        </tr>`;
-                    });
+                    if(data.tasks.length === 0) {
+                        html = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">No active tasks. Market is dry.</td></tr>';
+                    } else {
+                        data.tasks.forEach(task => {
+                            if (task.status === 'OPPORTUNITY') {
+                                html += `<tr>
+                                    <td style="color:#f1c40f">${task.id}</td>
+                                    <td>${task.type}</td>
+                                    <td style="color:#f1c40f">BID OPEN</td>
+                                    <td><span class="sats-badge">${task.reward}</span></td>
+                                    <td><button class="btn-claim" onclick="claimBid('${task.real_id}')">⚡ CLAIM</button></td>
+                                </tr>`;
+                            } else {
+                                html += `<tr>
+                                    <td>${task.id}</td>
+                                    <td>${task.type}</td>
+                                    <td><code>WAITING_FOR_EXEC</code></td>
+                                    <td><span class="sats-badge">${task.reward}</span></td>
+                                    <td>
+                                        <button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">COMPLETE</button>
+                                        <button class="theme-btn-primary" style="background:var(--bg); border:1px solid var(--accent); margin-left:5px;" onclick="generateContract('${task.id}', '${task.type}', '${task.reward}')">📄</button>
+                                    </td>
+                                </tr>`;
+                            }
+                        });
+                    }
                     tbody.innerHTML = html;
                 });
         }
@@ -440,34 +489,42 @@
         }
         setInterval(updateLeaderboard, 10000);
 
+        function claimBid(bidId) {
+            // FIX: Sending proper JSON body
+            fetch(`/api/v1/market/claim/${bidId}`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ node_id: "{{ node.id }}" }) 
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.success) {
+                    document.getElementById('audio-click').play();
+                    refreshDashboard(); 
+                } else {
+                    alert("Too slow! Rival snatched it.");
+                }
+            })
+            .catch(e => console.error("Claim Error:", e));
+        }
+
         function completeTask(id, reward) {
-            // --- FIX: REWIND AUDIO SO IT ALWAYS PLAYS ---
             const audio = document.getElementById('audio-success');
-            audio.currentTime = 0; // Rewind to the start immediately
-            audio.play();          // Now play it (even if it was already playing)
+            audio.currentTime = 0; 
+            audio.play().catch(e => console.log("Audio blocked:", e));
             
-            // Visual feedback immediately
             addLog(`<span>Verifying proof for task ${id}...</span>`);
             
-            // ... (rest of the function stays the same) ...
-            
-            // Call the new L2 Settlement Endpoint
             fetch('/api/v1/tasks/complete', {
                 method: 'POST', 
                 headers: {'Content-Type': 'application/json'},
-                // We inject the node ID from the server template
                 body: JSON.stringify({ task_id: id, node_id: "{{ node.id }}", payout: reward })
             })
             .then(r => r.json())
             .then(data => {
                 if(data.status === 'success') {
-                    // 1. Show the Blockchain Receipt (The "Proof")
                     addLog(`<b style="color:#2ecc71">✔ SETTLED:</b> <span style="font-family:monospace; opacity:0.8">${data.tx_hash}</span>`);
-                    
-                    // 2. Trigger visual success effect
                     flashPulse('success');
-                    
-                    // 3. Update the balances
                     refreshDashboard();
                 } else {
                     addLog(`<span style="color:var(--danger)">❌ ERROR: Settlement Failed</span>`);
