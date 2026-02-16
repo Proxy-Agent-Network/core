@@ -20,11 +20,23 @@
         th:last-child, td:last-child { text-align: right; }
         td:nth-child(3) { width: 40%; font-family: monospace; opacity: 0.8; word-break: break-all; }
 
+        /* --- NETWORK LOG STYLE --- */
+        #activity-log {
+            height: 150px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            border: 1px solid var(--border);
+        }
+
         /* --- MERLIN / MARVIN SPRITE --- */
         #marvin-sprite-container {
-            display: none; /* Hidden by default */
+            display: none; 
             position: fixed; 
-            bottom: -200px; /* Start below view for slide-up */
+            bottom: -200px; 
             right: 20px; 
             width: 300px; 
             z-index: 9000; 
@@ -35,7 +47,6 @@
             pointer-events: none;
         }
 
-        /* Active State: Slide up 200px and Fade In */
         #marvin-sprite-container.active { 
             display: block;
             opacity: 1; 
@@ -49,7 +60,7 @@
         .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
         @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
 
-        /* --- SYSTEM BYPASS OVERLAY (KONAMI) --- */
+        /* --- SYSTEM BYPASS OVERLAY --- */
         #bypass-overlay {
             display: none; 
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -61,19 +72,10 @@
 
         .bypass-title {
             font-size: 4rem; 
-            font-weight: bold; 
             color: #00ff00; 
             text-shadow: 6px 6px #ff0000; 
             margin-bottom: 20px;
-            letter-spacing: -2px;
             text-align: center;
-        }
-
-        .bypass-subtitle {
-            font-size: 1.5rem; 
-            color: #ffffff; 
-            font-weight: bold;
-            font-family: 'Courier Prime', monospace;
         }
 
         .live-dot {
@@ -87,15 +89,13 @@
 <body>
 
     <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
-    <audio id="audio-success" src="{{ url_for('static', filename='audio/success.mp3') }}"></audio>
+    <audio id="audio-success" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
     <audio id="audio-marvin" src="{{ url_for('static', filename='audio/marvin_laughing.mp3') }}"></audio>
     <audio id="audio-powerup" src="{{ url_for('static', filename='audio/Secret_PowerUp1.mp3') }}"></audio>
 
     <div id="bypass-overlay">
         <div class="bypass-title">&gt;&gt;&gt;SYSTEM BYPASS&lt;&lt;&lt;</div>
-        <div class="bypass-subtitle">
-            BONUS_REWARD: <span style="color:#f1c40f;">+30 XP</span> (On next Task Completion)
-        </div>
+        <div style="color:white;">BONUS_REWARD: <span style="color:#f1c40f;">+30 XP</span></div>
     </div>
 
     <div id="marvin-sprite-container" onclick="handleMarvinClick()" ondblclick="marvinLaugh()">
@@ -123,31 +123,19 @@
                 <div class="sats-badge"><span id="live-balance">{{ node.sats_balance }}</span> SATS</div>
             </div>
             <p><strong>Status:</strong> <span style="color: var(--accent);">{{ node.status }}</span></p>
-            <p><strong>Tier:</strong> <span id="tier-display" style="font-weight: bold;">Probationary Agent</span></p>
-            
-            <div style="margin-top: 20px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem;">
-                    <span>Experience</span>
-                    <span id="xp-text">0 / 5000 XP</span>
-                </div>
-                <div class="xp-container">
-                    <div id="xp-bar" class="xp-bar" style="width: 0%;"></div>
-                </div>
-            </div>
+            <p><strong>XP:</strong> <span id="xp-text">0 / 5000</span></p>
+            <div class="xp-container"><div id="xp-bar" class="xp-bar" style="width: 0%;"></div></div>
         </div>
 
         <div class="panel">
-            <h2>Magic Marvin</h2>
-            <div id="marvin-display" style="height: 100px; display: flex; align-items: center; justify-content: center; text-align: center; font-style: italic; font-family: 'Courier Prime'; border: 1px dashed var(--border); border-radius: 8px; padding: 10px; transition: all 0.2s;">
-                "The silicon is quiet tonight..."
+            <h2>Network Activity</h2>
+            <div id="activity-log">
+                <div style="opacity:0.5; font-style:italic;">Initializing telemetry stream...</div>
             </div>
-            <button onclick="askMarvin()" class="theme-btn-primary" style="width: 100%; margin-top: 15px;">CONSULT THE ORACLE</button>
         </div>
 
         <div class="panel" style="grid-column: span 2;">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <h2><span class="live-dot"></span>Live Task Feed</h2>
-            </div>
+            <h2><span class="live-dot"></span>Live Task Feed</h2>
             <table>
                 <thead>
                     <tr>
@@ -174,83 +162,54 @@
     </div>
 
     <script>
-        // --- 1. KONAMI CODE LOGIC ---
+        let lastDaemonMsg = ""; // Global variable to prevent audio looping
+
+        // --- KONAMI CODE ---
         const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
         let konamiIndex = 0;
-
         document.addEventListener('keydown', (e) => {
             if (e.key === konamiCode[konamiIndex]) {
                 konamiIndex++;
-                if (konamiIndex === konamiCode.length) {
-                    activateSystemBypass();
-                    konamiIndex = 0;
-                }
-            } else {
-                konamiIndex = 0;
-            }
+                if (konamiIndex === konamiCode.length) { activateSystemBypass(); konamiIndex = 0; }
+            } else { konamiIndex = 0; }
         });
 
         function activateSystemBypass() {
-            const overlay = document.getElementById('bypass-overlay');
-            overlay.style.display = 'flex';
+            document.getElementById('bypass-overlay').style.display = 'flex';
             document.getElementById('audio-powerup').play();
-            localStorage.setItem('xp_bonus_active', 'true');
-            setTimeout(() => { overlay.style.display = 'none'; }, 3000);
+            setTimeout(() => { document.getElementById('bypass-overlay').style.display = 'none'; }, 3000);
         }
 
-        // --- 2. MARVIN VISIBILITY & ANIMATION ---
-        function summonMarvin() {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const sprite = document.getElementById('marvin-sprite-container');
-            
-            // Do not show on professional themes
-            if (currentTheme === 'business' || currentTheme === 'paperback') return;
-
-            sprite.style.display = 'block';
-            
-            // Allow display block to render, then animate
-            setTimeout(() => {
-                sprite.classList.add('active');
-            }, 50);
-
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                sprite.classList.remove('active');
-                // Fully hide display after animation finishes
-                setTimeout(() => { sprite.style.display = 'none'; }, 1000);
-            }, 5000);
+        // --- ACTIVITY LOGGING ---
+        function addLog(msg) {
+            const log = document.getElementById('activity-log');
+            const entry = document.createElement('div');
+            entry.innerHTML = `<span style="color:var(--accent)">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+            log.prepend(entry);
         }
 
-        // --- 3. LIVE POLLING ---
+        // --- LIVE POLLING & REFRESH ---
         setInterval(refreshDashboard, 3000); 
 
         function refreshDashboard() {
             fetch('/api/v1/dashboard/live')
                 .then(r => r.json())
                 .then(data => {
-                    const balanceEl = document.getElementById('live-balance');
-                    if (balanceEl.innerText != data.balance) {
-                        balanceEl.innerText = data.balance;
-                        balanceEl.style.color = "#2ecc71";
-                        setTimeout(() => balanceEl.style.color = "", 500);
+                    // Loop Prevention: Only play sound/log if message is new
+                    if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
+                        document.getElementById('audio-success').play();
+                        addLog(`<span style="color:#f1c40f">DAEMON: ${data.daemon_event}</span>`);
+                        lastDaemonMsg = data.daemon_event;
                     }
 
-                    const xp = data.xp;
-                    const percent = (xp % 5000) / 50;
-                    document.getElementById('xp-bar').style.width = `${percent}%`;
-                    document.getElementById('xp-text').innerText = `${xp % 5000} / 5000 XP`;
-
-                    // Check for level up event to summon Merlin
-                    if (localStorage.getItem('last_level') && xp > localStorage.getItem('last_level')) {
-                        summonMarvin();
-                    }
-                    localStorage.setItem('last_level', xp);
+                    document.getElementById('live-balance').innerText = data.balance;
+                    document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
+                    document.getElementById('xp-text').innerText = `${data.xp % 5000} / 5000`;
 
                     const tbody = document.getElementById('task-table-body');
                     let html = '';
                     data.tasks.forEach(task => {
-                        html += `
-                        <tr>
+                        html += `<tr>
                             <td>${task.id}</td>
                             <td>${task.type}</td>
                             <td><code>WAITING_FOR_EXEC</code></td>
@@ -258,32 +217,16 @@
                             <td><button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">COMPLETE</button></td>
                         </tr>`;
                     });
-                    
-                    if(tbody.innerHTML.length !== html.length) {
-                        tbody.innerHTML = html;
-                    }
+                    tbody.innerHTML = html;
                 });
         }
 
-        // --- 4. TASK COMPLETION ---
         function completeTask(id, reward) {
             document.getElementById('audio-success').play();
-            localStorage.removeItem('xp_bonus_active');
             fetch('/api/v1/tasks/complete', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ task_id: id, node_id: "{{ node.id }}", payout: reward })
-            }).then(() => {
-                refreshDashboard();
-            });
-        }
-
-        // --- 5. MARVIN INTERACTIONS ---
-        function askMarvin() {
-            document.getElementById('audio-click').play();
-            fetch('/api/v1/marvin').then(r => r.json()).then(d => {
-                document.getElementById('marvin-display').innerText = `"${d.thought}"`;
-            });
-            summonMarvin();
+            }).then(() => refreshDashboard());
         }
 
         function handleMarvinClick() {
@@ -294,11 +237,9 @@
 
         function marvinLaugh() {
             const audio = document.getElementById('audio-marvin');
-            audio.currentTime = 0;
-            audio.play();
-            const img = document.getElementById('marvin-image');
-            img.classList.add('laughing-anim');
-            setTimeout(() => img.classList.remove('laughing-anim'), 1000);
+            audio.currentTime = 0; audio.play();
+            document.getElementById('marvin-image').classList.add('laughing-anim');
+            setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000);
         }
 
         window.onload = () => {

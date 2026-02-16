@@ -209,31 +209,23 @@
 
         <div class="panel" style="grid-column: span 2;">
             <h2>Available Tasks</h2>
-            <ul id="market-list" class="bid-list" style="list-style: none; padding: 0;">
-                {% for bid in bids if bid.status == 'PENDING' %}
-                
-                {% if bid.color %}
-                    {% set card_color = bid.color %}
-                {% elif 'Scraping' in bid.task_type %}{% set card_color = '#2ecc71' %}
-                {% elif 'Validation' in bid.task_type %}{% set card_color = '#3498db' %}
-                {% elif 'Ping' in bid.task_type %}{% set card_color = '#f1c40f' %}
-                {% elif 'Training' in bid.task_type %}{% set card_color = '#9b59b6' %}
-                {% elif 'Photography' in bid.task_type %}{% set card_color = '#e84393' %}
-                {% elif 'Scanning' in bid.task_type %}{% set card_color = '#00cec9' %}
-                {% else %}{% set card_color = '#e67e22' %}
-                {% endif %}
-
-                <li class="bid-card" style="--card-color: {{ card_color }}; --card-bg: {{ card_color }}26;">
-                    <div class="bid-info">
-                        <h3>{{ bid.task_type }}</h3>
-                        <small>{{ bid.requester_id }}</small>
+            <div id="market-list">
+                {% for bid in bids %}
+                {% if bid.status == 'PENDING' %}
+                <div class="bid-card" style="border-left: 5px solid {{ bid.color }}">
+                    <div>
+                        <div class="bid-id">{{ bid.requester_id }}</div>
+                        <div class="bid-type">{{ bid.task_type }}</div>
                     </div>
-                    <button class="claim-btn" data-id="{{ bid.bid_id }}" onclick="claimTask(this)">
-                        CLAIM {{ bid.sats_offered }} SATS
-                    </button>
-                </li>
-                {% endfor %}
-            </ul>
+                    <div style="text-align: right;">
+                        <div class="sats-amount">{{ bid.sats_offered }} SATS</div>
+                        {% if not unlock_auto %}
+                        <button class="claim-btn" onclick="claimTask({{ bid.bid_id }})">CLAIM</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
         </div>
     </div>
 

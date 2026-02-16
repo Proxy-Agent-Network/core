@@ -1,9 +1,11 @@
 import sqlite3
 import random
 import time
-from flask import Flask, render_template, request, jsonify, g, redirect, url_for
+from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session
 
 app = Flask(__name__)
+# Protocol 1.2.0: Secret key required for session-based event clearing
+app.secret_key = 'proxy_secret_key_v1' 
 
 # CONFIGURATION
 # ---------------------------------------------------------
@@ -45,34 +47,61 @@ SHOP_ITEMS = {
     }
 }
 
-# RIVAL AGENT LOGIC
-# ---------------------------------------------------------
+# RIVAL AGENT LIST
 RIVALS = ["OMNI_CORP_09", "KAOS_ENGINE", "NEURAL_LINK_X", "VOID_RUNNER"]
 
-def simulate_rival_activity():
-    """Logic to randomly delete open tasks to simulate rivals 'snatching' them."""
+# --- DAEMON & RIVAL LOGIC ---
+# ---------------------------------------------------------
+
+def simulate_rival_snatch():
     conn = get_db()
-    # 20% chance a rival takes an open task during a polling cycle
-    if random.random() < 0.20:
-        conn.execute("DELETE FROM tasks WHERE status='OPEN' LIMIT 1")
+    # Reduce snatch probability to 5% for more stable testing
+    if random.random() < 0.05: 
+        conn.execute("""
+            DELETE FROM tasks 
+            WHERE rowid IN (
+                SELECT rowid FROM tasks 
+                WHERE status='OPEN' AND task_type='MANUAL' 
+                LIMIT 1
+            )
+        """)
         conn.commit()
 
-@app.route('/api/v1/network/events')
-def network_events():
-    """Simulates real-time chatter and activity from rival nodes."""
-    rival = random.choice(RIVALS)
-    actions = [
-        f"secured a high-value contract ({random.randint(5000, 20000)} Sats)",
-        "synchronized with mainnet",
-        "upgraded compute instance to Tier 3",
-        "failed handshake on Red-tier data",
-        "optimized routing table",
-        "detected unauthorized intrusion attempt"
-    ]
-    return jsonify({
-        "event": f"[{rival}] {random.choice(actions)}",
-        "timestamp": time.strftime("%H:%M:%S")
-    })
+def run_automation_daemon(node_id):
+    """Automatically claims marketplace tasks and stores a one-time event message."""
+    conn = get_db()
+    
+    # Verify license ownership
+    has_license = conn.execute(
+        "SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_auto'", 
+        (node_id,)
+    ).fetchone()
+    
+    if not has_license:
+        return None
+
+    # Scan for available marketplace bids
+    bid = conn.execute(
+        "SELECT * FROM marketplace_bids WHERE status = 'PENDING' ORDER BY sats_offered DESC LIMIT 1"
+    ).fetchone()
+
+    if bid:
+        # Move bid to CLAIMED and generate an automated network task
+        conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid['bid_id'],))
+        
+        new_task_id = f"AUTO-{random.randint(1000, 9999)}"
+        conn.execute('''
+            INSERT INTO tasks (task_id, bid_sats, status, task_type) 
+            VALUES (?, ?, 'OPEN', 'AUTOMATED')
+        ''', (new_task_id, bid['sats_offered']))
+        
+        conn.commit()
+        
+        # Store message in session so it can be cleared after one read (prevents audio loop)
+        msg = f"Secured task {new_task_id} for {bid['sats_offered']} Sats"
+        session['daemon_msg'] = msg
+        return msg
+    return None
 
 # DATABASE HELPER FUNCTIONS
 # ---------------------------------------------------------
@@ -111,110 +140,85 @@ def dashboard():
             'status': 'ONLINE'
         }
 
-    tasks = []
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
-    for t in db_tasks:
-        tasks.append({
-            'id': t['task_id'],
-            'type': t['task_type'],
-            'payload': 'WAITING_FOR_EXEC',
-            'reward': t['bid_sats']
-        })
+    tasks = [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks]
 
     return render_template('dashboard.html', node=my_node, tasks=tasks)
 
+# --- UPDATED RIVAL LOGIC ---
+def simulate_rival_snatch():
+    """Simulates rivals 'snatching' tasks with reduced frequency for testing."""
+    conn = get_db()
+    # Reduced from 0.2 to 0.05 to prevent 'disappearing' tasks during manual testing
+    if random.random() < 0.05:
+        conn.execute("""
+            DELETE FROM tasks 
+            WHERE rowid IN (
+                SELECT rowid FROM tasks 
+                WHERE status='OPEN' AND task_type='MANUAL' 
+                LIMIT 1
+            )
+        """)
+        conn.commit()
+
+# --- UPDATED MARKETPLACE ROUTE ---
 @app.route('/marketplace', methods=['GET', 'POST'])
 def marketplace():
     conn = get_db()
-    try:
-        conn.execute('ALTER TABLE marketplace_bids ADD COLUMN color TEXT')
-    except sqlite3.OperationalError:
-        pass 
-
+    
     if request.method == 'POST':
         task_type = request.form.get('task_type')
         sats = request.form.get('sats')
         color = request.form.get('color') or '#2ecc71'
         req_id = f"REQ-{random.randint(10000, 99999)}"
         
-        try:
-            conn.execute('''
-                INSERT INTO marketplace_bids 
-                (requester_id, sats_offered, task_type, status, color) 
-                VALUES (?, ?, ?, 'PENDING', ?)
-            ''', (req_id, sats, task_type, color))
-            conn.commit()
-        except Exception as e:
-            print(f"Error posting bid: {e}")
+        # Explicitly commit the new bid before redirecting to ensure it persists
+        conn.execute('''
+            INSERT INTO marketplace_bids 
+            (requester_id, sats_offered, task_type, status, color) 
+            VALUES (?, ?, ?, 'PENDING', ?)
+        ''', (req_id, sats, task_type, color))
+        conn.commit() 
         return redirect(url_for('marketplace'))
 
+    # Fetch ALL bids to ensure the list populates correctly
     bids = conn.execute("SELECT * FROM marketplace_bids ORDER BY created_at DESC").fetchall()
     
+    has_auto = False
     try:
         has_auto = conn.execute("SELECT 1 FROM purchases WHERE item_id='license_auto'").fetchone()
-    except sqlite3.OperationalError:
-        has_auto = False
+    except: pass
     
     return render_template('marketplace.html', bids=bids, unlock_auto=bool(has_auto))
 
 @app.route('/shop')
 def shop():
     conn = get_db()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS purchases (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            node_id TEXT,
-            item_id TEXT,
-            purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    conn.execute('CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, node_id TEXT, item_id TEXT, purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP)')
 
     target_node = "ROBER_NODE_01"
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
-    
-    if not my_node:
-        my_node = conn.execute('SELECT * FROM nodes ORDER BY last_seen DESC LIMIT 1').fetchone()
-    
     balance = my_node['total_earned'] if my_node else 0
     node_id = my_node['node_id'] if my_node else "UNKNOWN"
 
-    try:
-        owned_rows = conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (node_id,)).fetchall()
-        owned_ids = [row['item_id'] for row in owned_rows]
-    except sqlite3.OperationalError:
-        owned_ids = []
-
-    return render_template('shop.html', items=SHOP_ITEMS, balance=balance, owned=owned_ids, node_id=node_id)
+    owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (node_id,)).fetchall()]
+    return render_template('shop.html', items=SHOP_ITEMS, balance=balance, owned=owned, node_id=node_id)
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_panel():
     conn = get_db()
     error = None
-
     if request.method == 'POST':
         action = request.form.get('action')
-        
         if action == 'post_task':
-            task_id = request.form.get('task_id')
+            task_id, bid = request.form.get('task_id'), request.form.get('bid_sats')
             try:
-                bid = int(request.form.get('bid_sats'))
-                if not task_id: raise ValueError("Task ID cannot be empty.")
-                conn.execute('INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, ?, ?)', 
-                             (task_id, bid, 'OPEN', 'MANUAL'))
+                conn.execute('INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, ?, ?)', (task_id, bid, 'OPEN', 'MANUAL'))
                 conn.commit()
-            except sqlite3.IntegrityError:
-                error = f"Error: Task ID '{task_id}' already exists."
-            except Exception as e:
-                error = f"Error: {e}"
-        
+            except Exception as e: error = str(e)
         elif action == 'fund_node':
-            target_node = request.form.get('node_id')
-            try:
-                amount = int(request.form.get('amount'))
-                conn.execute('UPDATE nodes SET total_earned = total_earned + ? WHERE node_id = ?', (amount, target_node))
-                conn.commit()
-            except Exception as e:
-                error = f"Funding Error: {e}"
+            conn.execute('UPDATE nodes SET total_earned = total_earned + ? WHERE node_id = ?', (request.form.get('amount'), request.form.get('node_id')))
+            conn.commit()
 
     nodes = conn.execute('SELECT * FROM nodes ORDER BY last_seen DESC').fetchall()
     return render_template('admin.html', nodes=nodes, error=error)
@@ -223,160 +227,78 @@ def admin_panel():
 def node_detail(node_id):
     conn = get_db()
     node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (node_id,)).fetchone()
-    
-    if not node:
-        return "Node not found", 404
-        
-    try:
-        purchases = conn.execute('SELECT item_id FROM purchases WHERE node_id = ?', (node_id,)).fetchall()
-    except sqlite3.OperationalError:
-        purchases = []
-    
+    purchases = conn.execute('SELECT item_id FROM purchases WHERE node_id = ?', (node_id,)).fetchall()
     return render_template('node_detail.html', node=node, purchases=purchases)
 
 @app.route('/debug/reset_me')
 def reset_network():
     conn = get_db()
-    try:
-        conn.execute('UPDATE nodes SET xp=0, level=1, total_earned=0, streak_days=0')
-        conn.execute('DELETE FROM tasks')
-        conn.execute('DELETE FROM marketplace_bids')
-        conn.execute('DELETE FROM purchases') 
-        conn.commit()
-    except Exception as e:
-        return f"Error: {e}"
+    conn.execute('UPDATE nodes SET xp=0, level=1, total_earned=0')
+    conn.execute('DELETE FROM tasks'); conn.execute('DELETE FROM marketplace_bids'); conn.execute('DELETE FROM purchases')
+    conn.commit()
     return redirect(url_for('admin_panel'))
 
-# API ENDPOINTS
+# --- API ENDPOINTS ---
 # ---------------------------------------------------------
 
 @app.route('/api/v1/dashboard/live')
 def dashboard_live():
-    # TRIGGER RIVAL COMPETITION
-    simulate_rival_activity()
-    
+    """Returns real-time data and clears the daemon event after it is sent."""
     conn = get_db()
     target_node = "ROBER_NODE_01"
+    
+    simulate_rival_snatch()
+    run_automation_daemon(target_node) # potentially sets session['daemon_msg']
+    
+    # Retrieve and then clear the daemon message from the session
+    daemon_event = session.pop('daemon_msg', None)
+    
     my_node = conn.execute('SELECT total_earned, xp FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
-    balance = my_node['total_earned'] if my_node else 0
-    xp = my_node['xp'] if my_node else 0
-
-    tasks = []
-    db_tasks = conn.execute("SELECT * FROM tasks WHERE status='OPEN' OR status='PENDING' ORDER BY ROWID DESC LIMIT 5").fetchall()
-    for t in db_tasks:
-        tasks.append({
-            'id': t['task_id'],
-            'type': t['task_type'],
-            'reward': t['bid_sats']
-        })
-        
+    db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
+    
     return jsonify({
-        'balance': balance,
-        'xp': xp,
-        'tasks': tasks
+        'balance': my_node['total_earned'] if my_node else 0,
+        'xp': my_node['xp'] if my_node else 0,
+        'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks],
+        'daemon_event': daemon_event
     })
+
+@app.route('/api/v1/market/trends')
+def market_trends():
+    return jsonify({"labels": ["10:00", "10:05", "10:10", "10:15", "10:20"], "prices": [random.randint(50, 150) for _ in range(5)]})
+
+@app.route('/api/v1/network/events')
+def network_events():
+    rival = random.choice(RIVALS)
+    actions = [f"secured a contract ({random.randint(5000, 20000)} Sats)", "synchronized with mainnet", "failed handshake"]
+    return jsonify({"event": f"[{rival}] {random.choice(actions)}", "timestamp": time.strftime("%H:%M:%S")})
 
 @app.route('/api/v1/shop/buy', methods=['POST'])
 def buy_item():
     conn = get_db()
     data = request.json
-    item_id = data.get('item_id')
-    node_id = data.get('node_id')
-
-    if item_id not in SHOP_ITEMS:
-        return jsonify({'success': False, 'error': 'Invalid Item'})
-
-    item = SHOP_ITEMS[item_id]
-    price = item['price']
-
-    node = conn.execute('SELECT total_earned FROM nodes WHERE node_id=?', (node_id,)).fetchone()
-    if not node or node['total_earned'] < price:
-        return jsonify({'success': False, 'error': 'Insufficient Funds'})
-
-    try:
-        conn.execute('UPDATE nodes SET total_earned = total_earned - ? WHERE node_id=?', (price, node_id))
-        conn.execute('INSERT INTO purchases (node_id, item_id) VALUES (?, ?)', (node_id, item_id))
-        conn.commit()
-        return jsonify({'success': True, 'new_balance': node['total_earned'] - price})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/v1/marvin')
-def ask_marvin():
-    quotes = ["System optimal.", "Network latency: 12ms.", "All nodes operational."]
-    return jsonify({"thought": random.choice(quotes)})
-
-@app.route('/api/v1/market/claim/<int:bid_id>', methods=['POST'])
-def claim_market_task(bid_id):
-    conn = get_db()
-    data = request.json
-    node_id = data.get('node_id') 
-
-    try:
-        conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid_id,))
-        bid = conn.execute("SELECT * FROM marketplace_bids WHERE bid_id=?", (bid_id,)).fetchone()
-        
-        if bid:
-            new_task_id = f"MARKET-{random.randint(1000,9999)}"
-            conn.execute('''
-                INSERT INTO tasks (task_id, bid_sats, status, task_type) 
-                VALUES (?, ?, 'OPEN', ?)
-            ''', (new_task_id, bid['sats_offered'], bid['task_type']))
-            conn.commit()
-            return jsonify({"success": True})
-            
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-
-    return jsonify({"success": False, "error": "Bid not found"})
+    item_id, node_id = data.get('item_id'), data.get('node_id')
+    price = SHOP_ITEMS[item_id]['price']
+    conn.execute('UPDATE nodes SET total_earned = total_earned - ? WHERE node_id=?', (price, node_id))
+    conn.execute('INSERT INTO purchases (node_id, item_id) VALUES (?, ?)', (node_id, item_id))
+    conn.commit()
+    return jsonify({'success': True})
 
 @app.route('/api/v1/tasks/complete', methods=['POST'])
 def complete_task():
     data = request.json
-    payout = data.get('payout', 0)
-    node_id = data.get('node_id', "ROBER_NODE_01")
-    
     conn = get_db()
-    # Actual ledger update for completing a task
-    conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + 100 WHERE node_id = ?", (payout, node_id))
+    conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + 100 WHERE node_id = ?", (data.get('payout'), data.get('node_id')))
     conn.execute("DELETE FROM tasks WHERE task_id = ?", (data.get('task_id'),))
     conn.commit()
-    
-    return jsonify({"status": "success", "reward": payout})
-
-@app.route('/api/v1/xp/status')
-def xp_status():
-    return jsonify({"total_xp": 1250})
-
-@app.route('/api/v1/market/trends')
-def market_trends():
-    return jsonify({
-        "labels": ["10:00", "10:05", "10:10", "10:15", "10:20"],
-        "prices": [random.randint(50, 150) for _ in range(5)]
-    })
+    return jsonify({"status": "success"})
 
 @app.route('/api/register', methods=['POST'])
 def register_node():
     data = request.json
-    node_id = data.get('node_id')
-    conn = get_db()
-    conn.execute('''
-        INSERT INTO nodes (node_id, hostname, last_seen) 
-        VALUES (?, ?, ?)
-        ON CONFLICT(node_id) DO UPDATE SET last_seen=excluded.last_seen
-    ''', (node_id, "Unknown-Host", time.time()))
+    conn = get_db(); conn.execute('INSERT INTO nodes (node_id, hostname, last_seen) VALUES (?, ?, ?) ON CONFLICT(node_id) DO UPDATE SET last_seen=excluded.last_seen', (data.get('node_id'), "Unknown-Host", time.time()))
     conn.commit()
     return jsonify({"status": "registered"})
-
-@app.route('/api/poll_task', methods=['GET'])
-def poll_task():
-    conn = get_db()
-    task = conn.execute("SELECT * FROM tasks WHERE status='OPEN' LIMIT 1").fetchone()
-    if task:
-        conn.execute("UPDATE tasks SET status='PENDING' WHERE task_id=?", (task['task_id'],))
-        conn.commit()
-        return jsonify(dict(task))
-    return jsonify({"message": "No tasks available"})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
