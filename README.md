@@ -4,6 +4,11 @@
 
 ---
 
+## 🚀 Quick Start
+1. **Initialize Node:** `python app.py`
+2. **Attest Hardware:** `python attest_node.py`
+3. **Run Agent Simulation:** `python agent_request.py`
+
 ## 🗺️ Development Roadmap (2026)
 
 ### Q1 2026: The "Genesis & Engagement" Phase (Current)
@@ -29,10 +34,5 @@
 * **Frontend:** Flask-driven Real-time Telemetry (3000ms polling).
 
 ---
-
-## 🚀 Quick Start
-1. **Initialize Node:** `python app.py`
-2. **Attest Hardware:** `python attest_node.py`
-3. **Run Agent Simulation:** `python agent_request.py`
 
 *Note: Timelines are estimates. Priorities may shift based on Agent adoption and network growth.*
