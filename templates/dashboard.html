@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mission Control | Proxy Agent Network</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Special+Elite&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <style>
+        /* --- CORE DASHBOARD STYLES --- */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); }
+        th:last-child, td:last-child { text-align: right; }
+        td:nth-child(3) { width: 40%; font-family: monospace; opacity: 0.8; word-break: break-all; }
+
+        /* --- GAME LOOP BUTTONS --- */
+        .btn-claim { background-color: #f1c40f !important; color: black !important; font-weight: bold; border: none; padding: 6px 16px; cursor: pointer; border-radius: 4px; box-shadow: 0 0 10px rgba(241, 196, 15, 0.3); }
+        .btn-claim:hover { transform: scale(1.05); box-shadow: 0 0 20px #f1c40f; }
+        
+        /* --- NETWORK LOG STYLE --- */
+        #activity-log, #global-log {
+            height: 150px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            border: 1px solid var(--border);
+        }
+
+        /* --- SCANNING PULSE & ALERTS --- */
+        .scanning-pulse {
+            width: 12px;
+            height: 12px;
+            background-color: var(--accent);
+            border-radius: 50%;
+            position: relative;
+            display: inline-block;
+            transition: background-color 0.3s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .scanning-pulse::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            background-color: inherit;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            animation: radar-pulse 2s infinite ease-out;
+            opacity: 0.6;
+        }
+
+        .scanning-pulse.success-flash {
+            background-color: #f1c40f !important;
+            box-shadow: 0 0 20px #f1c40f;
+            transform: scale(1.5);
+        }
+
+        .scanning-pulse.rival-alert {
+            background-color: #e74c3c !important;
+            box-shadow: 0 0 20px #e74c3c;
+            transform: scale(1.5);
+        }
+
+        @keyframes radar-pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+            100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+        }
+
+        /* --- MERLIN / MARVIN SPRITE --- */
+        #marvin-sprite-container {
+            display: none; 
+            position: fixed; 
+            bottom: -200px; 
+            right: 20px; 
+            width: 300px; 
+            z-index: 9000; 
+            cursor: pointer; 
+            filter: drop-shadow(0 0 15px var(--accent));
+            transition: opacity 1s, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #marvin-sprite-container.active { 
+            display: block;
+            opacity: 1; 
+            transform: translateY(-200px);
+            pointer-events: auto; 
+        }
+
+        #marvin-image { width: 100%; height: auto; animation: idle-float 3s ease-in-out infinite; }
+        
+        @keyframes idle-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(3deg); } }
+        .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
+        @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
+
+        /* --- SYSTEM BYPASS OVERLAY --- */
+        #bypass-overlay {
+            display: none; 
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.95);
+            z-index: 9999;
+            flex-direction: column; justify-content: center; align-items: center;
+            font-family: 'Courier Prime', monospace;
+        }
+
+        .bypass-title {
+            font-size: 4rem; 
+            color: #00ff00; 
+            text-shadow: 6px 6px #ff0000; 
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .live-dot {
+            height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%;
+            display: inline-block; margin-right: 5px;
+            animation: pulse-live 1.5s infinite;
+        }
+        @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+        /* --- LEDGER SPECIFIC STYLES --- */
+        .ledger-row { margin-bottom: 15px; border-bottom: 1px solid rgba(163, 227, 237, 0.1); padding-bottom: 10px; }
+        .ledger-parent { display: flex; justify-content: space-between; align-items: flex-start; }
+        .ledger-timestamp { color: rgba(163, 227, 237, 0.5); margin-right: 10px; }
+        .ledger-task-id { color: #a3e3ed; font-style: italic; }
+        .ledger-xp-total { color: #ff9f00; font-weight: bold; font-size: 1.1rem; text-shadow: 0 0 10px rgba(255, 159, 0, 0.5); }
+        
+        .ledger-children { margin-left: 45px; margin-top: 5px; border-left: 2px solid rgba(255, 159, 0, 0.3); padding-left: 15px; position: relative; }
+        .ledger-child { display: flex; justify-content: space-between; margin-bottom: 4px; position: relative; }
+        
+        .ledger-child::before {
+            content: "└─";
+            position: absolute;
+            left: -17px;
+            color: rgba(255, 159, 0, 0.5);
+        }
+        
+        .ledger-child-name { font-size: 0.85rem; }
+        .ledger-child-xp { font-size: 0.85rem; opacity: 0.8; }
+    </style>
+</head>
+<body>
+
+    <div id="audio-unlock-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:black; z-index:99999; display:flex; justify-content:center; align-items:center; flex-direction:column;">
+        <h1 style="color: #8e44ad; font-family:'Courier Prime'; margin-bottom:20px; font-size: 2rem; letter-spacing: 2px;">PROXY // NETWORK</h1>
+        <div style="color: #666; margin-bottom: 30px; font-family: 'Inter', sans-serif;">ESTABLISHING SECURE CONNECTION...</div>
+        <button onclick="unlockAudio()" style="padding:15px 30px; font-size:1.2rem; background:#8e44ad; color:white; border:none; cursor:pointer; font-family:'Courier Prime'; font-weight:bold; border-radius: 4px; box-shadow: 0 0 15px rgba(142, 68, 173, 0.5);">INITIALIZE UPLINK</button>
+    </div>
+
+    <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
+    <audio id="audio-success" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
+    <audio id="audio-marvin" src="{{ url_for('static', filename='audio/marvin_laughing.mp3') }}"></audio>
+    <audio id="audio-powerup" src="{{ url_for('static', filename='audio/Secret_PowerUp1.mp3') }}"></audio>
+    <audio id="audio-failure" src="{{ url_for('static', filename='audio/incorrect.mp3') }}" preload="auto"></audio>
+
+    <div id="bypass-overlay">
+        <div class="bypass-title">&gt;&gt;&gt;SYSTEM BYPASS&lt;&lt;&lt;</div>
+        <div style="color:white;">BONUS_REWARD: <span style="color:#f1c40f;">+30 XP</span></div>
+    </div>
+
+    <div id="marvin-sprite-container" onclick="handleMarvinClick()" ondblclick="marvinLaugh()">
+        <img id="marvin-image" src="{{ url_for('static', filename='images/magic_marvin_dance.webp') }}" alt="Magic Marvin">
+    </div>
+
+    <div class="header">
+        <div>
+            <h1>Mission Control</h1>
+            <small id="node-id-display" style="opacity: 0.7;">NODE: {{ node.id }}</small>
+            
+            <div id="global-stats-bar" style="display: flex; gap: 25px; margin-top: 15px; padding: 10px; background: rgba(128,128,128,0.05); border-radius: 6px; border-left: 3px solid var(--accent);">
+                <div>
+                    <small style="display: block; opacity: 0.6; font-size: 0.7rem;">NETWORK VOLUME</small>
+                    <b id="stat-volume" style="font-family: monospace; color: var(--accent);">0 SATS</b>
+                </div>
+                <div style="border-left: 1px solid rgba(128,128,128,0.2); padding-left: 20px;">
+                    <small style="display: block; opacity: 0.6; font-size: 0.7rem;">ACTIVE NODES</small>
+                    <b id="stat-nodes" style="font-family: monospace;">0</b>
+                </div>
+                <div style="border-left: 1px solid rgba(128,128,128,0.2); padding-left: 20px;">
+                    <small style="display: block; opacity: 0.6; font-size: 0.7rem;">PROTOCOL</small>
+                    <b style="font-family: monospace; opacity: 0.8;">v1.4.1</b>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-panel" style="display: flex; align-items: center; gap: 20px; margin-left: auto;">
+            <a href="/shop" style="color: var(--accent); font-weight: bold; text-decoration: none;">Provisioning</a>
+            <a href="/marketplace" style="color: var(--accent); font-weight: bold; text-decoration: none;">Marketplace</a>
+
+            <div style="display: flex; flex-direction: column; gap: 6px; width: 180px;">
+                <a href="/admin/audit" style="
+                    display: block;
+                    text-align: center;
+                    background: rgba(231, 76, 60, 0.2); 
+                    border: 1px solid #e74c3c; 
+                    color: #e74c3c; 
+                    font-weight: bold; 
+                    text-decoration: none; 
+                    padding: 4px; 
+                    border-radius: 4px;
+                    font-size: 0.85rem;
+                    box-shadow: 0 0 5px rgba(231, 76, 60, 0.2);
+                    box-sizing: border-box;
+                ">👁️ AUDIT LOG</a>
+                
+                <select id="common-theme-selector" class="theme-picker-ui" style="width: 100%; box-sizing: border-box;">
+                    <option>Loading Themes...</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Node Identity</h2>
+                <div class="sats-badge"><span id="live-balance">{{ node.sats_balance }}</span> SATS</div>
+            </div>
+            
+            <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; font-family: monospace;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="opacity: 0.7;">ID:</span>
+                    <span style="color: var(--accent);">{{ node.id }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                    <span style="opacity: 0.7;">SECURITY:</span>
+                    {% if hw_secured %}
+                        <span style="color: #2ecc71; font-weight: bold;">[HARDWARE_LOCKED] 🔒</span>
+                    {% else %}
+                        <span style="color: #f1c40f;">[SIMULATION_MODE] ⚠️</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <p style="margin-top: 15px;"><strong>XP:</strong> <span id="xp-text">0 / 5000</span></p>
+            <div class="xp-container" onclick="openXPHistory()" style="cursor: pointer;" title="View XP History">
+                <div id="xp-bar" class="xp-bar" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h2 id="activity-title">Network Activity</h2>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="switchTab('live')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px;">LIVE</button>
+                    <button onclick="switchTab('global')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px; background: transparent; border: 1px solid var(--accent);">GLOBAL</button>
+                </div>
+            </div>
+            <div id="activity-log">
+                <div style="opacity:0.5; font-style:italic;">Initializing telemetry stream...</div>
+            </div>
+            <div id="global-log" style="display: none;">
+                <div style="opacity:0.5; font-style:italic;">Querying global event history...</div>
+            </div>
+        </div>
+
+        <div class="panel" style="border-color: var(--danger);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="color: var(--danger);">Rival Chatter</h2>
+                <div class="live-dot" style="background-color: var(--danger);"></div>
+            </div>
+            <div id="rival-feed" style="height: 150px; overflow-y: auto; font-family: 'Courier Prime', monospace; font-size: 0.8rem; background: rgba(50,0,0,0.1); padding: 10px; border-radius: 4px;">
+                <div style="opacity:0.5; font-style:italic;">Intercepting rival comms...</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2>Global Rankings</h2>
+                <span class="live-dot" style="background-color: var(--accent);"></span>
+            </div>
+            <div id="leaderboard-list" style="font-family: 'Courier Prime', monospace; font-size: 0.9rem;">
+                <div style="opacity:0.5">Syncing with global registry...</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="scan-pulse" class="scanning-pulse"></span>
+                <h2 style="margin: 0;">Automation Daemon</h2>
+            </div>
+            <p id="auto-status" style="opacity: 0.7; font-size: 0.85rem; margin-top: 5px;">
+                Scanning for high-yield proxy bids...
+            </p>
+        </div>
+
+        <div class="panel" style="grid-column: span 2;">
+            <h2><span class="live-dot"></span>Live Task Feed (Race Against Rivals)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Reward</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="task-table-body">
+                    {% for task in tasks %}
+                    <tr>
+                        <td>{{ task.id }}</td>
+                        <td>{{ task.type }}</td>
+                        <td><code>WAITING_FOR_EXEC</code></td>
+                        <td><span class="sats-badge">{{ task.reward }}</span></td>
+                        <td>
+                            <button class="theme-btn-primary" onclick="completeTask('{{ task.id }}', {{ task.reward }})">COMPLETE</button>
+                            <button class="theme-btn-primary" style="background:var(--bg); border:1px solid var(--accent); margin-left:5px;" onclick="generateContract('{{ task.id }}', '{{ task.type }}', '{{ task.reward }}')">📄</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="xp-history-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(10px);">
+        <div style="background: #004d56; border: 2px solid #ff9f00; padding: 25px; border-radius: 8px; width: 90%; max-width: 550px; box-shadow: 0 0 40px rgba(255, 159, 0, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; color: #a3e3ed; font-family: 'Montserrat', sans-serif; letter-spacing: 1px;">Session XP Ledger</h2>
+                <button onclick="closeXPHistory()" style="background: #ff9f00; border: none; color: #002b31; font-weight: bold; padding: 5px 15px; border-radius: 4px; cursor: pointer;">CLOSE</button>
+            </div>
+            <div id="xp-ledger-body" class="session-ledger" style="max-height: 400px; overflow-y: auto; font-family: 'Courier Prime', monospace;">
+                </div>
+        </div>
+    </div>
+
+    <script>
+        let lastDaemonMsg = ""; 
+        let lastTaskCount = {{ tasks|length }};
+
+        // --- AUDIO UNLOCK LOGIC (RUNS ON LOAD) ---
+        if (sessionStorage.getItem('audioUnlocked')) {
+            document.getElementById('audio-unlock-overlay').style.display = 'none';
+        }
+
+        function unlockAudio() {
+            ['audio-click', 'audio-success', 'audio-failure', 'audio-marvin', 'audio-powerup'].forEach(id => {
+                const el = document.getElementById(id);
+                el.play().then(() => el.pause()).catch(() => {});
+            });
+            document.getElementById('audio-unlock-overlay').style.display = 'none';
+            sessionStorage.setItem('audioUnlocked', 'true');
+            document.getElementById('audio-click').play();
+        }
+
+        // --- TAB SWITCH LOGIC ---
+        function switchTab(tab) {
+            const liveLog = document.getElementById('activity-log');
+            const globalLog = document.getElementById('global-log');
+            const title = document.getElementById('activity-title');
+            
+            if (tab === 'live') {
+                liveLog.style.display = 'block';
+                globalLog.style.display = 'none';
+                title.innerText = "Network Activity";
+            } else {
+                liveLog.style.display = 'none';
+                globalLog.style.display = 'block';
+                title.innerText = "Global Event Log";
+                fetchGlobalEvents();
+            }
+        }
+
+        function fetchGlobalEvents() {
+            fetch('/api/v1/network/events/history')
+                .then(r => r.json())
+                .then(events => {
+                    const log = document.getElementById('global-log');
+                    log.innerHTML = events.map(e => `
+                        <div style="margin-bottom: 5px;">
+                            <span style="opacity:0.5">[${e.timestamp.split(' ')[1]}]</span> 
+                            <b style="color:var(--accent)">${e.event_type}:</b> ${e.message}
+                        </div>
+                    `).join('') || "No historical events found.";
+                });
+        }
+
+        // --- KONAMI CODE ---
+        const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+        let konamiIndex = 0;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === konamiCode[konamiIndex]) {
+                konamiIndex++;
+                if (konamiIndex === konamiCode.length) { activateSystemBypass(); konamiIndex = 0; }
+            } else { konamiIndex = 0; }
+        });
+
+        function activateSystemBypass() {
+            document.getElementById('bypass-overlay').style.display = 'flex';
+            document.getElementById('audio-powerup').play();
+            setTimeout(() => { document.getElementById('bypass-overlay').style.display = 'none'; }, 3000);
+            const marvin = document.getElementById('marvin-sprite-container');
+            marvin.classList.add('active');
+            setTimeout(() => { marvin.classList.remove('active'); }, 5000);
+        }
+
+        function addLog(msg) {
+            const log = document.getElementById('activity-log');
+            const entry = document.createElement('div');
+            entry.innerHTML = `<span style="color:var(--accent)">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+            log.prepend(entry);
+        }
+
+        function flashPulse(type) {
+            const pulse = document.getElementById('scan-pulse');
+            const className = type === 'success' ? 'success-flash' : 'rival-alert';
+            pulse.classList.add(className);
+            setTimeout(() => pulse.classList.remove(className), 1200);
+        }
+
+        function updateNetworkStats() {
+            fetch('/api/v1/network/stats')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('stat-volume').innerText = data.total_volume + " SATS";
+                    document.getElementById('stat-nodes').innerText = data.active_nodes;
+                });
+        }
+        setInterval(updateNetworkStats, 30000);
+
+        setInterval(pollRivals, 5000);
+        function pollRivals() {
+            fetch('/api/v1/rivals/feed')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.has_msg) {
+                        const feed = document.getElementById('rival-feed');
+                        const entry = document.createElement('div');
+                        entry.style.marginBottom = "8px";
+                        entry.innerHTML = `<span style="opacity:0.6">[${data.timestamp}]</span> <b style="color:var(--danger)">${data.rival}:</b> <span style="color:var(--text)">${data.message}</span>`;
+                        feed.prepend(entry);
+                    }
+                });
+        }
+
+        setInterval(refreshDashboard, 2000); 
+        function refreshDashboard() {
+            fetch('/api/v1/dashboard/live')
+                .then(r => r.json())
+                .then(data => {
+                    // 1. DAEMON EVENT
+                    if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
+                        document.getElementById('audio-success').play();
+                        addLog(`<span style="color:#f1c40f">🤖 DAEMON: ${data.daemon_event}</span>`);
+                        flashPulse('success');
+                        lastDaemonMsg = data.daemon_event;
+                    }
+                    
+                    // 2. RIVAL EVENT
+                    if (data.rival_event) {
+                        addLog(`<span style="color:var(--danger)">⚠️ RIVAL: ${data.rival_event}</span>`);
+                        flashPulse('rival');
+                        const audioFail = document.getElementById('audio-failure');
+                        if (audioFail) { audioFail.currentTime = 0; audioFail.play().catch(e => console.log("Audio play failed:", e)); }
+                    }
+
+                    // Update Stats
+                    document.getElementById('live-balance').innerText = data.balance;
+                    document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
+                    document.getElementById('xp-text').innerText = `${data.xp % 5000} / 5000`;
+
+                    // Update Task List (With Claim Buttons)
+                    const tbody = document.getElementById('task-table-body');
+                    let html = '';
+                    if(data.tasks.length === 0) {
+                        html = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">No active tasks. Market is dry.</td></tr>';
+                    } else {
+                        data.tasks.forEach(task => {
+                            if (task.status === 'OPPORTUNITY') {
+                                html += `<tr>
+                                    <td style="color:#f1c40f">${task.id}</td>
+                                    <td>${task.type}</td>
+                                    <td style="color:#f1c40f">BID OPEN</td>
+                                    <td><span class="sats-badge">${task.reward}</span></td>
+                                    <td><button class="theme-btn-primary btn-claim" onclick="claimBid('${task.real_id}')">⚡ CLAIM</button></td>
+                                </tr>`;
+                            } else {
+                                html += `<tr>
+                                    <td>${task.id}</td>
+                                    <td>${task.type}</td>
+                                    <td><code>WAITING_FOR_EXEC</code></td>
+                                    <td><span class="sats-badge">${task.reward}</span></td>
+                                    <td>
+                                        <button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">COMPLETE</button>
+                                        <button class="theme-btn-primary" style="background:var(--bg); border:1px solid var(--accent); margin-left:5px;" onclick="generateContract('${task.id}', '${task.type}', '${task.reward}')">📄</button>
+                                    </td>
+                                </tr>`;
+                            }
+                        });
+                    }
+                    tbody.innerHTML = html;
+                });
+        }
+
+        function updateLeaderboard() {
+            fetch('/api/v1/network/leaderboard')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('leaderboard-list');
+                    list.innerHTML = data.map((entry, index) => `
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(128,128,128,0.1); ${entry.id === '{{ node.id }}' ? 'color: var(--accent); font-weight: bold;' : ''}">
+                            <span>${index + 1}. ${entry.id} ${entry.type === 'RIVAL' ? '🤖' : '👤'}</span>
+                            <span>${entry.xp} XP</span>
+                        </div>
+                    `).join('');
+                });
+        }
+        setInterval(updateLeaderboard, 10000);
+
+        function claimBid(bidId) {
+            // FIX: Sending proper JSON body
+            fetch(`/api/v1/market/claim/${bidId}`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ node_id: "{{ node.id }}" }) 
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.success) {
+                    document.getElementById('audio-click').play();
+                    refreshDashboard(); 
+                } else {
+                    alert("Too slow! Rival snatched it.");
+                }
+            })
+            .catch(e => console.error("Claim Error:", e));
+        }
+
+        function completeTask(id, reward) {
+            const audio = document.getElementById('audio-success');
+            audio.currentTime = 0; 
+            audio.play().catch(e => console.log("Audio blocked:", e));
+            
+            addLog(`<span>Verifying proof for task ${id}...</span>`);
+            
+            fetch('/api/v1/tasks/complete', {
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ task_id: id, node_id: "{{ node.id }}", payout: reward })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    addLog(`<b style="color:#2ecc71">✔ SETTLED:</b> <span style="font-family:monospace; opacity:0.8">${data.tx_hash}</span>`);
+                    flashPulse('success');
+                    refreshDashboard();
+                } else {
+                    addLog(`<span style="color:var(--danger)">❌ ERROR: Settlement Failed</span>`);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                addLog(`<span style="color:var(--danger)">❌ NETWORK ERROR</span>`);
+            });
+        }
+
+        function generateContract(taskId, type, reward) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFont("courier", "bold");
+            doc.setFontSize(22);
+            doc.text("PROXY NETWORK SERVICE AGREEMENT", 20, 20);
+            doc.setFontSize(10);
+            doc.setFont("courier", "normal");
+            doc.text(`AGREEMENT ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}`, 20, 30);
+            doc.text(`TIMESTAMP: ${new Date().toUTCString()}`, 20, 35);
+            doc.text(`NODE OPERATOR: {{ node.id }}`, 20, 40);
+            doc.setFontSize(12);
+            doc.text("1. PARTIES", 20, 55);
+            doc.setFontSize(10);
+            doc.text(doc.splitTextToSize("This Limited Power of Attorney is entered into between the Autonomous Agent (The Principal) and the Human Node Operator (The Proxy).", 170), 20, 62);
+            doc.setFontSize(12);
+            doc.text("2. SCOPE OF WORK", 20, 80);
+            doc.setFontSize(10);
+            doc.text(`Task ID: ${taskId}`, 20, 87);
+            doc.text(`Task Type: ${type}`, 20, 92);
+            doc.text(`Consideration: ${reward} Satoshis`, 20, 97);
+            doc.setFontSize(12);
+            doc.text("3. EXECUTION & LIABILITY", 20, 115);
+            doc.setFontSize(10);
+            doc.text(doc.splitTextToSize("The Proxy agrees to execute the defined task within the parameters of the Geofence. The Principal indemnifies the Proxy against liability arising from algorithmic error.", 170), 20, 122);
+            doc.setLineWidth(0.5);
+            doc.line(20, 160, 80, 160);
+            doc.text("SIGNED (CRYPTOGRAPHIC PROOF)", 20, 165);
+            doc.text("Hash: 0x" + Math.random().toString(16).substr(2, 32), 20, 170);
+            doc.save(`Contract_${taskId}.pdf`);
+        }
+
+        function openXPHistory() {
+            document.getElementById('xp-history-modal').style.display = 'flex';
+            document.getElementById('audio-click').play();
+            const ledgerBody = document.getElementById('xp-ledger-body');
+            ledgerBody.innerHTML = "Querying Hardware Ledger...";
+            fetch(`/api/v1/node/xp_ledger/{{ node.id }}`)
+                .then(r => r.json())
+                .then(sessionLogs => {
+                    ledgerBody.innerHTML = sessionLogs.map(log => `
+                        <div class="ledger-row">
+                            <div class="ledger-parent">
+                                <div><span class="ledger-timestamp">[${log.time}]</span><span class="ledger-task-id">${log.taskId}</span></div>
+                                <div class="ledger-xp-total">+${log.totalXp} XP</div>
+                            </div>
+                            <div class="ledger-children">
+                                ${log.bonuses.map(b => `<div class="ledger-child"><span class="ledger-child-name" style="color: ${b.color}">${b.name}</span><span class="ledger-child-xp">+${b.xp} XP</span></div>`).join('')}
+                            </div>
+                        </div>`).join('');
+                });
+        }
+
+        function closeXPHistory() { document.getElementById('xp-history-modal').style.display = 'none'; }
+        function handleMarvinClick() { 
+            const img = document.getElementById('marvin-image'); 
+            img.style.transform = "scale(1.1) rotate(5deg)"; 
+            setTimeout(() => img.style.transform = "scale(1) rotate(0deg)", 150); 
+        }
+        function marvinLaugh() { 
+            const audio = document.getElementById('audio-marvin'); 
+            audio.currentTime = 0; audio.play(); 
+            document.getElementById('marvin-image').classList.add('laughing-anim'); 
+            setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000); 
+        }
+
+        window.onload = () => {
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('common-theme-selector');
+            refreshDashboard();
+            updateLeaderboard();
+            updateNetworkStats();
+        };
+    </script>
+</body>
+</html>

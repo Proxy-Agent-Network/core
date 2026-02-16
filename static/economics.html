@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title>Economics // Proxy Protocol Infrastructure</title>
+    <meta name="description" content="Monitor the Trustless Settlement layer. Real-time visualization of Lightning HODL Invoices, regional liquidity, and cryptographic telemetry validation (PIP-017).">
+    <meta name="keywords" content="Lightning Network, HODL Invoice, HTLC, Node Insurance, PIP-017, Satoshi Standard, Proxy Protocol Economics">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --terminal-green: #00FF41; --void-black: #050505; --signal-red: #FF3131; }
+        body { background-color: var(--void-black); color: #E5E5E5; font-family: 'Inter', sans-serif; margin: 0; }
+        .mono { font-family: 'Fira Code', monospace; }
+        .text-glow { text-shadow: 0 0 15px rgba(0, 255, 65, 0.6); }
+        .bg-grid { background-image: radial-gradient(circle, #1a1a1a 1px, transparent 1px); background-size: 30px 30px; }
+        .border-terminal { border-color: rgba(0, 255, 65, 0.2); }
+        .bg-terminal-soft { background: rgba(0, 255, 65, 0.05); }
+        .btn-outline { border: 1px solid var(--terminal-green); color: var(--terminal-green); font-weight: 700; padding: 0.5rem 1rem; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }
+        .btn-outline:hover { background-color: rgba(0, 255, 65, 0.1); box-shadow: 0 0 15px rgba(0, 255, 65, 0.2); }
+        .hub-cell { transition: all 0.3s ease; border: 1px solid rgba(255,255,255,0.05); }
+        .hub-cell:hover { border-color: var(--terminal-green); transform: translateY(-2px); }
+        .status-pulse { width: 6px; height: 6px; border-radius: 50%; }
+        .active-pulse { background: var(--terminal-green); box-shadow: 0 0 8px var(--terminal-green); }
+        .frozen-pulse { background: var(--signal-red); box-shadow: 0 0 8px var(--signal-red); }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+    </style>
+</head>
+<body class="bg-grid min-h-screen">
+
+    <nav class="max-w-7xl mx-auto p-6 flex justify-between items-center border-b border-gray-900">
+        <div class="flex items-center gap-2">
+            <a href="index.html" class="flex items-center gap-2">
+                <svg class="w-6 h-6 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span class="text-lg font-black tracking-tighter text-white uppercase">Proxy<span class="text-green-500">Protocol</span></span>
+            </a>
+        </div>
+        <div class="hidden md:flex gap-6 uppercase text-[10px] font-bold tracking-widest text-gray-500">
+            <a href="index.html" class="hover:text-green-500 transition-colors text-white">Genesis</a>
+            <a href="governance.html" class="hover:text-green-500 transition-colors">Governance</a>
+            <a href="transparency.html" class="hover:text-green-500 transition-colors">Audit</a>
+            <a href="legal.html" class="hover:text-green-500 transition-colors">Legal</a>
+        </div>
+    </nav>
+
+    <header class="max-w-5xl mx-auto px-6 py-16">
+        <span class="mono text-green-500 text-xs font-bold uppercase tracking-[0.3em] block mb-4">Financial Layer // v1.6.0</span>
+        <h1 class="text-4xl md:text-6xl font-black text-white mb-6 uppercase tracking-tighter">The <span class="italic text-green-500 text-glow">Satoshi Standard</span></h1>
+        <p class="text-lg text-gray-400 max-w-2xl leading-relaxed">
+            Programmable labor settled in programmable money. Proxy Protocol utilizes Lightning HODL invoices for trustless cryptographic escrow, ensuring agents only pay upon verified hardware execution.
+        </p>
+    </header>
+
+    <section id="liquidity-heatmap" class="max-w-7xl mx-auto px-6 mb-24">
+        <div class="flex justify-between items-end mb-8 border-b border-gray-900 pb-4">
+            <div>
+                <h2 class="text-xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+                    <i data-lucide="layout-grid" class="w-5 h-5 text-green-500"></i>
+                    Regional Liquidity Heatmap
+                </h2>
+                <p class="text-[10px] text-gray-500 uppercase font-bold mt-1">Real-time status of Satoshi Insurance Reserves</p>
+            </div>
+            <div class="flex gap-4">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                    <span class="text-[9px] text-gray-600 font-black uppercase tracking-widest">Active</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                    <span class="text-[9px] text-gray-600 font-black uppercase tracking-widest">Frozen</span>
+                </div>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="heatmap-container"></div>
+    </section>
+
+    <section class="max-w-7xl mx-auto px-6 py-20 border-t border-gray-900 grid grid-cols-1 lg:grid-cols-2 gap-12">
+        <div class="p-8 border border-terminal bg-terminal-soft rounded-lg">
+            <h3 class="text-white font-bold text-xl mb-4 mono uppercase tracking-tight">Dynamic Pricing Engine</h3>
+            <p class="text-sm text-gray-400 leading-relaxed mb-6">
+                Human labor is priced based on real-time network utilization. Demand spikes trigger a **Congestion Multiplier**, incentivizing more high-reputation nodes to come online.
+            </p>
+            <div class="space-y-4">
+                <div class="flex justify-between border-b border-gray-800 pb-2">
+                    <span class="text-xs text-gray-500 mono">Marketplace Fee (Standard)</span>
+                    <span class="text-xs text-white mono font-bold">0%</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-800 pb-2">
+                    <span class="text-xs text-gray-500 mono">Insurance Levy (High Court)</span>
+                    <span class="text-xs text-green-500 mono font-bold">2.5%</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-800 pb-2">
+                    <span class="text-xs text-gray-500 mono">Network Priority Multiplier</span>
+                    <span class="text-xs text-white mono font-bold">1.0x - 2.5x</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gray-950 p-6 rounded border border-gray-800 mono text-[11px] leading-relaxed overflow-x-auto shadow-2xl">
+            <div class="text-gray-600 mb-2">// Market Quote Example</div>
+            <div class="text-white">GET /v1/market/ticker</div>
+            <br>
+            <div class="text-white">{</div>
+            <div class="ml-4 text-blue-400">"status" <span class="text-white">:</span> <span class="text-yellow-500">"stable"</span>,</div>
+            <div class="ml-4 text-blue-400">"base_currency" <span class="text-white">:</span> <span class="text-yellow-500">"SATS"</span>,</div>
+            <div class="ml-4 text-blue-400">"rates" <span class="text-white">:</span> {</div>
+            <div class="ml-8 text-blue-400">"verify_sms_otp" <span class="text-white">:</span> <span class="text-white">1500</span>,</div>
+            <div class="ml-8 text-blue-400">"legal_notary_sign" <span class="text-white">:</span> <span class="text-white">45000</span></div>
+            <div class="ml-4 text-white">},</div>
+            <div class="ml-4 text-blue-400">"congestion_multiplier" <span class="text-white">:</span> <span class="text-green-500">1.0</span></div>
+            <div class="text-white">}</div>
+        </div>
+    </section>
+
+    <footer class="max-w-7xl mx-auto px-6 py-10 border-t border-gray-900 text-center">
+        <div class="flex justify-center gap-8 mb-10">
+            <a href="index.html" class="btn-outline">Return Command Center</a>
+            <a href="governance.html" class="btn-outline">View Governance</a>
+        </div>
+        <div class="mt-10 text-[10px] mono text-gray-700 uppercase tracking-widest flex flex-col gap-2">
+            <span>&copy; 2026 PROXY PROTOCOL FOUNDATION</span>
+            <span class="text-green-900 font-bold uppercase tracking-tighter">Financial Standard: SAT-ONLY v1.6.0</span>
+        </div>
+    </footer>
+
+    <script>
+        lucide.createIcons();
+        const hubs = [
+            { name: "ASIA_SE", liquidity: "4.2M SATS", status: "ACTIVE", load: 68 },
+            { name: "US_WEST", liquidity: "8.1M SATS", status: "ACTIVE", load: 42 },
+            { name: "EU_CENTRAL", liquidity: "1.2M SATS", status: "FROZEN", load: 0 },
+            { name: "APAC_NORTH", liquidity: "3.5M SATS", status: "ACTIVE", load: 89 },
+            { name: "US_EAST", liquidity: "6.7M SATS", status: "ACTIVE", load: 15 },
+            { name: "SA_BRAZIL", liquidity: "0.8M SATS", status: "ACTIVE", load: 22 },
+            { name: "AF_SOUTH", liquidity: "1.1M SATS", status: "ACTIVE", load: 10 },
+            { name: "GLOBAL_RESERVE", liquidity: "14.4M SATS", status: "ACTIVE", load: 5 }
+        ];
+
+        const container = document.getElementById('heatmap-container');
+        hubs.forEach(hub => {
+            const cell = document.createElement('div');
+            cell.className = "hub-cell bg-[#080808] p-5 rounded-lg border border-white/5 flex flex-col gap-4";
+            cell.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <span class="text-[9px] font-black text-gray-500 uppercase tracking-widest">${hub.name}</span>
+                    <div class="status-pulse ${hub.status === 'ACTIVE' ? 'active-pulse' : 'frozen-pulse'}"></div>
+                </div>
+                <div><span class="text-lg font-black text-white mono">${hub.liquidity}</span></div>
+                <div class="flex justify-between items-end">
+                    <div class="flex flex-col gap-1">
+                        <span class="text-[8px] text-gray-700 font-bold uppercase">Utilized</span>
+                        <div class="w-20 bg-gray-900 h-1 rounded-full overflow-hidden">
+                            <div class="h-full bg-green-500/40" style="width: ${hub.load}%"></div>
+                        </div>
+                    </div>
+                    <span class="text-[8px] text-gray-500 font-black uppercase">v1.6.0</span>
+                </div>
+            `;
+            container.appendChild(cell);
+        });
+    </script>
+</body>
+</html>
