@@ -192,14 +192,22 @@
             <h2>Broadcast Request</h2>
             <form id="broadcast-form" onsubmit="handleBroadcast(event)" style="display: flex; flex-direction: column; gap: 12px;">
                 <select id="task-type-select" name="task_type" onchange="updateColorFromPreference()" required style="padding:10px; background:var(--bg); color:var(--text); border: 1px solid var(--border); border-radius: 4px;">
-                    <option value="Web Scraping" data-default="#2ecc71">🌐 Web Scraping</option>
-                    <option value="Data Validation" data-default="#3498db">🛡️ Data Validation</option>
-                    <option value="Ping Test" data-default="#f1c40f">📡 Ping Test</option>
-                    <option value="Model Training" data-default="#9b59b6">🧠 Model Training</option>
-                    <option value="Courier Task" data-default="#e67e22">📦 Courier Task</option>
-                    <option value="Photography" data-default="#e84393">📷 Photography</option>
-                    <option value="Document Scanning" data-default="#00cec9">📠 Document Scanning</option>
+                    <optgroup label="Live Oracle Data">
+                        <option value="FINANCIAL" data-default="#f1c40f">📈 Crypto Price Feed (BTC/USD)</option>
+                        <option value="COMPUTE_V1" data-default="#3498db">☁️ Weather Station (Global)</option>
+                        <option value="IOT_SENSING" data-default="#2ecc71">📡 IoT Sensor Grid</option>
+                    </optgroup>
+                    <optgroup label="Standard Tasks">
+                        <option value="Web Scraping" data-default="#2ecc71">🌐 Web Scraping</option>
+                        <option value="Data Validation" data-default="#3498db">🛡️ Data Validation</option>
+                        <option value="Ping Test" data-default="#f1c40f">📡 Ping Test</option>
+                        <option value="Model Training" data-default="#9b59b6">🧠 Model Training</option>
+                        <option value="Courier Task" data-default="#e67e22">📦 Courier Task</option>
+                        <option value="Photography" data-default="#e84393">📷 Photography</option>
+                        <option value="Document Scanning" data-default="#00cec9">📠 Document Scanning</option>
+                    </optgroup>
                 </select>
+
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <div class="color-picker-container">
                         <input type="hidden" name="color" id="selected-color-input" value="#2ecc71">

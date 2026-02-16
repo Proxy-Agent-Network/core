@@ -13,16 +13,19 @@ load_dotenv()
 # We use a try/except block to handle different running contexts (direct vs module)
 try:
     from backend.core import pulse
-    from backend.core import rivals # Rival Logic Import
+    from backend.core import rivals
+    from backend.core import oracle # <--- NEW: Oracle Import
 except ImportError:
     # Fallback if running directly or if structure varies
     try:
         from core import pulse
         from core import rivals
+        from core import oracle
     except ImportError:
-        print("⚠️ WARNING: Could not import core modules (pulse/rivals). Real-time stats may be unavailable.")
+        print("⚠️ WARNING: Could not import core modules (pulse/rivals/oracle). Real-time stats may be unavailable.")
         pulse = None
         rivals = None
+        oracle = None
 
 # --- Economics Engine Imports ---
 try:
@@ -486,7 +489,7 @@ def claim_bid(bid_id):
 @login_required # <--- PROTECTED
 def complete_task_api():
     """
-    Validates work and triggers L2 Settlement.
+    Validates work, CALLS ORACLE, and triggers Settlement.
     """
     data = request.json
     conn = get_db()
@@ -495,7 +498,17 @@ def complete_task_api():
     task_id = data.get('task_id')
     node_id = data.get('node_id')
 
-    # L2 SETTLEMENT
+    # 1. FETCH TASK DETAILS (To get type)
+    task_record = conn.execute("SELECT task_type FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+    task_type = task_record['task_type'] if task_record else "GENERIC"
+
+    # 2. CALL ORACLE FOR LIVE DATA 🔮
+    oracle_data = "OFFLINE_MODE"
+    if oracle:
+        oracle_data = oracle.get_live_data(task_type)
+        print(f"🔮 ORACLE FETCH: {oracle_data}")
+
+    # 3. L2 SETTLEMENT
     tx_hash = "OFF-CHAIN"
     if escrow_engine:
         try:
@@ -511,14 +524,15 @@ def complete_task_api():
             escrow_engine.release_funds(mock_locked_tx, node_evm_wallet)
             tx_hash = mock_locked_tx.tx_hash
             
+            # Log the Blockchain Event WITH Real Oracle Data
             conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
-                         ("CHAIN_TX", f"Settled {payout} Sats on Base: {tx_hash} -> {node_id}"))
+                         ("CHAIN_TX", f"Settled {payout} Sats | DATA: {oracle_data}"))
         except Exception as e:
             print(f"❌ Escrow Settlement Error: {e}")
             conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                          ("ERROR", f"Settlement Failed for {task_id}: {str(e)}"))
 
-    # Update Local Ledger
+    # 4. UPDATE LEDGER
     cursor = conn.execute(
         "INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?)",
         (node_id, task_id, 500)
@@ -534,9 +548,10 @@ def complete_task_api():
     conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + ? WHERE node_id = ?", 
                  (payout, total_xp_gain, node_id))
     
+    # 5. LOG SETTLEMENT (If not on chain)
     if tx_hash == "OFF-CHAIN":
         conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
-                     ("SETTLEMENT", f"Node {node_id} completed {task_id} (+{payout} Sats)"))
+                     ("SETTLEMENT", f"Node {node_id} completed {task_id} | DATA: {oracle_data}"))
     
     conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
     conn.commit()
