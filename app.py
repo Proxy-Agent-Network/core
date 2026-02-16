@@ -4,10 +4,18 @@ import time
 import sys
 import os
 import json
-from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session
+import base64
+from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash
+
+# --- LIGHTNING ENGINE INTEGRATION ---
+try:
+    from lightning_engine import lnd
+    print(" [SYSTEM] ⚡ Lightning Treasury Layer Loaded.")
+except ImportError:
+    print(" [WARN] ⚠️  lightning_engine.py not found. Running without payment rails.")
+    lnd = None
 
 # --- HARDWARE BINDING (Protocol v1.2.0) ---
-# We enable the "Hardware Root of Trust" by importing our new Rust bridge
 try:
     from node.tpm_wrapper import TPMBinding
     # Initialize the connection to the Rust binary
@@ -15,7 +23,6 @@ try:
     print(" [SYSTEM] 🔒 Connecting to Rust TPM Engine...")
     
     # Perform the Boot-Up Handshake
-    # We send a "boot_check" nonce to verify the engine is responsive
     boot_identity = hw_bridge.get_attestation_quote("boot_integrity_check")
     
     if boot_identity:
@@ -24,7 +31,7 @@ try:
         print(f" [SYSTEM] ✅ Identity Confirmed: {MY_NODE_ID}")
         print(f" [SYSTEM] 🛡️  Hardware Security: {'ACTIVE' if HW_SECURED else 'SIMULATED'}")
     else:
-        # Fallback if the binary fails (Safety Net)
+        # Fallback if the binary fails
         print(" [WARN] ⚠️  TPM Handshake failed. Falling back to software ID.")
         MY_NODE_ID = "NODE_SOFTWARE_FALLBACK"
         HW_SECURED = False
@@ -47,7 +54,7 @@ app.secret_key = 'proxy_secret_key_v1'
 # CONFIGURATION
 DATABASE = 'registry.db'
 
-# SERVICE CATALOG (Professional Names)
+# SERVICE CATALOG
 SHOP_ITEMS = {
     'license_auto': {
         'id': 'license_auto',
@@ -55,6 +62,14 @@ SHOP_ITEMS = {
         'desc': 'Unlocks the Auto-Accept loop for high-frequency task claiming.',
         'price': 5000,
         'icon': '🤖',
+        'type': 'license'
+    },
+    'license_speed': {
+        'id': 'license_speed',
+        'name': 'Broadcast Turbo',
+        'desc': 'Overclocks the L2 handshake. Reduces broadcast delay by 50%.',
+        'price': 20000,
+        'icon': '⏩',
         'type': 'license'
     },
     'instance_t2': {
@@ -91,7 +106,7 @@ RIVALS = ["OMNI_CORP_09", "KAOS_ENGINE", "NEURAL_LINK_X", "VOID_RUNNER"]
 
 def simulate_rival_snatch():
     conn = get_db()
-    # Reduce snatch probability to 5% for more stable testing
+    # Reduce snatch probability to 5%
     if random.random() < 0.05: 
         conn.execute("""
             DELETE FROM tasks 
@@ -101,7 +116,6 @@ def simulate_rival_snatch():
                 LIMIT 1
             )
         """)
-        # Log global snatch event
         conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                      ("SECURITY", "Unauthorized task interception by Rival Agent"))
         conn.commit()
@@ -110,7 +124,7 @@ def run_automation_daemon(node_id):
     """Automatically claims marketplace tasks and stores a one-time event message."""
     conn = get_db()
     
-    # Verify license ownership
+    # 1. Verify license ownership
     has_license = conn.execute(
         "SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_auto'", 
         (node_id,)
@@ -119,13 +133,13 @@ def run_automation_daemon(node_id):
     if not has_license:
         return None
 
-    # Scan for available marketplace bids
+    # 2. Priority: Scan for high-value Marketplace Bids
     bid = conn.execute(
         "SELECT * FROM marketplace_bids WHERE status = 'PENDING' ORDER BY sats_offered DESC LIMIT 1"
     ).fetchone()
 
     if bid:
-        # Move bid to CLAIMED and generate an automated network task
+        # Move bid to CLAIMED
         conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid['bid_id'],))
         
         new_task_id = f"AUTO-{random.randint(1000, 9999)}"
@@ -134,16 +148,36 @@ def run_automation_daemon(node_id):
             VALUES (?, ?, 'OPEN', 'AUTOMATED')
         ''', (new_task_id, bid['sats_offered']))
         
-        # Log global automated task claim
         conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                      ("AUTOMATION", f"Node {node_id} secured task {new_task_id} via Daemon"))
         
         conn.commit()
         
-        # Store message in session so it can be cleared after one read (prevents audio loop)
-        msg = f"Secured task {new_task_id} for {bid['sats_offered']} Sats"
+        print(f" [DAEMON] 🤖 ACTIVATED: Secured {bid['sats_offered']} Sats from Market.")
+        
+        msg = f"Daemon secured task {new_task_id} (+{bid['sats_offered']} Sats)"
         session['daemon_msg'] = msg
         return msg
+
+    # 3. Secondary: Scavenger Mode (Idle Income)
+    # If market is empty, 20% chance to find "Stray Data" (Dust)
+    if random.random() < 0.20:
+        dust_sats = random.randint(5, 45)
+        junk_id = f"DUST-{random.randint(100, 999)}"
+        
+        # Direct deposit (no task entry needed for dust, or minimal entry)
+        conn.execute("UPDATE nodes SET total_earned = total_earned + ? WHERE node_id=?", (dust_sats, node_id))
+        
+        # Log it implicitly via a completed task entry so it shows in history
+        conn.execute("INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?)", (node_id, junk_id, 10))
+        
+        conn.commit()
+        
+        print(f" [DAEMON] 🧹 SCAVENGER: Found stray data packet ({dust_sats} Sats)")
+        msg = f"Daemon scavenged {junk_id} (+{dust_sats} Sats)"
+        session['daemon_msg'] = msg
+        return msg
+
     return None
 
 # DATABASE HELPER FUNCTIONS
@@ -154,7 +188,7 @@ def get_db():
         db = g._database = sqlite3.connect(DATABASE)
         db.row_factory = sqlite3.Row
         
-        # MAIN XP LOG (Parent Entries)
+        # TABLES
         db.execute('''CREATE TABLE IF NOT EXISTS xp_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             node_id TEXT,
@@ -163,17 +197,15 @@ def get_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )''')
 
-        # SUB-BONUSES (Child Entries)
         db.execute('''CREATE TABLE IF NOT EXISTS xp_bonuses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            parent_id INTEGER, -- Links to xp_history.id
+            parent_id INTEGER, 
             bonus_name TEXT,
             bonus_xp INTEGER,
             color TEXT,
             FOREIGN KEY (parent_id) REFERENCES xp_history(id) ON DELETE CASCADE
         )''')
 
-        # GLOBAL EVENT LOG (Network-wide history)
         db.execute('''CREATE TABLE IF NOT EXISTS global_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_type TEXT,
@@ -181,7 +213,6 @@ def get_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )''')
 
-        # Ensure core tables exist
         db.execute('''CREATE TABLE IF NOT EXISTS nodes (
             node_id TEXT PRIMARY KEY,
             hostname TEXT,
@@ -254,10 +285,34 @@ def dashboard():
 @app.route('/marketplace', methods=['GET', 'POST'])
 def marketplace():
     conn = get_db()
+    
     if request.method == 'POST':
         task_type = request.form.get('task_type')
-        sats = request.form.get('sats')
+        try:
+            sats = int(request.form.get('sats'))
+        except (ValueError, TypeError):
+            sats = 100 
+            
         color = request.form.get('color') or '#2ecc71'
+        
+        if lnd:
+            invoice = lnd.create_invoice(sats, f"Broadcast Task: {task_type}")
+            
+            # --- CHECK FOR TURBO LICENSE ---
+            has_speed = conn.execute(
+                "SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_speed'", 
+                (MY_NODE_ID,)
+            ).fetchone()
+            
+            invoice['duration'] = 4 if has_speed else 8
+            invoice['color'] = color
+            
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({
+                    "status": "INVOICE_REQUIRED",
+                    "invoice": invoice
+                })
+
         req_id = f"REQ-{random.randint(10000, 99999)}"
         conn.execute('''
             INSERT INTO marketplace_bids 
@@ -265,7 +320,6 @@ def marketplace():
             VALUES (?, ?, ?, 'PENDING', ?)
         ''', (req_id, sats, task_type, color))
         
-        # Log global marketplace broadcast
         conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                      ("MARKET", f"New high-yield bid broadcast: {req_id} ({sats} Sats)"))
         
@@ -297,13 +351,106 @@ def shop():
     conn = get_db()
     target_node = MY_NODE_ID 
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
-    balance = my_node['total_earned'] if my_node else 0
+    
+    balance = int(my_node['total_earned']) if my_node else 0
     node_id = my_node['node_id'] if my_node else target_node
+    
+    if request.args.get('buy'):
+        item_id = request.args.get('buy')
+        print(f"--- 🛒 SHOP DEBUG: Request to buy {item_id} ---")
+        
+        if item_id in SHOP_ITEMS:
+            price = SHOP_ITEMS[item_id]['price']
+            print(f"--- 💰 COST: {price} | YOUR BALANCE: {balance} ---")
+            
+            if balance >= price:
+                print("--- ✅ FUNDS OK. EXECUTING PURCHASE... ---")
+                conn.execute("UPDATE nodes SET total_earned = total_earned - ? WHERE node_id = ?", (price, node_id))
+                conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (?, ?)", (node_id, item_id))
+                conn.commit()
+                flash(f"Successfully provisioned: {SHOP_ITEMS[item_id]['name']}", "success")
+                print("--- 🎉 PURCHASE COMMITTED ---")
+            else:
+                print(f"--- ❌ INSUFFICIENT FUNDS. MISSING {price - balance} SATS ---")
+                flash(f"Insufficient funds! Need {price:,} Sats.", "error")
+        else:
+            print(f"--- ⚠️ INVALID ITEM ID: {item_id} ---")
+            
+        return redirect(url_for('shop'))
+
+    if request.args.get('cheat_fund'):
+        conn.execute("UPDATE nodes SET total_earned = total_earned + 50000 WHERE node_id = ?", (node_id,))
+        conn.commit()
+        flash("DEV MODE: Added 50,000 Sats to wallet.", "success")
+        return redirect(url_for('shop'))
+
     owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (node_id,)).fetchall()]
     return render_template('shop.html', items=SHOP_ITEMS, balance=balance, owned=owned, node_id=node_id)
 
 # --- API ENDPOINTS ---
 # ---------------------------------------------------------
+
+@app.route('/api/v1/shop/buy', methods=['POST'])
+def shop_buy_api():
+    """Handles shop purchases via AJAX/Fetch."""
+    data = request.json
+    item_id = data.get('item_id')
+    node_id = data.get('node_id', MY_NODE_ID)
+    
+    conn = get_db()
+    
+    if item_id not in SHOP_ITEMS:
+        return jsonify({"success": False, "error": "Invalid Item ID"}), 400
+        
+    item = SHOP_ITEMS[item_id]
+    price = item['price']
+    
+    node = conn.execute("SELECT total_earned FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
+    current_balance = node['total_earned'] if node else 0
+    
+    if current_balance >= price:
+        conn.execute("UPDATE nodes SET total_earned = total_earned - ? WHERE node_id = ?", (price, node_id))
+        conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (?, ?)", (node_id, item_id))
+        conn.commit()
+        return jsonify({"success": True, "message": f"Purchased {item['name']}", "new_balance": current_balance - price})
+    else:
+        return jsonify({"success": False, "error": f"Insufficient Funds. Need {price} Sats."}), 402
+
+@app.route('/api/v1/invoice/status/<r_hash>')
+def check_invoice_status(r_hash):
+    if lnd:
+        status = lnd.check_status(r_hash)
+        return jsonify({"status": status})
+    return jsonify({"status": "UNKNOWN"})
+
+@app.route('/api/v1/market/finalize_bid', methods=['POST'])
+def finalize_bid():
+    data = request.json
+    r_hash = data.get('r_hash')
+    
+    if not lnd:
+        return jsonify({"success": False, "error": "LND Engine not active"})
+
+    if lnd.check_status(r_hash) == "SETTLED":
+        invoice = lnd.pending_invoices[r_hash]
+        req_id = f"REQ-{random.randint(10000, 99999)}"
+        conn = get_db()
+        
+        bid_color = invoice.get('color', '#2ecc71')
+
+        conn.execute('''
+            INSERT INTO marketplace_bids 
+            (requester_id, sats_offered, task_type, status, color) 
+            VALUES (?, ?, ?, 'PENDING', ?)
+        ''', (req_id, invoice['amount'], invoice['memo'].replace("Broadcast Task: ", ""), bid_color))
+        
+        conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
+                     ("MARKET", f"New high-yield bid broadcast: {req_id} ({invoice['amount']} Sats) [PAID]"))
+        
+        conn.commit()
+        return jsonify({"success": True})
+    
+    return jsonify({"success": False, "error": "Payment not settled"})
 
 @app.route('/api/v1/network/stats')
 def get_network_stats():
@@ -321,14 +468,12 @@ def get_network_stats():
 
 @app.route('/api/v1/network/events/history')
 def get_event_history():
-    """Fetches the global network event history."""
     conn = get_db()
     events = conn.execute("SELECT * FROM global_events ORDER BY timestamp DESC LIMIT 20").fetchall()
     return jsonify([dict(e) for e in events])
 
 @app.route('/api/v1/network/leaderboard')
 def get_leaderboard():
-    """Generates global rankings pitting the human node against AI Rivals."""
     conn = get_db()
     my_node = conn.execute('SELECT node_id, xp FROM nodes WHERE node_id = ?', (MY_NODE_ID,)).fetchone()
     my_xp = my_node['xp'] if my_node else 0
@@ -361,10 +506,14 @@ def get_xp_ledger(node_id):
 
 @app.route('/api/v1/dashboard/live')
 def dashboard_live():
+    """Checks for new events and returns status."""
     conn = get_db()
     target_node = MY_NODE_ID 
     simulate_rival_snatch()
+    
+    # --- RUN AUTOMATION DAEMON ---
     run_automation_daemon(target_node) 
+    
     daemon_event = session.pop('daemon_msg', None)
     my_node = conn.execute('SELECT total_earned, xp FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
@@ -403,7 +552,6 @@ def complete_task_api():
     )
     parent_db_id = cursor.lastrowid
 
-    # Record hierarchical sub-bonuses
     conn.execute(
         "INSERT INTO xp_bonuses (parent_id, bonus_name, bonus_xp, color) VALUES (?, ?, ?, ?)",
         (parent_db_id, f"Rubber-Band Boost ({data.get('task_id')})", payout, "#ff9f00")
@@ -421,7 +569,6 @@ def complete_task_api():
     conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + ? WHERE node_id = ?", 
                  (payout, total_xp_gain, data.get('node_id')))
     
-    # Log global completion
     conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                  ("SETTLEMENT", f"Node {data.get('node_id')} completed {data.get('task_id')} (+{payout} Sats)"))
     
@@ -431,7 +578,6 @@ def complete_task_api():
 
 @app.route('/api/register', methods=['POST'])
 def register_node():
-    """Handles signed heartbeats from the node telemetry daemon."""
     data = request.json
     node_id = data.get('node_id')
     conn = get_db()
@@ -442,7 +588,6 @@ def register_node():
         DO UPDATE SET last_seen=excluded.last_seen
     ''', (node_id, "Windows-AMD64", time.time()))
     
-    # Log global heartbeat pulse
     conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                  ("NETWORK", f"Heartbeat pulse detected from Node {node_id}"))
     
@@ -464,7 +609,6 @@ def rival_feed():
 def market_trends():
     return jsonify({"labels": ["10:00", "10:05", "10:10", "10:15", "10:20"], "prices": [random.randint(50, 150) for _ in range(5)]})
 
-# --- RIVAL CHATTER DICTIONARY ---
 RIVAL_PERSONALITIES = {
     "OMNI_CORP_09": [
         "Task #{} secured. Efficiency is non-negotiable.",
@@ -489,11 +633,8 @@ RIVAL_PERSONALITIES = {
 if __name__ == '__main__':
     with app.app_context():
         db = get_db()
-        # Seed my node if it doesn't exist
         db.execute("INSERT OR IGNORE INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, 0, 0, ?)", 
                    (MY_NODE_ID, time.time()))
-        
-        # Log protocol boot event
         db.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                    ("SYSTEM", "Proxy Protocol v1.4.1 initialized. Registry online."))
         db.commit()

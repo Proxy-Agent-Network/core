@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Agent Marketplace | Proxy Agent Network</title>
+    
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
@@ -60,10 +63,21 @@
             box-shadow: 0 4px 0 rgba(0,0,0,0.3); 
             transition: all 0.1s;
             text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            white-space: nowrap; /* Prevent text wrapping */
         }
 
         .claim-btn:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 5px 0 rgba(0,0,0,0.3); }
         .claim-btn:active { transform: translateY(4px); box-shadow: 0 0 0 rgba(0,0,0,0.3); }
+
+        /* --- FIX: STABILIZE DISABLED STATE --- */
+        .claim-btn:disabled {
+            background: var(--card-color); /* Force keep color */
+            opacity: 0.8;
+            cursor: not-allowed;
+            transform: translateY(0); /* Reset click movement */
+            box-shadow: none;
+            color: rgba(255,255,255,0.9);
+        }
 
         /* --- COLOR PICKER --- */
         .color-picker-container { position: relative; display: flex; align-items: center; gap: 10px; }
@@ -109,21 +123,21 @@
     <audio id="cash-sound" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}" preload="auto"></audio>
     <audio id="lock-sound" src="{{ url_for('static', filename='audio/click.mp3') }}" preload="auto"></audio>
 
-    <div id="escrow-overlay" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(5px);">
-        <div style="background: var(--bg); padding: 30px; border-radius: 12px; border: 1px solid var(--accent); text-align: center; max-width: 400px; box-shadow: 0 0 50px rgba(0,0,0,0.5);">
+    <div id="escrow-overlay" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(8px);">
+        <div style="background: var(--bg); padding: 30px; border-radius: 12px; border: 1px solid var(--accent); text-align: center; max-width: 400px; box-shadow: 0 0 50px rgba(0,0,0,0.5); position: relative;">
             <h2 style="color: var(--accent); margin-bottom: 10px;">L2 ESCROW CONTRACT</h2>
             <div style="font-family: monospace; opacity: 0.7; margin-bottom: 20px;">
                 HASH: <span id="contract-hash">Loading...</span>
             </div>
             
             <div style="background: white; padding: 10px; display: inline-block; border-radius: 4px; margin-bottom: 20px;">
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=bitcoin:BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4?amount=0.0005" alt="Lightning Invoice">
+                <img id="ln-qr-code" src="" alt="Lightning Invoice" style="width: 150px; height: 150px;">
             </div>
 
             <div id="escrow-status" style="font-weight: bold; margin-bottom: 20px;">WAITING FOR PAYMENT...</div>
             
             <div class="progress-container" style="background: #333; height: 6px; width: 100%; border-radius: 3px; overflow: hidden;">
-                <div id="escrow-bar" style="background: var(--accent); width: 0%; height: 100%; transition: width 0.2s;"></div>
+                <div id="escrow-bar" style="background: var(--accent); width: 0%; height: 100%; transition: width 0.1s linear;"></div>
             </div>
         </div>
     </div>
@@ -242,53 +256,86 @@
 
     <script>
         const colors = ['#ff4757', '#ff6b81', '#ff7f50', '#ffa502', '#eccc68', '#f1c40f', '#2ed573', '#7bed9f', '#1e90ff', '#3742fa', '#a55eea', '#70a1ff', '#ff9ff3', '#f368e0', '#2bcbba', '#0fb9b1'];
+        let checkInterval = null;
 
-        // --- NEW: ESCROW HANDLER ---
         function handleBroadcast(e) {
-            e.preventDefault(); // Stop form from submitting immediately
-            
+            e.preventDefault(); 
+            const form = document.getElementById('broadcast-form');
+            const formData = new FormData(form);
+
+            fetch('/marketplace', {
+                method: 'POST',
+                body: formData,
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === "INVOICE_REQUIRED") {
+                    showEscrow(data.invoice);
+                } else {
+                    location.reload();
+                }
+            })
+            .catch(err => console.error("Broadcast failed:", err));
+        }
+
+        function showEscrow(invoice) {
             const overlay = document.getElementById('escrow-overlay');
             const bar = document.getElementById('escrow-bar');
             const status = document.getElementById('escrow-status');
             const hashDisplay = document.getElementById('contract-hash');
+            const qrImg = document.getElementById('ln-qr-code');
+
+            // Reset UI
+            bar.style.width = "0%";
+            status.innerText = "WAITING FOR PAYMENT...";
+            status.style.color = "var(--text)";
             
-            // 1. Show Overlay
+            if (checkInterval) clearInterval(checkInterval);
+
+            // Update UI with Invoice Data
             overlay.style.display = 'flex';
             document.getElementById('lock-sound').play();
+            hashDisplay.innerText = invoice.r_hash.substring(0, 20) + "...";
+            qrImg.src = invoice.qr_image; 
             
-            // 2. Simulate Hash Generation
-            hashDisplay.innerText = "0x" + Math.random().toString(16).substr(2, 24).toUpperCase();
+            // --- DYNAMIC PROGRESS SPEED ---
+            // Use the actual duration from the invoice object (e.g. 4s or 8s)
+            // We subtract 1s to ensure the bar is mostly full before the final settlement
+            const animTime = (invoice.duration || 8) - 1; 
+            
+            setTimeout(() => {
+                bar.style.width = "90%";
+                bar.style.transition = `width ${animTime}s linear`;
+            }, 100);
 
-            // 3. Simulate Lightning Payment Detection (3 Seconds)
-            let width = 0;
-            const interval = setInterval(() => {
-                if (width >= 100) {
-                    clearInterval(interval);
-                    status.innerText = "FUNDS LOCKED. BROADCASTING...";
-                    status.style.color = "#2ecc71";
-                    
-                    // 4. Actually Submit the Form
-                    setTimeout(() => {
-                        // Create a hidden form to submit manually since we intercepted the event
-                        const form = document.getElementById('broadcast-form');
-                        const formData = new FormData(form);
-                        
-                        fetch('/marketplace', {
-                            method: 'POST',
-                            body: formData
-                        }).then(() => location.reload()); // Reload to show new task
-                    }, 800);
-                } else {
-                    width += 2; // Speed of progress bar
-                    bar.style.width = width + '%';
-                    
-                    // Flashing text effect
-                    if (width % 20 === 0) status.style.opacity = (status.style.opacity === '0.5' ? '1' : '0.5');
-                }
-            }, 30); // 30ms * 50 steps = 1.5 seconds approx
+            // Poll for Status
+            checkInterval = setInterval(() => {
+                fetch(`/api/v1/invoice/status/${invoice.r_hash}`)
+                    .then(r => r.json())
+                    .then(res => {
+                        if(res.status === 'SETTLED') {
+                            clearInterval(checkInterval);
+                            bar.style.transition = "width 0.2s ease"; 
+                            bar.style.width = "100%"; 
+                            status.innerText = "PAYMENT CONFIRMED. BROADCASTING...";
+                            status.style.color = "#2ecc71";
+                            document.getElementById('cash-sound').play();
+                            
+                            finalizeBid(invoice);
+                        }
+                    });
+            }, 1000);
         }
 
-        // --- EXISTING FUNCTIONS (Kept Intact) ---
+        function finalizeBid(invoice) {
+            fetch('/api/v1/market/finalize_bid', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ r_hash: invoice.r_hash })
+            }).then(() => setTimeout(() => location.reload(), 1500));
+        }
+
         function initColorPicker() {
             const popup = document.getElementById('color-popup');
             colors.forEach(color => {
@@ -324,14 +371,30 @@
             url.searchParams.set('radius', val);
             window.location.href = url.toString();
         }
+        
+        // --- FIXED CLAIM TASK FUNCTION ---
         function claimTask(el) {
             const bidId = el.getAttribute('data-id');
             const originalText = el.innerText;
+            
+            // 1. Lock Dimensions (Fixes "Shrinking")
+            // We get the computed style to ensure we lock it to the current exact pixel value
+            el.style.width = el.getBoundingClientRect().width + 'px';
+            el.style.height = el.getBoundingClientRect().height + 'px';
+            
+            // 2. Prevent flexbox centering from breaking if text shrinks
+            el.style.display = 'inline-flex';
+            el.style.justifyContent = 'center';
+            el.style.alignItems = 'center';
+
             if (!bidId) { alert("Error: Invalid Task ID."); return; }
-            el.innerText = "CLAIMING..."; el.disabled = true;
+            
+            el.innerText = "CLAIMING..."; 
+            el.disabled = true;
+            
             fetch('/api/v1/market/claim/' + bidId, { 
                 method: 'POST', headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({ node_id: "{{ node_id }}" }) // Uses context variable if available, else standard ID
+                body: JSON.stringify({ node_id: "{{ node_id }}" }) 
             })
             .then(r => { if (!r.ok) throw new Error("Server Error"); return r.json(); })
             .then(data => {
@@ -347,6 +410,7 @@
                 setTimeout(() => { el.innerText = originalText; el.style.backgroundColor = ""; el.disabled = false; }, 2000);
             });
         }
+
         let marketChart;
         function initMarketChart() {
             const ctx = document.getElementById('marketChart').getContext('2d');
@@ -362,12 +426,35 @@
                 if(data.labels) { marketChart.data.labels = data.labels; marketChart.data.datasets[0].data = data.prices; marketChart.update(); }
             });
         }
+        function toggleCompactMode() {
+            const list = document.getElementById('market-list');
+            const isCompact = document.getElementById('compact-toggle').checked;
+            if (isCompact) {
+                list.classList.add('compact');
+                localStorage.setItem('marketCompact', 'true');
+            } else {
+                list.classList.remove('compact');
+                localStorage.setItem('marketCompact', 'false');
+            }
+        }
+        function toggleVelocityChart() {
+            const panel = document.getElementById('velocity-panel');
+            const isHidden = document.getElementById('velocity-toggle').checked;
+            panel.style.display = isHidden ? 'none' : 'block';
+            localStorage.setItem('hideVelocity', isHidden);
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             ThemeEngine.init('common-theme-selector');
             initMarketChart(); initColorPicker(); restoreState();
+            
             const savedCompact = localStorage.getItem('marketCompact') === 'true';
             document.getElementById('compact-toggle').checked = savedCompact;
             if (savedCompact) document.getElementById('market-list').classList.add('compact');
+
+            const savedHideVelocity = localStorage.getItem('hideVelocity') === 'true';
+            document.getElementById('velocity-toggle').checked = savedHideVelocity;
+            if (savedHideVelocity) document.getElementById('velocity-panel').style.display = 'none';
         });
     </script>
 </body>

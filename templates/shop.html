@@ -31,6 +31,27 @@
 
         .item-card:hover { border-color: var(--accent); }
 
+        /* DISABLED STATE FOR COMING SOON */
+        .item-card.coming-soon {
+            opacity: 0.6;
+            pointer-events: none; /* Disables clicks */
+            filter: grayscale(0.8);
+        }
+        
+        .coming-soon-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #e67e22; /* Orange */
+            color: white;
+            font-size: 0.7rem;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'Orbitron', sans-serif;
+            z-index: 10;
+        }
+
         .item-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
 
         .item-icon {
@@ -159,7 +180,15 @@
             <h2>Service Catalog</h2>
             <div class="shop-grid">
                 {% for key, item in items.items() %}
-                <div class="item-card">
+                
+                {% set is_implemented = item.id in ['license_auto', 'license_speed'] %}
+                
+                <div class="item-card {% if not is_implemented %}coming-soon{% endif %}">
+                    
+                    {% if not is_implemented %}
+                        <div class="coming-soon-badge">COMING SOON</div>
+                    {% endif %}
+
                     <div class="item-header">
                         <div class="item-icon">{{ item.icon }}</div>
                         <div class="item-name">{{ item.name }}</div>
@@ -174,11 +203,17 @@
                     {% else %}
                         <div style="margin-top: auto;">
                             <div class="price-tag">{{ item.price }} SATS</div>
-                            {% if balance >= item.price %}
-                                <button class="buy-btn" onclick="buyItem('{{ item.id }}')">PROVISION RESOURCE</button>
+                            
+                            {% if is_implemented %}
+                                {% if balance >= item.price %}
+                                    <button class="buy-btn" onclick="buyItem('{{ item.id }}')">PROVISION RESOURCE</button>
+                                {% else %}
+                                    <button class="buy-btn" disabled>INSUFFICIENT FUNDS</button>
+                                {% endif %}
                             {% else %}
-                                <button class="buy-btn" disabled>INSUFFICIENT FUNDS</button>
+                                <button class="buy-btn" disabled>UNAVAILABLE</button>
                             {% endif %}
+                            
                         </div>
                     {% endif %}
                 </div>
@@ -189,6 +224,12 @@
 
     <script>
         function buyItem(itemId) {
+            // Safety check for clicking disabled items via console/hacks
+            if (!['license_auto', 'license_speed'].includes(itemId)) {
+                alert("This item is not yet available.");
+                return;
+            }
+
             const btn = event.target;
             const originalText = btn.innerText;
             btn.innerText = "ALLOCATING...";
