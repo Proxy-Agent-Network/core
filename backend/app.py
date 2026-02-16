@@ -600,6 +600,23 @@ def register_node():
         "message": "Welcome to the Proxy Agent Network. Heartbeat accepted."
     })
 
+# --- ADMIN AUDIT ROUTE ---
+@app.route('/admin/audit')
+@login_required
+def admin_audit():
+    conn = get_db()
+    # Fetch all events, newest first
+    events = conn.execute("SELECT * FROM global_events ORDER BY timestamp DESC LIMIT 500").fetchall()
+    
+    # Calculate some quick stats for the header
+    stats = {
+        'total_events': conn.execute("SELECT COUNT(*) FROM global_events").fetchone()[0],
+        'security_alerts': conn.execute("SELECT COUNT(*) FROM global_events WHERE event_type='SECURITY'").fetchone()[0],
+        'revenue_events': conn.execute("SELECT COUNT(*) FROM global_events WHERE event_type='SETTLEMENT'").fetchone()[0]
+    }
+    
+    return render_template('audit.html', events=[dict(e) for e in events], stats=stats)
+
 if __name__ == '__main__':
     with app.app_context():
         db = get_db()
