@@ -32,6 +32,50 @@
             border: 1px solid var(--border);
         }
 
+        /* --- SCANNING PULSE & ALERTS --- */
+        .scanning-pulse {
+            width: 12px;
+            height: 12px;
+            background-color: var(--accent); /* Default active color */
+            border-radius: 50%;
+            position: relative;
+            display: inline-block;
+            transition: background-color 0.3s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .scanning-pulse::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            background-color: inherit;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            animation: radar-pulse 2s infinite ease-out;
+            opacity: 0.6;
+        }
+
+        /* Success Flash (Gold) */
+        .scanning-pulse.success-flash {
+            background-color: #f1c40f !important;
+            box-shadow: 0 0 20px #f1c40f;
+            transform: scale(1.5);
+        }
+
+        /* Rival Alert (Red) */
+        .scanning-pulse.rival-alert {
+            background-color: #e74c3c !important;
+            box-shadow: 0 0 20px #e74c3c;
+            transform: scale(1.5);
+        }
+
+        @keyframes radar-pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+            100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+        }
+
         /* --- MERLIN / MARVIN SPRITE --- */
         #marvin-sprite-container {
             display: none; 
@@ -134,6 +178,16 @@
             </div>
         </div>
 
+        <div class="panel">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="scan-pulse" class="scanning-pulse"></span>
+                <h2 style="margin: 0;">Automation Daemon</h2>
+            </div>
+            <p id="auto-status" style="opacity: 0.7; font-size: 0.85rem; margin-top: 5px;">
+                Scanning for high-yield proxy bids...
+            </p>
+        </div>
+
         <div class="panel" style="grid-column: span 2;">
             <h2><span class="live-dot"></span>Live Task Feed</h2>
             <table>
@@ -162,7 +216,8 @@
     </div>
 
     <script>
-        let lastDaemonMsg = ""; // Global variable to prevent audio looping
+        let lastDaemonMsg = ""; 
+        let lastTaskCount = {{ tasks|length }};
 
         // --- KONAMI CODE ---
         const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
@@ -188,6 +243,14 @@
             log.prepend(entry);
         }
 
+        // --- PULSE FX TRIGGERS ---
+        function flashPulse(type) {
+            const pulse = document.getElementById('scan-pulse');
+            const className = type === 'success' ? 'success-flash' : 'rival-alert';
+            pulse.classList.add(className);
+            setTimeout(() => pulse.classList.remove(className), 1200);
+        }
+
         // --- LIVE POLLING & REFRESH ---
         setInterval(refreshDashboard, 3000); 
 
@@ -195,12 +258,20 @@
             fetch('/api/v1/dashboard/live')
                 .then(r => r.json())
                 .then(data => {
-                    // Loop Prevention: Only play sound/log if message is new
+                    // Daemon Success Detection
                     if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
                         document.getElementById('audio-success').play();
+                        flashPulse('success');
                         addLog(`<span style="color:#f1c40f">DAEMON: ${data.daemon_event}</span>`);
                         lastDaemonMsg = data.daemon_event;
                     }
+
+                    // Rival Snatch Detection (Task count dropped without local completion)
+                    if (data.tasks.length < lastTaskCount && !data.daemon_event) {
+                        flashPulse('rival');
+                        addLog(`<span style="color:#e74c3c">WARNING: Task hijacked by rival agent</span>`);
+                    }
+                    lastTaskCount = data.tasks.length;
 
                     document.getElementById('live-balance').innerText = data.balance;
                     document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
