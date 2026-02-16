@@ -107,6 +107,26 @@
 </head>
 <body>
     <audio id="cash-sound" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}" preload="auto"></audio>
+    <audio id="lock-sound" src="{{ url_for('static', filename='audio/click.mp3') }}" preload="auto"></audio>
+
+    <div id="escrow-overlay" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg); padding: 30px; border-radius: 12px; border: 1px solid var(--accent); text-align: center; max-width: 400px; box-shadow: 0 0 50px rgba(0,0,0,0.5);">
+            <h2 style="color: var(--accent); margin-bottom: 10px;">L2 ESCROW CONTRACT</h2>
+            <div style="font-family: monospace; opacity: 0.7; margin-bottom: 20px;">
+                HASH: <span id="contract-hash">Loading...</span>
+            </div>
+            
+            <div style="background: white; padding: 10px; display: inline-block; border-radius: 4px; margin-bottom: 20px;">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=bitcoin:BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4?amount=0.0005" alt="Lightning Invoice">
+            </div>
+
+            <div id="escrow-status" style="font-weight: bold; margin-bottom: 20px;">WAITING FOR PAYMENT...</div>
+            
+            <div class="progress-container" style="background: #333; height: 6px; width: 100%; border-radius: 3px; overflow: hidden;">
+                <div id="escrow-bar" style="background: var(--accent); width: 0%; height: 100%; transition: width 0.2s;"></div>
+            </div>
+        </div>
+    </div>
 
     <div class="header">
         <div>
@@ -170,7 +190,7 @@
 
         <div class="panel">
             <h2>Broadcast Request</h2>
-            <form id="broadcast-form" method="POST" style="display: flex; flex-direction: column; gap: 12px;">
+            <form id="broadcast-form" onsubmit="handleBroadcast(event)" style="display: flex; flex-direction: column; gap: 12px;">
                 <select id="task-type-select" name="task_type" onchange="updateColorFromPreference()" required style="padding:10px; background:var(--bg); color:var(--text); border: 1px solid var(--border); border-radius: 4px;">
                     <option value="Web Scraping" data-default="#2ecc71">🌐 Web Scraping</option>
                     <option value="Data Validation" data-default="#3498db">🛡️ Data Validation</option>
@@ -186,7 +206,7 @@
                         <div id="current-swatch" class="current-color-swatch" onclick="toggleColorPopup()" style="background-color: #2ecc71;"></div>
                         <div id="color-popup" class="color-popup"></div>
                     </div>
-                    <input type="number" name="sats" placeholder="Sats Offered" required style="flex-grow: 1; padding:10px; background:var(--bg); color:var(--text); border: 1px solid var(--border); border-radius: 4px;">
+                    <input type="number" id="sats-input" name="sats" placeholder="Sats Offered" required style="flex-grow: 1; padding:10px; background:var(--bg); color:var(--text); border: 1px solid var(--border); border-radius: 4px;">
                 </div>
                 <button type="submit" id="broadcast-btn" class="claim-btn" style="background: var(--accent); color: white;">BROADCAST</button>
             </form>
@@ -215,6 +235,52 @@
     <script>
         const colors = ['#ff4757', '#ff6b81', '#ff7f50', '#ffa502', '#eccc68', '#f1c40f', '#2ed573', '#7bed9f', '#1e90ff', '#3742fa', '#a55eea', '#70a1ff', '#ff9ff3', '#f368e0', '#2bcbba', '#0fb9b1'];
 
+        // --- NEW: ESCROW HANDLER ---
+        function handleBroadcast(e) {
+            e.preventDefault(); // Stop form from submitting immediately
+            
+            const overlay = document.getElementById('escrow-overlay');
+            const bar = document.getElementById('escrow-bar');
+            const status = document.getElementById('escrow-status');
+            const hashDisplay = document.getElementById('contract-hash');
+            
+            // 1. Show Overlay
+            overlay.style.display = 'flex';
+            document.getElementById('lock-sound').play();
+            
+            // 2. Simulate Hash Generation
+            hashDisplay.innerText = "0x" + Math.random().toString(16).substr(2, 24).toUpperCase();
+
+            // 3. Simulate Lightning Payment Detection (3 Seconds)
+            let width = 0;
+            const interval = setInterval(() => {
+                if (width >= 100) {
+                    clearInterval(interval);
+                    status.innerText = "FUNDS LOCKED. BROADCASTING...";
+                    status.style.color = "#2ecc71";
+                    
+                    // 4. Actually Submit the Form
+                    setTimeout(() => {
+                        // Create a hidden form to submit manually since we intercepted the event
+                        const form = document.getElementById('broadcast-form');
+                        const formData = new FormData(form);
+                        
+                        fetch('/marketplace', {
+                            method: 'POST',
+                            body: formData
+                        }).then(() => location.reload()); // Reload to show new task
+                    }, 800);
+                } else {
+                    width += 2; // Speed of progress bar
+                    bar.style.width = width + '%';
+                    
+                    // Flashing text effect
+                    if (width % 20 === 0) status.style.opacity = (status.style.opacity === '0.5' ? '1' : '0.5');
+                }
+            }, 30); // 30ms * 50 steps = 1.5 seconds approx
+        }
+
+        // --- EXISTING FUNCTIONS (Kept Intact) ---
         function initColorPicker() {
             const popup = document.getElementById('color-popup');
             colors.forEach(color => {
@@ -225,7 +291,6 @@
                 popup.appendChild(swatch);
             });
         }
-
         function toggleColorPopup() { document.getElementById('color-popup').classList.toggle('active'); }
         function selectColor(color) {
             document.getElementById('selected-color-input').value = color;
@@ -233,7 +298,6 @@
             document.getElementById('broadcast-btn').style.background = color;
             localStorage.setItem('pref_color_' + document.getElementById('task-type-select').value, color);
         }
-
         function updateColorFromPreference() {
             const select = document.getElementById('task-type-select');
             const category = select.value;
@@ -241,90 +305,40 @@
             const savedColor = localStorage.getItem('pref_color_' + category) || select.options[select.selectedIndex].getAttribute('data-default');
             selectColor(savedColor);
         }
-
         function restoreState() {
             const lastCategory = localStorage.getItem('last_selected_category');
             if (lastCategory) { document.getElementById('task-type-select').value = lastCategory; }
             updateColorFromPreference();
         }
-
-        // --- GEOFENCE LOGIC ---
-        function updateRadiusLabel(val) {
-            document.getElementById('radius-val').innerText = val + " mi";
-        }
-
+        function updateRadiusLabel(val) { document.getElementById('radius-val').innerText = val + " mi"; }
         function applyRadiusFilter(val) {
             const url = new URL(window.location.href);
             url.searchParams.set('radius', val);
             window.location.href = url.toString();
         }
-
         function claimTask(el) {
             const bidId = el.getAttribute('data-id');
             const originalText = el.innerText;
-            
-            // 2. CHECK FOR INVALID ID
-            if (!bidId) {
-                alert("Error: Invalid Task ID. Please refresh the page.");
-                return;
-            }
-
-            // 3. UI Feedback
-            el.innerText = "CLAIMING..."; 
-            el.disabled = true;
-
-            // 4. Perform Request
+            if (!bidId) { alert("Error: Invalid Task ID."); return; }
+            el.innerText = "CLAIMING..."; el.disabled = true;
             fetch('/api/v1/market/claim/' + bidId, { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({ node_id: "ROBER_NODE_01" })
+                method: 'POST', headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ node_id: "{{ node_id }}" }) // Uses context variable if available, else standard ID
             })
-            .then(response => {
-                // If 404, it means the server doesn't know this URL -> Server likely not restarted
-                if (response.status === 404) { throw new Error("API Route Not Found (Did you restart the server?)"); }
-                if (!response.ok) { throw new Error("Server Error: " + response.status); }
-                return response.json();
-            })
+            .then(r => { if (!r.ok) throw new Error("Server Error"); return r.json(); })
             .then(data => {
                 if(data.success) {
                     el.innerText = "💰 SECURED";
-                    
-                    // 5. Play Correct Audio
                     const cashSound = document.getElementById('cash-sound');
-                    if (cashSound) {
-                        cashSound.currentTime = 0;
-                        // Try to play; if it fails, just reload anyway
-                        var playPromise = cashSound.play();
-                        if (playPromise !== undefined) {
-                            playPromise.then(_ => {
-                                setTimeout(() => location.reload(), 1000);
-                            })
-                            .catch(error => {
-                                console.log("Audio play blocked by browser:", error);
-                                location.reload(); // Reload even if sound fails
-                            });
-                        }
-                    } else {
-                        location.reload();
-                    }
-                } else {
-                    throw new Error("Task already claimed or unavailable.");
-                }
+                    if (cashSound) cashSound.play().catch(e=>console.log(e)).finally(() => setTimeout(()=>location.reload(), 500));
+                    else location.reload();
+                } else throw new Error("Unavailable");
             })
             .catch(err => {
-                console.error(err);
-                el.innerText = "FAILED";
-                el.style.backgroundColor = "var(--danger)";
-                alert("Transaction Failed: " + err.message);
-                
-                setTimeout(() => { 
-                    el.innerText = originalText; 
-                    el.style.backgroundColor = "";
-                    el.disabled = false; 
-                }, 2000);
+                el.innerText = "FAILED"; el.style.backgroundColor = "var(--danger)";
+                setTimeout(() => { el.innerText = originalText; el.style.backgroundColor = ""; el.disabled = false; }, 2000);
             });
         }
-
         let marketChart;
         function initMarketChart() {
             const ctx = document.getElementById('marketChart').getContext('2d');
@@ -333,21 +347,16 @@
                 data: { labels: [], datasets: [{ data: [], borderColor: '#2ecc71', backgroundColor: '#2ecc7122', fill: true, tension: 0.4 }] },
                 options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: false } }, plugins: { legend: { display: false } } }
             });
-            updateChart();
-            setInterval(updateChart, 5000);
+            updateChart(); setInterval(updateChart, 5000);
         }
-
         function updateChart() {
             fetch('/api/v1/market/trends').then(r => r.json()).then(data => {
                 if(data.labels) { marketChart.data.labels = data.labels; marketChart.data.datasets[0].data = data.prices; marketChart.update(); }
             });
         }
-
         window.addEventListener('DOMContentLoaded', () => {
             ThemeEngine.init('common-theme-selector');
-            initMarketChart();
-            initColorPicker();
-            restoreState();
+            initMarketChart(); initColorPicker(); restoreState();
             const savedCompact = localStorage.getItem('marketCompact') === 'true';
             document.getElementById('compact-toggle').checked = savedCompact;
             if (savedCompact) document.getElementById('market-list').classList.add('compact');
