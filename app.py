@@ -110,6 +110,19 @@ def get_db():
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
         db.row_factory = sqlite3.Row
+        
+        # Ensure marketplace table exists (Added safety check)
+        db.execute('''CREATE TABLE IF NOT EXISTS marketplace_bids (
+            bid_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            requester_id TEXT,
+            task_type TEXT,
+            sats_offered INTEGER,
+            status TEXT,
+            color TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        db.commit()
+        
     return db
 
 @app.teardown_appcontext
@@ -145,34 +158,18 @@ def dashboard():
 
     return render_template('dashboard.html', node=my_node, tasks=tasks)
 
-# --- UPDATED RIVAL LOGIC ---
-def simulate_rival_snatch():
-    """Simulates rivals 'snatching' tasks with reduced frequency for testing."""
-    conn = get_db()
-    # Reduced from 0.2 to 0.05 to prevent 'disappearing' tasks during manual testing
-    if random.random() < 0.05:
-        conn.execute("""
-            DELETE FROM tasks 
-            WHERE rowid IN (
-                SELECT rowid FROM tasks 
-                WHERE status='OPEN' AND task_type='MANUAL' 
-                LIMIT 1
-            )
-        """)
-        conn.commit()
-
 # --- UPDATED MARKETPLACE ROUTE ---
 @app.route('/marketplace', methods=['GET', 'POST'])
 def marketplace():
     conn = get_db()
     
+    # 1. HANDLE BROADCAST POSTS
     if request.method == 'POST':
         task_type = request.form.get('task_type')
         sats = request.form.get('sats')
         color = request.form.get('color') or '#2ecc71'
         req_id = f"REQ-{random.randint(10000, 99999)}"
         
-        # Explicitly commit the new bid before redirecting to ensure it persists
         conn.execute('''
             INSERT INTO marketplace_bids 
             (requester_id, sats_offered, task_type, status, color) 
@@ -181,15 +178,39 @@ def marketplace():
         conn.commit() 
         return redirect(url_for('marketplace'))
 
-    # Fetch ALL bids to ensure the list populates correctly
-    bids = conn.execute("SELECT * FROM marketplace_bids ORDER BY created_at DESC").fetchall()
-    
+    # 2. FETCH BIDS
+    # Only fetch items that are actually 'PENDING'
+    bids = conn.execute("SELECT * FROM marketplace_bids WHERE status='PENDING' ORDER BY created_at DESC").fetchall() 
+
+    # 3. APPLY GEOFENCE LOGIC (Simulated Distance)
+    # Get radius from query param, default to 50 miles
+    try:
+        max_radius = int(request.args.get('radius', 50))
+    except ValueError:
+        max_radius = 50
+
+    filtered_bids = []
+    for bid in bids:
+        # Simulate a distance for every task (deterministic based on ID so it doesn't jump around)
+        # We use the bid_id as a seed to generate a stable 'distance' between 1 and 100 miles
+        random.seed(bid['bid_id']) 
+        distance = random.randint(1, 100)
+        random.seed() # Reset seed
+
+        # Attach distance to the bid object for the UI
+        bid_dict = dict(bid) # Convert Row to dict to modify
+        bid_dict['distance'] = distance
+        
+        if distance <= max_radius:
+            filtered_bids.append(bid_dict)
+
+    # 4. CHECK LICENSES
     has_auto = False
     try:
         has_auto = conn.execute("SELECT 1 FROM purchases WHERE item_id='license_auto'").fetchone()
     except: pass
     
-    return render_template('marketplace.html', bids=bids, unlock_auto=bool(has_auto))
+    return render_template('marketplace.html', bids=filtered_bids, unlock_auto=bool(has_auto), current_radius=max_radius)
 
 @app.route('/shop')
 def shop():
@@ -263,6 +284,32 @@ def dashboard_live():
         'daemon_event': daemon_event
     })
 
+# --- CRITICAL MISSING ROUTE ADDED HERE ---
+@app.route('/api/v1/market/claim/<int:bid_id>', methods=['POST'])
+def claim_bid(bid_id):
+    conn = get_db()
+    # Get bid info
+    bid = conn.execute("SELECT * FROM marketplace_bids WHERE bid_id=?", (bid_id,)).fetchone()
+    
+    if bid and bid['status'] == 'PENDING':
+        # 1. Mark as claimed
+        conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid_id,))
+        
+        # 2. Pay the node (Updating 'nodes' table as per your schema)
+        # Assuming ROBER_NODE_01 if not provided
+        target_node = request.json.get('node_id', 'ROBER_NODE_01')
+        conn.execute("UPDATE nodes SET total_earned = total_earned + ? WHERE node_id=?", (bid['sats_offered'], target_node))
+        
+        # 3. Optional: Add to 'tasks' table so it shows on dashboard feed
+        new_task_id = f"TASK-{random.randint(1000, 9999)}"
+        conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', ?)", 
+                     (new_task_id, bid['sats_offered'], bid['task_type']))
+        
+        conn.commit()
+        return jsonify({'success': True})
+    
+    return jsonify({'success': False, 'error': 'Task already claimed or invalid'})
+
 @app.route('/api/v1/market/trends')
 def market_trends():
     return jsonify({"labels": ["10:00", "10:05", "10:10", "10:15", "10:20"], "prices": [random.randint(50, 150) for _ in range(5)]})
@@ -285,7 +332,7 @@ def buy_item():
     return jsonify({'success': True})
 
 @app.route('/api/v1/tasks/complete', methods=['POST'])
-def complete_task():
+def complete_task_api():
     data = request.json
     conn = get_db()
     conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + 100 WHERE node_id = ?", (data.get('payout'), data.get('node_id')))

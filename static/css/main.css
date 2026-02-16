@@ -75,3 +75,52 @@ li { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justi
     outline: none;
     box-shadow: 0 0 5px var(--accent);
 }
+
+/* Pulse Indicator Base */
+.scanning-pulse {
+    width: 12px;
+    height: 12px;
+    background-color: var(--accent); /* Uses your dashboard's accent color */
+    border-radius: 50%;
+    position: relative;
+    display: inline-block;
+}
+
+/* The Radar Ripple Effect */
+.scanning-pulse::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    background-color: var(--accent);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: radar-pulse 2s infinite ease-out; /* Infinite heartbeat loop */
+    opacity: 0.6;
+}
+
+@keyframes radar-pulse {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.6;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(4); /* Grows to 4x size */
+        opacity: 0; /* Fades out completely */
+    }
+}
+
+/* Standard Active State */
+.scanning-pulse.active {
+    background-color: var(--accent); /* Default Green/Blue */
+    transition: background-color 0.3s ease;
+}
+
+/* Success State Triggered by JS */
+.scanning-pulse.success-flash {
+    background-color: #f1c40f !important; /* "Gold" Success Color */
+    box-shadow: 0 0 20px #f1c40f;
+    transform: scale(1.5); /* Brief expansion */
+}

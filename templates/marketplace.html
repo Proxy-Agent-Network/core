@@ -25,12 +25,9 @@
             border: 1px solid rgba(128,128,128,0.2);
         }
 
-        /* DYNAMIC COLOR LOGIC */
         .bid-card {
-            /* Default fallback */
             --card-color: #2ecc71; 
             --card-bg: rgba(46, 204, 113, 0.15);
-
             border-left: 6px solid var(--card-color) !important;
             border-right: 6px solid var(--card-color) !important;
             background: linear-gradient(90deg, var(--card-bg) 0%, transparent 40%, transparent 60%, var(--card-bg) 100%);
@@ -38,8 +35,17 @@
 
         .bid-info h3 { margin: 0 0 5px 0; font-size: 1.1rem; color: var(--card-color); }
         .bid-info small { opacity: 0.7; font-family: monospace; }
+        
+        /* Distance Badge Style */
+        .dist-badge {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-left: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
 
-        /* 3D Button Styling */
         .claim-btn { 
             background: var(--card-color); 
             color: #fff; 
@@ -59,59 +65,30 @@
         .claim-btn:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 5px 0 rgba(0,0,0,0.3); }
         .claim-btn:active { transform: translateY(4px); box-shadow: 0 0 0 rgba(0,0,0,0.3); }
 
-        /* --- COMPACT COLOR PICKER --- */
-        .color-picker-container {
-            position: relative;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .current-color-swatch {
-            width: 42px;
-            height: 42px;
-            border-radius: 6px;
-            cursor: pointer;
-            border: 2px solid var(--border);
-            transition: transform 0.1s;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-        
+        /* --- COLOR PICKER --- */
+        .color-picker-container { position: relative; display: flex; align-items: center; gap: 10px; }
+        .current-color-swatch { width: 42px; height: 42px; border-radius: 6px; cursor: pointer; border: 2px solid var(--border); transition: transform 0.1s; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
         .current-color-swatch:hover { transform: scale(1.05); border-color: var(--text); }
         
         .color-popup {
-            display: none; /* Hidden by default */
+            display: none; 
             position: absolute;
-            top: 50px;
-            left: 0;
-            z-index: 100;
+            top: 50px; left: 0; z-index: 100;
             background: var(--bg);
             border: 1px solid var(--border);
-            padding: 10px;
-            border-radius: 8px;
+            padding: 10px; border-radius: 8px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
             grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-            width: 180px;
+            gap: 8px; width: 180px;
         }
-
         .color-popup.active { display: grid; }
-
-        .popup-swatch {
-            width: 32px;
-            height: 32px;
-            border-radius: 4px;
-            cursor: pointer;
-            border: 2px solid transparent;
-        }
+        .popup-swatch { width: 32px; height: 32px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
         .popup-swatch:hover { transform: scale(1.1); border-color: white; }
 
         /* Compact Mode & Switches */
         .bid-list.compact .bid-card { margin-bottom: 6px; padding: 6px 12px; border-radius: 4px; }
-        .bid-list.compact .bid-info h3 { font-size: 0.95rem; margin-bottom: 0; display: inline-block; margin-right: 10px; }
-        .bid-list.compact .bid-info small { font-size: 0.75rem; }
-        .bid-list.compact .claim-btn { padding: 4px 12px; font-size: 0.8rem; box-shadow: 0 2px 0 rgba(0,0,0,0.3); }
-        .bid-list.compact .claim-btn:active { transform: translateY(2px); }
+        .bid-list.compact .bid-info h3 { font-size: 0.95rem; margin-bottom: 0; }
+        .bid-list.compact .claim-btn { padding: 4px 12px; font-size: 0.8rem; }
 
         .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
         .switch input { opacity: 0; width: 0; height: 0; }
@@ -119,7 +96,13 @@
         .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: var(--accent); }
         input:checked + .slider:before { transform: translateX(20px); }
-        .checkbox-wrapper { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+        .checkbox-wrapper { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        
+        /* Range Slider Styling */
+        input[type=range] { width: 100%; margin: 10px 0; background: transparent; -webkit-appearance: none; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: rgba(128,128,128,0.3); border-radius: 3px; }
+        input[type=range]::-webkit-slider-thumb { height: 16px; width: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; -webkit-appearance: none; margin-top: -5px; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
@@ -149,7 +132,7 @@
                 <div class="sats-badge" id="node-status-badge" style="background: var(--border); font-size: 0.7rem;">IDLE</div>
             </div>
             
-            <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; flex-direction: column; gap: 15px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(128,128,128,0.1); border-radius: 8px;">
                     <div>
                         <b>Auto-Accept Mode</b><br>
@@ -159,21 +142,28 @@
                             <small style="color: var(--danger); opacity: 0.8;">🔒 LICENSE REQUIRED</small>
                         {% endif %}
                     </div>
-                    
                     <label class="switch">
                         {% if unlock_auto %}
                             <input type="checkbox" id="auto-accept-checkbox" onchange="toggleAutoAccept()">
                             <span class="slider"></span>
                         {% else %}
-                            <input type="checkbox" disabled style="cursor: not-allowed;">
-                            <span class="slider" style="background: #444; opacity: 0.5;"></span>
+                            <input type="checkbox" disabled><span class="slider" style="background: #444; opacity: 0.5;"></span>
                         {% endif %}
                     </label>
                 </div>
+
+                <div style="padding: 12px; background: rgba(128,128,128,0.1); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <b>Geofence Radius</b>
+                        <span id="radius-val" style="color: var(--accent); font-family: monospace;">{{ current_radius }} mi</span>
+                    </div>
+                    <input type="range" id="radius-slider" min="1" max="100" value="{{ current_radius }}" oninput="updateRadiusLabel(this.value)" onchange="applyRadiusFilter(this.value)">
+                    <small style="opacity: 0.6; display: block; margin-top: -5px;">Filter tasks by distance</small>
+                </div>
                 
                 <div style="padding: 10px 12px; background: rgba(128,128,128,0.05); border-radius: 8px; display: flex; flex-direction: column; gap: 8px;">
-                    <label class="checkbox-wrapper"><input type="checkbox" id="compact-toggle" onchange="toggleCompactMode()"><span style="font-size: 0.9rem;">Compact View (High Density)</span></label>
-                    <label class="checkbox-wrapper"><input type="checkbox" id="velocity-toggle" onchange="toggleVelocityChart()"><span style="font-size: 0.9rem;">Hide Market Velocity Chart</span></label>
+                    <label class="checkbox-wrapper"><input type="checkbox" id="compact-toggle" onchange="toggleCompactMode()"><span style="font-size: 0.9rem;">Compact View</span></label>
+                    <label class="checkbox-wrapper"><input type="checkbox" id="velocity-toggle" onchange="toggleVelocityChart()"><span style="font-size: 0.9rem;">Hide Velocity Chart</span></label>
                 </div>
             </div>
         </div>
@@ -181,7 +171,6 @@
         <div class="panel">
             <h2>Broadcast Request</h2>
             <form id="broadcast-form" method="POST" style="display: flex; flex-direction: column; gap: 12px;">
-                
                 <select id="task-type-select" name="task_type" onchange="updateColorFromPreference()" required style="padding:10px; background:var(--bg); color:var(--text); border: 1px solid var(--border); border-radius: 4px;">
                     <option value="Web Scraping" data-default="#2ecc71">🌐 Web Scraping</option>
                     <option value="Data Validation" data-default="#3498db">🛡️ Data Validation</option>
@@ -191,189 +180,158 @@
                     <option value="Photography" data-default="#e84393">📷 Photography</option>
                     <option value="Document Scanning" data-default="#00cec9">📠 Document Scanning</option>
                 </select>
-                
                 <div style="display: flex; gap: 10px; align-items: center;">
-                    <label style="font-size: 0.8rem; opacity: 0.7; white-space: nowrap;">Task Color Tag:</label>
                     <div class="color-picker-container">
                         <input type="hidden" name="color" id="selected-color-input" value="#2ecc71">
                         <div id="current-swatch" class="current-color-swatch" onclick="toggleColorPopup()" style="background-color: #2ecc71;"></div>
-                        <div id="color-popup" class="color-popup">
-                            </div>
+                        <div id="color-popup" class="color-popup"></div>
                     </div>
                     <input type="number" name="sats" placeholder="Sats Offered" required style="flex-grow: 1; padding:10px; background:var(--bg); color:var(--text); border: 1px solid var(--border); border-radius: 4px;">
                 </div>
-
                 <button type="submit" id="broadcast-btn" class="claim-btn" style="background: var(--accent); color: white;">BROADCAST</button>
             </form>
         </div>
 
         <div class="panel" style="grid-column: span 2;">
-            <h2>Available Tasks</h2>
-            <div id="market-list">
+            <h2>Available Tasks ({{ bids|length }})</h2>
+            <ul id="market-list" class="bid-list" style="list-style: none; padding: 0;">
                 {% for bid in bids %}
                 {% if bid.status == 'PENDING' %}
-                <div class="bid-card" style="border-left: 5px solid {{ bid.color }}">
-                    <div>
-                        <div class="bid-id">{{ bid.requester_id }}</div>
-                        <div class="bid-type">{{ bid.task_type }}</div>
+                <li class="bid-card" style="--card-color: {{ bid.color or '#e67e22' }}; --card-bg: {{ bid.color or '#e67e22' }}26;">
+                    <div class="bid-info">
+                        <h3>{{ bid.task_type }} <span class="dist-badge">{{ bid.distance }} mi</span></h3>
+                        <small>{{ bid.requester_id }}</small>
                     </div>
-                    <div style="text-align: right;">
-                        <div class="sats-amount">{{ bid.sats_offered }} SATS</div>
-                        {% if not unlock_auto %}
-                        <button class="claim-btn" onclick="claimTask({{ bid.bid_id }})">CLAIM</button>
-                        {% endif %}
-                    </div>
-                </div>
+                    <button class="claim-btn" data-id="{{ bid.bid_id }}" onclick="claimTask(this)">
+                        CLAIM {{ bid.sats_offered }} SATS
+                    </button>
+                </li>
                 {% endif %}
-            {% endfor %}
+                {% endfor %}
+            </ul>
         </div>
     </div>
 
     <script>
-        const colors = [
-            '#ff4757', '#ff6b81', '#ff7f50', '#ffa502', 
-            '#eccc68', '#f1c40f', '#2ed573', '#7bed9f', 
-            '#1e90ff', '#3742fa', '#a55eea', '#70a1ff',
-            '#ff9ff3', '#f368e0', '#2bcbba', '#0fb9b1'
-        ];
+        const colors = ['#ff4757', '#ff6b81', '#ff7f50', '#ffa502', '#eccc68', '#f1c40f', '#2ed573', '#7bed9f', '#1e90ff', '#3742fa', '#a55eea', '#70a1ff', '#ff9ff3', '#f368e0', '#2bcbba', '#0fb9b1'];
 
         function initColorPicker() {
             const popup = document.getElementById('color-popup');
-            
             colors.forEach(color => {
                 const swatch = document.createElement('div');
                 swatch.className = 'popup-swatch';
                 swatch.style.backgroundColor = color;
-                swatch.onclick = (e) => {
-                    e.stopPropagation(); 
-                    selectColor(color);
-                    toggleColorPopup(); 
-                };
+                swatch.onclick = (e) => { e.stopPropagation(); selectColor(color); toggleColorPopup(); };
                 popup.appendChild(swatch);
             });
-            
-            // Note: Restore happens in restoreState()
         }
 
-        function toggleColorPopup() {
-            const popup = document.getElementById('color-popup');
-            popup.classList.toggle('active');
-        }
-
-        document.addEventListener('click', function(event) {
-            const container = document.querySelector('.color-picker-container');
-            const popup = document.getElementById('color-popup');
-            if (!container.contains(event.target) && popup.classList.contains('active')) {
-                popup.classList.remove('active');
-            }
-        });
-
+        function toggleColorPopup() { document.getElementById('color-popup').classList.toggle('active'); }
         function selectColor(color) {
             document.getElementById('selected-color-input').value = color;
             document.getElementById('current-swatch').style.backgroundColor = color;
             document.getElementById('broadcast-btn').style.background = color;
-
-            const category = document.getElementById('task-type-select').value;
-            localStorage.setItem('pref_color_' + category, color);
+            localStorage.setItem('pref_color_' + document.getElementById('task-type-select').value, color);
         }
 
         function updateColorFromPreference() {
             const select = document.getElementById('task-type-select');
             const category = select.value;
-            
-            // PERSISTENCE: Update the stored category immediately
             localStorage.setItem('last_selected_category', category);
-
-            const defaultColor = select.options[select.selectedIndex].getAttribute('data-default');
-            const savedColor = localStorage.getItem('pref_color_' + category);
-            const finalColor = savedColor || defaultColor;
-            
-            document.getElementById('selected-color-input').value = finalColor;
-            document.getElementById('current-swatch').style.backgroundColor = finalColor;
-            document.getElementById('broadcast-btn').style.background = finalColor; 
+            const savedColor = localStorage.getItem('pref_color_' + category) || select.options[select.selectedIndex].getAttribute('data-default');
+            selectColor(savedColor);
         }
 
-        // --- PERSISTENCE LOGIC ---
-        
-        // 1. Force Save on Submit (Redundant but safe)
-        document.getElementById('broadcast-form').addEventListener('submit', function() {
-            const category = document.getElementById('task-type-select').value;
-            localStorage.setItem('last_selected_category', category);
-        });
-
-        // 2. Restore State Function
         function restoreState() {
             const lastCategory = localStorage.getItem('last_selected_category');
-            if (lastCategory) {
-                document.getElementById('task-type-select').value = lastCategory;
-                // Update the color to match the restored category
-                updateColorFromPreference();
-            } else {
-                // Initialize default colors if no history
-                updateColorFromPreference();
-            }
+            if (lastCategory) { document.getElementById('task-type-select').value = lastCategory; }
+            updateColorFromPreference();
         }
 
-        // --- Standard Logic ---
-        let marketChart;
-        const cashSound = document.getElementById('cash-sound');
-        let autoAcceptActive = false;
-
-        function toggleCompactMode() {
-            const isCompact = document.getElementById('compact-toggle').checked;
-            const list = document.getElementById('market-list');
-            if (isCompact) { list.classList.add('compact'); localStorage.setItem('marketCompact', 'true'); } 
-            else { list.classList.remove('compact'); localStorage.setItem('marketCompact', 'false'); }
+        // --- GEOFENCE LOGIC ---
+        function updateRadiusLabel(val) {
+            document.getElementById('radius-val').innerText = val + " mi";
         }
 
-        function toggleVelocityChart() {
-            const shouldHide = document.getElementById('velocity-toggle').checked;
-            document.getElementById('velocity-panel').style.display = shouldHide ? 'none' : 'block';
-            localStorage.setItem('hideVelocity', shouldHide ? 'true' : 'false');
+        function applyRadiusFilter(val) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('radius', val);
+            window.location.href = url.toString();
         }
 
-        function toggleAutoAccept() {
-            autoAcceptActive = document.getElementById('auto-accept-checkbox').checked;
-            document.getElementById('auto-status').innerText = autoAcceptActive ? "Scanning Market..." : "Manual Mode Active";
-            if(autoAcceptActive) runAutoScan();
-        }
-
-        function runAutoScan() {
-            if(!autoAcceptActive) return;
-            const btn = document.querySelector('.claim-btn');
-            if(btn && !btn.innerText.includes("BROADCAST")) { claimTask(btn, true); }
-            setTimeout(runAutoScan, 3000);
-        }
-
-        function claimTask(el, isAuto = false) {
+        function claimTask(el) {
             const bidId = el.getAttribute('data-id');
             const originalText = el.innerText;
-            el.innerText = "CLAIMING..."; el.disabled = true;
+            
+            // 2. CHECK FOR INVALID ID
+            if (!bidId) {
+                alert("Error: Invalid Task ID. Please refresh the page.");
+                return;
+            }
 
+            // 3. UI Feedback
+            el.innerText = "CLAIMING..."; 
+            el.disabled = true;
+
+            // 4. Perform Request
             fetch('/api/v1/market/claim/' + bidId, { 
-                method: 'POST', headers: {'Content-Type': 'application/json'}, 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
                 body: JSON.stringify({ node_id: "ROBER_NODE_01" })
-            }).then(r => r.json()).then(data => {
+            })
+            .then(response => {
+                // If 404, it means the server doesn't know this URL -> Server likely not restarted
+                if (response.status === 404) { throw new Error("API Route Not Found (Did you restart the server?)"); }
+                if (!response.ok) { throw new Error("Server Error: " + response.status); }
+                return response.json();
+            })
+            .then(data => {
                 if(data.success) {
                     el.innerText = "💰 SECURED";
-                    cashSound.currentTime = 0;
-                    cashSound.play().then(() => { cashSound.onended = () => location.reload(); })
-                    .catch(() => location.reload());
+                    
+                    // 5. Play Correct Audio
+                    const cashSound = document.getElementById('cash-sound');
+                    if (cashSound) {
+                        cashSound.currentTime = 0;
+                        // Try to play; if it fails, just reload anyway
+                        var playPromise = cashSound.play();
+                        if (playPromise !== undefined) {
+                            playPromise.then(_ => {
+                                setTimeout(() => location.reload(), 1000);
+                            })
+                            .catch(error => {
+                                console.log("Audio play blocked by browser:", error);
+                                location.reload(); // Reload even if sound fails
+                            });
+                        }
+                    } else {
+                        location.reload();
+                    }
                 } else {
-                    el.innerText = "FAILED";
-                    setTimeout(() => { el.innerText = originalText; el.disabled = false; }, 2000);
+                    throw new Error("Task already claimed or unavailable.");
                 }
+            })
+            .catch(err => {
+                console.error(err);
+                el.innerText = "FAILED";
+                el.style.backgroundColor = "var(--danger)";
+                alert("Transaction Failed: " + err.message);
+                
+                setTimeout(() => { 
+                    el.innerText = originalText; 
+                    el.style.backgroundColor = "";
+                    el.disabled = false; 
+                }, 2000);
             });
         }
 
+        let marketChart;
         function initMarketChart() {
             const ctx = document.getElementById('marketChart').getContext('2d');
-            const style = getComputedStyle(document.documentElement);
-            const accent = style.getPropertyValue('--accent').trim();
             marketChart = new Chart(ctx, {
                 type: 'line',
-                data: { labels: [], datasets: [{ data: [], borderColor: accent, backgroundColor: accent + '22', fill: true, tension: 0.4 }] },
-                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: false }, y: { ticks: { color: style.getPropertyValue('--text').trim() } } }, plugins: { legend: { display: false } } }
+                data: { labels: [], datasets: [{ data: [], borderColor: '#2ecc71', backgroundColor: '#2ecc7122', fill: true, tension: 0.4 }] },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: false } }, plugins: { legend: { display: false } } }
             });
             updateChart();
             setInterval(updateChart, 5000);
@@ -381,27 +339,18 @@
 
         function updateChart() {
             fetch('/api/v1/market/trends').then(r => r.json()).then(data => {
-                if(data.labels && data.labels.length) {
-                    marketChart.data.labels = data.labels;
-                    marketChart.data.datasets[0].data = data.prices;
-                    marketChart.update();
-                }
+                if(data.labels) { marketChart.data.labels = data.labels; marketChart.data.datasets[0].data = data.prices; marketChart.update(); }
             });
         }
 
         window.addEventListener('DOMContentLoaded', () => {
             ThemeEngine.init('common-theme-selector');
             initMarketChart();
-            initColorPicker(); // Build the popup
-            restoreState();    // Restore the dropdown value & color
-            
+            initColorPicker();
+            restoreState();
             const savedCompact = localStorage.getItem('marketCompact') === 'true';
             document.getElementById('compact-toggle').checked = savedCompact;
             if (savedCompact) document.getElementById('market-list').classList.add('compact');
-
-            const savedHideVelocity = localStorage.getItem('hideVelocity') === 'true';
-            document.getElementById('velocity-toggle').checked = savedHideVelocity;
-            if (savedHideVelocity) document.getElementById('velocity-panel').style.display = 'none';
         });
     </script>
 </body>
