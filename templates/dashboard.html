@@ -16,145 +16,80 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <style>
-        /* --- CORE DASHBOARD STYLES --- */
+        /* --- CORE DASHBOARD STYLES (Restored) --- */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); }
         th:last-child, td:last-child { text-align: right; }
         td:nth-child(3) { width: 40%; font-family: monospace; opacity: 0.8; word-break: break-all; }
 
-        /* --- GAME LOOP BUTTONS --- */
         .btn-claim { background-color: #f1c40f !important; color: black !important; font-weight: bold; border: none; padding: 6px 16px; cursor: pointer; border-radius: 4px; box-shadow: 0 0 10px rgba(241, 196, 15, 0.3); }
         .btn-claim:hover { transform: scale(1.05); box-shadow: 0 0 20px #f1c40f; }
         
-        /* --- NETWORK LOG STYLE --- */
         #activity-log, #global-log {
-            height: 150px;
-            overflow-y: auto;
-            background: rgba(0,0,0,0.2);
-            padding: 10px;
-            border-radius: 4px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-            border: 1px solid var(--border);
+            height: 150px; overflow-y: auto; background: rgba(0,0,0,0.2);
+            padding: 10px; border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem; border: 1px solid var(--border);
         }
 
-        /* --- SCANNING PULSE & ALERTS --- */
+        /* --- SCANNING PULSE --- */
         .scanning-pulse {
-            width: 12px;
-            height: 12px;
-            background-color: var(--accent);
-            border-radius: 50%;
-            position: relative;
-            display: inline-block;
+            width: 12px; height: 12px; background-color: var(--accent);
+            border-radius: 50%; position: relative; display: inline-block;
             transition: background-color 0.3s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-
         .scanning-pulse::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 100%;
-            height: 100%;
-            background-color: inherit;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            animation: radar-pulse 2s infinite ease-out;
-            opacity: 0.6;
+            content: ''; position: absolute; top: 50%; left: 50%;
+            width: 100%; height: 100%; background-color: inherit;
+            border-radius: 50%; transform: translate(-50%, -50%);
+            animation: radar-pulse 2s infinite ease-out; opacity: 0.6;
         }
+        .scanning-pulse.success-flash { background-color: #2ecc71 !important; box-shadow: 0 0 20px #2ecc71; transform: scale(1.5); }
+        .scanning-pulse.rival-alert { background-color: #e74c3c !important; box-shadow: 0 0 20px #e74c3c; transform: scale(1.5); }
+        @keyframes radar-pulse { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; } 100% { transform: translate(-50%, -50%) scale(4); opacity: 0; } }
 
-        .scanning-pulse.success-flash {
-            background-color: #2ecc71 !important;
-            box-shadow: 0 0 20px #2ecc71;
-            transform: scale(1.5);
-        }
-
-        .scanning-pulse.rival-alert {
-            background-color: #e74c3c !important;
-            box-shadow: 0 0 20px #e74c3c;
-            transform: scale(1.5);
-        }
-
-        @keyframes radar-pulse {
-            0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
-            100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
-        }
-
-        /* --- MERLIN / MARVIN SPRITE --- */
+        /* --- MARVIN SPRITE (RESTORED) --- */
         #marvin-sprite-container {
-            display: none; 
-            position: fixed; 
-            bottom: -200px; 
-            right: 20px; 
-            width: 300px; 
-            z-index: 9000; 
-            cursor: pointer; 
+            display: none; position: fixed; bottom: -200px; right: 20px; 
+            width: 300px; z-index: 9000; cursor: pointer; 
             filter: drop-shadow(0 0 15px var(--accent));
             transition: opacity 1s, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            opacity: 0;
-            pointer-events: none;
+            opacity: 0; pointer-events: none;
         }
-
-        #marvin-sprite-container.active { 
-            display: block;
-            opacity: 1; 
-            transform: translateY(-200px);
-            pointer-events: auto; 
-        }
-
+        #marvin-sprite-container.active { display: block; opacity: 1; transform: translateY(-200px); pointer-events: auto; }
         #marvin-image { width: 100%; height: auto; animation: idle-float 3s ease-in-out infinite; }
-        
         @keyframes idle-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(3deg); } }
         .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
         @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
 
-        /* --- SYSTEM BYPASS OVERLAY --- */
+        /* --- BYPASS OVERLAY --- */
         #bypass-overlay {
-            display: none; 
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background-color: rgba(0, 0, 0, 0.95);
-            z-index: 9999;
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.95); z-index: 9999;
             flex-direction: column; justify-content: center; align-items: center;
             font-family: 'Courier Prime', monospace;
         }
-
-        .bypass-title {
-            font-size: 4rem; 
-            color: #00ff00; 
-            text-shadow: 6px 6px #ff0000; 
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .live-dot {
-            height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%;
-            display: inline-block; margin-right: 5px;
-            animation: pulse-live 1.5s infinite;
-        }
+        .bypass-title { font-size: 4rem; color: #00ff00; text-shadow: 6px 6px #ff0000; margin-bottom: 20px; text-align: center; }
+        .live-dot { height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-live 1.5s infinite; }
         @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
-        /* --- LEDGER SPECIFIC STYLES --- */
+        /* --- LEDGER --- */
         .ledger-row { margin-bottom: 15px; border-bottom: 1px solid rgba(163, 227, 237, 0.1); padding-bottom: 10px; }
         .ledger-parent { display: flex; justify-content: space-between; align-items: flex-start; }
         .ledger-timestamp { color: rgba(163, 227, 237, 0.5); margin-right: 10px; }
         .ledger-task-id { color: #a3e3ed; font-style: italic; }
         .ledger-xp-total { color: #ff9f00; font-weight: bold; font-size: 1.1rem; text-shadow: 0 0 10px rgba(255, 159, 0, 0.5); }
-        
         .ledger-children { margin-left: 45px; margin-top: 5px; border-left: 2px solid rgba(255, 159, 0, 0.3); padding-left: 15px; position: relative; }
         .ledger-child { display: flex; justify-content: space-between; margin-bottom: 4px; position: relative; }
-        
-        .ledger-child::before {
-            content: "└─";
-            position: absolute;
-            left: -17px;
-            color: rgba(255, 159, 0, 0.5);
-        }
-        
+        .ledger-child::before { content: "└─"; position: absolute; left: -17px; color: rgba(255, 159, 0, 0.5); }
         .ledger-child-name { font-size: 0.85rem; }
         .ledger-child-xp { font-size: 0.85rem; opacity: 0.8; }
     </style>
 </head>
 <body>
+
+    <script>
+        window.OWNED_THEMES = {{ owned|tojson|safe }};
+    </script>
 
     <div id="audio-unlock-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:black; z-index:99999; display:flex; justify-content:center; align-items:center; flex-direction:column;">
         <h1 style="color: #8e44ad; font-family:'Courier Prime'; margin-bottom:20px; font-size: 2rem; letter-spacing: 2px;">PROXY // NETWORK</h1>
@@ -203,21 +138,7 @@
             <a href="/marketplace" style="color: var(--accent); font-weight: bold; text-decoration: none;">Marketplace</a>
 
             <div style="display: flex; flex-direction: column; gap: 6px; width: 180px;">
-                <a href="/admin/audit" style="
-                    display: block;
-                    text-align: center;
-                    background: rgba(231, 76, 60, 0.2); 
-                    border: 1px solid #e74c3c; 
-                    color: #e74c3c; 
-                    font-weight: bold; 
-                    text-decoration: none; 
-                    padding: 4px; 
-                    border-radius: 4px;
-                    font-size: 0.85rem;
-                    box-shadow: 0 0 5px rgba(231, 76, 60, 0.2);
-                    box-sizing: border-box;
-                ">👁️ AUDIT LOG</a>
-                
+                <a href="/admin/audit" style="display: block; text-align: center; background: rgba(231, 76, 60, 0.2); border: 1px solid #e74c3c; color: #e74c3c; font-weight: bold; text-decoration: none; padding: 4px; border-radius: 4px; font-size: 0.85rem;">👁️ AUDIT LOG</a>
                 <select id="common-theme-selector" class="theme-picker-ui" style="width: 100%; box-sizing: border-box;">
                     <option>Loading Themes...</option>
                 </select>
@@ -234,16 +155,12 @@
             
             <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; font-family: monospace;">
                 <div style="display: flex; justify-content: space-between;">
-                    <span style="opacity: 0.7;">ID:</span>
-                    <span style="color: var(--accent);">{{ node.id }}</span>
+                    <span style="opacity: 0.7;">ID:</span> <span style="color: var(--accent);">{{ node.id }}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 5px;">
                     <span style="opacity: 0.7;">SECURITY:</span>
-                    {% if hw_secured %}
-                        <span style="color: #2ecc71; font-weight: bold;">[HARDWARE_LOCKED] 🔒</span>
-                    {% else %}
-                        <span style="color: #f1c40f;">[SIMULATION_MODE] ⚠️</span>
-                    {% endif %}
+                    {% if hw_secured %} <span style="color: #2ecc71; font-weight: bold;">[HARDWARE_LOCKED] 🔒</span>
+                    {% else %} <span style="color: #f1c40f;">[SIMULATION_MODE] ⚠️</span> {% endif %}
                 </div>
             </div>
 
@@ -261,12 +178,8 @@
                     <button onclick="switchTab('global')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px; background: transparent; border: 1px solid var(--accent);">GLOBAL</button>
                 </div>
             </div>
-            <div id="activity-log">
-                <div style="opacity:0.5; font-style:italic;">Initializing telemetry stream...</div>
-            </div>
-            <div id="global-log" style="display: none;">
-                <div style="opacity:0.5; font-style:italic;">Querying global event history...</div>
-            </div>
+            <div id="activity-log"><div style="opacity:0.5; font-style:italic;">Initializing telemetry stream...</div></div>
+            <div id="global-log" style="display: none;"><div style="opacity:0.5; font-style:italic;">Querying global event history...</div></div>
         </div>
 
         <div class="panel" style="border-color: var(--danger);">
@@ -294,23 +207,13 @@
                 <span id="scan-pulse" class="scanning-pulse"></span>
                 <h2 style="margin: 0;">Automation Daemon</h2>
             </div>
-            <p id="auto-status" style="opacity: 0.7; font-size: 0.85rem; margin-top: 5px;">
-                Scanning for high-yield proxy bids...
-            </p>
+            <p id="auto-status" style="opacity: 0.7; font-size: 0.85rem; margin-top: 5px;">Scanning for high-yield proxy bids...</p>
         </div>
 
         <div class="panel" style="grid-column: span 2;">
             <h2><span class="live-dot"></span>Live Task Feed (Race Against Rivals)</h2>
             <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                        <th>Reward</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
+                <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Reward</th><th>Action</th></tr></thead>
                 <tbody id="task-table-body">
                     {% for task in tasks %}
                     <tr>
@@ -335,19 +238,15 @@
                 <h2 style="margin: 0; color: #a3e3ed; font-family: 'Montserrat', sans-serif; letter-spacing: 1px;">Session XP Ledger</h2>
                 <button onclick="closeXPHistory()" style="background: #ff9f00; border: none; color: #002b31; font-weight: bold; padding: 5px 15px; border-radius: 4px; cursor: pointer;">CLOSE</button>
             </div>
-            <div id="xp-ledger-body" class="session-ledger" style="max-height: 400px; overflow-y: auto; font-family: 'Courier Prime', monospace;">
-                </div>
+            <div id="xp-ledger-body" class="session-ledger" style="max-height: 400px; overflow-y: auto; font-family: 'Courier Prime', monospace;"></div>
         </div>
     </div>
 
     <script>
-        // --- GLOBAL CONSTANTS (Linter-Friendly) ---
         const NODE_ID = "{{ node.id }}";
-        
         let lastDaemonMsg = ""; 
         let lastTaskCount = {{ tasks|length }};
 
-        // --- AUDIO UNLOCK LOGIC (RUNS ON LOAD) ---
         if (sessionStorage.getItem('audioUnlocked')) {
             document.getElementById('audio-unlock-overlay').style.display = 'none';
         }
@@ -362,20 +261,14 @@
             document.getElementById('audio-click').play();
         }
 
-        // --- TAB SWITCH LOGIC ---
         function switchTab(tab) {
             const liveLog = document.getElementById('activity-log');
             const globalLog = document.getElementById('global-log');
             const title = document.getElementById('activity-title');
-            
             if (tab === 'live') {
-                liveLog.style.display = 'block';
-                globalLog.style.display = 'none';
-                title.innerText = "Network Activity";
+                liveLog.style.display = 'block'; globalLog.style.display = 'none'; title.innerText = "Network Activity";
             } else {
-                liveLog.style.display = 'none';
-                globalLog.style.display = 'block';
-                title.innerText = "Global Event Log";
+                liveLog.style.display = 'none'; globalLog.style.display = 'block'; title.innerText = "Global Event Log";
                 fetchGlobalEvents();
             }
         }
@@ -384,8 +277,7 @@
             fetch('/api/v1/network/events/history')
                 .then(r => r.json())
                 .then(events => {
-                    const log = document.getElementById('global-log');
-                    log.innerHTML = events.map(e => `
+                    document.getElementById('global-log').innerHTML = events.map(e => `
                         <div style="margin-bottom: 5px;">
                             <span style="opacity:0.5">[${e.timestamp.split(' ')[1]}]</span> 
                             <b style="color:var(--accent)">${e.event_type}:</b> ${e.message}
@@ -394,7 +286,6 @@
                 });
         }
 
-        // --- KONAMI CODE ---
         const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
         let konamiIndex = 0;
         document.addEventListener('keydown', (e) => {
@@ -428,205 +319,102 @@
         }
 
         function updateNetworkStats() {
-            fetch('/api/v1/network/stats')
-                .then(r => r.json())
-                .then(data => {
-                    document.getElementById('stat-volume').innerText = data.total_volume + " SATS";
-                    document.getElementById('stat-nodes').innerText = data.active_nodes;
-                });
+            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
+                document.getElementById('stat-volume').innerText = data.total_volume + " SATS";
+                document.getElementById('stat-nodes').innerText = data.active_nodes;
+            });
         }
         setInterval(updateNetworkStats, 30000);
 
         setInterval(pollRivals, 5000);
         function pollRivals() {
-            fetch('/api/v1/rivals/feed')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.has_msg) {
-                        const feed = document.getElementById('rival-feed');
-                        const entry = document.createElement('div');
-                        entry.style.marginBottom = "8px";
-                        entry.innerHTML = `<span style="opacity:0.6">[${data.timestamp}]</span> <b style="color:var(--danger)">${data.rival}:</b> <span style="color:var(--text)">${data.message}</span>`;
-                        feed.prepend(entry);
-                    }
-                });
+            fetch('/api/v1/rivals/feed').then(r => r.json()).then(data => {
+                if (data.has_msg) {
+                    const feed = document.getElementById('rival-feed');
+                    const entry = document.createElement('div');
+                    entry.style.marginBottom = "8px";
+                    entry.innerHTML = `<span style="opacity:0.6">[${data.timestamp}]</span> <b style="color:var(--danger)">${data.rival}:</b> <span style="color:var(--text)">${data.message}</span>`;
+                    feed.prepend(entry);
+                }
+            });
         }
 
         setInterval(refreshDashboard, 2000); 
         function refreshDashboard() {
-            fetch('/api/v1/dashboard/live')
-                .then(r => r.json())
-                .then(data => {
-                    // 1. DAEMON EVENT
-                    if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
-                        document.getElementById('audio-success').play();
-                        addLog(`<span style="color:#2ecc71">🤖 DAEMON: ${data.daemon_event}</span>`);
-                        flashPulse('success');
-                        lastDaemonMsg = data.daemon_event;
-                    }
-                    
-                    // 2. RIVAL EVENT
-                    if (data.rival_event) {
-                        addLog(`<span style="color:var(--danger)">⚠️ RIVAL: ${data.rival_event}</span>`);
-                        flashPulse('rival');
-                        const audioFail = document.getElementById('audio-failure');
-                        if (audioFail) { audioFail.currentTime = 0; audioFail.play().catch(e => console.log("Audio play failed:", e)); }
-                    }
-
-                    // Update Stats
-                    document.getElementById('live-balance').innerText = data.balance;
-                    document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
-                    document.getElementById('xp-text').innerText = `${data.xp % 5000} / 5000`;
-
-                    // Update Task List (With Claim Buttons)
-                    const tbody = document.getElementById('task-table-body');
-                    let html = '';
-                    if(data.tasks.length === 0) {
-                        html = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">No active tasks. Market is dry.</td></tr>';
-                    } else {
-                        data.tasks.forEach(task => {
-                            // Check if it's an AUTOMATED task
-                            if (task.type === 'AUTOMATED') {
-                                html += `<tr>
-                                    <td style="color:#2ecc71">${task.id}</td>
-                                    <td>${task.type}</td>
-                                    <td style="color:#2ecc71">SECURED BY DAEMON</td>
-                                    <td><span class="sats-badge">${task.reward}</span></td>
-                                    <td><button class="theme-btn-primary" style="background:rgba(46,204,113,0.2); cursor:default;">🤖 LOCKED</button></td>
-                                </tr>`;
-                            } else {
-                                html += `<tr>
-                                    <td>${task.id}</td>
-                                    <td>${task.type}</td>
-                                    <td><code>WAITING_FOR_EXEC</code></td>
-                                    <td><span class="sats-badge">${task.reward}</span></td>
-                                    <td>
-                                        <button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">COMPLETE</button>
-                                        <button class="theme-btn-primary" style="background:var(--bg); border:1px solid var(--accent); margin-left:5px;" onclick="generateContract('${task.id}', '${task.type}', '${task.reward}')">📄</button>
-                                    </td>
-                                </tr>`;
-                            }
-                        });
-                    }
-                    tbody.innerHTML = html;
-                });
-        }
-
-        function updateLeaderboard() {
-            fetch('/api/v1/network/leaderboard')
-                .then(r => r.json())
-                .then(data => {
-                    const list = document.getElementById('leaderboard-list');
-                    list.innerHTML = data.map((entry, index) => `
-                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(128,128,128,0.1); ${entry.id === NODE_ID ? 'color: var(--accent); font-weight: bold;' : ''}">
-                            <span>${index + 1}. ${entry.id} ${entry.type === 'RIVAL' ? '🤖' : '👤'}</span>
-                            <span>${entry.xp} XP</span>
-                        </div>
-                    `).join('');
-                });
-        }
-        setInterval(updateLeaderboard, 10000);
-
-        function claimBid(bidId) {
-            fetch(`/api/v1/market/claim/${bidId}`, { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ node_id: NODE_ID }) 
-            })
-            .then(r => r.json())
-            .then(data => {
-                if(data.success) {
-                    document.getElementById('audio-click').play();
-                    refreshDashboard(); 
-                } else {
-                    alert("Too slow! Rival snatched it.");
-                }
-            })
-            .catch(e => console.error("Claim Error:", e));
-        }
-
-        function completeTask(id, reward) {
-            const audio = document.getElementById('audio-success');
-            audio.currentTime = 0; 
-            audio.play().catch(e => console.log("Audio blocked:", e));
-            
-            addLog(`<span>Verifying proof for task ${id}...</span>`);
-            
-            fetch('/api/v1/tasks/complete', {
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ task_id: id, node_id: NODE_ID, payout: reward })
-            })
-            .then(r => r.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    addLog(`<b style="color:#2ecc71">✔ SETTLED:</b> <span style="font-family:monospace; opacity:0.8">${data.tx_hash || 'TX_PENDING'}</span>`);
+            fetch('/api/v1/dashboard/live').then(r => r.json()).then(data => {
+                if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
+                    document.getElementById('audio-success').play();
+                    addLog(`<span style="color:#2ecc71">🤖 DAEMON: ${data.daemon_event}</span>`);
                     flashPulse('success');
-                    refreshDashboard();
-                } else {
-                    addLog(`<span style="color:var(--danger)">❌ ERROR: Settlement Failed</span>`);
+                    lastDaemonMsg = data.daemon_event;
                 }
-            })
-            .catch(err => {
-                console.error(err);
-                addLog(`<span style="color:var(--danger)">❌ NETWORK ERROR</span>`);
+                
+                document.getElementById('live-balance').innerText = data.balance;
+                document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
+                document.getElementById('xp-text').innerText = `${data.xp % 5000} / 5000`;
+
+                const tbody = document.getElementById('task-table-body');
+                if(data.tasks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">No active tasks. Market is dry.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.tasks.map(task => {
+                        if (task.type === 'AUTOMATED') {
+                            return `<tr><td style="color:#2ecc71">${task.id}</td><td>${task.type}</td><td style="color:#2ecc71">SECURED BY DAEMON</td><td><span class="sats-badge">${task.reward}</span></td><td><span style="opacity:0.5">AUTO-CLAIMED</span></td></tr>`;
+                        } else {
+                            return `<tr><td>${task.id}</td><td>${task.type}</td><td><code>OPEN</code></td><td><span class="sats-badge">${task.reward}</span></td><td><button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">COMPLETE</button></td></tr>`;
+                        }
+                    }).join('');
+                }
             });
         }
 
-        function generateContract(taskId, type, reward) {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            doc.setFont("courier", "bold");
-            doc.setFontSize(22);
-            doc.text("PROXY NETWORK SERVICE AGREEMENT", 20, 20);
-            doc.setFontSize(10);
-            doc.setFont("courier", "normal");
-            doc.text(`AGREEMENT ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}`, 20, 30);
-            doc.text(`TIMESTAMP: ${new Date().toUTCString()}`, 20, 35);
-            doc.text(`NODE OPERATOR: ${NODE_ID}`, 20, 40);
-            doc.setFontSize(12);
-            doc.text("1. PARTIES", 20, 55);
-            doc.setFontSize(10);
-            doc.text(doc.splitTextToSize("This Limited Power of Attorney is entered into between the Autonomous Agent (The Principal) and the Human Node Operator (The Proxy).", 170), 20, 62);
-            doc.setFontSize(12);
-            doc.text("2. SCOPE OF WORK", 20, 80);
-            doc.setFontSize(10);
-            doc.text(`Task ID: ${taskId}`, 20, 87);
-            doc.text(`Task Type: ${type}`, 20, 92);
-            doc.text(`Consideration: ${reward} Satoshis`, 20, 97);
-            doc.setFontSize(12);
-            doc.text("3. EXECUTION & LIABILITY", 20, 115);
-            doc.setFontSize(10);
-            doc.text(doc.splitTextToSize("The Proxy agrees to execute the defined task within the parameters of the Geofence. The Principal indemnifies the Proxy against liability arising from algorithmic error.", 170), 20, 122);
-            doc.setLineWidth(0.5);
-            doc.line(20, 160, 80, 160);
-            doc.text("SIGNED (CRYPTOGRAPHIC PROOF)", 20, 165);
-            doc.text("Hash: 0x" + Math.random().toString(16).substr(2, 32), 20, 170);
-            doc.save(`Contract_${taskId}.pdf`);
+        function completeTask(taskId, reward) {
+            fetch('/api/v1/tasks/complete', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ node_id: NODE_ID, task_id: taskId, payout: reward })
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('audio-success').play();
+                    addLog(`Task ${taskId} completed manually. Reward credited.`);
+                    refreshDashboard();
+                }
+            });
+        }
+
+        function updateLeaderboard() {
+            fetch('/api/v1/network/leaderboard').then(r => r.json()).then(data => {
+                document.getElementById('leaderboard-list').innerHTML = data.map((entry, i) => `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px; ${entry.id === NODE_ID ? 'color:var(--accent); font-weight:bold;' : 'opacity:0.7;'}">
+                        <span>#${i+1} ${entry.id} ${entry.type === 'RIVAL' ? '🤖' : ''}</span>
+                        <span>${entry.xp.toLocaleString()} XP</span>
+                    </div>
+                `).join('');
+            });
         }
 
         function openXPHistory() {
             document.getElementById('xp-history-modal').style.display = 'flex';
-            document.getElementById('audio-click').play();
-            const ledgerBody = document.getElementById('xp-ledger-body');
-            ledgerBody.innerHTML = "Querying Hardware Ledger...";
-            fetch(`/api/v1/node/xp_ledger/${NODE_ID}`)
-                .then(r => r.json())
-                .then(sessionLogs => {
-                    ledgerBody.innerHTML = sessionLogs.map(log => `
-                        <div class="ledger-row">
-                            <div class="ledger-parent">
-                                <div><span class="ledger-timestamp">[${log.time}]</span><span class="ledger-task-id">${log.taskId}</span></div>
-                                <div class="ledger-xp-total">+${log.totalXp} XP</div>
-                            </div>
-                            <div class="ledger-children">
-                                ${log.bonuses.map(b => `<div class="ledger-child"><span class="ledger-child-name" style="color: ${b.color}">${b.name}</span><span class="ledger-child-xp">+${b.xp} XP</span></div>`).join('')}
-                            </div>
-                        </div>`).join('');
-                });
+            fetch('/api/v1/node/xp_ledger/' + NODE_ID).then(r => r.json()).then(data => {
+                const body = document.getElementById('xp-ledger-body');
+                if (data.length === 0) {
+                    body.innerHTML = "<div style='text-align:center; padding:20px; opacity:0.5;'>No XP history recorded.</div>";
+                    return;
+                }
+                body.innerHTML = data.map(log => `
+                    <div class="ledger-row">
+                        <div class="ledger-parent">
+                            <div><span class="ledger-timestamp">[${log.time}]</span> <span class="ledger-task-id">${log.taskId}</span></div>
+                            <div class="ledger-xp-total">+${log.totalXp} XP</div>
+                        </div>
+                        <div class="ledger-children">
+                            ${log.bonuses.map(b => `<div class="ledger-child"><span class="ledger-child-name" style="color: ${b.color}">${b.name}</span><span class="ledger-child-xp">+${b.xp} XP</span></div>`).join('')}
+                        </div>
+                    </div>`).join('');
+            });
         }
 
         function closeXPHistory() { document.getElementById('xp-history-modal').style.display = 'none'; }
+        
         function handleMarvinClick() { 
             const img = document.getElementById('marvin-image'); 
             img.style.transform = "scale(1.1) rotate(5deg)"; 

@@ -95,6 +95,22 @@ SHOP_ITEMS = {
         'price': 1000,
         'icon': '🎨',
         'type': 'cosmetic'
+    },
+    'disco': {
+        'id': 'disco',
+        'name': 'UI: Studio 54',
+        'desc': 'Interactive audio-visual theme.',
+        'price': 1000,
+        'icon': '🪩',
+        'type': 'cosmetic'
+    },
+    'matrix': {
+        'id': 'matrix',
+        'name': 'UI: The Matrix',
+        'desc': 'Digital rain simulation.',
+        'price': 0,
+        'icon': '🟩',
+        'type': 'cosmetic'
     }
 }
 
@@ -276,11 +292,16 @@ def dashboard():
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
     tasks = [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks]
 
+    # --- CRITICAL FIX: FETCH OWNED ITEMS ---
+    # This prevents the "Undefined is not JSON serializable" error
+    owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (target_node,)).fetchall()]
+
     # PASS THE HARDWARE STATUS TO THE UI
     return render_template('dashboard.html', 
                          node=my_node, 
                          tasks=tasks, 
-                         hw_secured=HW_SECURED) 
+                         hw_secured=HW_SECURED,
+                         owned=owned) 
 
 @app.route('/marketplace', methods=['GET', 'POST'])
 def marketplace():

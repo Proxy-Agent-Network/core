@@ -1,63 +1,173 @@
-/* 🎨 THEME ENGINE */
-:root { 
-    --h1-size: 1.5rem; --panel-h2-size: 1.1rem; --pill-font-size: 0.8rem; 
-    --xp-text: var(--text); --xp-bar-empty: rgba(0,0,0,0.1); --xp-glow: rgba(255,255,255,0.6);
-    --bonus-color: #ffd700; --secret-color: #0f0; 
-    --ledger-font: 0.85rem; --ledger-nested-font: 0.7rem;
-    --ledger-nested-margin: -10px;
+/* =========================================
+   FONT IMPORTS (The Missing Link)
+   ========================================= */
+@import url('https://fonts.googleapis.com/css2?family=Courier+Prime&family=Inter:wght@400;700&family=Montserrat:wght@400;900&family=Orbitron:wght@400;900&family=Press+Start+2P&family=Shrikhand&family=Special+Elite&family=UnifrakturMaguntia&display=swap');
+
+/* =========================================
+   UNIVERSAL UI ELEMENTS & DROPDOWN FIXES
+   ========================================= */
+
+/* 1. GLOBAL HEADER PADDING */
+.header {
+    padding: 20px 25px !important; 
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
 }
-            
+
+/* 2. EXCEPTION: RETRO ARCADE */
+[data-theme="retro"] .header {
+    padding: 12px 15px !important; /* Tight fit for 8-bit font */
+}
+
+/* Standard Dropdown Styling */
+select, option {
+    font-family: var(--font, sans-serif);
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    outline: none;
+    background-color: rgba(0, 0, 0, 0.9); /* Default Dark */
+    color: #fff; 
+    border: 1px solid #444;
+}
+
+/* Light Theme Dropdown Override */
+[data-theme="business"] select,
+[data-theme="paperback"] select,
+[data-theme="groovy"] select {
+    background-color: #fff !important;
+    color: #000 !important;
+    border: 1px solid var(--border);
+}
+
+
+/* =========================================
+   STANDARD THEME CATALOG
+   ========================================= */
+
 /* 👔 BUSINESS */
-[data-theme="business"] { 
-    --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; 
-    --bonus-color: #b8860b; --secret-color: #006400; 
-}
+[data-theme="business"] { --bg: #f4f7f6; --card-bg: #fff; --text: #2c3e50; --accent: #2980b9; --border: #dcdde1; --font: 'Inter', sans-serif; --bonus-color: #b8860b; --secret-color: #006400; --danger: #e74c3c; }
 
 /* 👾 RETRO ARCADE */
-[data-theme="retro"] { 
-    color-scheme: dark; 
-    --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; --accent: #ff00ff; --border: #ff00ff; --font: 'Press Start 2P', cursive; 
-    --h1-size: 1.1rem; --panel-h2-size: 0.95rem; --pill-font-size: 0.55rem; --xp-text: #2b033d; 
-    --ledger-font: 0.55rem;       
-    --ledger-nested-font: 0.45rem; 
-    --ledger-nested-margin: -6px; 
-}
+[data-theme="retro"] { color-scheme: dark; --bg: #2b033d; --card-bg: #4c066b; --text: #00ffff; --accent: #ff00ff; --border: #ff00ff; --font: 'Press Start 2P', cursive; --h1-size: 1.1rem; --panel-h2-size: 0.95rem; --pill-font-size: 0.55rem; --xp-text: #2b033d; --ledger-font: 0.55rem; --ledger-nested-font: 0.45rem; --ledger-nested-margin: -6px; --danger: #ff3838; }
 
 /* 📜 PAPERBACK */
-[data-theme="paperback"] { 
-    color-scheme: light;
-    --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; --accent: #2c3e50; --border: #bca08d; --font: 'Special Elite', cursive; 
-    --xp-text: #ffffff; --xp-bar-empty: #8d6e63; --xp-glow: transparent; 
-    --bonus-color: #a0522d; --secret-color: #2e8b57; 
-}
+[data-theme="paperback"] { color-scheme: light; --bg: #f5e6d3; --card-bg: #fff; --text: #3b3b3b; --accent: #2c3e50; --border: #bca08d; --font: 'Special Elite', cursive; --xp-text: #ffffff; --xp-bar-empty: #8d6e63; --xp-glow: transparent; --bonus-color: #a0522d; --secret-color: #2e8b57; --danger: #c0392b; }
 
 /* 🦾 CYBERPUNK */
-[data-theme="cyberpunk"] { color-scheme: dark; --bg: #000; --card-bg: #111; --text: #fee715; --accent: #ea00d9; --border: #fee715; --font: 'Orbitron', sans-serif; --xp-text: #ffffff; --xp-glow: #ea00d9; }
+[data-theme="cyberpunk"] { color-scheme: dark; --bg: #000; --card-bg: #111; --text: #fee715; --accent: #ea00d9; --border: #fee715; --font: 'Orbitron', sans-serif; --xp-text: #ffffff; --xp-glow: #ea00d9; --danger: #ff0000; }
 
 /* 🌊 DEEP SEA */
-[data-theme="deepsea"] { color-scheme: dark; --bg: #001219; --card-bg: #005f73; --text: #94d2bd; --accent: #ee9b00; --border: #0a9396; --font: 'Montserrat', sans-serif; --xp-text: #001219; }
+[data-theme="deepsea"] { color-scheme: dark; --bg: #001219; --card-bg: #005f73; --text: #94d2bd; --accent: #ee9b00; --border: #0a9396; --font: 'Montserrat', sans-serif; --xp-text: #001219; --danger: #ae2012; }
 
 /* 🧛 VAMPIRE */
-[data-theme="vampire"] { color-scheme: dark; --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; --accent: #ffd700; --border: #4a0000; --font: 'UnifrakturMaguntia', serif; --xp-text: #4a0000; --h1-size: 2.2rem; }
+[data-theme="vampire"] { color-scheme: dark; --bg: #1a0000; --card-bg: #2a0000; --text: #8b0000; --accent: #ffd700; --border: #4a0000; --font: 'UnifrakturMaguntia', serif; --xp-text: #4a0000; --h1-size: 2.2rem; --danger: #ff0000; }
 
-/* 🕺 GROOVY (Hippie VW MiniBus Edition) */
-[data-theme="groovy"] { 
-    --bg: #b2ebf2;          /* 🚌 Retro Teal / Soft Cyan */
-    --card-bg: #ffffff;     /* Crisp White Panels */
-    --text: #512da8;        /* Lava Lamp Deep Purple (High Contrast) */
-    --accent: #fbc02d;      /* Marigold Yellow (Buttons & Progress) */
-    --border: #ff8a65;      /* Terracotta Orange (Vintage Trim) */
-    --font: 'Shrikhand', cursive; 
-    --xp-text: #512da8;     /* Purple text on Marigold bar */
-    --bonus-color: #e64a19; /* Deep Sunset Orange */
-    --secret-color: #00796b; /* Earthy Forest Green */
+/* 🕺 GROOVY */
+[data-theme="groovy"] { --bg: #b2ebf2; --card-bg: #ffffff; --text: #512da8; --accent: #fbc02d; --border: #ff8a65; --font: 'Shrikhand', cursive; --xp-text: #512da8; --bonus-color: #e64a19; --secret-color: #00796b; --danger: #d32f2f; }
+
+
+/* =========================================
+   PREMIUM ENGINES (ANIMATED)
+   ========================================= */
+
+/* 🐝 HEX-HIVE (Premium) */
+[data-theme="theme_neon"] {
+    --bg: transparent; 
+    --card-bg: rgba(20, 30, 50, 0.6); 
+    --text: #e0e6ed; --border: #00ffff; --accent: #ff00ff; --danger: #ff2a6d; --font: 'Orbitron', sans-serif;
 }
 
-/* 🎯 Theme-Specific Overrides */
-[data-theme="retro"] #node-list, [data-theme="retro"] li { font-size: var(--pill-font-size) !important; line-height: 1.6; }
-[data-theme="retro"] #level-info, [data-theme="retro"] #rank-name { font-size: 0.8rem !important; }
+/* 🟩 THE MATRIX (Premium) */
+[data-theme="matrix"] select { background-color: #000; color: #0f0; border: 1px solid #0f0; }
+[data-theme="matrix"] option { background-color: #000; color: #0f0; }
 
-/* 🎯 FIX: Disable XP text glow for high-contrast clarity themes */
-[data-theme="paperback"] .xp-text, 
-[data-theme="cyberpunk"] .xp-text,
-[data-theme="groovy"] .xp-text { text-shadow: none !important; }
+[data-theme="matrix"] {
+    --bg: transparent;
+    --card-bg: rgba(0, 20, 0, 0.75); /* Slightly darker glass for readability */
+    --text: #00ff00; 
+    --accent: #008f11; 
+    --border: #003b00;
+    --danger: #ff0000;
+    --font: 'Courier Prime', monospace;
+}
+
+[data-theme="theme_neon"] .panel, [data-theme="theme_neon"] .header, [data-theme="theme_neon"] .bid-card, [data-theme="theme_neon"] .shop-card, [data-theme="theme_neon"] .item-card,
+[data-theme="matrix"] .panel, [data-theme="matrix"] .header, [data-theme="matrix"] .bid-card, [data-theme="matrix"] .shop-card, [data-theme="matrix"] .item-card {
+    background: var(--card-bg) !important;
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--accent);
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.1);
+}
+
+/* 🪩 DISCO (Premium) */
+[data-theme="disco"] {
+    --bg: transparent; 
+    --card-bg: rgba(0, 0, 0, 0.85); 
+    --text: #ffffff; --accent: #ff00ff; --border: #fff; --danger: #ff0000; --font: 'Montserrat', sans-serif;
+}
+
+/* UPDATED: Softer Pulse Animation */
+@keyframes stayinAliveGlow {
+    0% {
+        box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.4);
+    }
+    50% {
+        /* Reduced from 25px/0.9 to 15px/0.6 for a smoother vibe */
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.6), inset 0 0 5px rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.8);
+    }
+    100% {
+        box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.4);
+    }
+}
+
+[data-theme="disco"] .panel, [data-theme="disco"] .header, [data-theme="disco"] .bid-card, [data-theme="disco"] .shop-card, [data-theme="disco"] .item-card {
+    background: var(--card-bg) !important;
+    backdrop-filter: blur(5px);
+    border: 2px solid #fff;
+    animation: stayinAliveGlow 0.577s infinite alternate ease-in-out;
+}
+
+[data-theme="disco"] h1, [data-theme="disco"] h2 {
+    color: #fff; text-shadow: 2px 2px #ff00ff, -2px -2px #00ffff;
+    font-weight: 900; font-style: italic; letter-spacing: 1px;
+}
+
+/* =========================================
+   RETRO THEME: COMPACT HEADER FIX
+   ========================================= */
+[data-theme="retro"] .header {
+    padding: 10px 15px !important;
+    gap: 10px;
+}
+
+/* Shrink the Title */
+[data-theme="retro"] .header h1 {
+    font-size: 0.9rem !important;
+    line-height: 1.2;
+}
+
+/* Hide the subtitle to save vertical space */
+[data-theme="retro"] .header small {
+    display: none;
+}
+
+/* Shrink Links and Dropdowns */
+[data-theme="retro"] .nav-link,
+[data-theme="retro"] .sats-badge-header, 
+[data-theme="retro"] select {
+    font-size: 0.65rem !important;
+    padding: 4px 8px !important;
+    letter-spacing: 0px;
+}
+
+/* Adjust the vertical stack spacing */
+[data-theme="retro"] .header-stack {
+    gap: 4px;
+    min-width: 120px;
+}
