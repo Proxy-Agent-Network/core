@@ -50,3 +50,13 @@ Thumbs.db
 .DS_Store
 *.swp
 *~
+
+# --- RUST & HYBRID CORE ---
+# Huge build artifacts folder
+target/
+# Backup files
+**/*.rs.bk
+# Python Wheels (built packages)
+*.whl
+# Linux Shared Objects (if we cross-compile later)
+*.so
