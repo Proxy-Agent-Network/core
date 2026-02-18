@@ -15,30 +15,27 @@ except ImportError:
     print(" [WARN] ⚠️  lightning_engine.py not found. Running without payment rails.")
     lnd = None
 
-# --- HARDWARE BINDING (Protocol v1.2.0) ---
+# --- HARDWARE BINDING (Protocol v1.6.0 - RUST HYBRID) ---
+# UPDATED: Now connects to the 'proxy_core' compiled Rust library
 try:
-    from node.tpm_wrapper import TPMBinding
-    # Initialize the connection to the Rust binary
-    hw_bridge = TPMBinding()
+    from node.tpm_binding import NodeHardware
+    
     print(" [SYSTEM] 🔒 Connecting to Rust TPM Engine...")
+    hw_bridge = NodeHardware()
     
-    # Perform the Boot-Up Handshake
-    boot_identity = hw_bridge.get_attestation_quote("boot_integrity_check")
+    # 1. Get Identity (Hardware Fingerprint)
+    MY_NODE_ID = hw_bridge.get_fingerprint()
     
-    if boot_identity:
-        MY_NODE_ID = boot_identity['node_id']
-        HW_SECURED = boot_identity['hardware_secured']
-        print(f" [SYSTEM] ✅ Identity Confirmed: {MY_NODE_ID}")
-        print(f" [SYSTEM] 🛡️  Hardware Security: {'ACTIVE' if HW_SECURED else 'SIMULATED'}")
-    else:
-        # Fallback if the binary fails
-        print(" [WARN] ⚠️  TPM Handshake failed. Falling back to software ID.")
-        MY_NODE_ID = "NODE_SOFTWARE_FALLBACK"
-        HW_SECURED = False
+    # 2. Verify Security State (Mock vs Real)
+    # If the ID starts with "MOCK", we know we are in dev mode
+    HW_SECURED = not MY_NODE_ID.startswith("MOCK")
+    
+    print(f" [SYSTEM] ✅ Identity Confirmed: {MY_NODE_ID}")
+    print(f" [SYSTEM] 🛡️  Hardware Security: {'ACTIVE' if HW_SECURED else 'SIMULATED (Dev Mode)'}")
 
 except ImportError:
-    print(" [ERROR] ❌ Could not import TPMBinding. Is 'node/__init__.py' missing?")
-    MY_NODE_ID = "NODE_ERROR"
+    print(" [ERROR] ❌ Could not import Rust Bridge (proxy_core). Did 'maturin' build finish?")
+    MY_NODE_ID = "NODE_SOFTWARE_FALLBACK"
     HW_SECURED = False
 except Exception as e:
     print(f" [ERROR] 💥 Critical Hardware Failure: {e}")
@@ -48,7 +45,7 @@ except Exception as e:
 # ---------------------------------------------------------
 
 app = Flask(__name__)
-# Protocol 1.2.0: Secret key required for session-based event clearing
+# Protocol 1.6.0: Secret key required for session-based event clearing
 app.secret_key = 'proxy_secret_key_v1' 
 
 # CONFIGURATION
@@ -483,7 +480,7 @@ def get_network_stats():
     return jsonify({
         "total_volume": f"{total_sats:,}",
         "active_nodes": active_nodes,
-        "protocol_v": "1.4.1",
+        "protocol_v": "1.6.0",
         "status": "STABLE"
     })
 
@@ -607,7 +604,7 @@ def register_node():
         VALUES (?, ?, ?) 
         ON CONFLICT(node_id) 
         DO UPDATE SET last_seen=excluded.last_seen
-    ''', (node_id, "Windows-AMD64", time.time()))
+    ''', (node_id, "Docker-Hybrid", time.time()))
     
     conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                  ("NETWORK", f"Heartbeat pulse detected from Node {node_id}"))
@@ -657,6 +654,8 @@ if __name__ == '__main__':
         db.execute("INSERT OR IGNORE INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, 0, 0, ?)", 
                    (MY_NODE_ID, time.time()))
         db.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
-                   ("SYSTEM", "Proxy Protocol v1.4.1 initialized. Registry online."))
+                   ("SYSTEM", "Proxy Protocol v1.6.0 initialized. Registry online."))
         db.commit()
-    app.run(debug=True, port=5000)
+    
+    # DOCKER REQUIREMENT: BIND TO 0.0.0.0
+    app.run(host='0.0.0.0', port=5000, debug=False)
