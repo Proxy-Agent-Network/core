@@ -314,22 +314,30 @@ def marketplace():
         color = request.form.get('color') or '#2ecc71'
         
         if lnd:
+            # 1. Try to create the invoice
             invoice = lnd.create_invoice(sats, f"Broadcast Task: {task_type}")
             
-            # --- CHECK FOR TURBO LICENSE ---
-            has_speed = conn.execute(
-                "SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_speed'", 
-                (MY_NODE_ID,)
-            ).fetchone()
-            
-            invoice['duration'] = 4 if has_speed else 8
-            invoice['color'] = color
-            
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return jsonify({
-                    "status": "INVOICE_REQUIRED",
-                    "invoice": invoice
-                })
+            # 2. CHECK IF IT WORKED (Crucial Fix)
+            if invoice:
+                # --- CHECK FOR TURBO LICENSE ---
+                has_speed = conn.execute(
+                    "SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_speed'", 
+                    (MY_NODE_ID,)
+                ).fetchone()
+                
+                invoice['duration'] = 4 if has_speed else 8
+                invoice['color'] = color
+                
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({
+                        "status": "INVOICE_REQUIRED",
+                        "invoice": invoice
+                    })
+            else:
+                # Handle Failure Gracefully
+                print(" [ERROR] ❌ LND Invoice creation failed. Check Docker logs.")
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({"status": "ERROR", "message": "Treasury Backend Unreachable"}), 500
 
         req_id = f"REQ-{random.randint(10000, 99999)}"
         conn.execute('''

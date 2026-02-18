@@ -1,81 +1,123 @@
-import time
-import random
-import hashlib
-import logging
-import qrcode
-import os
-from io import BytesIO
+"""
+lightning_engine.py
+-------------------
+Connects the Proxy Agent to a local LND node via REST API.
+Now includes QR Code generation for the dashboard.
+"""
+import requests
+import json
 import base64
+import os
+import logging
+import urllib.parse
 
-# Configure Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("LND_Engine")
+# CONFIGURATION
+LND_HOST = os.getenv("LND_HOST", "https://host.docker.internal:8081")
+MACAROON_HEX = os.getenv("LND_MACAROON", "")
 
-class LightningEngine:
-    def __init__(self, mode="SIMULATION"):
-        self.mode = mode
-        self.pending_invoices = {}
-        logger.info(f"⚡ Lightning Engine Initialized [Mode: {self.mode}]")
-
-    def create_invoice(self, amount_sats: int, memo: str) -> dict:
-        """
-        Generates a Lightning Invoice (BOLT11).
-        In SIMULATION mode, creates a dummy hash and QR code.
-        """
-        invoice_hash = hashlib.sha256(f"{memo}{time.time()}{random.random()}".encode()).hexdigest()
-        
-        # Simulate a BOLT11 string (Mock data)
-        bolt11 = f"lnbc{amount_sats}n1{invoice_hash[:50]}..."
-
-        # Generate QR Code
-        qr = qrcode.QRCode(version=1, box_size=10, border=2)
-        qr.add_data(bolt11)
-        qr.make(fit=True)
-        
-        img_buffer = BytesIO()
-        qr.make_image(fill='black', back_color='white').save(img_buffer)
-        img_str = base64.b64encode(img_buffer.getvalue()).decode()
-
-        invoice_data = {
-            "r_hash": invoice_hash,
-            "payment_request": bolt11,
-            "amount": amount_sats,
-            "memo": memo,
-            "qr_image": f"data:image/png;base64,{img_str}",
-            "status": "OPEN",
-            "created_at": time.time()
+class LightningClient:
+    def __init__(self):
+        self.base_url = LND_HOST
+        self.headers = {
+            "Grpc-Metadata-macaroon": MACAROON_HEX
         }
-        
-        self.pending_invoices[invoice_hash] = invoice_data
-        logger.info(f"🧾 Invoice Created: {amount_sats} sats | Hash: {invoice_hash[:8]}...")
-        return invoice_data
+        self.verify_ssl = False 
+        self.pending_invoices = {} 
 
-    def check_status(self, r_hash: str) -> str:
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger("LND")
+        self.logger.info(f"🔌 LND Client initializing at {self.base_url}...")
+
+    def _generate_qr_base64(self, data_string):
         """
-        Checks if an invoice has been paid.
-        In SIMULATION mode, this auto-settles based on the invoice's specific duration.
+        Helper: Generates a QR code base64 string using a utility API.
+        This avoids needing to install the 'qrcode' library inside Docker.
         """
-        if r_hash not in self.pending_invoices:
+        try:
+            # Encode the payment request for the URL
+            safe_data = urllib.parse.quote(data_string)
+            # Fetch QR blob from a standard QR server
+            url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={safe_data}"
+            
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                # Convert binary image -> Base64 string
+                b64_img = base64.b64encode(response.content).decode('utf-8')
+                return f"data:image/png;base64,{b64_img}"
+        except Exception as e:
+            self.logger.error(f"⚠️ QR Generation failed: {e}")
+        
+        return "" # Return empty string if generation fails
+
+    def create_invoice(self, amount_sats, memo="Proxy Task Service"):
+        endpoint = f"{self.base_url}/v1/invoices"
+        data = {"value": amount_sats, "memo": memo}
+        
+        try:
+            response = requests.post(
+                endpoint, 
+                json=data, 
+                headers=self.headers, 
+                verify=self.verify_ssl
+            )
+            
+            if response.status_code == 200:
+                res_json = response.json()
+                
+                # 1. Decode Hash
+                r_hash_base64 = res_json['r_hash']
+                payment_hash = base64.b64decode(r_hash_base64).hex()
+                
+                # 2. Get Payment Request (BOLT11)
+                payment_request = res_json['payment_request']
+
+                # --- ADD THIS BLOCK ---
+                print(f"\n{'='*60}")
+                print(f"👉 COPY THIS INVOICE FOR BOB:\n{payment_request}")
+                print(f"{'='*60}\n")
+                # ----------------------
+
+                # 3. Generate QR Code
+                qr_image = self._generate_qr_base64(payment_request)
+                
+                self.pending_invoices[payment_hash] = {
+                    "amount": amount_sats,
+                    "memo": memo,
+                    "status": "OPEN",
+                    "r_hash": payment_hash,
+                    "payment_request": payment_request
+                }
+                
+                self.logger.info(f"⚡ Real Invoice Created: {amount_sats} sats | Hash: {payment_hash[:8]}...")
+                
+                return {
+                    "payment_request": payment_request,
+                    "r_hash": payment_hash,
+                    "amount": amount_sats,
+                    "qr_image": qr_image  # Dashboard needs this to complete the popup!
+                }
+            else:
+                self.logger.error(f"❌ LND Error {response.status_code}: {response.text}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ Connection Failed: {e}")
+            return None
+
+    def check_status(self, r_hash):
+        endpoint = f"{self.base_url}/v1/invoice/{r_hash}"
+        try:
+            response = requests.get(endpoint, headers=self.headers, verify=self.verify_ssl)
+            if response.status_code == 200:
+                data = response.json()
+                return "SETTLED" if data.get("settled") else "OPEN"
             return "UNKNOWN"
-        
-        invoice = self.pending_invoices[r_hash]
-        
-        if invoice['status'] == 'SETTLED':
-            return "SETTLED"
-        
-        # SIMULATION LOGIC: Dynamic Delay
-        if self.mode == "SIMULATION":
-            elapsed = time.time() - invoice['created_at']
-            
-            # Get duration from invoice, default to 8 if not found
-            target_duration = invoice.get('duration', 8)
-            
-            if elapsed > target_duration:
-                invoice['status'] = 'SETTLED'
-                logger.info(f"💰 Payment Detected! {invoice['amount']} sats [SIMULATED]")
-                return "SETTLED"
-        
-        return "OPEN"
+        except Exception as e:
+            self.logger.error(f"Status Check Failed: {e}")
+            return "ERROR"
 
-# Singleton Instance
-lnd = LightningEngine()
+if MACAROON_HEX:
+    lnd = LightningClient()
+else:
+    print(" [WARN] No Macaroon found. LND Client disabled.")
+    lnd = None
