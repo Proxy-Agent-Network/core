@@ -3,40 +3,15 @@ name = "proxy-core"
 version = "0.1.0"
 edition = "2021"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [lib]
 name = "proxy_core"
-crate-type = ["cdylib", "rlib"]
-
-[features]
-default = [] # Default is MOCK mode (Windows friendly)
-hardware_tpm = ["dep:tss-esapi"] # Real hardware only
+crate-type = ["cdylib"]
 
 [dependencies]
-# --- Security ---
-zeroize = { version = "1.7", features = ["zeroize_derive"] }
-secrecy = "0.8"
-
-# --- Hardware (Optional) ---
-# We make this optional so Windows devs can build without libtss2-dev
-tss-esapi = { version = "7.3.0", features = ["generate-bindings"], optional = true }
-
-# --- Async & Net ---
-tokio = { version = "1.32", features = ["full"] }
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# --- Crypto ---
-sha2 = "0.10"
-hex = "0.4"
+pyo3 = { version = "0.20.0", features = ["extension-module"] }
+chacha20poly1305 = "0.10"
 rand = "0.8"
 base64 = "0.21"
-
-# --- Error Handling ---
-thiserror = "1.0"
-anyhow = "1.0"
-
-# --- Python Bridge ---
-# Bumped to 0.21 to support newer Python versions. 
-# "abi3-py310" ensures it works on any Python 3.10+ (including 3.14 via stable ABI)
-pyo3 = { version = "0.21", features = ["extension-module", "abi3-py310"] }
+sha2 = "0.10"

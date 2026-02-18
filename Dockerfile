@@ -1,56 +1,49 @@
-# Stage 1: The Builder (Compiles Rust)
+# STAGE 1: The Factory (Compiles Rust)
 FROM python:3.11-slim as builder
 
-# Install system dependencies for building
+# Install build tools
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
-    libssl-dev \
     pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+    libssl-dev
 
-# Install Rust (The "Muscle")
+# Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install Maturin (The Bridge Builder)
+# Install Maturin
 RUN pip install maturin
 
-# Copy ONLY the Rust core first (for caching)
 WORKDIR /build
 COPY proxy-core /build/proxy-core
-
-# Build the Python Extension Wheel
 WORKDIR /build/proxy-core
-# We build for release to get maximum speed
+
+# Compile the "Fortress"
 RUN maturin build --release --strip
 
-# --------------------------------------------------------
+# -------------------------------------------
 
-# Stage 2: The Runner (Slim & Fast)
+# STAGE 2: The Agent (Runs the App)
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime dependencies (OpenCV needed for OCR tasks)
+# Install System Dependencies
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python requirements
 COPY backend/requirements.txt .
-
-# Install Python deps
 RUN pip install --no-cache-dir -r requirements.txt
 
-# --- CRITICAL STEP: Install the Compiled Rust Core ---
-# We copy the built "wheel" from the builder stage and install it
+# Copy the compiled binary from Stage 1
 COPY --from=builder /build/proxy-core/target/wheels/*.whl /tmp/
 RUN pip install /tmp/*.whl && rm /tmp/*.whl
 
-# Copy the actual application code
 COPY . .
 
-# Launch the Hybrid Node
+EXPOSE 5000
 CMD ["python", "app.py"]
