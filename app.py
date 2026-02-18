@@ -111,6 +111,55 @@ SHOP_ITEMS = {
     }
 }
 
+# --- LEGAL & DOCUMENTATION TEXTS (NEW) ---
+LEGAL_DOCS = {
+    'docs': {
+        'title': 'PROTOCOL DOCUMENTATION v1.6',
+        'content': """
+            <h3>1. PROXY NETWORK ARCHITECTURE</h3>
+            <p>The Proxy Network is a decentralized grid of autonomous agents sharing computation and sensor data. Nodes (Users) bid on tasks using Lightning Network (L2) micropayments (Sats).</p>
+            <h3>2. HARDWARE BINDING</h3>
+            <p>Identity is derived from the TPM (Trusted Platform Module) of the host machine. This ensures 'One Machine, One ID' and prevents Sybil attacks.</p>
+            <h3>3. RIVAL AGENTS</h3>
+            <p>The network is populated by competing AI constructs (e.g., OMNI_CORP, VOID_RUNNER). These entities compete for high-value contracts. Speed and automation are required to outbid them.</p>
+            <h3>4. AUTOMATION DAEMONS</h3>
+            <p>Users may purchase licenses to run local Python daemons that autonomously secure contracts based on pre-defined logic.</p>
+        """
+    },
+    'aup': {
+        'title': 'ACCEPTABLE USE POLICY',
+        'content': """
+            <h3>PROHIBITED ACTIVITIES</h3>
+            <ul>
+                <li><strong>Network Flooding:</strong> Generating excessive dummy bids to stall the ledger.</li>
+                <li><strong>Malicious Payloads:</strong> Uploading executable code disguised as sensor data.</li>
+                <li><strong>Identity Spoofing:</strong> Attempting to bypass the Rust TPM bridge.</li>
+            </ul>
+            <p>VIOLATION WILL RESULT IN IMMEDIATE NODE BLACKLISTING.</p>
+        """
+    },
+    'terms': {
+        'title': 'TERMS OF SERVICE',
+        'content': """
+            <p><strong>1. SERVICE AS-IS:</strong> The Proxy Network is provided 'as is' without warranty. Encrypted Sats are liable to volatility.</p>
+            <p><strong>2. LIABILITY:</strong> You are responsible for all computational tasks accepted by your node.</p>
+            <p><strong>3. RIVALRY:</strong> Loss of funds due to slower execution speed against Rival Agents is a feature, not a bug.</p>
+            <p>By connecting your node, you agree to these terms.</p>
+        """
+    },
+    'privacy': {
+        'title': 'PRIVACY POLICY (ZERO-KNOWLEDGE)',
+        'content': """
+            <h3>DATA MINIMIZATION</h3>
+            <p>We do not collect IP addresses, email addresses, or physical locations.</p>
+            <h3>ENCRYPTION</h3>
+            <p>All wallet balances are encrypted using ChaCha20-Poly1305 via the Rust Hardware Bridge. Even the database administrator cannot read your balance.</p>
+            <h3>LOGS</h3>
+            <p>Server logs are flushed every 24 hours. Session data is stored locally in your browser.</p>
+        """
+    }
+}
+
 # RIVAL AGENT LIST
 RIVALS = ["OMNI_CORP_09", "KAOS_ENGINE", "NEURAL_LINK_X", "VOID_RUNNER"]
 
@@ -382,11 +431,13 @@ def dashboard():
     owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (target_node,)).fetchall()]
 
     # PASS THE HARDWARE STATUS TO THE UI
+    # UPDATED: Passing 'balance' explicitly for the new Header HUD
     return render_template('dashboard.html', 
                          node=my_node_data, 
                          tasks=tasks, 
                          hw_secured=HW_SECURED,
-                         owned=owned) 
+                         owned=owned,
+                         balance=balance) 
 
 @app.route('/marketplace', methods=['GET', 'POST'])
 def marketplace():
@@ -457,8 +508,16 @@ def marketplace():
             filtered_bids.append(bid_dict)
 
     has_auto = conn.execute("SELECT 1 FROM purchases WHERE item_id='license_auto'").fetchone()
+
+    # UPDATED: Fetch balance for the new Header HUD
+    balance = get_secure_balance(conn, MY_NODE_ID)
     
-    return render_template('marketplace.html', bids=filtered_bids, unlock_auto=bool(has_auto), current_radius=max_radius)
+    # UPDATED: Passing 'balance' explicitly
+    return render_template('marketplace.html', 
+                           bids=filtered_bids, 
+                           unlock_auto=bool(has_auto), 
+                           current_radius=max_radius,
+                           balance=balance)
 
 @app.route('/shop')
 def shop():
@@ -506,6 +565,18 @@ def shop():
 
     owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (node_id,)).fetchall()]
     return render_template('shop.html', items=SHOP_ITEMS, balance=balance, owned=owned, node_id=node_id)
+
+# --- NEW LEGAL ROUTE ---
+@app.route('/legal/<doc_type>')
+def legal(doc_type):
+    doc = LEGAL_DOCS.get(doc_type)
+    if not doc: return redirect(url_for('dashboard'))
+    
+    conn = get_db()
+    balance = get_secure_balance(conn, MY_NODE_ID)
+    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
+    
+    return render_template('legal.html', title=doc['title'], content=doc['content'], balance=balance, owned=owned)
 
 # --- API ENDPOINTS ---
 # ---------------------------------------------------------
@@ -789,4 +860,4 @@ if __name__ == '__main__':
         db.commit()
     
     # DOCKER REQUIREMENT: BIND TO 0.0.0.0
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=True)

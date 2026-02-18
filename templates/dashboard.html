@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mission Control | Proxy Agent Network</title>
+    <title>Command Console | Proxy Agent Network</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,6 +16,202 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <style>
+        /* --- FULL WIDTH FIXES (NEW) --- */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden; /* Prevent horizontal scroll */
+            background-color: var(--bg);
+        }
+
+        .dashboard-grid {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* --- UNIFIED MISSION HUD (ADAPTIVE + FULL WIDTH) --- */
+        .mission-hud {
+            width: 100%;
+            box-sizing: border-box; /* Includes padding in width calculation */
+            background: #1a1a1a; /* Default Dark */
+            border-bottom: 2px solid #2ecc71;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            margin-bottom: 25px;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .hud-identity {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .node-id {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #ecf0f1;
+            font-size: 1.1em;
+            letter-spacing: 1px;
+        }
+
+        .net-status {
+            font-size: 0.8em;
+            color: #2ecc71; /* Green for Online */
+            text-transform: uppercase;
+        }
+
+        .hud-nav {
+            display: flex;
+            gap: 20px;
+            background: #000;
+            padding: 10px 20px;
+            border-radius: 30px;
+            border: 1px solid #333;
+        }
+
+        .nav-link {
+            color: #7f8c8d;
+            text-decoration: none;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            padding: 5px 10px;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: #fff;
+            text-shadow: 0 0 8px rgba(255,255,255,0.5);
+        }
+
+        .hud-wallet {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end; /* Right align everything */
+            justify-content: center;
+        }
+
+        .wallet-display {
+            text-align: right;
+            background: rgba(46, 204, 113, 0.1); 
+            padding: 5px 15px;
+            border-radius: 4px;
+            border-left: 3px solid #2ecc71;
+        }
+
+        .sats-label {
+            font-size: 0.75em;
+            color: #95a5a6;
+            display: block;
+        }
+
+        .sats-value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.2em;
+            color: #2ecc71;
+            font-weight: bold;
+        }
+        
+        /* Theme Picker in Header */
+        .header-theme-select {
+            background: transparent;
+            border: none;
+            color: #7f8c8d;
+            font-size: 0.75rem;
+            text-align: right;
+            cursor: pointer;
+            margin-bottom: 4px;
+            padding-right: 0;
+            font-family: 'Inter', sans-serif;
+        }
+        .header-theme-select:hover { color: var(--accent); }
+        .header-theme-select:focus { outline: none; }
+
+        /* --- UNIVERSAL FOOTER (NEW) --- */
+        .mission-footer {
+            width: 100%;
+            box-sizing: border-box;
+            background: #1a1a1a; /* Default Dark */
+            border-top: 2px solid #2ecc71; /* Match header green */
+            padding: 20px 30px;
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            color: #7f8c8d;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .footer-left { display: flex; flex-direction: column; gap: 5px; }
+        .footer-links { display: flex; gap: 20px; }
+
+        .footer-links a { 
+            color: #7f8c8d; 
+            text-decoration: none; 
+            transition: color 0.2s; 
+            text-transform: uppercase; 
+            letter-spacing: 1px;
+            font-weight: bold;
+        }
+        .footer-links a:hover { color: var(--accent); }
+
+        /* --- LIGHT THEME OVERRIDES (Business, Paperback, Groovy) --- */
+        /* Header Overrides */
+        [data-theme="business"] .mission-hud,
+        [data-theme="paperback"] .mission-hud,
+        [data-theme="groovy"] .mission-hud {
+            background: #ffffff;
+            border-bottom: 2px solid var(--accent);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        [data-theme="business"] .node-id,
+        [data-theme="paperback"] .node-id,
+        [data-theme="groovy"] .node-id {
+            color: #2c3e50;
+        }
+
+        [data-theme="business"] .hud-nav,
+        [data-theme="paperback"] .hud-nav,
+        [data-theme="groovy"] .hud-nav {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+        }
+
+        [data-theme="business"] .nav-link,
+        [data-theme="paperback"] .nav-link,
+        [data-theme="groovy"] .nav-link {
+            color: #7f8c8d;
+        }
+
+        [data-theme="business"] .nav-link:hover,
+        [data-theme="business"] .nav-link.active,
+        [data-theme="paperback"] .nav-link:hover,
+        [data-theme="paperback"] .nav-link.active,
+        [data-theme="groovy"] .nav-link:hover,
+        [data-theme="groovy"] .nav-link.active {
+            color: var(--accent);
+            text-shadow: none;
+            background: rgba(0,0,0,0.05);
+            border-radius: 4px;
+        }
+
+        /* Footer Overrides */
+        [data-theme="business"] .mission-footer,
+        [data-theme="paperback"] .mission-footer,
+        [data-theme="groovy"] .mission-footer {
+            background: #ffffff;
+            border-top: 2px solid var(--accent);
+            color: #2c3e50;
+            box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+        }
+
         /* --- CORE DASHBOARD STYLES (Restored) --- */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); }
@@ -88,7 +284,8 @@
 <body>
 
     <script>
-        window.OWNED_THEMES = {{ owned|tojson|safe }};
+        // LINTER SAFE: Wrapping Jinja in quotes to prevent syntax errors in IDE
+        window.OWNED_THEMES = JSON.parse('{{ owned|tojson|safe }}');
     </script>
 
     <div id="audio-unlock-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:black; z-index:99999; display:flex; justify-content:center; align-items:center; flex-direction:column;">
@@ -112,36 +309,26 @@
         <img id="marvin-image" src="{{ url_for('static', filename='images/magic_marvin_dance.webp') }}" alt="Magic Marvin">
     </div>
 
-    <div class="header">
-        <div>
-            <h1>Mission Control</h1>
-            <small id="node-id-display" style="opacity: 0.7;">NODE: {{ node.id }}</small>
-            
-            <div id="global-stats-bar" style="display: flex; gap: 25px; margin-top: 15px; padding: 10px; background: rgba(128,128,128,0.05); border-radius: 6px; border-left: 3px solid var(--accent);">
-                <div>
-                    <small style="display: block; opacity: 0.6; font-size: 0.7rem;">NETWORK VOLUME</small>
-                    <b id="stat-volume" style="font-family: monospace; color: var(--accent);">0 SATS</b>
-                </div>
-                <div style="border-left: 1px solid rgba(128,128,128,0.2); padding-left: 20px;">
-                    <small style="display: block; opacity: 0.6; font-size: 0.7rem;">ACTIVE NODES</small>
-                    <b id="stat-nodes" style="font-family: monospace;">0</b>
-                </div>
-                <div style="border-left: 1px solid rgba(128,128,128,0.2); padding-left: 20px;">
-                    <small style="display: block; opacity: 0.6; font-size: 0.7rem;">PROTOCOL</small>
-                    <b style="font-family: monospace; opacity: 0.8;">v1.4.1</b>
-                </div>
-            </div>
+    <div class="mission-hud">
+        <div class="hud-identity">
+            <span class="node-id">PROXY NODE v1.6</span>
+            <span class="net-status">● SECURE CONNECTION</span>
         </div>
 
-        <div class="controls-panel" style="display: flex; align-items: center; gap: 20px; margin-left: auto;">
-            <a href="/shop" style="color: var(--accent); font-weight: bold; text-decoration: none;">Provisioning</a>
-            <a href="/marketplace" style="color: var(--accent); font-weight: bold; text-decoration: none;">Marketplace</a>
+        <div class="hud-nav">
+            <a href="/" class="nav-link active">Command</a>
+            <a href="/marketplace" class="nav-link">Exchange</a>
+            <a href="/shop" class="nav-link">Armory</a>
+        </div>
 
-            <div style="display: flex; flex-direction: column; gap: 6px; width: 180px;">
-                <a href="/admin/audit" style="display: block; text-align: center; background: rgba(231, 76, 60, 0.2); border: 1px solid #e74c3c; color: #e74c3c; font-weight: bold; text-decoration: none; padding: 4px; border-radius: 4px; font-size: 0.85rem;">👁️ AUDIT LOG</a>
-                <select id="common-theme-selector" class="theme-picker-ui" style="width: 100%; box-sizing: border-box;">
-                    <option>Loading Themes...</option>
-                </select>
+        <div class="hud-wallet">
+            <select id="common-theme-selector" class="header-theme-select">
+                <option>Loading Themes...</option>
+            </select>
+            
+            <div class="wallet-display">
+                <span class="sats-label">ENCRYPTED RESERVES</span>
+                <span class="sats-value" id="hud-balance">{{ "{:,}".format(balance|default(0)) }} SATS</span>
             </div>
         </div>
     </div>
@@ -150,13 +337,10 @@
         <div class="panel">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h2>Node Identity</h2>
-                <div class="sats-badge"><span id="live-balance">{{ node.sats_balance }}</span> SATS</div>
+                <small style="opacity: 0.7;">ID: <span style="color: var(--accent);">{{ node.id }}</span></small>
             </div>
             
             <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; font-family: monospace;">
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="opacity: 0.7;">ID:</span> <span style="color: var(--accent);">{{ node.id }}</span>
-                </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 5px;">
                     <span style="opacity: 0.7;">SECURITY:</span>
                     {% if hw_secured %} <span style="color: #2ecc71; font-weight: bold;">[HARDWARE_LOCKED] 🔒</span>
@@ -232,6 +416,21 @@
         </div>
     </div>
 
+    <div class="mission-footer">
+        <div class="footer-left">
+            <span>&copy; 2026 PROXY NETWORK INC. // ALL RIGHTS RESERVED</span>
+            <span style="opacity: 0.5;">NODE_ID: {{ node.id if node else 'UNKNOWN' }} // LATENCY: 12ms</span>
+        </div>
+
+        <div class="footer-links">
+            <a href="/legal/docs" style="cursor:help;" title="Protocol Documentation">DOCS</a>
+            <a href="/legal/aup" style="cursor:help;" title="Acceptable Use Policy">AUP</a>
+            <a href="/legal/terms" style="cursor:help;" title="Terms of Service">TERMS</a>
+            <a href="/legal/privacy" style="cursor:help;" title="Privacy Policy">PRIVACY</a>
+            <span style="color: var(--accent);">● SYSTEMS OPTIMAL</span>
+        </div>
+    </div>
+
     <div id="xp-history-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(10px);">
         <div style="background: #004d56; border: 2px solid #ff9f00; padding: 25px; border-radius: 8px; width: 90%; max-width: 550px; box-shadow: 0 0 40px rgba(255, 159, 0, 0.3);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -245,7 +444,8 @@
     <script>
         const NODE_ID = "{{ node.id }}";
         let lastDaemonMsg = ""; 
-        let lastTaskCount = {{ tasks|length }};
+        // LINTER SAFE: Wrapping integer in Number() to allow valid JS syntax in IDE
+        let lastTaskCount = Number('{{ tasks|length }}');
 
         if (sessionStorage.getItem('audioUnlocked')) {
             document.getElementById('audio-unlock-overlay').style.display = 'none';
@@ -320,8 +520,7 @@
 
         function updateNetworkStats() {
             fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
-                document.getElementById('stat-volume').innerText = data.total_volume + " SATS";
-                document.getElementById('stat-nodes').innerText = data.active_nodes;
+                // This stat bar was removed from UI, keeping logic just in case or for backend pings
             });
         }
         setInterval(updateNetworkStats, 30000);
@@ -349,7 +548,12 @@
                     lastDaemonMsg = data.daemon_event;
                 }
                 
-                document.getElementById('live-balance').innerText = data.balance;
+                // UPDATED: Target the new HUD balance element
+                const balanceEl = document.getElementById('hud-balance');
+                if (balanceEl) {
+                    balanceEl.innerText = data.balance + " SATS";
+                }
+
                 document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
                 document.getElementById('xp-text').innerText = `${data.xp % 5000} / 5000`;
 
