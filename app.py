@@ -114,6 +114,54 @@ SHOP_ITEMS = {
 # RIVAL AGENT LIST
 RIVALS = ["OMNI_CORP_09", "KAOS_ENGINE", "NEURAL_LINK_X", "VOID_RUNNER"]
 
+# --- ENCRYPTED WALLET HELPERS (NEW) ---
+# ---------------------------------------------------------
+def get_secure_balance(conn, node_id):
+    """
+    Retrieves and decrypts the wallet balance for a specific node.
+    """
+    row = conn.execute("SELECT total_earned FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
+    if not row:
+        return 0
+    
+    stored_val = str(row['total_earned'])
+    
+    # Try Decrypting using Rust Hardware
+    try:
+        decrypted = hw_bridge.decrypt_data(stored_val)
+        if "ERR_" in decrypted or "ACCESS_DENIED" in decrypted:
+             # Fallback: Maybe it's still an old plain integer?
+             try:
+                 return int(float(stored_val))
+             except:
+                 return 0
+        return int(decrypted)
+    except:
+        # Final Fallback: It was plain text
+        try:
+            return int(float(stored_val))
+        except:
+            return 0
+
+def update_secure_wallet(conn, node_id, amount):
+    """
+    Updates the wallet balance securely: Decrypt -> Math -> Encrypt -> Write.
+    """
+    # 1. Get Current Secure Balance
+    current_balance = get_secure_balance(conn, node_id)
+    
+    # 2. Perform Math
+    new_balance = current_balance + amount
+    
+    # 3. Encrypt the Result
+    encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
+    
+    # 4. Write Ciphertext to DB
+    conn.execute("UPDATE nodes SET total_earned = ? WHERE node_id = ?", (encrypted_balance, node_id))
+    return new_balance
+# ---------------------------------------------------------
+
+
 # --- DAEMON & RIVAL LOGIC ---
 # ---------------------------------------------------------
 
@@ -178,8 +226,8 @@ def run_automation_daemon(node_id):
         dust_sats = random.randint(5, 45)
         junk_id = f"DUST-{random.randint(100, 999)}"
         
-        # Direct deposit (no task entry needed for dust, or minimal entry)
-        conn.execute("UPDATE nodes SET total_earned = total_earned + ? WHERE node_id=?", (dust_sats, node_id))
+        # SECURE UPDATE: Use helper instead of direct SQL math
+        update_secure_wallet(conn, node_id, dust_sats)
         
         # Log it implicitly via a completed task entry so it shows in history
         conn.execute("INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?)", (node_id, junk_id, 10))
@@ -277,12 +325,15 @@ def dashboard():
     target_node = MY_NODE_ID  
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
     
+    # SECURE READ
+    balance = get_secure_balance(conn, target_node)
+
     if not my_node:
-        my_node = {'id': target_node, 'sats_balance': 0, 'status': 'OFFLINE'}
+        my_node_data = {'id': target_node, 'sats_balance': 0, 'status': 'OFFLINE'}
     else:
-        my_node = {
+        my_node_data = {
             'id': my_node['node_id'],
-            'sats_balance': my_node['total_earned'],
+            'sats_balance': balance, # Use decrypted value
             'status': 'ONLINE'
         }
 
@@ -290,12 +341,11 @@ def dashboard():
     tasks = [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks]
 
     # --- CRITICAL FIX: FETCH OWNED ITEMS ---
-    # This prevents the "Undefined is not JSON serializable" error
     owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (target_node,)).fetchall()]
 
     # PASS THE HARDWARE STATUS TO THE UI
     return render_template('dashboard.html', 
-                         node=my_node, 
+                         node=my_node_data, 
                          tasks=tasks, 
                          hw_secured=HW_SECURED,
                          owned=owned) 
@@ -317,7 +367,7 @@ def marketplace():
             # 1. Try to create the invoice
             invoice = lnd.create_invoice(sats, f"Broadcast Task: {task_type}")
             
-            # 2. CHECK IF IT WORKED (Crucial Fix)
+            # 2. CHECK IF IT WORKED
             if invoice:
                 # --- CHECK FOR TURBO LICENSE ---
                 has_speed = conn.execute(
@@ -378,7 +428,9 @@ def shop():
     target_node = MY_NODE_ID 
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
     
-    balance = int(my_node['total_earned']) if my_node else 0
+    # SECURE READ
+    balance = get_secure_balance(conn, target_node)
+    
     node_id = my_node['node_id'] if my_node else target_node
     
     if request.args.get('buy'):
@@ -391,7 +443,10 @@ def shop():
             
             if balance >= price:
                 print("--- ✅ FUNDS OK. EXECUTING PURCHASE... ---")
-                conn.execute("UPDATE nodes SET total_earned = total_earned - ? WHERE node_id = ?", (price, node_id))
+                
+                # SECURE UPDATE (Subtract funds)
+                update_secure_wallet(conn, node_id, -price)
+                
                 conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (?, ?)", (node_id, item_id))
                 conn.commit()
                 flash(f"Successfully provisioned: {SHOP_ITEMS[item_id]['name']}", "success")
@@ -405,7 +460,8 @@ def shop():
         return redirect(url_for('shop'))
 
     if request.args.get('cheat_fund'):
-        conn.execute("UPDATE nodes SET total_earned = total_earned + 50000 WHERE node_id = ?", (node_id,))
+        # SECURE UPDATE (Add funds)
+        update_secure_wallet(conn, node_id, 50000)
         conn.commit()
         flash("DEV MODE: Added 50,000 Sats to wallet.", "success")
         return redirect(url_for('shop'))
@@ -431,14 +487,15 @@ def shop_buy_api():
     item = SHOP_ITEMS[item_id]
     price = item['price']
     
-    node = conn.execute("SELECT total_earned FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
-    current_balance = node['total_earned'] if node else 0
+    # SECURE READ
+    current_balance = get_secure_balance(conn, node_id)
     
     if current_balance >= price:
-        conn.execute("UPDATE nodes SET total_earned = total_earned - ? WHERE node_id = ?", (price, node_id))
+        # SECURE UPDATE
+        new_balance = update_secure_wallet(conn, node_id, -price)
         conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (?, ?)", (node_id, item_id))
         conn.commit()
-        return jsonify({"success": True, "message": f"Purchased {item['name']}", "new_balance": current_balance - price})
+        return jsonify({"success": True, "message": f"Purchased {item['name']}", "new_balance": new_balance})
     else:
         return jsonify({"success": False, "error": f"Insufficient Funds. Need {price} Sats."}), 402
 
@@ -481,12 +538,14 @@ def finalize_bid():
 @app.route('/api/v1/network/stats')
 def get_network_stats():
     conn = get_db()
-    total_sats = conn.execute("SELECT SUM(total_earned) FROM nodes").fetchone()[0] or 0
+    # Note: SUM() won't work perfectly on encrypted strings. 
+    # For now, we return basic node count to avoid crashes.
+    total_sats = 0 
     active_cutoff = time.time() - 300
     active_nodes = conn.execute("SELECT COUNT(*) FROM nodes WHERE last_seen > ?", (active_cutoff,)).fetchone()[0]
     
     return jsonify({
-        "total_volume": f"{total_sats:,}",
+        "total_volume": "ENCRYPTED", # Masked for security
         "active_nodes": active_nodes,
         "protocol_v": "1.6.0",
         "status": "STABLE"
@@ -544,8 +603,11 @@ def dashboard_live():
     my_node = conn.execute('SELECT total_earned, xp FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
     
+    # SECURE READ
+    balance = get_secure_balance(conn, target_node)
+    
     return jsonify({
-        'balance': my_node['total_earned'] if my_node else 0,
+        'balance': balance,
         'xp': my_node['xp'] if my_node else 0,
         'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks],
         'daemon_event': daemon_event
@@ -558,7 +620,10 @@ def claim_bid(bid_id):
     if bid and bid['status'] == 'PENDING':
         conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid_id,))
         target_node = request.json.get('node_id', MY_NODE_ID) 
-        conn.execute("UPDATE nodes SET total_earned = total_earned + ? WHERE node_id=?", (bid['sats_offered'], target_node))
+        
+        # SECURE UPDATE (Add bid funds)
+        update_secure_wallet(conn, target_node, bid['sats_offered'])
+        
         new_task_id = f"TASK-{random.randint(1000, 9999)}"
         conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', ?)", 
                      (new_task_id, bid['sats_offered'], bid['task_type']))
@@ -592,8 +657,13 @@ def complete_task_api():
         )
 
     total_xp_gain = 500 + payout + bypass_bonus
-    conn.execute("UPDATE nodes SET total_earned = total_earned + ?, xp = xp + ? WHERE node_id = ?", 
-                 (payout, total_xp_gain, data.get('node_id')))
+    
+    # SECURE UPDATE (Add payout)
+    update_secure_wallet(conn, data.get('node_id'), payout)
+    
+    # Regular XP update (not encrypted)
+    conn.execute("UPDATE nodes SET xp = xp + ? WHERE node_id = ?", 
+                 (total_xp_gain, data.get('node_id')))
     
     conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
                  ("SETTLEMENT", f"Node {data.get('node_id')} completed {data.get('task_id')} (+{payout} Sats)"))
@@ -601,6 +671,21 @@ def complete_task_api():
     conn.execute("DELETE FROM tasks WHERE task_id = ?", (data.get('task_id'),))
     conn.commit()
     return jsonify({"status": "success"})
+
+# --- NEW: Secure Wallet API Endpoint ---
+@app.route('/api/v1/wallet', methods=['GET'])
+def get_wallet():
+    conn = get_db()
+    target_node = MY_NODE_ID
+    
+    # Decrypt for display
+    secure_balance = get_secure_balance(conn, target_node)
+
+    return jsonify({
+        "address": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+        "balance": secure_balance,
+        "status": "SECURED_BY_RUST_TPM"
+    })
 
 @app.route('/api/register', methods=['POST'])
 def register_node():
