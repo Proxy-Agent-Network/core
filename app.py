@@ -166,20 +166,58 @@ def update_secure_wallet(conn, node_id, amount):
 # ---------------------------------------------------------
 
 def simulate_rival_snatch():
+    """
+    Simulates rival agents (Omni Corp, Void Runner) actively stealing 
+    pending bids from the marketplace if the user is too slow.
+    """
     conn = get_db()
-    # Reduce snatch probability to 5%
-    if random.random() < 0.05: 
-        conn.execute("""
-            DELETE FROM tasks 
-            WHERE rowid IN (
-                SELECT rowid FROM tasks 
-                WHERE status='OPEN' AND task_type='MANUAL' 
-                LIMIT 1
-            )
-        """)
-        conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", 
-                     ("SECURITY", "Unauthorized task interception by Rival Agent"))
-        conn.commit()
+    
+    # 1. Get all vulnerable bids (Pending)
+    bids = conn.execute("SELECT * FROM marketplace_bids WHERE status='PENDING'").fetchall()
+    
+    if not bids:
+        return
+
+    # 2. RIVAL CONFIGURATION
+    # Name, Aggression (0-1), Color
+    RIVALS_META = {
+        "OMNI_CORP_09": {"aggro": 0.05, "color": "#e74c3c"}, # Corporate Efficiency
+        "VOID_RUNNER":  {"aggro": 0.03, "color": "#8e44ad"}, # Hacker
+        "KAOS_ENGINE":  {"aggro": 0.08, "color": "#f39c12"}  # Chaotic/Random
+    }
+
+    # 3. Iterate and Attack
+    for bid in bids:
+        # Higher value bids attract more attention
+        value_multiplier = 1.0
+        if bid['sats_offered'] > 500: value_multiplier = 1.5
+        if bid['sats_offered'] > 1000: value_multiplier = 3.0
+
+        # Pick a random rival to attempt a snatch
+        attacker_name = random.choice(list(RIVALS_META.keys()))
+        attacker = RIVALS_META[attacker_name]
+        
+        # Calculate Theft Chance (Base Aggro * Value * Random Noise)
+        # This runs every few seconds, so keep probabilities LOW
+        roll = random.random()
+        threshold = attacker['aggro'] * value_multiplier * 0.1 
+        
+        if roll < threshold:
+            # --- THEFT SUCCESSFUL ---
+            print(f" [RIVAL] ⚠️  {attacker_name} snatched Bid #{bid['bid_id']} ({bid['sats_offered']} Sats)")
+            
+            # Mark as STOLEN so it disappears from the user's view (or shows as failed)
+            conn.execute("UPDATE marketplace_bids SET status='STOLEN' WHERE bid_id=?", (bid['bid_id'],))
+            
+            # Log the Event
+            msg = f"SECURITY ALERT: {attacker_name} intercepted Bid #{bid['bid_id']} ({bid['sats_offered']} Sats)"
+            conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", ("THREAT", msg))
+            
+            # Rival gains XP (for the leaderboard)
+            # We assume rival nodes exist in the nodes table, or we ignore them for now.
+            # But let's log it to the console.
+    
+    conn.commit()
 
 def run_automation_daemon(node_id):
     """Automatically claims marketplace tasks and stores a one-time event message."""
