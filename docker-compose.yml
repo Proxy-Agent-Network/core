@@ -2,30 +2,39 @@ version: '3.8'
 
 services:
   proxy_node:
-    # UPDATED: We use the image you built manually to ensure Rust is compiled
-    image: proxy-debug
+    build: .
     container_name: proxy_agent_v1
     ports:
       - "5000:5000"
     volumes:
-      # Mount the entire root so app.py and lightning_engine.py update live
       - .:/app
-      # Persist the SQLite database so you don't lose your Sats on restart
-      - proxy_data:/app/data
+      - lnd-data:/root/.lnd:ro 
     environment:
-      # We use 'host.docker.internal' so Docker can reach Windows
-      - LND_HOST=https://host.docker.internal:8081
-      
-      # PASTE YOUR HEX STRING BELOW
-      - LND_MACAROON=0201036c6e6402f801030a101ca324a9ff64d2e48516c038bfda0cba1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620929742ff0fd725b772a3a91abc660abb33f55e7a949c8ad0b25c3932d5e18fcd
-      
-    networks:
-      - proxy-net
-    restart: unless-stopped
+      - FLASK_ENV=development
+      - LND_GRPC_HOST=lnd_node
+      - LND_GRPC_PORT=10009
+    depends_on:
+      - lnd_node
+
+  lnd_node:
+    image: lightninglabs/lnd:v0.17.0-beta
+    container_name: lnd_neutrino
+    ports:
+      - "9735:9735"
+      - "10009:10009"
+    dns:
+      - 8.8.8.8
+    volumes:
+      - lnd-data:/root/.lnd
+    command: >
+      --bitcoin.active
+      --bitcoin.testnet
+      --bitcoin.node=neutrino
+      --rpclisten=0.0.0.0:10009
+      --tlsextraip=0.0.0.0
+      --tlsextraip=lnd_node
+      --noseedbackup
+      --alias="PROXY_AGENT_01"
 
 volumes:
-  proxy_data:
-
-networks:
-  proxy-net:
-    driver: bridge
+  lnd-data:

@@ -8,38 +8,39 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Special+Elite&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+        // ANTI-FLASH: Apply theme before page renders
+        (function() {
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            }
+        })();
+    </script>
     
     <style>
-        /* --- FULL WIDTH FIXES (NEW) --- */
-        body {
-            margin: 0;
-            padding: 0;
-            overflow-x: hidden; /* Prevent horizontal scroll */
-            background-color: var(--bg);
-        }
+        /* --- FULL WIDTH FIXES --- */
+        body { margin: 0; padding: 0; overflow-x: hidden; background-color: var(--bg); }
+        .dashboard-grid { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
-        .dashboard-grid {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        /* --- UNIFIED MISSION HUD (ADAPTIVE + FULL WIDTH) --- */
+        /* --- UNIFIED MISSION HUD (LEFT ANCHORED) --- */
         .mission-hud {
             width: 100%;
-            box-sizing: border-box; /* Includes padding in width calculation */
-            background: #1a1a1a; /* Default Dark */
+            box-sizing: border-box;
+            background: #1a1a1a;
             border-bottom: 2px solid #2ecc71;
             padding: 15px 30px;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            align-items: center; 
+            gap: 40px; 
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             margin-bottom: 25px;
             transition: background 0.3s ease, border-color 0.3s ease;
@@ -48,202 +49,102 @@
         .hud-identity {
             display: flex;
             flex-direction: column;
+            flex-shrink: 0; 
         }
 
-        .node-id {
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            color: #ecf0f1;
-            font-size: 1.1em;
-            letter-spacing: 1px;
-        }
+        .node-id { font-family: 'Courier New', monospace; font-weight: bold; color: #ecf0f1; font-size: 1.1em; letter-spacing: 1px; }
+        .net-status { font-size: 0.8em; color: #2ecc71; text-transform: uppercase; }
 
-        .net-status {
-            font-size: 0.8em;
-            color: #2ecc71; /* Green for Online */
-            text-transform: uppercase;
-        }
-
+        /* Central Nav Pill Box */
         .hud-nav {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             background: #000;
-            padding: 10px 20px;
+            padding: 8px 20px;
             border-radius: 30px;
             border: 1px solid #333;
+            align-items: center;
+            flex-shrink: 0;
         }
 
-        .nav-link {
-            color: #7f8c8d;
-            text-decoration: none;
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 0.9em;
-            transition: all 0.3s ease;
-            padding: 5px 10px;
-        }
+        .nav-link { color: #7f8c8d; text-decoration: none; font-weight: bold; text-transform: uppercase; font-size: 0.9em; transition: all 0.3s ease; padding: 5px 10px; }
+        .nav-link:hover, .nav-link.active { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.5); }
 
-        .nav-link:hover, .nav-link.active {
-            color: #fff;
-            text-shadow: 0 0 8px rgba(255,255,255,0.5);
+        /* Integrated Gear Button */
+        .nav-btn-settings {
+            background: transparent; border: none; color: #7f8c8d; font-size: 1rem; 
+            cursor: pointer; padding: 5px 10px; transition: all 0.3s ease;
+            border-left: 1px solid #333; margin-left: 5px; padding-left: 15px;
         }
+        .nav-btn-settings:hover { color: var(--accent); transform: rotate(90deg); }
 
+        /* Wallet pushed to far right */
         .hud-wallet {
             display: flex;
-            flex-direction: column;
-            align-items: flex-end; /* Right align everything */
-            justify-content: center;
-        }
-
-        .wallet-display {
-            text-align: right;
-            background: rgba(46, 204, 113, 0.1); 
-            padding: 5px 15px;
-            border-radius: 4px;
-            border-left: 3px solid #2ecc71;
-        }
-
-        .sats-label {
-            font-size: 0.75em;
-            color: #95a5a6;
-            display: block;
-        }
-
-        .sats-value {
-            font-family: 'Courier New', monospace;
-            font-size: 1.2em;
-            color: #2ecc71;
-            font-weight: bold;
-        }
-        
-        /* Theme Picker in Header */
-        .header-theme-select {
-            background: transparent;
-            border: none;
-            color: #7f8c8d;
-            font-size: 0.75rem;
-            text-align: right;
-            cursor: pointer;
-            margin-bottom: 4px;
-            padding-right: 0;
-            font-family: 'Inter', sans-serif;
-        }
-        .header-theme-select:hover { color: var(--accent); }
-        .header-theme-select:focus { outline: none; }
-
-        /* --- UNIVERSAL FOOTER (NEW) --- */
-        .mission-footer {
-            width: 100%;
-            box-sizing: border-box;
-            background: #1a1a1a; /* Default Dark */
-            border-top: 2px solid #2ecc71; /* Match header green */
-            padding: 20px 30px;
-            margin-top: 40px;
-            display: flex;
-            justify-content: space-between;
             align-items: center;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.75rem;
-            color: #7f8c8d;
-            transition: background 0.3s ease, border-color 0.3s ease;
+            gap: 15px;
+            margin-left: auto; 
         }
 
-        .footer-left { display: flex; flex-direction: column; gap: 5px; }
-        .footer-links { display: flex; gap: 20px; }
-
-        .footer-links a { 
-            color: #7f8c8d; 
-            text-decoration: none; 
-            transition: color 0.2s; 
-            text-transform: uppercase; 
-            letter-spacing: 1px;
-            font-weight: bold;
+        .wallet-display { 
+            text-align: right; 
+            background: rgba(46, 204, 113, 0.1); 
+            padding: 5px 15px; 
+            border-radius: 4px; 
+            border-left: 3px solid #2ecc71; 
+            min-width: 150px;
         }
-        .footer-links a:hover { color: var(--accent); }
-
-        /* --- LIGHT THEME OVERRIDES (Business, Paperback, Groovy) --- */
-        /* Header Overrides */
-        [data-theme="business"] .mission-hud,
-        [data-theme="paperback"] .mission-hud,
-        [data-theme="groovy"] .mission-hud {
-            background: #ffffff;
-            border-bottom: 2px solid var(--accent);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        .sats-label { font-size: 0.75em; color: #95a5a6; display: block; }
+        .sats-value { 
+            font-family: 'Courier New', monospace; font-size: 1.2em; color: #2ecc71; font-weight: bold; 
         }
-
-        [data-theme="business"] .node-id,
-        [data-theme="paperback"] .node-id,
-        [data-theme="groovy"] .node-id {
-            color: #2c3e50;
-        }
-
-        [data-theme="business"] .hud-nav,
-        [data-theme="paperback"] .hud-nav,
-        [data-theme="groovy"] .hud-nav {
-            background: #f8f9fa;
-            border: 1px solid #e0e0e0;
-        }
-
-        [data-theme="business"] .nav-link,
-        [data-theme="paperback"] .nav-link,
-        [data-theme="groovy"] .nav-link {
-            color: #7f8c8d;
-        }
-
-        [data-theme="business"] .nav-link:hover,
-        [data-theme="business"] .nav-link.active,
-        [data-theme="paperback"] .nav-link:hover,
-        [data-theme="paperback"] .nav-link.active,
-        [data-theme="groovy"] .nav-link:hover,
-        [data-theme="groovy"] .nav-link.active {
-            color: var(--accent);
-            text-shadow: none;
-            background: rgba(0,0,0,0.05);
-            border-radius: 4px;
-        }
-
-        /* Footer Overrides */
-        [data-theme="business"] .mission-footer,
-        [data-theme="paperback"] .mission-footer,
-        [data-theme="groovy"] .mission-footer {
-            background: #ffffff;
-            border-top: 2px solid var(--accent);
-            color: #2c3e50;
-            box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
-        }
-
-        /* --- CORE DASHBOARD STYLES (Restored) --- */
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); }
-        th:last-child, td:last-child { text-align: right; }
-        td:nth-child(3) { width: 40%; font-family: monospace; opacity: 0.8; word-break: break-all; }
-
-        .btn-claim { background-color: #f1c40f !important; color: black !important; font-weight: bold; border: none; padding: 6px 16px; cursor: pointer; border-radius: 4px; box-shadow: 0 0 10px rgba(241, 196, 15, 0.3); }
-        .btn-claim:hover { transform: scale(1.05); box-shadow: 0 0 20px #f1c40f; }
         
-        #activity-log, #global-log {
-            height: 150px; overflow-y: auto; background: rgba(0,0,0,0.2);
-            padding: 10px; border-radius: 4px; font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem; border: 1px solid var(--border);
-        }
+        /* Theme Overrides */
+        [data-theme="business"] .mission-hud, [data-theme="paperback"] .mission-hud, [data-theme="groovy"] .mission-hud { background: #ffffff; border-bottom: 2px solid var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        [data-theme="business"] .node-id, [data-theme="paperback"] .node-id, [data-theme="groovy"] .node-id { color: #2c3e50; }
+        [data-theme="business"] .hud-nav, [data-theme="paperback"] .hud-nav, [data-theme="groovy"] .hud-nav { background: #f8f9fa; border: 1px solid #e0e0e0; }
+        [data-theme="business"] .nav-link, [data-theme="paperback"] .nav-link, [data-theme="groovy"] .nav-link { color: #7f8c8d; }
+        [data-theme="business"] .nav-link:hover, [data-theme="business"] .nav-link.active, [data-theme="paperback"] .nav-link:hover, [data-theme="paperback"] .nav-link.active, [data-theme="groovy"] .nav-link:hover, [data-theme="groovy"] .nav-link.active { color: var(--accent); text-shadow: none; background: rgba(0,0,0,0.05); border-radius: 4px; }
+        [data-theme="business"] .mission-footer, [data-theme="paperback"] .mission-footer, [data-theme="groovy"] .mission-footer { background: #ffffff; border-top: 2px solid var(--accent); color: #2c3e50; box-shadow: 0 -4px 10px rgba(0,0,0,0.05); }
 
-        /* --- SCANNING PULSE --- */
-        .scanning-pulse {
-            width: 12px; height: 12px; background-color: var(--accent);
-            border-radius: 50%; position: relative; display: inline-block;
-            transition: background-color 0.3s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        .scanning-pulse::after {
-            content: ''; position: absolute; top: 50%; left: 50%;
-            width: 100%; height: 100%; background-color: inherit;
-            border-radius: 50%; transform: translate(-50%, -50%);
-            animation: radar-pulse 2s infinite ease-out; opacity: 0.6;
-        }
-        .scanning-pulse.success-flash { background-color: #2ecc71 !important; box-shadow: 0 0 20px #2ecc71; transform: scale(1.5); }
-        .scanning-pulse.rival-alert { background-color: #e74c3c !important; box-shadow: 0 0 20px #e74c3c; transform: scale(1.5); }
-        @keyframes radar-pulse { 0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; } 100% { transform: translate(-50%, -50%) scale(4); opacity: 0; } }
+        /* Lock Screen */
+        #lock-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; flex-direction: column; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif; }
+        .lock-container { text-align: center; color: var(--accent); animation: pulse-border 2s infinite; padding: 40px; border: 2px solid var(--accent); border-radius: 20px; box-shadow: 0 0 50px rgba(0,255,0,0.1); }
+        .lock-icon { font-size: 4rem; margin-bottom: 20px; color: var(--accent); }
+        .pin-display { font-size: 2rem; margin: 20px 0; letter-spacing: 15px; min-height: 40px; color: #fff; font-family: 'Courier Prime'; }
+        .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
+        .key-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--accent); color: var(--accent); font-size: 1.5rem; padding: 15px; border-radius: 10px; cursor: pointer; transition: all 0.2s; }
+        .key-btn:hover { background: var(--accent); color: #000; }
+        .key-btn:active { transform: scale(0.95); }
 
-        /* --- MARVIN SPRITE (RESTORED) --- */
+        /* Settings Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: var(--card-bg); border: 1px solid var(--accent); box-shadow: 0 0 30px rgba(0, 243, 255, 0.2); width: 400px; border-radius: 12px; padding: 20px; animation: modalSlideIn 0.3s ease-out; color: var(--text); }
+        @keyframes modalSlideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; }
+        .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--accent); }
+        .close-btn { background: none; border: none; color: #7f8c8d; font-size: 1.2rem; cursor: pointer; }
+        .close-btn:hover { color: var(--danger); }
+        .settings-group { margin-bottom: 20px; }
+        .settings-group label { display: block; color: #95a5a6; margin-bottom: 10px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .control-row { display: flex; align-items: center; gap: 15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
+        .theme-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text); padding: 10px; border-radius: 6px; cursor: pointer; text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
+        .theme-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent); }
+        .theme-btn.active { background: var(--accent); color: var(--bg); font-weight: bold; }
+        .version-info { text-align: center; font-size: 0.8rem; color: #7f8c8d; margin-top: 20px; opacity: 0.5; }
+
+        /* --- RESTORED EASTER EGG STYLES (REQUIRED FOR HIDING) --- */
+        #bypass-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.95); z-index: 9999;
+            flex-direction: column; justify-content: center; align-items: center;
+            font-family: 'Courier Prime', monospace;
+        }
+        .bypass-title { font-size: 4rem; color: #00ff00; text-shadow: 6px 6px #ff0000; margin-bottom: 20px; text-align: center; }
+        .live-dot { height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-live 1.5s infinite; }
+        @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
         #marvin-sprite-container {
             display: none; position: fixed; bottom: -200px; right: 20px; 
             width: 300px; z-index: 9000; cursor: pointer; 
@@ -257,36 +158,62 @@
         .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
         @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
 
-        /* --- BYPASS OVERLAY --- */
-        #bypass-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background-color: rgba(0, 0, 0, 0.95); z-index: 9999;
-            flex-direction: column; justify-content: center; align-items: center;
-            font-family: 'Courier Prime', monospace;
+        /* --- UPDATED TABLE STYLES --- */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            table-layout: fixed; /* Enforce column widths */
         }
-        .bypass-title { font-size: 4rem; color: #00ff00; text-shadow: 6px 6px #ff0000; margin-bottom: 20px; text-align: center; }
-        .live-dot { height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-live 1.5s infinite; }
-        @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid rgba(128,128,128,0.2);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
 
-        /* --- LEDGER --- */
-        .ledger-row { margin-bottom: 15px; border-bottom: 1px solid rgba(163, 227, 237, 0.1); padding-bottom: 10px; }
-        .ledger-parent { display: flex; justify-content: space-between; align-items: flex-start; }
-        .ledger-timestamp { color: rgba(163, 227, 237, 0.5); margin-right: 10px; }
-        .ledger-task-id { color: #a3e3ed; font-style: italic; }
-        .ledger-xp-total { color: #ff9f00; font-weight: bold; font-size: 1.1rem; text-shadow: 0 0 10px rgba(255, 159, 0, 0.5); }
-        .ledger-children { margin-left: 45px; margin-top: 5px; border-left: 2px solid rgba(255, 159, 0, 0.3); padding-left: 15px; position: relative; }
-        .ledger-child { display: flex; justify-content: space-between; margin-bottom: 4px; position: relative; }
-        .ledger-child::before { content: "└─"; position: absolute; left: -17px; color: rgba(255, 159, 0, 0.5); }
-        .ledger-child-name { font-size: 0.85rem; }
-        .ledger-child-xp { font-size: 0.85rem; opacity: 0.8; }
+        /* Column Widths */
+        th:nth-child(1), td:nth-child(1) { width: 15%; } /* ID */
+        th:nth-child(2), td:nth-child(2) { width: 20%; } /* Type */
+        th:nth-child(3), td:nth-child(3) { width: 30%; } /* Status */
+        th:nth-child(4), td:nth-child(4) { width: 15%; text-align: right; } /* Reward */
+        th:nth-child(5), td:nth-child(5) { width: 20%; text-align: right; } /* Action */
+
+        /* Override specific table cells for alignment */
+        td:nth-child(4) span { display: inline-block; float: right; }
+        td:nth-child(5) { text-align: right; }
+        td:nth-child(5) button { float: right; margin-left: 5px;}
+
     </style>
 </head>
 <body>
 
-    <script>
-        // LINTER SAFE: Wrapping Jinja in quotes to prevent syntax errors in IDE
-        window.OWNED_THEMES = JSON.parse('{{ owned|tojson|safe }}');
-    </script>
+    <script>window.OWNED_THEMES = JSON.parse('{{ owned|tojson|safe }}');</script>
+
+    <div id="lock-overlay">
+        <div class="lock-container">
+            <div class="lock-icon"><i class="fas fa-lock"></i></div>
+            <h2 id="lock-msg">SECURITY LOCKDOWN</h2>
+            <div class="pin-display" id="pin-dots"></div>
+            <div class="keypad">
+                <button class="key-btn" onclick="enterDigit(1)">1</button>
+                <button class="key-btn" onclick="enterDigit(2)">2</button>
+                <button class="key-btn" onclick="enterDigit(3)">3</button>
+                <button class="key-btn" onclick="enterDigit(4)">4</button>
+                <button class="key-btn" onclick="enterDigit(5)">5</button>
+                <button class="key-btn" onclick="enterDigit(6)">6</button>
+                <button class="key-btn" onclick="enterDigit(7)">7</button>
+                <button class="key-btn" onclick="enterDigit(8)">8</button>
+                <button class="key-btn" onclick="enterDigit(9)">9</button>
+                <button class="key-btn" onclick="enterDigit('clear')" style="color: #e74c3c; border-color: #e74c3c;"><i class="fas fa-times"></i></button>
+                <button class="key-btn" onclick="enterDigit(0)">0</button>
+                <button class="key-btn" onclick="enterDigit('enter')" style="color: #2ecc71; border-color: #2ecc71;"><i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+    </div>
 
     <div id="audio-unlock-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:black; z-index:99999; display:flex; justify-content:center; align-items:center; flex-direction:column;">
         <h1 style="color: #8e44ad; font-family:'Courier Prime'; margin-bottom:20px; font-size: 2rem; letter-spacing: 2px;">PROXY // NETWORK</h1>
@@ -311,24 +238,79 @@
 
     <div class="mission-hud">
         <div class="hud-identity">
-            <span class="node-id">PROXY NODE v1.6</span>
+            <span class="node-id">PROXY NODE v1.7</span>
             <span class="net-status">● SECURE CONNECTION</span>
         </div>
-
         <div class="hud-nav">
             <a href="/" class="nav-link active">Command</a>
             <a href="/marketplace" class="nav-link">Exchange</a>
             <a href="/shop" class="nav-link">Armory</a>
+            <button class="nav-btn-settings" onclick="toggleSettings()" title="System Settings"><i class="fas fa-cog"></i></button>
         </div>
-
         <div class="hud-wallet">
-            <select id="common-theme-selector" class="header-theme-select">
-                <option>Loading Themes...</option>
-            </select>
-            
             <div class="wallet-display">
-                <span class="sats-label">ENCRYPTED RESERVES</span>
-                <span class="sats-value" id="hud-balance">{{ "{:,}".format(balance|default(0)) }} SATS</span>
+                <span class="sats-label">RESERVES (<span id="unit-label">SATS</span>)</span>
+                <span class="sats-value" id="hud-balance">--</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-cog"></i> System Settings</h2>
+                <button class="close-btn" onclick="toggleSettings()"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="settings-group">
+                <label>Currency Unit</label>
+                <select id="currency-select" onchange="changeUnit(this.value)" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text); border-radius: 6px;">
+                    <option value="AUD">AUD (Australia)</option>
+                    <option value="BTC">BTC (Bitcoin)</option>
+                    <option value="CAD">CAD (Canada)</option>
+                    <option value="CNY">CNY (China)</option>
+                    <option value="EUR">EUR (Eurozone)</option>
+                    <option value="GBP">GBP (United Kingdom)</option>
+                    <option value="JPY">JPY (Japan)</option>
+                    <option value="KRW">KRW (South Korea)</option>
+                    <option value="MXN">MXN (Mexico)</option>
+                    <option value="SATS">SATS (Satoshis)</option>
+                    <option value="TWD">TWD (Taiwan)</option>
+                    <option value="USD">USD (United States)</option>
+                </select>
+            </div>
+
+            <div class="settings-group">
+                <label>Interface Theme</label>
+                <select id="settings-theme-selector" class="theme-picker-ui" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text);">
+                    <option>Loading...</option>
+                </select>
+            </div>
+
+            <div class="settings-group">
+                <label>Network Diagnostics</label>
+                <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; display: flex; justify-content: space-between;">
+                    <span>LND Peers:</span>
+                    <span id="health-peers" style="color: var(--accent); font-weight: bold;">checking...</span>
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <label>Audio Uplink</label>
+                <div class="control-row" style="display: flex; align-items: center; gap: 15px;">
+                    <button class="theme-btn" id="mute-btn" onclick="toggleMute()" style="width: 50px; justify-content: center;"><i class="fas fa-volume-up" id="mute-icon"></i></button>
+                    <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5" oninput="adjustVolume(this.value)" style="flex-grow: 1; accent-color: var(--accent);">
+                </div>
+            </div>
+
+            <div class="settings-group" style="margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <button class="theme-btn" onclick="lockDashboard()" style="width: 100%; justify-content: center; background: rgba(231, 76, 60, 0.2); border-color: #e74c3c; color: #e74c3c;">
+                    <i class="fas fa-lock"></i> LOCK DASHBOARD
+                </button>
+            </div>
+
+            <div class="modal-footer">
+                <div class="version-info">Proxy Node v0.2.1-beta</div>
             </div>
         </div>
     </div>
@@ -339,7 +321,6 @@
                 <h2>Node Identity</h2>
                 <small style="opacity: 0.7;">ID: <span style="color: var(--accent);">{{ node.id }}</span></small>
             </div>
-            
             <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; font-family: monospace;">
                 <div style="display: flex; justify-content: space-between; margin-top: 5px;">
                     <span style="opacity: 0.7;">SECURITY:</span>
@@ -347,7 +328,6 @@
                     {% else %} <span style="color: #f1c40f;">[SIMULATION_MODE] ⚠️</span> {% endif %}
                 </div>
             </div>
-
             <p style="margin-top: 15px;"><strong>XP:</strong> <span id="xp-text">0 / 5000</span></p>
             <div class="xp-container" onclick="openXPHistory()" style="cursor: pointer;" title="View XP History">
                 <div id="xp-bar" class="xp-bar" style="width: 0%;"></div>
@@ -398,20 +378,7 @@
             <h2><span class="live-dot"></span>Live Task Feed (Race Against Rivals)</h2>
             <table>
                 <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Reward</th><th>Action</th></tr></thead>
-                <tbody id="task-table-body">
-                    {% for task in tasks %}
-                    <tr>
-                        <td>{{ task.id }}</td>
-                        <td>{{ task.type }}</td>
-                        <td><code>WAITING_FOR_EXEC</code></td>
-                        <td><span class="sats-badge">{{ task.reward }}</span></td>
-                        <td>
-                            <button class="theme-btn-primary" onclick="completeTask('{{ task.id }}', {{ task.reward }})">COMPLETE</button>
-                            <button class="theme-btn-primary" style="background:var(--bg); border:1px solid var(--accent); margin-left:5px;" onclick="generateContract('{{ task.id }}', '{{ task.type }}', '{{ task.reward }}')">📄</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
+                <tbody id="task-table-body"></tbody>
             </table>
         </div>
     </div>
@@ -421,12 +388,10 @@
             <span>&copy; 2026 PROXY NETWORK INC. // ALL RIGHTS RESERVED</span>
             <span style="opacity: 0.5;">NODE_ID: {{ node.id if node else 'UNKNOWN' }} // LATENCY: 12ms</span>
         </div>
-
         <div class="footer-links">
-            <a href="/legal/docs" style="cursor:help;" title="Protocol Documentation">DOCS</a>
-            <a href="/legal/aup" style="cursor:help;" title="Acceptable Use Policy">AUP</a>
-            <a href="/legal/terms" style="cursor:help;" title="Terms of Service">TERMS</a>
-            <a href="/legal/privacy" style="cursor:help;" title="Privacy Policy">PRIVACY</a>
+            <a href="/legal/docs" style="cursor:help;">DOCS</a>
+            <a href="/legal/aup" style="cursor:help;">AUP</a>
+            <a href="/legal/terms" style="cursor:help;">TERMS</a>
             <span style="color: var(--accent);">● SYSTEMS OPTIMAL</span>
         </div>
     </div>
@@ -444,12 +409,18 @@
     <script>
         const NODE_ID = "{{ node.id }}";
         let lastDaemonMsg = ""; 
-        // LINTER SAFE: Wrapping integer in Number() to allow valid JS syntax in IDE
-        let lastTaskCount = Number('{{ tasks|length }}');
+        let rawSatsBalance = 0;
+        let lastLevel = -1; 
 
-        if (sessionStorage.getItem('audioUnlocked')) {
-            document.getElementById('audio-unlock-overlay').style.display = 'none';
-        }
+        // --- AUDIO ---
+        let audioMuted = localStorage.getItem('audioMuted') === 'true';
+        let audioVolume = localStorage.getItem('audioVolume') || 0.5;
+        
+        if (audioMuted) toggleMuteUI(); 
+        document.getElementById('volume-slider').value = audioVolume;
+        adjustVolume(audioVolume);
+
+        if (sessionStorage.getItem('audioUnlocked')) document.getElementById('audio-unlock-overlay').style.display = 'none';
 
         function unlockAudio() {
             ['audio-click', 'audio-success', 'audio-failure', 'audio-marvin', 'audio-powerup'].forEach(id => {
@@ -461,31 +432,58 @@
             document.getElementById('audio-click').play();
         }
 
-        function switchTab(tab) {
-            const liveLog = document.getElementById('activity-log');
-            const globalLog = document.getElementById('global-log');
-            const title = document.getElementById('activity-title');
-            if (tab === 'live') {
-                liveLog.style.display = 'block'; globalLog.style.display = 'none'; title.innerText = "Network Activity";
+        function toggleMute() {
+            audioMuted = !audioMuted;
+            localStorage.setItem('audioMuted', audioMuted);
+            toggleMuteUI();
+        }
+
+        function toggleMuteUI() {
+            document.querySelectorAll('audio').forEach(el => el.muted = audioMuted);
+            const btn = document.getElementById('mute-btn');
+            const icon = document.getElementById('mute-icon');
+            if (audioMuted) {
+                btn.style.color = '#e74c3c'; btn.style.borderColor = '#e74c3c';
+                icon.className = 'fas fa-volume-mute';
             } else {
-                liveLog.style.display = 'none'; globalLog.style.display = 'block'; title.innerText = "Global Event Log";
-                fetchGlobalEvents();
+                btn.style.color = ''; btn.style.borderColor = '';
+                icon.className = 'fas fa-volume-up';
             }
         }
 
-        function fetchGlobalEvents() {
-            fetch('/api/v1/network/events/history')
-                .then(r => r.json())
-                .then(events => {
-                    document.getElementById('global-log').innerHTML = events.map(e => `
-                        <div style="margin-bottom: 5px;">
-                            <span style="opacity:0.5">[${e.timestamp.split(' ')[1]}]</span> 
-                            <b style="color:var(--accent)">${e.event_type}:</b> ${e.message}
-                        </div>
-                    `).join('') || "No historical events found.";
-                });
+        function adjustVolume(val) {
+            localStorage.setItem('audioVolume', val);
+            document.querySelectorAll('audio').forEach(el => el.volume = val);
         }
 
+        // --- CURRENCY ---
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        document.getElementById('currency-select').value = currentUnit;
+        
+        const RATES = {
+            SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088,
+            CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051,
+            JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010
+        };
+
+        function changeUnit(unit) {
+            currentUnit = unit;
+            localStorage.setItem('currencyUnit', unit);
+            document.getElementById('unit-label').innerText = unit;
+            updateBalanceDisplay();
+        }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance');
+            if (!el) return;
+            let val = rawSatsBalance * RATES[currentUnit];
+            
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS";
+            else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC";
+            else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
+        }
+
+        // --- EASTER EGGS ---
         const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
         let konamiIndex = 0;
         document.addEventListener('keydown', (e) => {
@@ -499,46 +497,99 @@
             document.getElementById('bypass-overlay').style.display = 'flex';
             document.getElementById('audio-powerup').play();
             setTimeout(() => { document.getElementById('bypass-overlay').style.display = 'none'; }, 3000);
+        }
+
+        function checkLevelUp(currentXP) {
+            const level = Math.floor(currentXP / 5000);
+            if (lastLevel === -1) { lastLevel = level; return; }
+            if (level > lastLevel) {
+                lastLevel = level;
+                triggerMarvin();
+            }
+        }
+
+        function triggerMarvin() {
+            // CORPORATE SUPPRESSION
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            if (currentTheme === 'business' || currentTheme === 'paperback') return;
+
             const marvin = document.getElementById('marvin-sprite-container');
-            marvin.classList.add('active');
-            setTimeout(() => { marvin.classList.remove('active'); }, 5000);
+            marvin.classList.add('active'); 
+            setTimeout(() => { marvin.classList.remove('active'); }, 5000); 
         }
 
-        function addLog(msg) {
-            const log = document.getElementById('activity-log');
-            const entry = document.createElement('div');
-            entry.innerHTML = `<span style="color:var(--accent)">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
-            log.prepend(entry);
+        function handleMarvinClick() { 
+            const img = document.getElementById('marvin-image'); 
+            img.style.transform = "scale(1.1) rotate(5deg)"; 
+            setTimeout(() => img.style.transform = "scale(1) rotate(0deg)", 150); 
+        }
+        
+        function marvinLaugh() { 
+            const audio = document.getElementById('audio-marvin'); 
+            audio.currentTime = 0; audio.play(); 
+            document.getElementById('marvin-image').classList.add('laughing-anim'); 
+            setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000); 
         }
 
-        function flashPulse(type) {
-            const pulse = document.getElementById('scan-pulse');
-            const className = type === 'success' ? 'success-flash' : 'rival-alert';
-            pulse.classList.add(className);
-            setTimeout(() => pulse.classList.remove(className), 1200);
+        // --- LOCK SCREEN ---
+        let inputPin = "";
+        function lockDashboard() {
+            toggleSettings();
+            const overlay = document.getElementById('lock-overlay');
+            const msg = document.getElementById('lock-msg');
+            const storedPin = localStorage.getItem('user_pin');
+            inputPin = "";
+            updatePinDots();
+            overlay.style.display = 'flex';
+            if (!storedPin) { msg.innerText = "SET NEW PIN CODE"; msg.style.color = "#f1c40f"; } 
+            else { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }
         }
 
-        function updateNetworkStats() {
-            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
-                // This stat bar was removed from UI, keeping logic just in case or for backend pings
-            });
-        }
-        setInterval(updateNetworkStats, 30000);
-
-        setInterval(pollRivals, 5000);
-        function pollRivals() {
-            fetch('/api/v1/rivals/feed').then(r => r.json()).then(data => {
-                if (data.has_msg) {
-                    const feed = document.getElementById('rival-feed');
-                    const entry = document.createElement('div');
-                    entry.style.marginBottom = "8px";
-                    entry.innerHTML = `<span style="opacity:0.6">[${data.timestamp}]</span> <b style="color:var(--danger)">${data.rival}:</b> <span style="color:var(--text)">${data.message}</span>`;
-                    feed.prepend(entry);
+        function enterDigit(digit) {
+            const msg = document.getElementById('lock-msg');
+            if (digit === 'clear') { inputPin = ""; } 
+            else if (digit === 'enter') {
+                const storedPin = localStorage.getItem('user_pin');
+                if (!storedPin) {
+                    if (inputPin.length < 4) {
+                        msg.innerText = "PIN TOO SHORT";
+                        document.getElementById('audio-failure').play();
+                        setTimeout(() => msg.innerText = "SET NEW PIN CODE", 1000);
+                        inputPin = "";
+                    } else {
+                        localStorage.setItem('user_pin', inputPin);
+                        msg.innerText = "PIN ESTABLISHED";
+                        document.getElementById('audio-success').play();
+                        setTimeout(() => { document.getElementById('lock-overlay').style.display = 'none'; inputPin = ""; }, 1000);
+                    }
+                } else {
+                    if (inputPin === storedPin) {
+                        document.getElementById('audio-success').play();
+                        document.getElementById('lock-overlay').style.display = 'none';
+                        inputPin = "";
+                    } else {
+                        document.getElementById('audio-failure').play();
+                        msg.innerText = "ACCESS DENIED";
+                        msg.style.color = "#e74c3c";
+                        inputPin = "";
+                        setTimeout(() => { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }, 1000);
+                    }
                 }
-            });
+            } else { if (inputPin.length < 8) inputPin += digit; }
+            updatePinDots();
+        }
+        function updatePinDots() { document.getElementById('pin-dots').innerText = "•".repeat(inputPin.length); }
+
+        // --- SETTINGS ---
+        function toggleSettings() {
+            document.getElementById('settingsModal').classList.toggle('active');
+        }
+        window.onclick = function(event) {
+            const modal = document.getElementById('settingsModal');
+            if (event.target == modal) modal.classList.remove('active');
         }
 
-        setInterval(refreshDashboard, 2000); 
+        // --- DASHBOARD DATA ---
         function refreshDashboard() {
             fetch('/api/v1/dashboard/live').then(r => r.json()).then(data => {
                 if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
@@ -548,14 +599,13 @@
                     lastDaemonMsg = data.daemon_event;
                 }
                 
-                // UPDATED: Target the new HUD balance element
-                const balanceEl = document.getElementById('hud-balance');
-                if (balanceEl) {
-                    balanceEl.innerText = data.balance + " SATS";
-                }
+                rawSatsBalance = data.balance;
+                updateBalanceDisplay();
 
+                // XP Logic
                 document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
                 document.getElementById('xp-text').innerText = `${data.xp % 5000} / 5000`;
+                checkLevelUp(data.xp); 
 
                 const tbody = document.getElementById('task-table-body');
                 if(data.tasks.length === 0) {
@@ -572,67 +622,81 @@
             });
         }
 
-        function completeTask(taskId, reward) {
-            fetch('/api/v1/tasks/complete', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ node_id: NODE_ID, task_id: taskId, payout: reward })
-            }).then(r => r.json()).then(data => {
-                if (data.status === 'success') {
-                    document.getElementById('audio-success').play();
-                    addLog(`Task ${taskId} completed manually. Reward credited.`);
-                    refreshDashboard();
+        function updateNetworkStats() {
+            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
+                const healthSpan = document.getElementById('health-peers');
+                if (healthSpan) {
+                    if (data.peers > 0) { healthSpan.innerHTML = `● ${data.peers} CONNECTED`; healthSpan.style.color = "#2ecc71"; } 
+                    else { healthSpan.innerHTML = `● 0 PEERS (SEARCHING)`; healthSpan.style.color = "#f1c40f"; }
                 }
             });
         }
 
-        function updateLeaderboard() {
-            fetch('/api/v1/network/leaderboard').then(r => r.json()).then(data => {
-                document.getElementById('leaderboard-list').innerHTML = data.map((entry, i) => `
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px; ${entry.id === NODE_ID ? 'color:var(--accent); font-weight:bold;' : 'opacity:0.7;'}">
-                        <span>#${i+1} ${entry.id} ${entry.type === 'RIVAL' ? '🤖' : ''}</span>
-                        <span>${entry.xp.toLocaleString()} XP</span>
-                    </div>
-                `).join('');
+        // --- INIT ---
+        function switchTab(tab) {
+            const liveLog = document.getElementById('activity-log');
+            const globalLog = document.getElementById('global-log');
+            const title = document.getElementById('activity-title');
+            if (tab === 'live') { liveLog.style.display = 'block'; globalLog.style.display = 'none'; title.innerText = "Network Activity"; } 
+            else { liveLog.style.display = 'none'; globalLog.style.display = 'block'; title.innerText = "Global Event Log"; fetchGlobalEvents(); }
+        }
+        function fetchGlobalEvents() {
+            fetch('/api/v1/network/events/history').then(r => r.json()).then(events => {
+                document.getElementById('global-log').innerHTML = events.map(e => `<div style="margin-bottom: 5px;"><span style="opacity:0.5">[${e.timestamp.split(' ')[1]}]</span> <b style="color:var(--accent)">${e.event_type}:</b> ${e.message}</div>`).join('') || "No historical events found.";
             });
         }
-
+        function addLog(msg) {
+            const log = document.getElementById('activity-log');
+            const entry = document.createElement('div');
+            entry.innerHTML = `<span style="color:var(--accent)">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+            log.prepend(entry);
+        }
+        function flashPulse(type) {
+            const pulse = document.getElementById('scan-pulse');
+            const className = type === 'success' ? 'success-flash' : 'rival-alert';
+            pulse.classList.add(className);
+            setTimeout(() => pulse.classList.remove(className), 1200);
+        }
+        function completeTask(taskId, reward) {
+            fetch('/api/v1/tasks/complete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ node_id: NODE_ID, task_id: taskId, payout: reward }) }).then(r => r.json()).then(data => {
+                if (data.status === 'success') { document.getElementById('audio-success').play(); addLog(`Task ${taskId} completed manually. Reward credited.`); refreshDashboard(); }
+            });
+        }
+        function updateLeaderboard() {
+            fetch('/api/v1/network/leaderboard').then(r => r.json()).then(data => {
+                document.getElementById('leaderboard-list').innerHTML = data.map((entry, i) => `<div style="display: flex; justify-content: space-between; margin-bottom: 6px; ${entry.id === NODE_ID ? 'color:var(--accent); font-weight:bold;' : 'opacity:0.7;'}"><span>#${i+1} ${entry.id} ${entry.type === 'RIVAL' ? '🤖' : ''}</span><span>${entry.xp.toLocaleString()} XP</span></div>`).join('');
+            });
+        }
         function openXPHistory() {
             document.getElementById('xp-history-modal').style.display = 'flex';
             fetch('/api/v1/node/xp_ledger/' + NODE_ID).then(r => r.json()).then(data => {
                 const body = document.getElementById('xp-ledger-body');
-                if (data.length === 0) {
-                    body.innerHTML = "<div style='text-align:center; padding:20px; opacity:0.5;'>No XP history recorded.</div>";
-                    return;
+                if (data.length === 0) { body.innerHTML = "<div style='text-align:center; padding:20px; opacity:0.5;'>No XP history recorded.</div>"; return; }
+                body.innerHTML = data.map(log => `<div class="ledger-row"><div class="ledger-parent"><div><span class="ledger-timestamp">[${log.time}]</span> <span class="ledger-task-id">${log.taskId}</span></div><div class="ledger-xp-total">+${log.totalXp} XP</div></div><div class="ledger-children">${log.bonuses.map(b => `<div class="ledger-child"><span class="ledger-child-name" style="color: ${b.color}">${b.name}</span><span class="ledger-child-xp">+${b.xp} XP</span></div>`).join('')}</div></div>`).join('');
+            });
+        }
+        function closeXPHistory() { document.getElementById('xp-history-modal').style.display = 'none'; }
+        setInterval(updateNetworkStats, 30000);
+        setInterval(pollRivals, 5000);
+        function pollRivals() {
+            fetch('/api/v1/rivals/feed').then(r => r.json()).then(data => {
+                if (data.has_msg) {
+                    const feed = document.getElementById('rival-feed');
+                    const entry = document.createElement('div');
+                    entry.style.marginBottom = "8px";
+                    entry.innerHTML = `<span style="opacity:0.6">[${data.timestamp}]</span> <b style="color:var(--danger)">${data.rival}:</b> <span style="color:var(--text)">${data.message}</span>`;
+                    feed.prepend(entry);
                 }
-                body.innerHTML = data.map(log => `
-                    <div class="ledger-row">
-                        <div class="ledger-parent">
-                            <div><span class="ledger-timestamp">[${log.time}]</span> <span class="ledger-task-id">${log.taskId}</span></div>
-                            <div class="ledger-xp-total">+${log.totalXp} XP</div>
-                        </div>
-                        <div class="ledger-children">
-                            ${log.bonuses.map(b => `<div class="ledger-child"><span class="ledger-child-name" style="color: ${b.color}">${b.name}</span><span class="ledger-child-xp">+${b.xp} XP</span></div>`).join('')}
-                        </div>
-                    </div>`).join('');
             });
         }
 
-        function closeXPHistory() { document.getElementById('xp-history-modal').style.display = 'none'; }
-        
-        function handleMarvinClick() { 
-            const img = document.getElementById('marvin-image'); 
-            img.style.transform = "scale(1.1) rotate(5deg)"; 
-            setTimeout(() => img.style.transform = "scale(1) rotate(0deg)", 150); 
-        }
-        function marvinLaugh() { 
-            const audio = document.getElementById('audio-marvin'); 
-            audio.currentTime = 0; audio.play(); 
-            document.getElementById('marvin-image').classList.add('laughing-anim'); 
-            setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000); 
-        }
-
         window.onload = () => {
-            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('common-theme-selector');
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if(savedTheme) {
+                if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme);
+            }
+            document.getElementById('unit-label').innerText = currentUnit;
             refreshDashboard();
             updateLeaderboard();
             updateNetworkStats();

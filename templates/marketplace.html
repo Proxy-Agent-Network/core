@@ -8,17 +8,29 @@
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+
+    <script>
+    // ANTI-FLASH: Apply theme before page renders
+        (function() {
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            }
+        })();
+    </script>
     
     <style>
         /* --- FULL WIDTH FIXES --- */
         body {
             margin: 0;
             padding: 0;
-            overflow-x: hidden; /* Prevent horizontal scroll */
+            overflow-x: hidden;
             background-color: var(--bg);
         }
 
@@ -28,16 +40,16 @@
             padding: 20px;
         }
 
-        /* --- UNIFIED MISSION HUD (ADAPTIVE + FULL WIDTH) --- */
+        /* --- UNIFIED MISSION HUD (LEFT ANCHORED) --- */
         .mission-hud {
             width: 100%;
-            box-sizing: border-box; /* Includes padding in width calculation */
-            background: #1a1a1a; /* Default Dark */
+            box-sizing: border-box;
+            background: #1a1a1a;
             border-bottom: 2px solid #2ecc71;
             padding: 15px 30px;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            align-items: center; 
+            gap: 40px; 
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             margin-bottom: 25px;
             transition: background 0.3s ease, border-color 0.3s ease;
@@ -46,6 +58,7 @@
         .hud-identity {
             display: flex;
             flex-direction: column;
+            flex-shrink: 0; 
         }
 
         .node-id {
@@ -58,17 +71,20 @@
 
         .net-status {
             font-size: 0.8em;
-            color: #2ecc71; /* Green for Online */
+            color: #2ecc71;
             text-transform: uppercase;
         }
 
+        /* Central Nav Pill Box */
         .hud-nav {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             background: #000;
-            padding: 10px 20px;
+            padding: 8px 20px;
             border-radius: 30px;
             border: 1px solid #333;
+            align-items: center;
+            flex-shrink: 0; 
         }
 
         .nav-link {
@@ -86,11 +102,20 @@
             text-shadow: 0 0 8px rgba(255,255,255,0.5);
         }
 
+        /* Integrated Gear Button */
+        .nav-btn-settings {
+            background: transparent; border: none; color: #7f8c8d; font-size: 1rem; 
+            cursor: pointer; padding: 5px 10px; transition: all 0.3s ease;
+            border-left: 1px solid #333; margin-left: 5px; padding-left: 15px;
+        }
+        .nav-btn-settings:hover { color: var(--accent); transform: rotate(90deg); }
+
+        /* Wallet pushed to far right */
         .hud-wallet {
             display: flex;
-            flex-direction: column;
-            align-items: flex-end; /* Right align everything */
-            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-left: auto; 
         }
 
         .wallet-display {
@@ -99,6 +124,7 @@
             padding: 5px 15px;
             border-radius: 4px;
             border-left: 3px solid #2ecc71;
+            min-width: 150px; 
         }
 
         .sats-label {
@@ -114,12 +140,12 @@
             font-weight: bold;
         }
 
-        /* --- UNIVERSAL FOOTER (FULL WIDTH) --- */
+        /* --- UNIVERSAL FOOTER --- */
         .mission-footer {
             width: 100%;
             box-sizing: border-box;
-            background: #1a1a1a; /* Default Dark */
-            border-top: 2px solid #2ecc71; /* Match header green */
+            background: #1a1a1a;
+            border-top: 2px solid #2ecc71;
             padding: 20px 30px;
             margin-top: 40px;
             display: flex;
@@ -144,7 +170,7 @@
         }
         .footer-links a:hover { color: var(--accent); }
 
-        /* Light Theme Overrides (Business, Paperback, Groovy) */
+        /* Light Theme Overrides */
         [data-theme="business"] .mission-hud,
         [data-theme="paperback"] .mission-hud,
         [data-theme="groovy"] .mission-hud {
@@ -161,41 +187,18 @@
             color: #2c3e50;
             box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
         }
-        
-        /* NEW: Theme Picker in Header */
-        .header-theme-select {
-            background: transparent;
-            border: none;
-            color: #7f8c8d;
-            font-size: 0.75rem;
-            text-align: right;
-            cursor: pointer;
-            margin-bottom: 4px;
-            padding-right: 0;
-            font-family: 'Inter', sans-serif;
-        }
-        .header-theme-select:hover { color: var(--accent); }
-        .header-theme-select:focus { outline: none; }
 
-        /* --- LIGHT THEME TEXT OVERRIDES --- */
         [data-theme="business"] .node-id,
         [data-theme="paperback"] .node-id,
-        [data-theme="groovy"] .node-id {
-            color: #2c3e50;
-        }
+        [data-theme="groovy"] .node-id { color: #2c3e50; }
 
         [data-theme="business"] .hud-nav,
         [data-theme="paperback"] .hud-nav,
-        [data-theme="groovy"] .hud-nav {
-            background: #f8f9fa;
-            border: 1px solid #e0e0e0;
-        }
+        [data-theme="groovy"] .hud-nav { background: #f8f9fa; border: 1px solid #e0e0e0; }
 
         [data-theme="business"] .nav-link,
         [data-theme="paperback"] .nav-link,
-        [data-theme="groovy"] .nav-link {
-            color: #7f8c8d;
-        }
+        [data-theme="groovy"] .nav-link { color: #7f8c8d; }
 
         [data-theme="business"] .nav-link:hover,
         [data-theme="business"] .nav-link.active,
@@ -234,7 +237,6 @@
         .bid-info h3 { margin: 0 0 5px 0; font-size: 1.1rem; color: var(--card-color); }
         .bid-info small { opacity: 0.7; font-family: monospace; }
         
-        /* Distance Badge Style */
         .dist-badge {
             background: rgba(0,0,0,0.3);
             padding: 2px 6px;
@@ -258,18 +260,17 @@
             box-shadow: 0 4px 0 rgba(0,0,0,0.3); 
             transition: all 0.1s;
             text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-            white-space: nowrap; /* Prevent text wrapping */
+            white-space: nowrap; 
         }
 
         .claim-btn:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 5px 0 rgba(0,0,0,0.3); }
         .claim-btn:active { transform: translateY(4px); box-shadow: 0 0 0 rgba(0,0,0,0.3); }
-
-        /* --- FIX: STABILIZE DISABLED STATE --- */
+        
         .claim-btn:disabled {
-            background: var(--card-color); /* Force keep color */
+            background: var(--card-color);
             opacity: 0.8;
             cursor: not-allowed;
-            transform: translateY(0); /* Reset click movement */
+            transform: translateY(0);
             box-shadow: none;
             color: rgba(255,255,255,0.9);
         }
@@ -312,11 +313,100 @@
         input[type=range]:focus { outline: none; }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: rgba(128,128,128,0.3); border-radius: 3px; }
         input[type=range]::-webkit-slider-thumb { height: 16px; width: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; -webkit-appearance: none; margin-top: -5px; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+
+        /* --- RESTORED EASTER EGG STYLES --- */
+        #bypass-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.95); z-index: 9999;
+            flex-direction: column; justify-content: center; align-items: center;
+            font-family: 'Courier Prime', monospace;
+        }
+        .bypass-title { font-size: 4rem; color: #00ff00; text-shadow: 6px 6px #ff0000; margin-bottom: 20px; text-align: center; }
+        .live-dot { height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-live 1.5s infinite; }
+        @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+        #marvin-sprite-container {
+            display: none; position: fixed; bottom: -200px; right: 20px; 
+            width: 300px; z-index: 9000; cursor: pointer; 
+            filter: drop-shadow(0 0 15px var(--accent));
+            transition: opacity 1s, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0; pointer-events: none;
+        }
+        #marvin-sprite-container.active { display: block; opacity: 1; transform: translateY(-200px); pointer-events: auto; }
+        #marvin-image { width: 100%; height: auto; animation: idle-float 3s ease-in-out infinite; }
+        @keyframes idle-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(3deg); } }
+        .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
+        @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
+
+        /* Lock Screen */
+        #lock-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; flex-direction: column; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif; }
+        .lock-container { text-align: center; color: var(--accent); animation: pulse-border 2s infinite; padding: 40px; border: 2px solid var(--accent); border-radius: 20px; box-shadow: 0 0 50px rgba(0,255,0,0.1); }
+        .lock-icon { font-size: 4rem; margin-bottom: 20px; color: var(--accent); }
+        .pin-display { font-size: 2rem; margin: 20px 0; letter-spacing: 15px; min-height: 40px; color: #fff; font-family: 'Courier Prime'; }
+        .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
+        .key-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--accent); color: var(--accent); font-size: 1.5rem; padding: 15px; border-radius: 10px; cursor: pointer; transition: all 0.2s; }
+        .key-btn:hover { background: var(--accent); color: #000; }
+        .key-btn:active { transform: scale(0.95); }
+
+        /* Settings Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: var(--card-bg); border: 1px solid var(--accent); box-shadow: 0 0 30px rgba(0, 243, 255, 0.2); width: 400px; border-radius: 12px; padding: 20px; animation: modalSlideIn 0.3s ease-out; color: var(--text); }
+        @keyframes modalSlideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; }
+        .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--accent); }
+        .close-btn { background: none; border: none; color: #7f8c8d; font-size: 1.2rem; cursor: pointer; }
+        .close-btn:hover { color: var(--danger); }
+        .settings-group { margin-bottom: 20px; }
+        .settings-group label { display: block; color: #95a5a6; margin-bottom: 10px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .control-row { display: flex; align-items: center; gap: 15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
+        .theme-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text); padding: 10px; border-radius: 6px; cursor: pointer; text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
+        .theme-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent); }
+        .theme-btn.active { background: var(--accent); color: var(--bg); font-weight: bold; }
+        .version-info { text-align: center; font-size: 0.8rem; color: #7f8c8d; margin-top: 20px; opacity: 0.5; }
     </style>
 </head>
 <body>
+    <script>window.OWNED_THEMES = JSON.parse('{{ (owned or [])|tojson|safe }}');</script>
+
+    <div id="lock-overlay">
+        <div class="lock-container">
+            <div class="lock-icon"><i class="fas fa-lock"></i></div>
+            <h2 id="lock-msg">SECURITY LOCKDOWN</h2>
+            <div class="pin-display" id="pin-dots"></div>
+            <div class="keypad">
+                <button class="key-btn" onclick="enterDigit(1)">1</button>
+                <button class="key-btn" onclick="enterDigit(2)">2</button>
+                <button class="key-btn" onclick="enterDigit(3)">3</button>
+                <button class="key-btn" onclick="enterDigit(4)">4</button>
+                <button class="key-btn" onclick="enterDigit(5)">5</button>
+                <button class="key-btn" onclick="enterDigit(6)">6</button>
+                <button class="key-btn" onclick="enterDigit(7)">7</button>
+                <button class="key-btn" onclick="enterDigit(8)">8</button>
+                <button class="key-btn" onclick="enterDigit(9)">9</button>
+                <button class="key-btn" onclick="enterDigit('clear')" style="color: #e74c3c; border-color: #e74c3c;"><i class="fas fa-times"></i></button>
+                <button class="key-btn" onclick="enterDigit(0)">0</button>
+                <button class="key-btn" onclick="enterDigit('enter')" style="color: #2ecc71; border-color: #2ecc71;"><i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+    </div>
+
     <audio id="cash-sound" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}" preload="auto"></audio>
     <audio id="lock-sound" src="{{ url_for('static', filename='audio/click.mp3') }}" preload="auto"></audio>
+    <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
+    <audio id="audio-success" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
+    <audio id="audio-marvin" src="{{ url_for('static', filename='audio/marvin_laughing.mp3') }}"></audio>
+    <audio id="audio-powerup" src="{{ url_for('static', filename='audio/Secret_PowerUp1.mp3') }}"></audio>
+    <audio id="audio-failure" src="{{ url_for('static', filename='audio/incorrect.mp3') }}" preload="auto"></audio>
+
+    <div id="bypass-overlay">
+        <div class="bypass-title">&gt;&gt;&gt;SYSTEM BYPASS&lt;&lt;&lt;</div>
+        <div style="color:white;">BONUS_REWARD: <span style="color:#f1c40f;">+30 XP</span></div>
+    </div>
+
+    <div id="marvin-sprite-container" onclick="handleMarvinClick()" ondblclick="marvinLaugh()">
+        <img id="marvin-image" src="{{ url_for('static', filename='images/magic_marvin_dance.webp') }}" alt="Magic Marvin">
+    </div>
 
     <div id="escrow-overlay" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(8px);">
         <div style="background: var(--bg); padding: 30px; border-radius: 12px; border: 1px solid var(--accent); text-align: center; max-width: 400px; box-shadow: 0 0 50px rgba(0,0,0,0.5); position: relative;">
@@ -339,7 +429,7 @@
 
     <div class="mission-hud">
         <div class="hud-identity">
-            <span class="node-id">PROXY NODE v1.6</span>
+            <span class="node-id">PROXY NODE v1.7</span>
             <span class="net-status">● SECURE CONNECTION</span>
         </div>
 
@@ -347,16 +437,73 @@
             <a href="/" class="nav-link">Command</a>
             <a href="/marketplace" class="nav-link active">Exchange</a>
             <a href="/shop" class="nav-link">Armory</a>
+            <button class="nav-btn-settings" onclick="toggleSettings()" title="System Settings"><i class="fas fa-cog"></i></button>
         </div>
 
         <div class="hud-wallet">
-            <select id="common-theme-selector" class="header-theme-select">
-                <option>Loading Themes...</option>
-            </select>
-            
             <div class="wallet-display">
-                <span class="sats-label">ENCRYPTED RESERVES</span>
-                <span class="sats-value">{{ "{:,}".format(balance|default(0)) }} SATS</span>
+                <span class="sats-label">RESERVES (<span id="unit-label">SATS</span>)</span>
+                <span class="sats-value" id="hud-balance">{{ "{:,}".format(balance|default(0)) }} SATS</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-cog"></i> System Settings</h2>
+                <button class="close-btn" onclick="toggleSettings()"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="settings-group">
+                <label>Currency Unit</label>
+                <select id="currency-select" onchange="changeUnit(this.value)" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text); border-radius: 6px;">
+                    <option value="AUD">AUD (Australia)</option>
+                    <option value="BTC">BTC (Bitcoin)</option>
+                    <option value="CAD">CAD (Canada)</option>
+                    <option value="CNY">CNY (China)</option>
+                    <option value="EUR">EUR (Eurozone)</option>
+                    <option value="GBP">GBP (United Kingdom)</option>
+                    <option value="JPY">JPY (Japan)</option>
+                    <option value="KRW">KRW (South Korea)</option>
+                    <option value="MXN">MXN (Mexico)</option>
+                    <option value="SATS">SATS (Satoshis)</option>
+                    <option value="TWD">TWD (Taiwan)</option>
+                    <option value="USD">USD (United States)</option>
+                </select>
+            </div>
+
+            <div class="settings-group">
+                <label>Interface Theme</label>
+                <select id="settings-theme-selector" class="theme-picker-ui" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text);">
+                    <option>Loading...</option>
+                </select>
+            </div>
+
+            <div class="settings-group">
+                <label>Network Diagnostics</label>
+                <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; display: flex; justify-content: space-between;">
+                    <span>LND Peers:</span>
+                    <span id="health-peers" style="color: var(--accent); font-weight: bold;">checking...</span>
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <label>Audio Uplink</label>
+                <div class="control-row">
+                    <button class="theme-btn" id="mute-btn" onclick="toggleMute()" style="width: 50px; justify-content: center;"><i class="fas fa-volume-up" id="mute-icon"></i></button>
+                    <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5" oninput="adjustVolume(this.value)" style="flex-grow: 1; accent-color: var(--accent);">
+                </div>
+            </div>
+
+            <div class="settings-group" style="margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <button class="theme-btn" onclick="lockDashboard()" style="width: 100%; justify-content: center; background: rgba(231, 76, 60, 0.2); border-color: #e74c3c; color: #e74c3c;">
+                    <i class="fas fa-lock"></i> LOCK DASHBOARD
+                </button>
+            </div>
+
+            <div class="modal-footer">
+                <div class="version-info">Proxy Node v0.2.1-beta</div>
             </div>
         </div>
     </div>
@@ -479,7 +626,9 @@
     <script>
         const colors = ['#ff4757', '#ff6b81', '#ff7f50', '#ffa502', '#eccc68', '#f1c40f', '#2ed573', '#7bed9f', '#1e90ff', '#3742fa', '#a55eea', '#70a1ff', '#ff9ff3', '#f368e0', '#2bcbba', '#0fb9b1'];
         let checkInterval = null;
+        let rawSatsBalance = 0; // Store raw value for conversion
 
+        // --- MARKETPLACE LOGIC ---
         function handleBroadcast(e) {
             e.preventDefault(); 
             const form = document.getElementById('broadcast-form');
@@ -508,22 +657,17 @@
             const hashDisplay = document.getElementById('contract-hash');
             const qrImg = document.getElementById('ln-qr-code');
 
-            // Reset UI
             bar.style.width = "0%";
             status.innerText = "WAITING FOR PAYMENT...";
             status.style.color = "var(--text)";
             
             if (checkInterval) clearInterval(checkInterval);
 
-            // Update UI with Invoice Data
             overlay.style.display = 'flex';
             document.getElementById('lock-sound').play();
             hashDisplay.innerText = invoice.r_hash.substring(0, 20) + "...";
             qrImg.src = invoice.qr_image; 
             
-            // --- DYNAMIC PROGRESS SPEED ---
-            // Use the actual duration from the invoice object (e.g. 4s or 8s)
-            // We subtract 1s to ensure the bar is mostly full before the final settlement
             const animTime = (invoice.duration || 8) - 1; 
             
             setTimeout(() => {
@@ -531,7 +675,6 @@
                 bar.style.transition = `width ${animTime}s linear`;
             }, 100);
 
-            // Poll for Status
             checkInterval = setInterval(() => {
                 fetch(`/api/v1/invoice/status/${invoice.r_hash}`)
                     .then(r => r.json())
@@ -543,7 +686,6 @@
                             status.innerText = "PAYMENT CONFIRMED. BROADCASTING...";
                             status.style.color = "#2ecc71";
                             document.getElementById('cash-sound').play();
-                            
                             finalizeBid(invoice);
                         }
                     });
@@ -558,6 +700,201 @@
             }).then(() => setTimeout(() => location.reload(), 1500));
         }
 
+        function claimTask(el) {
+            const bidId = el.getAttribute('data-id');
+            const originalText = el.innerText;
+            
+            el.style.width = el.getBoundingClientRect().width + 'px';
+            el.style.height = el.getBoundingClientRect().height + 'px';
+            el.style.display = 'inline-flex';
+            el.style.justifyContent = 'center';
+            el.style.alignItems = 'center';
+
+            if (!bidId) { alert("Error: Invalid Task ID."); return; }
+            
+            el.innerText = "CLAIMING..."; 
+            el.disabled = true;
+            
+            fetch('/api/v1/market/claim/' + bidId, { 
+                method: 'POST', headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ node_id: "{{ node_id }}" }) 
+            })
+            .then(r => { if (!r.ok) throw new Error("Server Error"); return r.json(); })
+            .then(data => {
+                if(data.success) {
+                    el.innerText = "💰 SECURED";
+                    const cashSound = document.getElementById('cash-sound');
+                    if (cashSound) cashSound.play().catch(e=>console.log(e)).finally(() => setTimeout(()=>location.reload(), 500));
+                    else location.reload();
+                } else throw new Error("Unavailable");
+            })
+            .catch(err => {
+                el.innerText = "FAILED"; el.style.backgroundColor = "var(--danger)";
+                setTimeout(() => { el.innerText = originalText; el.style.backgroundColor = ""; el.disabled = false; }, 2000);
+            });
+        }
+
+        // --- DASHBOARD CORE & SETTINGS ---
+        
+        // Audio
+        let audioMuted = localStorage.getItem('audioMuted') === 'true';
+        let audioVolume = localStorage.getItem('audioVolume') || 0.5;
+        if (audioMuted) toggleMuteUI(); 
+        document.getElementById('volume-slider').value = audioVolume;
+        adjustVolume(audioVolume);
+
+        function toggleMute() {
+            audioMuted = !audioMuted;
+            localStorage.setItem('audioMuted', audioMuted);
+            toggleMuteUI();
+        }
+        function toggleMuteUI() {
+            document.querySelectorAll('audio').forEach(el => el.muted = audioMuted);
+            const btn = document.getElementById('mute-btn');
+            const icon = document.getElementById('mute-icon');
+            if (audioMuted) {
+                btn.style.color = '#e74c3c'; btn.style.borderColor = '#e74c3c';
+                icon.className = 'fas fa-volume-mute';
+            } else {
+                btn.style.color = ''; btn.style.borderColor = '';
+                icon.className = 'fas fa-volume-up';
+            }
+        }
+        function adjustVolume(val) {
+            localStorage.setItem('audioVolume', val);
+            document.querySelectorAll('audio').forEach(el => el.volume = val);
+        }
+
+        // Currency
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        document.getElementById('currency-select').value = currentUnit;
+        document.getElementById('unit-label').innerText = currentUnit;
+        
+        const RATES = {
+            SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088,
+            CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051,
+            JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010
+        };
+
+        function changeUnit(unit) {
+            currentUnit = unit;
+            localStorage.setItem('currencyUnit', unit);
+            document.getElementById('unit-label').innerText = unit;
+            updateBalanceDisplay();
+        }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance');
+            if (!el || rawSatsBalance === 0) {
+                // If raw balance isn't set yet (page load), try parsing text
+                if (rawSatsBalance === 0 && el) {
+                    const txt = el.innerText.replace(/,/g, '').split(' ')[0];
+                    if (!isNaN(txt)) rawSatsBalance = parseFloat(txt);
+                }
+            }
+            
+            let val = rawSatsBalance * RATES[currentUnit];
+            
+            // IMMEDIATE UPDATE (No Fade)
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS";
+            else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC";
+            else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
+        }
+
+        // Lock Screen
+        let inputPin = "";
+        function lockDashboard() {
+            toggleSettings();
+            const overlay = document.getElementById('lock-overlay');
+            const msg = document.getElementById('lock-msg');
+            const storedPin = localStorage.getItem('user_pin');
+            inputPin = "";
+            updatePinDots();
+            overlay.style.display = 'flex';
+            if (!storedPin) { msg.innerText = "SET NEW PIN CODE"; msg.style.color = "#f1c40f"; } 
+            else { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }
+        }
+        function enterDigit(digit) {
+            const msg = document.getElementById('lock-msg');
+            if (digit === 'clear') { inputPin = ""; } 
+            else if (digit === 'enter') {
+                const storedPin = localStorage.getItem('user_pin');
+                if (!storedPin) {
+                    if (inputPin.length < 4) {
+                        msg.innerText = "PIN TOO SHORT";
+                        document.getElementById('audio-failure').play();
+                        setTimeout(() => msg.innerText = "SET NEW PIN CODE", 1000);
+                        inputPin = "";
+                    } else {
+                        localStorage.setItem('user_pin', inputPin);
+                        msg.innerText = "PIN ESTABLISHED";
+                        document.getElementById('audio-success').play();
+                        setTimeout(() => { document.getElementById('lock-overlay').style.display = 'none'; inputPin = ""; }, 1000);
+                    }
+                } else {
+                    if (inputPin === storedPin) {
+                        document.getElementById('audio-success').play();
+                        document.getElementById('lock-overlay').style.display = 'none';
+                        inputPin = "";
+                    } else {
+                        document.getElementById('audio-failure').play();
+                        msg.innerText = "ACCESS DENIED";
+                        msg.style.color = "#e74c3c";
+                        inputPin = "";
+                        setTimeout(() => { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }, 1000);
+                    }
+                }
+            } else { if (inputPin.length < 8) inputPin += digit; }
+            updatePinDots();
+        }
+        function updatePinDots() { document.getElementById('pin-dots').innerText = "•".repeat(inputPin.length); }
+
+        // Settings Modal
+        function toggleSettings() { document.getElementById('settingsModal').classList.toggle('active'); }
+        window.onclick = function(event) { if (event.target == document.getElementById('settingsModal')) document.getElementById('settingsModal').classList.remove('active'); }
+
+        // Easter Eggs (Konami & Marvin)
+        const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+        let konamiIndex = 0;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === konamiCode[konamiIndex]) {
+                konamiIndex++;
+                if (konamiIndex === konamiCode.length) { 
+                    document.getElementById('bypass-overlay').style.display = 'flex';
+                    document.getElementById('audio-powerup').play();
+                    setTimeout(() => { document.getElementById('bypass-overlay').style.display = 'none'; }, 3000);
+                    konamiIndex = 0; 
+                }
+            } else { konamiIndex = 0; }
+        });
+        
+        let lastLevel = -1;
+        function checkLevelUp(currentXP) {
+            const level = Math.floor(currentXP / 5000);
+            if (lastLevel === -1) { lastLevel = level; return; }
+            if (level > lastLevel) {
+                lastLevel = level;
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                if (currentTheme !== 'business' && currentTheme !== 'paperback') {
+                    const marvin = document.getElementById('marvin-sprite-container');
+                    marvin.classList.add('active'); 
+                    setTimeout(() => { marvin.classList.remove('active'); }, 5000);
+                }
+            }
+        }
+        function handleMarvinClick() { 
+            const img = document.getElementById('marvin-image'); 
+            img.style.transform = "scale(1.1) rotate(5deg)"; 
+            setTimeout(() => img.style.transform = "scale(1) rotate(0deg)", 150); 
+        }
+        function marvinLaugh() { 
+            const audio = document.getElementById('audio-marvin'); 
+            audio.currentTime = 0; audio.play(); 
+            document.getElementById('marvin-image').classList.add('laughing-anim'); 
+            setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000); 
+        }
+
+        // Color Picker & Filters
         function initColorPicker() {
             const popup = document.getElementById('color-popup');
             colors.forEach(color => {
@@ -593,46 +930,8 @@
             url.searchParams.set('radius', val);
             window.location.href = url.toString();
         }
-        
-        // --- FIXED CLAIM TASK FUNCTION ---
-        function claimTask(el) {
-            const bidId = el.getAttribute('data-id');
-            const originalText = el.innerText;
-            
-            // 1. Lock Dimensions (Fixes "Shrinking")
-            // We get the computed style to ensure we lock it to the current exact pixel value
-            el.style.width = el.getBoundingClientRect().width + 'px';
-            el.style.height = el.getBoundingClientRect().height + 'px';
-            
-            // 2. Prevent flexbox centering from breaking if text shrinks
-            el.style.display = 'inline-flex';
-            el.style.justifyContent = 'center';
-            el.style.alignItems = 'center';
 
-            if (!bidId) { alert("Error: Invalid Task ID."); return; }
-            
-            el.innerText = "CLAIMING..."; 
-            el.disabled = true;
-            
-            fetch('/api/v1/market/claim/' + bidId, { 
-                method: 'POST', headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({ node_id: "{{ node_id }}" }) 
-            })
-            .then(r => { if (!r.ok) throw new Error("Server Error"); return r.json(); })
-            .then(data => {
-                if(data.success) {
-                    el.innerText = "💰 SECURED";
-                    const cashSound = document.getElementById('cash-sound');
-                    if (cashSound) cashSound.play().catch(e=>console.log(e)).finally(() => setTimeout(()=>location.reload(), 500));
-                    else location.reload();
-                } else throw new Error("Unavailable");
-            })
-            .catch(err => {
-                el.innerText = "FAILED"; el.style.backgroundColor = "var(--danger)";
-                setTimeout(() => { el.innerText = originalText; el.style.backgroundColor = ""; el.disabled = false; }, 2000);
-            });
-        }
-
+        // Market Chart & Init
         let marketChart;
         function initMarketChart() {
             const ctx = document.getElementById('marketChart').getContext('2d');
@@ -651,13 +950,8 @@
         function toggleCompactMode() {
             const list = document.getElementById('market-list');
             const isCompact = document.getElementById('compact-toggle').checked;
-            if (isCompact) {
-                list.classList.add('compact');
-                localStorage.setItem('marketCompact', 'true');
-            } else {
-                list.classList.remove('compact');
-                localStorage.setItem('marketCompact', 'false');
-            }
+            if (isCompact) { list.classList.add('compact'); localStorage.setItem('marketCompact', 'true'); } 
+            else { list.classList.remove('compact'); localStorage.setItem('marketCompact', 'false'); }
         }
         function toggleVelocityChart() {
             const panel = document.getElementById('velocity-panel');
@@ -665,9 +959,35 @@
             panel.style.display = isHidden ? 'none' : 'block';
             localStorage.setItem('hideVelocity', isHidden);
         }
+        
+        // --- POLLING TO SYNC BALANCE ACROSS TABS ---
+        function updateNetworkStats() {
+            // Re-using stats endpoint to keep connection alive and update peer counts if added later
+            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
+                const healthSpan = document.getElementById('health-peers');
+                if (healthSpan) {
+                    if (data.peers > 0) { healthSpan.innerHTML = `● ${data.peers} CONNECTED`; healthSpan.style.color = "#2ecc71"; } 
+                    else { healthSpan.innerHTML = `● 0 PEERS (SEARCHING)`; healthSpan.style.color = "#f1c40f"; }
+                }
+            });
+        }
+        
+        // We add a lightweight poller just for balance/xp sync
+        setInterval(() => {
+            fetch('/api/v1/dashboard/live').then(r => r.json()).then(data => {
+                rawSatsBalance = data.balance;
+                updateBalanceDisplay();
+                checkLevelUp(data.xp);
+            });
+        }, 3000);
 
         window.addEventListener('DOMContentLoaded', () => {
-            ThemeEngine.init('common-theme-selector');
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if(savedTheme) {
+                if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme);
+            }
+            
             initMarketChart(); initColorPicker(); restoreState();
             
             const savedCompact = localStorage.getItem('marketCompact') === 'true';
@@ -677,6 +997,9 @@
             const savedHideVelocity = localStorage.getItem('hideVelocity') === 'true';
             document.getElementById('velocity-toggle').checked = savedHideVelocity;
             if (savedHideVelocity) document.getElementById('velocity-panel').style.display = 'none';
+            
+            updateNetworkStats();
+            setInterval(updateNetworkStats, 10000);
         });
     </script>
 </body>

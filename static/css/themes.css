@@ -33,6 +33,14 @@ select, option {
     border: 1px solid #444;
 }
 
+/* TARGETED FIX: Optgroup Headers (The "Standard Licenses" rows) */
+optgroup {
+    background-color: #333333 !important; /* Dark Gray Background */
+    color: #aaaaaa !important;            /* Light Gray Text */
+    font-style: normal;
+    font-weight: bold;
+}
+
 /* Light Theme Dropdown Override */
 [data-theme="business"] select,
 [data-theme="paperback"] select,
@@ -40,6 +48,14 @@ select, option {
     background-color: #fff !important;
     color: #000 !important;
     border: 1px solid var(--border);
+}
+
+/* Light Theme Optgroup Override */
+[data-theme="business"] optgroup,
+[data-theme="paperback"] optgroup,
+[data-theme="groovy"] optgroup {
+    background-color: #eee !important;
+    color: #555 !important;
 }
 
 

@@ -32,40 +32,7 @@ li { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justi
 .sats-badge { background: var(--bg); padding: 4px 10px; border-radius: 4px; color: var(--accent); font-weight: bold; border: 1px solid var(--border); font-size: var(--pill-font-size); }
 #magic-marvin { position: fixed; bottom: -300px; right: 20px; width: 140px; cursor: pointer; z-index: 100; transition: bottom 1s cubic-bezier(0.68, -0.55, 0.27, 1.55), transform 0.5s; }
 
-/* 🎯 UI Stability: Prevent jumpy header on load */
-.theme-picker-ui {
-    background: var(--card-bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 5px 10px;
-    border-radius: 4px;
-    font-family: var(--font);
-    cursor: pointer;
-    min-width: 160px;
-    height: 32px;
-    outline: none;
-    /* 🎯 Fix: Force background on the dropdown list options */
-    appearance: none; /* Optional: hides the default arrow for a cleaner look */
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23007CB2%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right .7em top 50%;
-    background-size: .65em auto;
-}
-
-/* 🎯 Target the actual option list */
-.theme-picker-ui option {
-    background-color: var(--card-bg);
-    color: var(--text);
-}
-
-/* Optional: Subtle hover effect */
-.theme-picker-ui:hover {
-    border-color: var(--accent);
-}
-
 .node-row:hover {
-    background-color: rgba(var(--accent-rgb), 0.05); /* Requires --accent-rgb to be defined, or use: */
     background-color: rgba(128, 128, 128, 0.1);
     transition: background 0.2s ease;
 }
@@ -80,13 +47,12 @@ li { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justi
 .scanning-pulse {
     width: 12px;
     height: 12px;
-    background-color: var(--accent); /* Uses your dashboard's accent color */
+    background-color: var(--accent); 
     border-radius: 50%;
     position: relative;
     display: inline-block;
 }
 
-/* The Radar Ripple Effect */
 .scanning-pulse::after {
     content: '';
     position: absolute;
@@ -97,30 +63,236 @@ li { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justi
     background-color: var(--accent);
     border-radius: 50%;
     transform: translate(-50%, -50%);
-    animation: radar-pulse 2s infinite ease-out; /* Infinite heartbeat loop */
+    animation: radar-pulse 2s infinite ease-out;
     opacity: 0.6;
 }
 
 @keyframes radar-pulse {
-    0% {
-        transform: translate(-50%, -50%) scale(1);
-        opacity: 0.6;
-    }
-    100% {
-        transform: translate(-50%, -50%) scale(4); /* Grows to 4x size */
-        opacity: 0; /* Fades out completely */
-    }
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+    100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
 }
 
-/* Standard Active State */
 .scanning-pulse.active {
-    background-color: var(--accent); /* Default Green/Blue */
+    background-color: var(--accent);
     transition: background-color 0.3s ease;
 }
 
-/* Success State Triggered by JS */
 .scanning-pulse.success-flash {
-    background-color: #f1c40f !important; /* "Gold" Success Color */
+    background-color: #f1c40f !important;
     box-shadow: 0 0 20px #f1c40f;
-    transform: scale(1.5); /* Brief expansion */
+    transform: scale(1.5);
+}
+
+/* --- NEW SETTINGS & MODAL STYLES --- */
+/* Gear Button in Header */
+.settings-btn {
+    background: rgba(46, 204, 113, 0.1); 
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 1.2rem;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 15px;
+}
+
+.settings-btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 0 15px var(--accent);
+    transform: rotate(90deg);
+}
+
+/* Modal Overlay */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(5px);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay.active { display: flex; }
+
+/* Modal Content Box */
+.modal-content {
+    background: var(--card-bg);
+    border: 1px solid var(--accent);
+    box-shadow: 0 0 30px rgba(0, 243, 255, 0.2);
+    width: 400px;
+    border-radius: 12px;
+    padding: 20px;
+    animation: modalSlideIn 0.3s ease-out;
+    color: var(--text);
+}
+
+@keyframes modalSlideIn {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: var(--accent);
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #7f8c8d;
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
+.close-btn:hover { color: var(--danger); }
+
+.settings-group { margin-bottom: 20px; }
+
+.settings-group label {
+    display: block;
+    color: #95a5a6;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Grid for Theme Buttons */
+.theme-options { display: grid; gap: 10px; }
+
+.theme-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text);
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.theme-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--accent);
+}
+
+.theme-btn.active {
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: bold;
+}
+
+.version-info {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    margin-top: 20px;
+    opacity: 0.5;
+}
+
+/* Audio Controls */
+.control-row {
+    background: rgba(255,255,255,0.05);
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Currency Select */
+select {
+    width: 100%;
+    padding: 10px;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    border-radius: 6px;
+    font-family: var(--font);
+    cursor: pointer;
+}
+select:focus {
+    outline: none;
+    box-shadow: 0 0 10px var(--accent);
+}
+
+/* Lock Screen Overlay */
+#lock-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.95);
+    z-index: 20000; /* Highest priority */
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(10px);
+}
+
+.lock-container {
+    background: var(--card-bg);
+    border: 2px solid var(--accent);
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 0 50px rgba(0,255,255,0.1);
+    text-align: center;
+    width: 300px;
+}
+
+.pin-display {
+    font-size: 3rem;
+    letter-spacing: 15px;
+    color: var(--text);
+    margin: 20px 0;
+    min-height: 50px;
+    text-shadow: 0 0 10px var(--accent);
+}
+
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.key-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 20px;
+    font-size: 1.5rem;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.key-btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+}
+
+.key-btn:active {
+    transform: scale(0.95);
 }
