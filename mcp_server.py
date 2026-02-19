@@ -20,7 +20,7 @@ mcp = FastMCP("LightningProxyServer", host="0.0.0.0", port=8000)
 lnd = LightningEngine()
 lnd.connect()
 
-# In-memory database to track active VIP Subscriptions (Simulating Macaroon Caveats)
+# In-memory database to track active VIP Subscriptions and their Token Buckets
 ACTIVE_VIP_PASSES = {}
 
 @mcp.tool()
@@ -38,8 +38,13 @@ def buy_vip_pass(payment_hash: str = None) -> str:
     if not lnd.verify_payment(payment_hash):
         return "ERROR: 401 Unauthorized. Payment not found or not settled."
 
-    # Grant the pass for 3600 seconds (1 hour)
-    ACTIVE_VIP_PASSES[payment_hash] = time.time() + 3600
+    # --- PHASE 1 SECURITY: VIP TOKEN BUCKET ---
+    # Grant the pass for 3600 seconds AND initialize a bucket with 5 tokens
+    ACTIVE_VIP_PASSES[payment_hash] = {
+        "expires_at": time.time() + 3600,
+        "tokens": 5.0,
+        "last_refill": time.time()
+    }
     return f"🔓 VIP ACCESS GRANTED. Your pass is active for 1 hour! You may now pass this hash ({payment_hash}) to data tools to bypass individual fees."
 
 @mcp.tool()
@@ -50,9 +55,24 @@ def get_crypto_spot_price(ticker: str, payment_hash: str = None) -> str:
     # Check for an active VIP Pass first!
     is_vip = False
     if payment_hash and payment_hash in ACTIVE_VIP_PASSES:
-        if time.time() < ACTIVE_VIP_PASSES[payment_hash]:
-            logger.info("🎟️ Valid VIP Pass detected! Bypassing the 15-sat fee.")
-            is_vip = True
+        pass_info = ACTIVE_VIP_PASSES[payment_hash]
+        
+        if time.time() < pass_info["expires_at"]:
+            # --- EVALUATE THE TOKEN BUCKET ---
+            now = time.time()
+            time_passed = now - pass_info["last_refill"]
+            
+            # Refill 1 token per second, up to a maximum bucket size of 5
+            pass_info["tokens"] = min(5.0, pass_info["tokens"] + time_passed)
+            pass_info["last_refill"] = now
+            
+            if pass_info["tokens"] >= 1.0:
+                pass_info["tokens"] -= 1.0
+                logger.info(f"🎟️ Valid VIP Pass! Rate limit OK ({int(pass_info['tokens'])} tokens left). Bypassing fee.")
+                is_vip = True
+            else:
+                logger.warning("🛑 Rate Limit Exceeded for VIP Pass!")
+                return "ERROR: 429 Too Many Requests. You are querying too fast. Please wait a few seconds for your rate limit to refill and try again."
         else:
             return "ERROR: 401 VIP Pass Expired."
 
@@ -72,7 +92,7 @@ def get_crypto_spot_price(ticker: str, payment_hash: str = None) -> str:
     except Exception as e:
         return f"🔓 ACCESS GRANTED (Payment Verified). However, the market API failed: {e}"
 
-# --- THE REST OF YOUR TOOLS REMAIN EXACTLY THE SAME ---
+# --- REMAINING TOOLS ---
 
 @mcp.tool()
 def generate_market_summary(asset: str, payment_hash: str = None) -> str:
@@ -122,9 +142,7 @@ def send_urgent_notification(message: str, payment_hash: str = None) -> str:
 
 @mcp.tool()
 def generate_image(prompt: str, payment_hash: str = None) -> str:
-    """
-    PREMIUM TOOL: Generates a high-quality AI image based on a text prompt and saves it to the local machine. Cost: 100 satoshis.
-    """
+    """PREMIUM TOOL: Generates an AI image based on a text prompt. Cost: 100 satoshis."""
     logger.info(f"🤖 AI requested Image Generation: '{prompt}'")
     
     if not payment_hash:
@@ -144,15 +162,16 @@ def generate_image(prompt: str, payment_hash: str = None) -> str:
         
         if response.status_code == 200:
             data = response.json()
-            b64_data = data["predictions"][0]["bytesBase64Encoded"]
-            image_bytes = base64.b64decode(b64_data)
-            filename = f"nano_banana_{uuid.uuid4().hex[:6]}.jpg"
-            filepath = f"/app/{filename}"
-            with open(filepath, 'wb') as f:
-                f.write(image_bytes)
-            return f"🔓 ACCESS GRANTED (Premium 100-sat Tier). Masterpiece successfully generated and saved to the host machine as '{filename}'!"
-        else:
-            return f"🔓 ACCESS GRANTED. However, the Image API failed with status {response.status_code}: {response.text}"
+            if "predictions" in data and len(data["predictions"]) > 0:
+                b64_data = data["predictions"][0]["bytesBase64Encoded"]
+                image_bytes = base64.b64decode(b64_data)
+                filename = f"nano_banana_{uuid.uuid4().hex[:6]}.jpg"
+                filepath = f"/app/{filename}"
+                with open(filepath, 'wb') as f:
+                    f.write(image_bytes)
+                return f"🔓 ACCESS GRANTED (Premium 100-sat Tier). Masterpiece successfully generated and saved to the host machine as '{filename}'!"
+            return "🔓 ACCESS GRANTED. However, the API returned an empty prediction."
+        return f"🔓 ACCESS GRANTED. However, the Image API failed with status {response.status_code}: {response.text}"
     except Exception as e:
         return f"🔓 ACCESS GRANTED (Payment Verified). However, the image generation failed: {e}"
 
