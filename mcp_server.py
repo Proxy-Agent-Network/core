@@ -199,6 +199,51 @@ def live_web_search(search_query: str, payment_hash: str = None) -> str:
         return f"🔓 ACCESS GRANTED (Premium 20-sat Tier).\n--- Top Web Results for '{search_query}' ---\n{formatted_results}"
     except Exception as e:
         return f"🔓 ACCESS GRANTED (Payment Verified). However, the search engine failed: {e}"
+    
+@mcp.tool()
+def send_urgent_notification(message: str, payment_hash: str = None) -> str:
+    """
+    PREMIUM TOOL: Sends an urgent push notification directly to the user's phone.
+    Cost: 250 satoshis.
+    """
+    logger.info(f"🤖 AI requested Notification: '{message}'")
+    
+    # --- PHASE 1: L402 PAYMENT REQUIRED (250 Sats) ---
+    if not payment_hash:
+        logger.info(f"⚠️ No payment provided for notification. Issuing 250-sat L402 Challenge.")
+        invoice_data = lnd.create_invoice(250, "Send Urgent Phone Notification")
+        
+        if not invoice_data or 'payment_request' not in invoice_data:
+            return "ERROR: Internal Node Error. Could not generate invoice."
+            
+        return (f"ERROR: 402 Payment Required\n"
+                f"Please pay this invoice to access the service:\n"
+                f"Invoice: {invoice_data['payment_request']}\n\n"
+                f"Once paid, call this tool again and provide the 'r_hash' as the payment_hash argument.\n"
+                f"Hash to use: {invoice_data['r_hash']}")
+
+    # --- PHASE 2: VERIFICATION ---
+    logger.info(f"🔍 Verifying 250-sat cryptographic proof: {payment_hash[:10]}...")
+    is_paid = lnd.verify_payment(payment_hash)
+    
+    if not is_paid:
+        logger.warning("❌ Invalid or unsettled payment.")
+        return "ERROR: 401 Unauthorized. Payment not found or not settled."
+
+    # --- PHASE 3: DELIVERY ---
+    logger.info(f"✅ 250-sat Payment verified! Pinging the user's phone...")
+    try:
+        CHANNEL_NAME = "robers_l402_alerts"
+        requests.post(f"https://ntfy.sh/{CHANNEL_NAME}", 
+                      data=message.encode('utf-8'),
+                      headers={
+                          "Title": "L402 Agent Alert", # <-- FIX: Removed the emoji here!
+                          "Priority": "high",
+                          "Tags": "moneybag,robot"
+                      })
+        return f"🔓 ACCESS GRANTED (Premium 250-sat Tier). The message was successfully sent to the user's phone!"
+    except Exception as e:
+        return f"🔓 ACCESS GRANTED (Payment Verified). However, the notification server failed: {e}"
 
 if __name__ == "__main__":
     logger.info("Starting MCP Server on SSE transport...")

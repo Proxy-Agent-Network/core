@@ -41,7 +41,7 @@ def get_bob_stub():
     return lnrpc.LightningStub(channel)
 
 async def run():
-    # PROACTIVE API KEY CHECK
+    # 1. PROACTIVE API KEY CHECK
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key or api_key.startswith("AIzaSyYOUR_REAL") or api_key == "":
         print("❌ FATAL ERROR: Gemini API key is missing or invalid!")
@@ -76,6 +76,12 @@ async def run():
                     return result.content[0].text
 
                 @tool
+                async def send_urgent_notification(message: str, payment_hash: str = "") -> str:
+                    """Sends an urgent push notification to the user's phone. Costs 250 sats. May return a 402 error with an invoice."""
+                    result = await session.call_tool("send_urgent_notification", arguments={"message": message, "payment_hash": payment_hash})
+                    return result.content[0].text
+
+                @tool
                 def pay_lightning_invoice(invoice: str) -> str:
                     """Pays a Lightning invoice. Use this if a tool requires payment (402 error)."""
                     print(f"\n💸 Gemini decided to use its wallet! Paying invoice: {invoice[:10]}...")
@@ -86,7 +92,13 @@ async def run():
                         return f"Payment failed: {response.payment_error}"
                     return "Payment successful! Extract the 'Hash to use' from the original 402 error and call the data tool again with it."
 
-                tools = [fetch_crypto_price, fetch_market_summary, live_web_search, pay_lightning_invoice]
+                tools = [
+                    fetch_crypto_price, 
+                    fetch_market_summary, 
+                    live_web_search, 
+                    send_urgent_notification, 
+                    pay_lightning_invoice
+                ]
 
                 # --- INITIALIZE THE GEMINI BRAIN ---
                 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
@@ -102,11 +114,12 @@ async def run():
                 agent_executor = create_react_agent(llm, tools, prompt=system_prompt)
                 
                 # --- GIVE IT A GOAL ---
-                print("🎯 Giving Gemini its mission: Search the live web...\n")
+                print("🎯 Giving Gemini its mission: Monitor BTC and alert the user...\n")
                 
                 async for chunk in agent_executor.astream(
-                    {"messages": [("user", "Use your web search tool to find the latest news about OpenAI from this week.")]}
+                    {"messages": [("user", "Fetch the live spot price of BTC. Once you have it, use your notification tool to send an urgent alert to my phone telling me the exact price!")]}
                 ):
+                    # THIS IS THE BLOCK MY LAST SNIPPET LEFT OUT!
                     for node, values in chunk.items():
                         if node == "tools":
                             print(f"🛠️  Tool execution complete.")
