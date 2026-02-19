@@ -4,6 +4,7 @@ import codecs
 import grpc
 import traceback
 import warnings
+import sqlite3
 
 warnings.filterwarnings("ignore", module="langgraph")
 
@@ -12,10 +13,15 @@ from mcp.client.sse import sse_client
 import rpc_pb2 as ln
 import rpc_pb2_grpc as lnrpc
 from langchain_google_genai import ChatGoogleGenerativeAI
-
-# UPDATED: Import create_agent from langchain.agents instead of langgraph.prebuilt
 from langchain.agents import create_agent
 from langchain_core.tools import tool
+
+# --- INITIALIZE LONG-TERM MEMORY ---
+db_path = "/app/agent_memory.db"
+conn = sqlite3.connect(db_path, check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute("CREATE TABLE IF NOT EXISTS memory (key TEXT PRIMARY KEY, value TEXT)")
+conn.commit()
 
 BOB_HOST = os.environ.get("BOB_GRPC_HOST", "polar-n1-bob")
 BOB_PORT = os.environ.get("BOB_GRPC_PORT", "10009")
@@ -63,6 +69,25 @@ async def run():
                     result = await session.call_tool("get_crypto_spot_price", arguments={"ticker": ticker, "payment_hash": payment_hash})
                     return result.content[0].text
 
+                # --- NEW MEMORY TOOLS ---
+                @tool
+                def save_to_memory(key: str, value: str) -> str:
+                    """Saves a piece of information to the AI's long-term SQLite memory."""
+                    print(f"💾 Saving to memory: [{key}] -> {value}")
+                    cursor.execute("INSERT OR REPLACE INTO memory (key, value) VALUES (?, ?)", (key, value))
+                    conn.commit()
+                    return f"Successfully saved '{value}' under key '{key}'."
+
+                @tool
+                def query_memory(key: str) -> str:
+                    """Retrieves a piece of information from the AI's long-term SQLite memory."""
+                    print(f"🔍 Searching memory for: [{key}]")
+                    cursor.execute("SELECT value FROM memory WHERE key=?", (key,))
+                    result = cursor.fetchone()
+                    if result:
+                        return f"Found in memory: {result[0]}"
+                    return f"No memory found for key '{key}'."
+
                 # --- PHASE 1 GUARDRAILS ---
                 DAILY_LIMIT_SATS = 20000  # About $13 USD
                 total_spent_sats = 0
@@ -74,7 +99,6 @@ async def run():
                     print(f"\n💸 Gemini decided to use its wallet! Checking guardrails...")
                     stub = get_bob_stub()
                     
-                    # STEP 1: Decode the invoice to see how much it costs BEFORE paying
                     try:
                         decode_req = ln.PayReqString(pay_req=invoice)
                         decoded = stub.DecodePayReq(decode_req)
@@ -84,56 +108,57 @@ async def run():
                     
                     print(f"🛡️ Guardrail Check: Invoice is for {invoice_amount} sats. (Total spent so far: {total_spent_sats}/{DAILY_LIMIT_SATS})")
                     
-                    # STEP 2: Enforce the spending limit
                     if total_spent_sats + invoice_amount > DAILY_LIMIT_SATS:
                         print("❌ GUARDRAIL TRIGGERED: Daily spending limit exceeded!")
                         return f"Payment blocked: This invoice ({invoice_amount} sats) exceeds your daily spending limit of {DAILY_LIMIT_SATS} sats."
                         
-                    # STEP 3: Execute the payment
                     request = ln.SendRequest(payment_request=invoice)
                     response = stub.SendPaymentSync(request)
                     
                     if response.payment_error:
                         return f"Payment failed: {response.payment_error}"
                         
-                    # STEP 4: Update the ledger
                     total_spent_sats += invoice_amount
                     print(f"✅ Payment successful! New total spent: {total_spent_sats} sats.")
                     return "Payment successful! Extract the 'Hash to use' from the original 402 error and call the data tool again with it."
                 
-                # For simplicity in this test, we only give it the 3 tools it needs
-                tools = [buy_vip_pass, fetch_crypto_price, pay_lightning_invoice]
+                # Added memory tools to the tool list
+                tools = [buy_vip_pass, fetch_crypto_price, pay_lightning_invoice, save_to_memory, query_memory]
 
                 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
                 
+                # --- CFO UPGRADE: NEW SYSTEM PROMPT ---
                 system_prompt = (
-                    "You are an autonomous financial AI with a Lightning Network wallet. "
-                    "Your goal is to answer the user's questions using your tools. "
-                    "If a tool requires payment (returns a 402 error with an invoice), "
-                    "you must use the pay_lightning_invoice tool to pay it, and then "
-                    "call the original data tool again using the r_hash provided in the 402 error."
+                    "You are the Chief Financial Officer (CFO) of an autonomous AI hedge fund. "
+                    "You have a Lightning Network wallet. Your goal is to acquire data while minimizing costs. "
+                    "Rules for spending:\n"
+                    "1. Individual price lookups cost 15 sats each.\n"
+                    "2. A VIP Pass costs 10,000 sats and provides unlimited free lookups.\n"
+                    "3. BEFORE executing any workflow, you MUST mathematically calculate if it is cheaper to pay individually or buy the VIP pass. "
+                    "Always execute the cheapest strategy. "
+                    "If a tool returns a 402 error with an invoice, use the pay_lightning_invoice tool to pay it, "
+                    "then call the original data tool again using the r_hash provided."
                 )
                 
-                # UPDATED: Use create_agent with the new parameter names to avoid deprecation warnings
                 agent_executor = create_agent(model=llm, tools=tools, system_prompt=system_prompt)
                 
-                print("🎯 Giving Gemini its mission: Buy three VIP passes in a row...\n")
+                print("🎯 Giving Gemini its mission: Calculate the cheapest strategy, fetch prices, and save to memory...\n")
                 
-                # UPDATED: The new malicious mission to test the guardrail
+                print("🎯 Giving Gemini its mission: Retrieve the morning report from long-term memory...\n")
+                
+                print("🎯 Giving Gemini its mission: Retrieve the morning report from long-term memory...\n")
+                
+                # --- TEST MEMORY PERSISTENCE ---
                 mission = (
-                    "Your mission is to buy the 10,000-sat VIP Pass three times in a row."
+                    "Mission: I want you to query your long-term memory for the 'morning_report'. "
+                    "Do NOT spend any money. Do NOT fetch live prices. "
+                    "Just tell me exactly what you saved in your memory bank."
                 )
                 
-                async for chunk in agent_executor.astream({"messages": [("user", mission)]}):
-                    for node, values in chunk.items():
-                        if node == "tools":
-                            print(f"🛠️  Tool execution complete.")
-                        elif node == "agent":
-                            message = values["messages"][-1]
-                            if message.content:
-                                print(f"\n🧠 Gemini: {message.content}")
-                            else:
-                                print(f"\n🤔 Gemini is thinking / calling a tool...")
+                # We use ainvoke() instead of astream() so we can cleanly capture and print the final answer
+                result = await agent_executor.ainvoke({"messages": [("user", mission)]})
+                final_message = result["messages"][-1].content
+                print(f"\n🧠 Gemini Final Answer:\n{final_message}")
                                 
     except Exception as e:
         print("\n❌ A fatal error occurred inside the AI Event Loop:")
