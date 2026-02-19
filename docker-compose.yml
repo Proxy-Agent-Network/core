@@ -1,40 +1,28 @@
 version: '3.8'
 
 services:
-  proxy_node:
-    build: .
+  agent:
+    image: proxy-node:v0.1-alpha
     container_name: proxy_agent_v1
-    ports:
-      - "5000:5000"
     volumes:
       - .:/app
-      - lnd-data:/root/.lnd:ro 
+      - ./secrets/tls.cert:/root/.lnd/tls.cert
+      - ./secrets/admin.macaroon:/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon
     environment:
       - FLASK_ENV=development
-      - LND_GRPC_HOST=lnd_node
+      # --- NETWORK CONFIGURATION ---
+      # We are now talking directly to the container name
+      - LND_GRPC_HOST=polar-n1-alice
+      # We use the INTERNAL port (10009), not the external one (10001)
       - LND_GRPC_PORT=10009
-    depends_on:
-      - lnd_node
-
-  lnd_node:
-    image: lightninglabs/lnd:v0.17.0-beta
-    container_name: lnd_neutrino
     ports:
-      - "9735:9735"
-      - "10009:10009"
-    dns:
-      - 8.8.8.8
-    volumes:
-      - lnd-data:/root/.lnd
-    command: >
-      --bitcoin.active
-      --bitcoin.testnet
-      --bitcoin.node=neutrino
-      --rpclisten=0.0.0.0:10009
-      --tlsextraip=0.0.0.0
-      --tlsextraip=lnd_node
-      --noseedbackup
-      --alias="PROXY_AGENT_01"
+      - "5000:5000"
+    networks:
+      - default
+      - polar_network
 
-volumes:
-  lnd-data:
+networks:
+  polar_network:
+    external: true
+    # This must match your 'docker network ls' output exactly
+    name: polar-network-1_default

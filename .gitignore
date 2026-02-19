@@ -59,4 +59,4 @@ target/
 # Python Wheels (built packages)
 *.whl
 # Linux Shared Objects (if we cross-compile later)
-*.so
+*.sosecrets/
