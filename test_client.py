@@ -56,8 +56,8 @@ async def run():
                 # STRIKE 1: Request without paying
                 print("🚀 [Attempt 1] Requesting data...")
                 result = await session.call_tool(
-                    "premium_data_query", 
-                    arguments={"query": "What is the secret of the universe?"}
+                    "get_crypto_spot_price", 
+                    arguments={"ticker": "BTC"}
                 )
                 
                 response_text = result.content[0].text
@@ -81,9 +81,9 @@ async def run():
                         # STRIKE 2: Re-request with proof of payment
                         print(f"\n🚀 [Attempt 2] Re-requesting data with cryptographic proof: {r_hash[:10]}...")
                         result2 = await session.call_tool(
-                            "premium_data_query", 
+                            "get_crypto_spot_price", 
                             arguments={
-                                "query": "What is the secret of the universe?",
+                                "ticker": "BTC",
                                 "payment_hash": r_hash
                             }
                         )

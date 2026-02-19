@@ -1,4 +1,6 @@
 import logging
+import json
+import requests
 from mcp.server.fastmcp import FastMCP
 from lightning_engine import LightningEngine
 
@@ -6,7 +8,6 @@ from lightning_engine import LightningEngine
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MCP-Server")
 
-# --- THE FIX IS HERE ---
 # We tell FastMCP to bind to 0.0.0.0 right when we create it
 mcp = FastMCP("LightningProxyServer", host="0.0.0.0", port=8000)
 
@@ -57,7 +58,6 @@ def get_node_balances() -> str:
     else:
         return "❌ Failed to fetch balances. The LND node might be disconnected."
     
-import json # Make sure to add this to the top of your imports if it isn't there!
 
 @mcp.tool()
 def get_agent_manifest() -> str:
@@ -88,7 +88,8 @@ def get_agent_manifest() -> str:
         "capabilities": [
             "create_lightning_invoice",
             "get_node_balances",
-            "get_agent_manifest"
+            "get_agent_manifest",
+            "get_crypto_spot_price"
         ]
     }
     
@@ -96,43 +97,51 @@ def get_agent_manifest() -> str:
     return json.dumps(manifest, indent=2)
 
 @mcp.tool()
-def premium_data_query(query: str, payment_hash: str = None) -> str:
+def get_crypto_spot_price(ticker: str, payment_hash: str = None) -> str:
     """
-    PREMIUM TOOL: Executes a high-value real-world data query. 
-    Cost: 10 satoshis.
+    PREMIUM TOOL: Fetch the real-time spot price of a cryptocurrency from live markets.
+    Cost: 15 satoshis.
     
     Flow:
     1. Call without payment_hash to receive an L402 invoice.
     2. Pay the invoice over the Lightning Network.
     3. Call again with the payment_hash to unlock the data.
     """
-    logger.info(f"🤖 AI requested Premium Data for: '{query}'")
+    logger.info(f"🤖 AI requested Crypto Spot Price for: '{ticker}'")
     
     # --- PHASE 1: L402 PAYMENT REQUIRED ---
     if not payment_hash:
-        logger.info("⚠️ No payment provided. Issuing L402 Challenge.")
-        invoice = lnd.create_invoice(sats=10, memo=f"Premium AI Query: {query}")
+        logger.info(f"⚠️ No payment provided for {ticker}. Issuing L402 Challenge.")
+        invoice_data = lnd.create_invoice(15, f"Real-time price lookup for {ticker}")
         
-        # We simulate the HTTP 402 response via the MCP text return
-        return (
-            "ERROR: 402 Payment Required\n"
-            f"Please pay this invoice to access the service:\n"
-            f"Invoice: {invoice['payment_request']}\n\n"
-            f"Once paid, call this tool again and provide the 'r_hash' as the payment_hash argument.\n"
-            f"Hash to use: {invoice['r_hash']}"
-        )
-    
-    # --- PHASE 2: VERIFICATION & DELIVERY ---
-    logger.info(f"🔍 Verifying L402 payment for hash: {payment_hash[:8]}...")
+        if not invoice_data or 'payment_request' not in invoice_data:
+            return "ERROR: Internal Node Error. Could not generate invoice."
+            
+        return (f"ERROR: 402 Payment Required\n"
+                f"Please pay this invoice to access the service:\n"
+                f"Invoice: {invoice_data['payment_request']}\n\n"
+                f"Once paid, call this tool again and provide the 'r_hash' as the payment_hash argument.\n"
+                f"Hash to use: {invoice_data['r_hash']}")
+
+    # --- PHASE 2: VERIFICATION ---
+    logger.info(f"🔍 Verifying cryptographic proof: {payment_hash[:10]}...")
     is_paid = lnd.verify_payment(payment_hash)
     
-    if is_paid:
-        logger.info("✅ Payment confirmed. Delivering premium data.")
-        # This is where your agent would do the actual real-world work/API call
-        return f"🔓 ACCESS GRANTED. Here is the premium data for '{query}': The answer is 42."
-    else:
-        logger.warning("❌ Payment invalid or pending.")
-        return "ERROR: 402 Payment Required. The invoice has not been paid yet."
+    if not is_paid:
+        logger.warning("❌ Invalid or unsettled payment.")
+        return "ERROR: 401 Unauthorized. Payment not found or not settled."
+
+    # --- PHASE 3: DELIVERY (Fetching live real-world data) ---
+    logger.info(f"✅ Payment verified! Fetching live market data for {ticker}...")
+    try:
+        url = f"https://api.coinbase.com/v2/prices/{ticker.upper()}-USD/spot"
+        response = requests.get(url)
+        data = response.json()
+        price = data["data"]["amount"]
+        return f"🔓 ACCESS GRANTED. The current live spot price of {ticker.upper()} is ${price} USD."
+    except Exception as e:
+        return f"🔓 ACCESS GRANTED. (Payment Verified) However, the market API failed: {e}"
+
 
 if __name__ == "__main__":
     logger.info("Starting MCP Server on SSE transport...")
