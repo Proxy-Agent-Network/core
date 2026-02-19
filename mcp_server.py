@@ -56,6 +56,44 @@ def get_node_balances() -> str:
         )
     else:
         return "❌ Failed to fetch balances. The LND node might be disconnected."
+    
+import json # Make sure to add this to the top of your imports if it isn't there!
+
+@mcp.tool()
+def get_agent_manifest() -> str:
+    """
+    Agent Description Protocol (ADP) endpoint.
+    Returns semantic information about this agent, its routing identity, and its pricing.
+    Other agents should call this first to establish negotiation parameters.
+    """
+    logger.info("🤖 AI requested Agent Description Manifest")
+    
+    # We gracefully handle the case where LND might be offline
+    agent_pubkey = getattr(lnd, 'pubkey', 'OFFLINE')
+    
+    # The ADP Schema
+    manifest = {
+        "agent_name": "Lightning Proxy Node Alpha",
+        "agent_role": "Payment & Tool Proxy",
+        "network_environment": "regtest",
+        "identity": {
+            "lnd_pubkey": agent_pubkey,
+            "supported_protocols": ["MCP", "BOLT11"]
+        },
+        "pricing": {
+            "base_fee_sats": 10,
+            "currency": "satoshi",
+            "negotiable": False
+        },
+        "capabilities": [
+            "create_lightning_invoice",
+            "get_node_balances",
+            "get_agent_manifest"
+        ]
+    }
+    
+    # Return as a formatted JSON string so the calling AI can easily parse it
+    return json.dumps(manifest, indent=2)
 
 if __name__ == "__main__":
     logger.info("Starting MCP Server on SSE transport...")

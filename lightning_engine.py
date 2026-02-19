@@ -89,6 +89,7 @@ class LightningEngine:
             # 5. Verify Connection
             info = self.stub.GetInfo(ln.GetInfoRequest())
             self.connected = True
+            self.pubkey = info.identity_pubkey
             
             self.logger.info(f"⚡ CONNECTED to {info.alias} (Testnet)")
             self.logger.info(f"🔑 Pubkey: {info.identity_pubkey}")
