@@ -5,7 +5,7 @@ services:
     image: proxy-node:v0.1-alpha
     container_name: proxy_agent_v1
     command: >
-      bash -c "pip install mcp uvicorn starlette langchain langchain-google-genai && python mcp_server.py"
+      bash -c "pip install mcp uvicorn starlette langchain langchain-google-genai langgraph duckduckgo-search && python mcp_server.py"
     volumes:
       - .:/app
       # Alice's keys (The Server / Merchant)

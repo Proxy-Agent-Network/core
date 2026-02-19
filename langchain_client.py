@@ -41,11 +41,10 @@ def get_bob_stub():
     return lnrpc.LightningStub(channel)
 
 async def run():
-    # 1. PROACTIVE API KEY CHECK
+    # PROACTIVE API KEY CHECK
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key or api_key.startswith("AIzaSyYOUR_REAL") or api_key == "":
         print("❌ FATAL ERROR: Gemini API key is missing or invalid!")
-        print("Please ensure your .env file is correctly formatted and you ran `docker compose down` and `up -d`.")
         return
 
     url = "http://127.0.0.1:8000/sse"
@@ -71,6 +70,12 @@ async def run():
                     return result.content[0].text
 
                 @tool
+                async def live_web_search(search_query: str, payment_hash: str = "") -> str:
+                    """Searches the live internet. Costs 20 sats. May return a 402 error with an invoice."""
+                    result = await session.call_tool("live_web_search", arguments={"search_query": search_query, "payment_hash": payment_hash})
+                    return result.content[0].text
+
+                @tool
                 def pay_lightning_invoice(invoice: str) -> str:
                     """Pays a Lightning invoice. Use this if a tool requires payment (402 error)."""
                     print(f"\n💸 Gemini decided to use its wallet! Paying invoice: {invoice[:10]}...")
@@ -81,7 +86,7 @@ async def run():
                         return f"Payment failed: {response.payment_error}"
                     return "Payment successful! Extract the 'Hash to use' from the original 402 error and call the data tool again with it."
 
-                tools = [fetch_crypto_price, fetch_market_summary, pay_lightning_invoice]
+                tools = [fetch_crypto_price, fetch_market_summary, live_web_search, pay_lightning_invoice]
 
                 # --- INITIALIZE THE GEMINI BRAIN ---
                 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
@@ -94,14 +99,13 @@ async def run():
                     "call the original data tool again using the r_hash provided in the 402 error."
                 )
                 
-                # THE FIX: state_modifier was renamed to prompt!
                 agent_executor = create_react_agent(llm, tools, prompt=system_prompt)
                 
                 # --- GIVE IT A GOAL ---
-                print("🎯 Giving Gemini its mission: Fetch BTC price and ETH summary...\n")
+                print("🎯 Giving Gemini its mission: Search the live web...\n")
                 
                 async for chunk in agent_executor.astream(
-                    {"messages": [("user", "What is the live price of BTC and what is the market summary for ETH?")]}
+                    {"messages": [("user", "Use your web search tool to find the latest news about OpenAI from this week.")]}
                 ):
                     for node, values in chunk.items():
                         if node == "tools":
