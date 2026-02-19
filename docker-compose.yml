@@ -5,7 +5,7 @@ services:
     image: proxy-node:v0.1-alpha
     container_name: proxy_agent_v1
     command: >
-      bash -c "pip install mcp uvicorn starlette && python mcp_server.py"
+      bash -c "pip install mcp uvicorn starlette langchain langchain-google-genai && python mcp_server.py"
     volumes:
       - .:/app
       # Alice's keys (The Server / Merchant)
@@ -16,6 +16,8 @@ services:
       - ./secrets/bob/admin.macaroon:/root/.bob/admin.macaroon
     environment:
       - FLASK_ENV=development
+      # Safely injects the key from your local .env file!
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       # Server Node (Alice)
       - LND_GRPC_HOST=polar-n1-alice
       - LND_GRPC_PORT=10009
