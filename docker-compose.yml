@@ -4,7 +4,6 @@ services:
   agent:
     image: proxy-node:v0.1-alpha
     container_name: proxy_agent_v1
-    # We override the default command to install the MCP SDK on boot and run our new server
     command: >
       bash -c "pip install mcp uvicorn starlette && python mcp_server.py"
     volumes:
@@ -13,15 +12,13 @@ services:
       - ./secrets/admin.macaroon:/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon
     environment:
       - FLASK_ENV=development
-      # LND Network config we established earlier
       - LND_GRPC_HOST=polar-n1-alice
       - LND_GRPC_PORT=10009
-      # Tell the MCP HTTP Server to bind to all interfaces
       - HOST=0.0.0.0 
       - PORT=8000
     ports:
       - "5000:5000"
-      - "8000:8000" # Expose the MCP SSE port to your Windows host
+      - "8000:8000"
     networks:
       - default
       - polar_network

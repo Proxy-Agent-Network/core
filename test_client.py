@@ -4,30 +4,27 @@ from mcp.client.sse import sse_client
 
 async def run():
     url = "http://127.0.0.1:8000/sse"
-    print(f"🔌 Connecting to Network Proxy at {url}...")
+    print(f"🔌 Connecting to AI Proxy at {url}...")
     
     try:
         async with sse_client(url) as streams:
             async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
-                print("✅ Secure Connection Established!\n")
+                print("✅ Connected to MCP Server!\n")
                 
-                print("📡 Initiating Discovery Protocol...")
-                tools_response = await session.list_tools()
+                print("🚀 AI is attempting to execute 'premium_data_query'...")
                 
-                # Check if the agent supports ADP
-                tool_names = [tool.name for tool in tools_response.tools]
-                if "get_agent_manifest" in tool_names:
-                    print("✅ Agent supports ADP. Fetching identity manifest...\n")
-                    
-                    # Execute the ADP tool
-                    result = await session.call_tool("get_agent_manifest", arguments={})
-                    
-                    print("📄 --- AGENT MANIFEST RECEIVED ---")
-                    print(result.content[0].text)
-                    print("---------------------------------")
-                else:
-                    print("⚠️ Agent does not support standard discovery manifests.")
+                # We are now sending the proof of payment!
+                result = await session.call_tool(
+                    "premium_data_query", 
+                    arguments={
+                        "query": "What is the secret of the universe?",
+                        "payment_hash": "8c41ccb6570c2dace18519d9e2773028a07359f2538ec1b82510ffdb0208b556"
+                    }
+                )
+                
+                print("\n🎯 Result from LND Node:")
+                print(result.content[0].text)
                 
     except Exception as e:
         print(f"❌ Connection failed: {e}")

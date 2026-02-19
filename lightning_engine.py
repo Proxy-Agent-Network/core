@@ -106,7 +106,7 @@ class LightningEngine:
                 return None
         try:
             request = ln.Invoice(value=int(sats), memo=memo)
-            response = self.stub.AddInvoice(request)
+            response = self.stub.AddInvoice(request, timeout=10)
             payment_request = response.payment_request
             r_hash_hex = response.r_hash.hex()
             
@@ -116,14 +116,14 @@ class LightningEngine:
                 'payment_request': payment_request
             }
             
-            qr_image = self._generate_qr_base64(payment_request)
+            # QR code logic has been completely deleted.
+            
             self.logger.info(f"🧾 Invoice Created: {sats} sats | Hash: {r_hash_hex[:8]}...")
             
             return {
                 'payment_request': payment_request,
                 'r_hash': r_hash_hex,
-                'amount': sats,
-                'qr_image': qr_image
+                'amount': sats
             }
         except Exception as e:
             self.logger.error(f"❌ Invoice Creation Error: {e}")
@@ -153,5 +153,26 @@ class LightningEngine:
         except Exception as e:
             self.logger.error(f"❌ Balance Fetch Error: {e}")
             return None
+        
+    def verify_payment(self, r_hash_hex):
+        """Checks if a specific Lightning invoice has been paid."""
+        if not self.connected:
+            if not self.connect(): 
+                return False
+        try:
+            # We ask LND for the status of this specific invoice hash
+            request = ln.PaymentHash(r_hash_str=r_hash_hex)
+            invoice = self.stub.LookupInvoice(request, timeout=10)
+            
+            # State 1 means SETTLED (Paid)
+            if invoice.state == 1:
+                self.logger.info(f"✅ Payment Verified for hash: {r_hash_hex[:8]}")
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Payment Verification Error: {e}")
+            return False
 
 lnd = LightningEngine()
