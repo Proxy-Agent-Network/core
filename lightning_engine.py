@@ -83,7 +83,7 @@ class LightningEngine:
                 f"{LND_HOST}:{LND_PORT}", 
                 combined_creds
             )
-            
+
             self.stub = lnrpc.LightningStub(channel)
             
             # 5. Verify Connection
@@ -126,6 +126,31 @@ class LightningEngine:
             }
         except Exception as e:
             self.logger.error(f"❌ Invoice Creation Error: {e}")
+            return None
+        
+    def get_balances(self):
+        """Fetches the on-chain and lightning channel balances."""
+        if not self.connected:
+            if not self.connect(): 
+                return None
+        try:
+            # Get On-Chain Wallet Balance
+            wallet_req = ln.WalletBalanceRequest()
+            wallet_resp = self.stub.WalletBalance(wallet_req)
+            
+            # Get Lightning Channel Balance
+            channel_req = ln.ChannelBalanceRequest()
+            channel_resp = self.stub.ChannelBalance(channel_req)
+            
+            self.logger.info("💰 Successfully fetched node balances.")
+            
+            return {
+                "onchain_sats": wallet_resp.total_balance,
+                "channel_sats": channel_resp.balance,
+                "pending_channel_sats": channel_resp.pending_open_balance
+            }
+        except Exception as e:
+            self.logger.error(f"❌ Balance Fetch Error: {e}")
             return None
 
 lnd = LightningEngine()

@@ -37,6 +37,25 @@ def create_lightning_invoice(amount_sats: int, memo: str) -> str:
             return "❌ Failed to create invoice. The LND node might be disconnected."
     except Exception as e:
         return f"❌ Error creating invoice: {str(e)}"
+    
+@mcp.tool()
+def get_node_balances() -> str:
+    """
+    Checks the current balance of the Lightning node.
+    Returns both the on-chain Bitcoin balance and the off-chain Lightning channel balance.
+    """
+    logger.info("🤖 AI requested node balances")
+    
+    balances = lnd.get_balances()
+    if balances:
+        return (
+            f"💰 Node Balances:\n"
+            f"On-Chain Wallet: {balances['onchain_sats']} sats\n"
+            f"Lightning Channels: {balances['channel_sats']} sats\n"
+            f"Pending Channels: {balances['pending_channel_sats']} sats"
+        )
+    else:
+        return "❌ Failed to fetch balances. The LND node might be disconnected."
 
 if __name__ == "__main__":
     logger.info("Starting MCP Server on SSE transport...")
