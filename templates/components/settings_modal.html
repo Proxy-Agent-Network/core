@@ -1,0 +1,73 @@
+<div id="settingsModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 data-i18n="settings_title"><i class="fas fa-cog"></i> System Settings</h2>
+            <button class="close-btn" onclick="toggleSettings()"><i class="fas fa-times"></i></button>
+        </div>
+        
+        <div class="settings-group">
+            <label data-i18n="lbl_currency">Currency Unit</label>
+            <select id="currency-select" onchange="changeUnit(this.value)" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text); border-radius: 6px;">
+                <option value="AUD">AUD (Australia)</option>
+                <option value="BTC">BTC (Bitcoin)</option>
+                <option value="CAD">CAD (Canada)</option>
+                <option value="CNY">CNY (China)</option>
+                <option value="EUR">EUR (Eurozone)</option>
+                <option value="GBP">GBP (United Kingdom)</option>
+                <option value="JPY">JPY (Japan)</option>
+                <option value="KRW">KRW (South Korea)</option>
+                <option value="MXN">MXN (Mexico)</option>
+                <option value="SATS">SATS (Satoshis)</option>
+                <option value="TWD">TWD (Taiwan)</option>
+                <option value="USD">USD (United States)</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label data-i18n="lbl_language">System Language</label>
+            <select id="language-selector" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text); border-radius: 6px;">
+                <option value="en">English (Default)</option>
+                <option value="zh-CN">Chinese - Simplified (简体中文)</option>
+                <option value="zh-TW">Chinese - Traditional (繁體中文)</option>
+                <option value="es">Spanish (Español)</option>
+                <option value="fr">French (Français)</option>
+                <option value="de">German (Deutsch)</option>
+                <option value="ja">Japanese (日本語)</option>
+                <option value="ko">Korean (한국어)</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label data-i18n="lbl_theme">Interface Theme</label>
+            <select id="settings-theme-selector" class="theme-picker-ui" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text);">
+                <option>Loading...</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label data-i18n="lbl_network">Network Diagnostics</label>
+            <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; display: flex; justify-content: space-between;">
+                <span data-i18n="lbl_lnd_peers">LND Peers:</span>
+                <span id="health-peers" style="color: var(--accent); font-weight: bold;">checking...</span>
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <label data-i18n="lbl_audio">Audio Uplink</label>
+            <div class="control-row" style="display: flex; align-items: center; gap: 15px;">
+                <button class="theme-btn" id="mute-btn" onclick="toggleMute()" style="width: 50px; justify-content: center;"><i class="fas fa-volume-up" id="mute-icon"></i></button>
+                <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5" oninput="adjustVolume(this.value)" style="flex-grow: 1; accent-color: var(--accent);">
+            </div>
+        </div>
+
+        <div class="settings-group" style="margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <button class="theme-btn" onclick="lockDashboard()" style="width: 100%; justify-content: center; background: rgba(231, 76, 60, 0.2); border-color: #e74c3c; color: #e74c3c;">
+                <i class="fas fa-lock"></i> <span data-i18n="btn_lock">LOCK DASHBOARD</span>
+            </button>
+        </div>
+
+        <div class="modal-footer">
+            <div class="version-info">Proxy Node v0.2.1-beta</div>
+        </div>
+    </div>
+</div>

@@ -2,250 +2,396 @@
 <html lang="en" data-theme="business">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Control | Proxy Agent Network</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Shrikhand&family=Special+Elite&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
+    <title>Audit Log | Proxy Agent Network</title>
     
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+
     <script>
         (function() {
-            const savedTheme = localStorage.getItem('theme') || 'business';
-            document.documentElement.setAttribute('data-theme', savedTheme);
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            }
         })();
     </script>
 
     <style>
-        /* Admin specific styles */
-        :root {
-            --danger: #ff4757;
+        /* --- FULL WIDTH FIXES --- */
+        body { margin: 0; padding: 0; overflow-x: hidden; background-color: var(--bg); }
+        .dashboard-grid { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        /* --- COMPONENT STYLES --- */
+        .mission-hud, .mission-footer { width: 100%; box-sizing: border-box; }
+
+        /* --- AUDIT SPECIFIC STYLES --- */
+        /* Force Monospace for the log table for readability */
+        .log-table-container {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
         }
 
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 2rem;
-        }
-
-        .controls-panel {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .nav-link {
-            color: var(--accent);
-            font-weight: bold;
-            text-decoration: none;
-            border-bottom: 2px solid var(--accent);
-            padding-bottom: 2px;
-            transition: opacity 0.2s;
-        }
-
-        .nav-link:hover { opacity: 0.8; }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        .panel {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .panel.full-width { grid-column: span 2; }
-
-        /* Form Elements */
-        .input-group {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .input-field {
-            padding: 12px;
-            border-radius: 4px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-            color: var(--text);
-            font-family: inherit;
-            outline: none;
-        }
-
-        .input-field:focus { border-color: var(--accent); }
-
-        .btn {
-            padding: 12px;
-            border: none;
-            border-radius: 4px;
-            font-weight: bold;
-            font-family: inherit;
-            cursor: pointer;
-            text-transform: uppercase;
-            transition: filter 0.2s;
-        }
-
-        .btn:hover { filter: brightness(1.1); }
-        .btn-primary { background: var(--accent); color: #fff; }
-        .btn-danger { background: var(--danger); color: #fff; }
-        .btn-success { background: #2ecc71; color: #fff; }
-
-        /* Table Section */
-        .panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            border-bottom: 1px dashed var(--border);
-            padding-bottom: 15px;
-        }
-
-        .panel-header h2 { margin: 0; border: none; }
-
-        .search-box {
-            padding: 8px 12px;
-            border-radius: 4px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-            color: var(--text);
-            font-family: inherit;
-            width: 250px;
-        }
-
-        table { width: 100%; text-align: left; border-collapse: collapse; }
-        th { padding: 12px 10px; border-bottom: 2px solid var(--border); color: var(--text); opacity: 0.9; }
-        td { padding: 12px 10px; border-bottom: 1px solid rgba(128,128,128,0.2); }
-
-        .highlight-accent { color: var(--accent); font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         
-        .no-results {
-            display: none;
-            text-align: center;
-            padding: 30px;
-            opacity: 0.6;
-            font-style: italic;
+        th { 
+            text-align: left; 
+            border-bottom: 2px solid var(--border); 
+            padding: 12px; 
+            color: var(--accent); 
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 1px;
         }
+        
+        td { 
+            padding: 8px 12px; 
+            border-bottom: 1px solid rgba(128,128,128,0.1); 
+            vertical-align: middle;
+        }
+        
+        tr:hover { background-color: rgba(255,255,255,0.03); }
+
+        /* --- EVENT TAGS --- */
+        .tag { 
+            padding: 3px 8px; 
+            border-radius: 4px; 
+            font-size: 0.7rem; 
+            font-weight: bold; 
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-block;
+            min-width: 80px;
+            text-align: center;
+        }
+        .tag-SYSTEM { background: #3498db; color: #fff; }
+        .tag-SECURITY { background: #e74c3c; color: #fff; box-shadow: 0 0 5px rgba(231, 76, 60, 0.4); }
+        .tag-MARKET { background: #f1c40f; color: #000; }
+        .tag-SETTLEMENT { background: #2ecc71; color: #000; }
+        .tag-NETWORK { background: #9b59b6; color: #fff; }
+        .tag-AUTOMATION { background: #1abc9c; color: #000; }
+
+        /* --- STATS CARDS --- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            padding: 15px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .stat-label { font-size: 0.8rem; opacity: 0.7; margin-bottom: 5px; font-family: 'Orbitron', sans-serif; }
+        .stat-value { font-size: 1.5rem; font-weight: bold; font-family: 'Courier Prime', monospace; color: var(--text); }
+
+        /* Settings Modal Styles (Required for Include) */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: var(--card-bg); border: 1px solid var(--accent); box-shadow: 0 0 30px rgba(0, 243, 255, 0.2); width: 400px; border-radius: 12px; padding: 20px; animation: modalSlideIn 0.3s ease-out; color: var(--text); }
+        @keyframes modalSlideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; }
+        .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--accent); }
+        .close-btn { background: none; border: none; color: #7f8c8d; font-size: 1.2rem; cursor: pointer; }
+        .close-btn:hover { color: var(--danger); }
+        .settings-group { margin-bottom: 20px; }
+        .settings-group label { display: block; color: #95a5a6; margin-bottom: 10px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .control-row { display: flex; align-items: center; gap: 15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
+        .theme-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text); padding: 10px; border-radius: 6px; cursor: pointer; text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
+        .theme-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent); }
+        .theme-btn.active { background: var(--accent); color: var(--bg); font-weight: bold; }
+        .version-info { text-align: center; font-size: 0.8rem; color: #7f8c8d; margin-top: 20px; opacity: 0.5; }
+
+        /* Lock Screen */
+        #lock-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; flex-direction: column; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif; }
+        .lock-container { text-align: center; color: var(--accent); animation: pulse-border 2s infinite; padding: 40px; border: 2px solid var(--accent); border-radius: 20px; box-shadow: 0 0 50px rgba(0,255,0,0.1); }
+        .lock-icon { font-size: 4rem; margin-bottom: 20px; color: var(--accent); }
+        .pin-display { font-size: 2rem; margin: 20px 0; letter-spacing: 15px; min-height: 40px; color: #fff; font-family: 'Courier Prime'; }
+        .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
+        .key-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--accent); color: var(--accent); font-size: 1.5rem; padding: 15px; border-radius: 10px; cursor: pointer; transition: all 0.2s; }
+        .key-btn:hover { background: var(--accent); color: #000; }
+        .key-btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Admin Control Center</h1>
-        
-        <div class="controls-panel">
-            <a href="/" class="nav-link">View Dashboard</a>
-            <select id="common-theme-selector" class="theme-picker-ui">
-                <option>Loading Themes...</option>
-            </select>
+    <script>window.OWNED_THEMES = JSON.parse('{{ (owned or [])|tojson|safe }}');</script>
+
+    <div id="lock-overlay">
+        <div class="lock-container">
+            <div class="lock-icon"><i class="fas fa-lock"></i></div>
+            <h2 id="lock-msg" data-i18n="btn_lock">SECURITY LOCKDOWN</h2>
+            <div class="pin-display" id="pin-dots"></div>
+            <div class="keypad">
+                <button class="key-btn" onclick="enterDigit(1)">1</button>
+                <button class="key-btn" onclick="enterDigit(2)">2</button>
+                <button class="key-btn" onclick="enterDigit(3)">3</button>
+                <button class="key-btn" onclick="enterDigit(4)">4</button>
+                <button class="key-btn" onclick="enterDigit(5)">5</button>
+                <button class="key-btn" onclick="enterDigit(6)">6</button>
+                <button class="key-btn" onclick="enterDigit(7)">7</button>
+                <button class="key-btn" onclick="enterDigit(8)">8</button>
+                <button class="key-btn" onclick="enterDigit(9)">9</button>
+                <button class="key-btn" onclick="enterDigit('clear')" style="color: #e74c3c; border-color: #e74c3c;"><i class="fas fa-times"></i></button>
+                <button class="key-btn" onclick="enterDigit(0)">0</button>
+                <button class="key-btn" onclick="enterDigit('enter')" style="color: #2ecc71; border-color: #2ecc71;"><i class="fas fa-arrow-right"></i></button>
+            </div>
         </div>
     </div>
+
+    <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
+    <audio id="audio-success" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
+    <audio id="audio-failure" src="{{ url_for('static', filename='audio/incorrect.mp3') }}" preload="auto"></audio>
+
+    {% include 'components/header.html' %}
+
+    {% include 'components/settings_modal.html' %}
 
     <div class="dashboard-grid">
-        <div class="panel">
-            <h2>Inject Manual Task</h2>
-            
-            {% if error %}
-            <div style="background: rgba(255, 71, 87, 0.2); border: 1px solid var(--danger); color: var(--danger); padding: 10px; border-radius: 4px; margin-bottom: 10px;">
-                {{ error }}
+        
+        <div class="panel" style="grid-column: span 2; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-family: 'Orbitron', sans-serif; color: var(--accent);">PANOPTICON // EVENT LOG</h2>
+                <div style="font-family: monospace; opacity: 0.6;">IMMUTABLE RECORD LEDGER</div>
             </div>
-            {% endif %}
 
-            <form method="POST" class="input-group">
-                <input type="hidden" name="action" value="post_task">
-                <input type="text" name="task_id" class="input-field" placeholder="Task ID (e.g. MANUAL-01)" required>
-                <input type="number" name="bid_sats" class="input-field" placeholder="Sats Reward" required>
-                <button type="submit" class="btn btn-primary">DEPLOY TASK</button>
-            </form>
-        </div>
-
-        <div class="panel">
-            <h2>Treasury: Direct Deposit</h2>
-            <form method="POST" class="input-group">
-                <input type="hidden" name="action" value="fund_node">
-                <input type="text" name="node_id" class="input-field" value="ROBER_NODE_01" placeholder="Node ID" required>
-                <input type="number" name="amount" class="input-field" placeholder="Amount (Sats)" value="50000" required>
-                <button type="submit" class="btn btn-success">TRANSFER FUNDS</button>
-            </form>
-        </div>
-
-        <div class="panel full-width">
-            <h2>Danger Zone</h2>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <p style="opacity: 0.8; margin: 0;">Clear all node XP, levels, purchases, and task history. This action is irreversible.</p>
-                <button onclick="confirmReset()" class="btn btn-danger">WIPE NETWORK</button>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">TOTAL EVENTS</span>
+                    <span class="stat-value">{{ stats.total_events if stats else 0 }}</span>
+                </div>
+                <div class="stat-card" style="border-color: rgba(231, 76, 60, 0.3);">
+                    <span class="stat-label" style="color: #e74c3c;">SECURITY ALERTS</span>
+                    <span class="stat-value" style="color: #e74c3c;">{{ stats.security_alerts if stats else 0 }}</span>
+                </div>
+                <div class="stat-card" style="border-color: rgba(46, 204, 113, 0.3);">
+                    <span class="stat-label" style="color: #2ecc71;">REVENUE EVENTS</span>
+                    <span class="stat-value" style="color: #2ecc71;">{{ stats.revenue_events if stats else 0 }}</span>
+                </div>
             </div>
         </div>
 
-        <div class="panel full-width">
-            <div class="panel-header">
-                <h2>Connected Node Registry</h2>
-                <input type="text" id="node-search" class="search-box" placeholder="🔍 Search Nodes...">
-            </div>
-
-            <table id="node-table">
-                <thead>
-                    <tr>
-                        <th>Node ID</th>
-                        <th>Level</th>
-                        <th>XP</th>
-                        <th>Total Earned</th>
-                    </tr>
-                </thead>
-                <tbody id="node-table-body">
-                    {% for node in nodes %}
-                    <tr class="node-row">
-                        <td>
-                            <a href="/node/{{ node.node_id }}" style="color: var(--accent); text-decoration: none; font-weight: bold;">
-                                {{ node.node_id }} ↗
-                            </a>
-                        </td>
-                        <td>{{ node.level }}</td>
-                        <td>{{ node.xp }}</td>
-                        <td class="highlight-accent">{{ node.total_earned }} Sats</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <div id="no-results" class="no-results">
-                No nodes matching that search criteria...
+        <div class="panel" style="grid-column: span 2; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 20px;">
+            <div class="log-table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 180px;">TIMESTAMP</th>
+                            <th style="width: 150px;">TYPE</th>
+                            <th>MESSAGE PAYLOAD</th>
+                            <th style="width: 100px; text-align: right;">ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for event in events %}
+                        <tr>
+                            <td style="opacity:0.6;">{{ event.timestamp }}</td>
+                            <td><span class="tag tag-{{ event.event_type }}">{{ event.event_type }}</span></td>
+                            <td>{{ event.message }}</td>
+                            <td style="opacity:0.3; text-align: right;">#{{ event.id }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 30px; opacity: 0.5;">
+                                NO EVENTS RECORDED IN CURRENT TIMEFRAME
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
+
     </div>
 
+    {% include 'components/footer.html' %}
+
     <script>
-        function confirmReset() {
-            if(confirm("⚠️ CRITICAL WARNING ⚠️\n\nAre you absolutely sure? This will wipe the ENTIRE database (XP, Levels, History).")) {
-                window.location.href = "/debug/reset_me";
+        const NODE_ID = "{{ node.id if node else 'AUDITOR' }}";
+        // Mock balance for header since audit route might not pass it
+        let rawSatsBalance = {{ balance|default(0) }};
+
+        // --- AUDIO ---
+        let audioMuted = localStorage.getItem('audioMuted') === 'true';
+        let audioVolume = localStorage.getItem('audioVolume') || 0.5;
+        
+        function toggleMute() {
+            audioMuted = !audioMuted;
+            localStorage.setItem('audioMuted', audioMuted);
+            toggleMuteUI();
+        }
+
+        function toggleMuteUI() {
+            document.querySelectorAll('audio').forEach(el => el.muted = audioMuted);
+            const btn = document.getElementById('mute-btn');
+            const icon = document.getElementById('mute-icon');
+            if(btn && icon) {
+                if (audioMuted) {
+                    btn.style.color = '#e74c3c'; btn.style.borderColor = '#e74c3c';
+                    icon.className = 'fas fa-volume-mute';
+                } else {
+                    btn.style.color = ''; btn.style.borderColor = '';
+                    icon.className = 'fas fa-volume-up';
+                }
             }
         }
 
-        // Search Logic
-        document.getElementById('node-search').addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
-            const rows = document.querySelectorAll('.node-row');
-            const noResults = document.getElementById('no-results');
-            let foundAny = false;
+        function adjustVolume(val) {
+            localStorage.setItem('audioVolume', val);
+            document.querySelectorAll('audio').forEach(el => el.volume = val);
+        }
 
-            rows.forEach(row => {
-                const text = row.textContent.toLowerCase();
-                if (text.includes(searchTerm)) {
-                    row.style.display = "";
-                    foundAny = true;
+        // Initialize Audio controls safely
+        if (audioMuted) toggleMuteUI();
+        const slider = document.getElementById('volume-slider');
+        if (slider) slider.value = audioVolume;
+        adjustVolume(audioVolume);
+
+        // --- CURRENCY ---
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        const currSelect = document.getElementById('currency-select');
+        if(currSelect) currSelect.value = currentUnit;
+        
+        const RATES = {
+            SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088,
+            CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051,
+            JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010
+        };
+
+        function changeUnit(unit) {
+            currentUnit = unit;
+            localStorage.setItem('currencyUnit', unit);
+            const label = document.getElementById('unit-label');
+            if(label) label.innerText = unit;
+            updateBalanceDisplay();
+        }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance');
+            if (!el) return;
+            
+            if (rawSatsBalance === 0) {
+                const txt = el.innerText.replace(/,/g, '').split(' ')[0];
+                if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt);
+            }
+            
+            let val = rawSatsBalance * RATES[currentUnit];
+            
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS";
+            else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC";
+            else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
+        }
+
+        // --- LOCK SCREEN ---
+        let inputPin = "";
+        function lockDashboard() {
+            toggleSettings();
+            const overlay = document.getElementById('lock-overlay');
+            const msg = document.getElementById('lock-msg');
+            const storedPin = localStorage.getItem('user_pin');
+            inputPin = "";
+            updatePinDots();
+            overlay.style.display = 'flex';
+            if (!storedPin) { msg.innerText = "SET NEW PIN CODE"; msg.style.color = "#f1c40f"; } 
+            else { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }
+        }
+
+        function enterDigit(digit) {
+            const msg = document.getElementById('lock-msg');
+            if (digit === 'clear') { inputPin = ""; } 
+            else if (digit === 'enter') {
+                const storedPin = localStorage.getItem('user_pin');
+                if (!storedPin) {
+                    if (inputPin.length < 4) {
+                        msg.innerText = "PIN TOO SHORT";
+                        document.getElementById('audio-failure').play();
+                        setTimeout(() => msg.innerText = "SET NEW PIN CODE", 1000);
+                        inputPin = "";
+                    } else {
+                        localStorage.setItem('user_pin', inputPin);
+                        msg.innerText = "PIN ESTABLISHED";
+                        document.getElementById('audio-success').play();
+                        setTimeout(() => { document.getElementById('lock-overlay').style.display = 'none'; inputPin = ""; }, 1000);
+                    }
                 } else {
-                    row.style.display = "none";
+                    if (inputPin === storedPin) {
+                        document.getElementById('audio-success').play();
+                        document.getElementById('lock-overlay').style.display = 'none';
+                        inputPin = "";
+                    } else {
+                        document.getElementById('audio-failure').play();
+                        msg.innerText = "ACCESS DENIED";
+                        msg.style.color = "#e74c3c";
+                        inputPin = "";
+                        setTimeout(() => { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }, 1000);
+                    }
+                }
+            } else { if (inputPin.length < 8) inputPin += digit; }
+            updatePinDots();
+        }
+        function updatePinDots() { document.getElementById('pin-dots').innerText = "•".repeat(inputPin.length); }
+
+        // --- SETTINGS ---
+        function toggleSettings() { document.getElementById('settingsModal').classList.toggle('active'); }
+        window.onclick = function(event) { 
+            if (event.target == document.getElementById('settingsModal')) document.getElementById('settingsModal').classList.remove('active');
+        }
+
+        function updateNetworkStats() {
+            // Helper for the modal, although Audit page doesn't show peer stats in main view
+            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
+                const healthSpan = document.getElementById('health-peers');
+                if (healthSpan) {
+                    const lang = localStorage.getItem('selectedLanguage') || 'en';
+                    const t = (window.TRANSLATIONS && window.TRANSLATIONS[lang]) ? window.TRANSLATIONS[lang] : (window.TRANSLATIONS ? window.TRANSLATIONS['en'] : {});
+                    const txtConnected = t.status_connected || "CONNECTED";
+                    const txtPeers = t.status_peers || "PEERS";
+                    const txtSearching = t.status_searching || "SEARCHING";
+
+                    if (data.peers > 0) { 
+                        healthSpan.innerHTML = `● ${data.peers} ${txtConnected}`; 
+                        healthSpan.style.color = "#2ecc71"; 
+                    } else { 
+                        healthSpan.innerHTML = `● 0 ${txtPeers} (${txtSearching})`; 
+                        healthSpan.style.color = "#f1c40f"; 
+                    }
                 }
             });
-            noResults.style.display = foundAny ? "none" : "block";
-        });
+        }
 
         window.addEventListener('DOMContentLoaded', () => {
-            if (typeof ThemeEngine !== 'undefined') {
-                ThemeEngine.init('common-theme-selector');
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            
+            if (typeof LanguageEngine !== 'undefined') {
+                LanguageEngine.init('language-selector');
+                const langSelect = document.getElementById('language-selector');
+                if(langSelect) {
+                    langSelect.addEventListener('change', () => {
+                        setTimeout(updateNetworkStats, 50);
+                    });
+                }
             }
+
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if(savedTheme) {
+                if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme);
+            }
+            
+            const unitLabel = document.getElementById('unit-label');
+            if(unitLabel) unitLabel.innerText = currentUnit;
+            updateBalanceDisplay();
+            updateNetworkStats();
         });
     </script>
 </body>

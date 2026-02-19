@@ -12,12 +12,15 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
+    
     <script>
-        // ANTI-FLASH: Apply theme before page renders
+    // ANTI-FLASH: Apply theme before page renders
         (function() {
             const savedTheme = localStorage.getItem('selectedTheme');
             if (savedTheme) {
@@ -25,80 +28,32 @@
             }
         })();
     </script>
-    
+
     <style>
         /* --- FULL WIDTH FIXES --- */
         body { margin: 0; padding: 0; overflow-x: hidden; background-color: var(--bg); }
         .dashboard-grid { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
-        /* --- UNIFIED MISSION HUD (LEFT ANCHORED) --- */
-        .mission-hud {
-            width: 100%;
-            box-sizing: border-box;
-            background: #1a1a1a;
-            border-bottom: 2px solid #2ecc71;
-            padding: 15px 30px;
-            display: flex;
-            align-items: center; 
-            gap: 40px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            margin-bottom: 25px;
-            transition: background 0.3s ease, border-color 0.3s ease;
-        }
-
-        .hud-identity {
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0; 
-        }
-
+        /* --- COMPONENT STYLES (Header/Footer/Modal Support) --- */
+        .mission-hud { width: 100%; box-sizing: border-box; background: #1a1a1a; border-bottom: 2px solid #2ecc71; padding: 15px 30px; display: flex; align-items: center; gap: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 25px; transition: background 0.3s ease, border-color 0.3s ease; }
+        .hud-identity { display: flex; flex-direction: column; flex-shrink: 0; }
         .node-id { font-family: 'Courier New', monospace; font-weight: bold; color: #ecf0f1; font-size: 1.1em; letter-spacing: 1px; }
         .net-status { font-size: 0.8em; color: #2ecc71; text-transform: uppercase; }
-
-        /* Central Nav Pill Box */
-        .hud-nav {
-            display: flex;
-            gap: 15px;
-            background: #000;
-            padding: 8px 20px;
-            border-radius: 30px;
-            border: 1px solid #333;
-            align-items: center;
-            flex-shrink: 0;
-        }
-
+        .hud-nav { display: flex; gap: 15px; background: #000; padding: 8px 20px; border-radius: 30px; border: 1px solid #333; align-items: center; flex-shrink: 0; }
         .nav-link { color: #7f8c8d; text-decoration: none; font-weight: bold; text-transform: uppercase; font-size: 0.9em; transition: all 0.3s ease; padding: 5px 10px; }
         .nav-link:hover, .nav-link.active { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.5); }
-
-        /* Integrated Gear Button */
-        .nav-btn-settings {
-            background: transparent; border: none; color: #7f8c8d; font-size: 1rem; 
-            cursor: pointer; padding: 5px 10px; transition: all 0.3s ease;
-            border-left: 1px solid #333; margin-left: 5px; padding-left: 15px;
-        }
+        .nav-btn-settings { background: transparent; border: none; color: #7f8c8d; font-size: 1rem; cursor: pointer; padding: 5px 10px; transition: all 0.3s ease; border-left: 1px solid #333; margin-left: 5px; padding-left: 15px; }
         .nav-btn-settings:hover { color: var(--accent); transform: rotate(90deg); }
-
-        /* Wallet pushed to far right */
-        .hud-wallet {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-left: auto; 
-        }
-
-        .wallet-display { 
-            text-align: right; 
-            background: rgba(46, 204, 113, 0.1); 
-            padding: 5px 15px; 
-            border-radius: 4px; 
-            border-left: 3px solid #2ecc71; 
-            min-width: 150px;
-        }
+        .hud-wallet { display: flex; align-items: center; gap: 15px; margin-left: auto; }
+        .wallet-display { text-align: right; background: rgba(46, 204, 113, 0.1); padding: 5px 15px; border-radius: 4px; border-left: 3px solid #2ecc71; min-width: 150px; }
         .sats-label { font-size: 0.75em; color: #95a5a6; display: block; }
-        .sats-value { 
-            font-family: 'Courier New', monospace; font-size: 1.2em; color: #2ecc71; font-weight: bold; 
-        }
-        
+        .sats-value { font-family: 'Courier New', monospace; font-size: 1.2em; color: #2ecc71; font-weight: bold; }
+        .mission-footer { width: 100%; box-sizing: border-box; background: #1a1a1a; border-top: 2px solid #2ecc71; padding: 20px 30px; margin-top: 40px; display: flex; justify-content: space-between; align-items: center; font-family: 'Inter', sans-serif; font-size: 0.75rem; color: #7f8c8d; transition: background 0.3s ease, border-color 0.3s ease; }
+        .footer-left { display: flex; flex-direction: column; gap: 5px; }
+        .footer-links { display: flex; gap: 20px; }
+        .footer-links a { color: #7f8c8d; text-decoration: none; transition: color 0.2s; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+        .footer-links a:hover { color: var(--accent); }
+
         /* Theme Overrides */
         [data-theme="business"] .mission-hud, [data-theme="paperback"] .mission-hud, [data-theme="groovy"] .mission-hud { background: #ffffff; border-bottom: 2px solid var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
         [data-theme="business"] .node-id, [data-theme="paperback"] .node-id, [data-theme="groovy"] .node-id { color: #2c3e50; }
@@ -134,59 +89,29 @@
         .theme-btn.active { background: var(--accent); color: var(--bg); font-weight: bold; }
         .version-info { text-align: center; font-size: 0.8rem; color: #7f8c8d; margin-top: 20px; opacity: 0.5; }
 
-        /* --- RESTORED EASTER EGG STYLES (REQUIRED FOR HIDING) --- */
-        #bypass-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background-color: rgba(0, 0, 0, 0.95); z-index: 9999;
-            flex-direction: column; justify-content: center; align-items: center;
-            font-family: 'Courier Prime', monospace;
-        }
+        /* Easter Egg Styles */
+        #bypass-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.95); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; font-family: 'Courier Prime', monospace; }
         .bypass-title { font-size: 4rem; color: #00ff00; text-shadow: 6px 6px #ff0000; margin-bottom: 20px; text-align: center; }
         .live-dot { height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-live 1.5s infinite; }
         @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-
-        #marvin-sprite-container {
-            display: none; position: fixed; bottom: -200px; right: 20px; 
-            width: 300px; z-index: 9000; cursor: pointer; 
-            filter: drop-shadow(0 0 15px var(--accent));
-            transition: opacity 1s, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            opacity: 0; pointer-events: none;
-        }
+        #marvin-sprite-container { display: none; position: fixed; bottom: -200px; right: 20px; width: 300px; z-index: 9000; cursor: pointer; filter: drop-shadow(0 0 15px var(--accent)); transition: opacity 1s, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275); opacity: 0; pointer-events: none; }
         #marvin-sprite-container.active { display: block; opacity: 1; transform: translateY(-200px); pointer-events: auto; }
         #marvin-image { width: 100%; height: auto; animation: idle-float 3s ease-in-out infinite; }
         @keyframes idle-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(3deg); } }
         .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
         @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
 
-        /* --- UPDATED TABLE STYLES --- */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-            table-layout: fixed; /* Enforce column widths */
-        }
-        
-        th, td {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid rgba(128,128,128,0.2);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        /* Column Widths */
-        th:nth-child(1), td:nth-child(1) { width: 15%; } /* ID */
-        th:nth-child(2), td:nth-child(2) { width: 20%; } /* Type */
-        th:nth-child(3), td:nth-child(3) { width: 30%; } /* Status */
-        th:nth-child(4), td:nth-child(4) { width: 15%; text-align: right; } /* Reward */
-        th:nth-child(5), td:nth-child(5) { width: 20%; text-align: right; } /* Action */
-
-        /* Override specific table cells for alignment */
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        th:nth-child(1), td:nth-child(1) { width: 15%; }
+        th:nth-child(2), td:nth-child(2) { width: 20%; }
+        th:nth-child(3), td:nth-child(3) { width: 30%; }
+        th:nth-child(4), td:nth-child(4) { width: 15%; text-align: right; }
+        th:nth-child(5), td:nth-child(5) { width: 20%; text-align: right; }
         td:nth-child(4) span { display: inline-block; float: right; }
         td:nth-child(5) { text-align: right; }
         td:nth-child(5) button { float: right; margin-left: 5px;}
-
     </style>
 </head>
 <body>
@@ -196,7 +121,7 @@
     <div id="lock-overlay">
         <div class="lock-container">
             <div class="lock-icon"><i class="fas fa-lock"></i></div>
-            <h2 id="lock-msg">SECURITY LOCKDOWN</h2>
+            <h2 id="lock-msg" data-i18n="btn_lock">SECURITY LOCKDOWN</h2>
             <div class="pin-display" id="pin-dots"></div>
             <div class="keypad">
                 <button class="key-btn" onclick="enterDigit(1)">1</button>
@@ -236,99 +161,31 @@
         <img id="marvin-image" src="{{ url_for('static', filename='images/magic_marvin_dance.webp') }}" alt="Magic Marvin">
     </div>
 
-    <div class="mission-hud">
-        <div class="hud-identity">
-            <span class="node-id">PROXY NODE v1.7</span>
-            <span class="net-status">● SECURE CONNECTION</span>
-        </div>
-        <div class="hud-nav">
-            <a href="/" class="nav-link active">Command</a>
-            <a href="/marketplace" class="nav-link">Exchange</a>
-            <a href="/shop" class="nav-link">Armory</a>
-            <button class="nav-btn-settings" onclick="toggleSettings()" title="System Settings"><i class="fas fa-cog"></i></button>
-        </div>
-        <div class="hud-wallet">
-            <div class="wallet-display">
-                <span class="sats-label">RESERVES (<span id="unit-label">SATS</span>)</span>
-                <span class="sats-value" id="hud-balance">--</span>
-            </div>
-        </div>
-    </div>
+    {% include 'components/header.html' %}
 
-    <div id="settingsModal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-cog"></i> System Settings</h2>
-                <button class="close-btn" onclick="toggleSettings()"><i class="fas fa-times"></i></button>
-            </div>
-            
-            <div class="settings-group">
-                <label>Currency Unit</label>
-                <select id="currency-select" onchange="changeUnit(this.value)" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text); border-radius: 6px;">
-                    <option value="AUD">AUD (Australia)</option>
-                    <option value="BTC">BTC (Bitcoin)</option>
-                    <option value="CAD">CAD (Canada)</option>
-                    <option value="CNY">CNY (China)</option>
-                    <option value="EUR">EUR (Eurozone)</option>
-                    <option value="GBP">GBP (United Kingdom)</option>
-                    <option value="JPY">JPY (Japan)</option>
-                    <option value="KRW">KRW (South Korea)</option>
-                    <option value="MXN">MXN (Mexico)</option>
-                    <option value="SATS">SATS (Satoshis)</option>
-                    <option value="TWD">TWD (Taiwan)</option>
-                    <option value="USD">USD (United States)</option>
-                </select>
-            </div>
-
-            <div class="settings-group">
-                <label>Interface Theme</label>
-                <select id="settings-theme-selector" class="theme-picker-ui" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text);">
-                    <option>Loading...</option>
-                </select>
-            </div>
-
-            <div class="settings-group">
-                <label>Network Diagnostics</label>
-                <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; display: flex; justify-content: space-between;">
-                    <span>LND Peers:</span>
-                    <span id="health-peers" style="color: var(--accent); font-weight: bold;">checking...</span>
-                </div>
-            </div>
-
-            <div class="settings-group">
-                <label>Audio Uplink</label>
-                <div class="control-row" style="display: flex; align-items: center; gap: 15px;">
-                    <button class="theme-btn" id="mute-btn" onclick="toggleMute()" style="width: 50px; justify-content: center;"><i class="fas fa-volume-up" id="mute-icon"></i></button>
-                    <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5" oninput="adjustVolume(this.value)" style="flex-grow: 1; accent-color: var(--accent);">
-                </div>
-            </div>
-
-            <div class="settings-group" style="margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
-                <button class="theme-btn" onclick="lockDashboard()" style="width: 100%; justify-content: center; background: rgba(231, 76, 60, 0.2); border-color: #e74c3c; color: #e74c3c;">
-                    <i class="fas fa-lock"></i> LOCK DASHBOARD
-                </button>
-            </div>
-
-            <div class="modal-footer">
-                <div class="version-info">Proxy Node v0.2.1-beta</div>
-            </div>
-        </div>
-    </div>
+    {% include 'components/settings_modal.html' %}
 
     <div class="dashboard-grid">
         <div class="panel">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h2>Node Identity</h2>
+                <h2 data-i18n="node_id_label">Node Identity</h2>
                 <small style="opacity: 0.7;">ID: <span style="color: var(--accent);">{{ node.id }}</span></small>
             </div>
             <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; font-family: monospace;">
                 <div style="display: flex; justify-content: space-between; margin-top: 5px;">
-                    <span style="opacity: 0.7;">SECURITY:</span>
-                    {% if hw_secured %} <span style="color: #2ecc71; font-weight: bold;">[HARDWARE_LOCKED] 🔒</span>
-                    {% else %} <span style="color: #f1c40f;">[SIMULATION_MODE] ⚠️</span> {% endif %}
+                    <span style="opacity: 0.7;" data-i18n="lbl_security">SECURITY:</span>
+                    {% if hw_secured %} 
+                        <span style="color: #2ecc71; font-weight: bold;" data-i18n="status_hw_locked">[HARDWARE_LOCKED] 🔒</span>
+                    {% else %} 
+                        <span style="color: #f1c40f;" data-i18n="status_simulation">[SIMULATION_MODE] ⚠️</span> 
+                    {% endif %}
                 </div>
             </div>
-            <p style="margin-top: 15px;"><strong>XP:</strong> <span id="xp-text">0 / 5000</span></p>
+            
+            <p style="margin-top: 15px;">
+                <strong><span data-i18n="lbl_level">Level</span> <span id="level-num">1</span>:</strong> 
+                <span id="xp-text">0 / 5000</span>
+            </p>
             <div class="xp-container" onclick="openXPHistory()" style="cursor: pointer;" title="View XP History">
                 <div id="xp-bar" class="xp-bar" style="width: 0%;"></div>
             </div>
@@ -336,19 +193,19 @@
 
         <div class="panel">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h2 id="activity-title">Network Activity</h2>
+                <h2 id="activity-title" data-i18n="panel_activity">Network Activity</h2>
                 <div style="display: flex; gap: 10px;">
-                    <button onclick="switchTab('live')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px;">LIVE</button>
-                    <button onclick="switchTab('global')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px; background: transparent; border: 1px solid var(--accent);">GLOBAL</button>
+                    <button onclick="switchTab('live')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px;" data-i18n="btn_live">LIVE</button>
+                    <button onclick="switchTab('global')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px; background: transparent; border: 1px solid var(--accent);" data-i18n="btn_global">GLOBAL</button>
                 </div>
             </div>
-            <div id="activity-log"><div style="opacity:0.5; font-style:italic;">Initializing telemetry stream...</div></div>
+            <div id="activity-log"><div style="opacity:0.5; font-style:italic;" data-i18n="msg_telemetry">Initializing telemetry stream...</div></div>
             <div id="global-log" style="display: none;"><div style="opacity:0.5; font-style:italic;">Querying global event history...</div></div>
         </div>
 
         <div class="panel" style="border-color: var(--danger);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h2 style="color: var(--danger);">Rival Chatter</h2>
+                <h2 style="color: var(--danger);" data-i18n="panel_rivals">Rival Chatter</h2>
                 <div class="live-dot" style="background-color: var(--danger);"></div>
             </div>
             <div id="rival-feed" style="height: 150px; overflow-y: auto; font-family: 'Courier Prime', monospace; font-size: 0.8rem; background: rgba(50,0,0,0.1); padding: 10px; border-radius: 4px;">
@@ -358,7 +215,7 @@
 
         <div class="panel">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h2>Global Rankings</h2>
+                <h2 data-i18n="panel_global">Global Rankings</h2>
                 <span class="live-dot" style="background-color: var(--accent);"></span>
             </div>
             <div id="leaderboard-list" style="font-family: 'Courier Prime', monospace; font-size: 0.9rem;">
@@ -369,32 +226,29 @@
         <div class="panel">
             <div style="display: flex; align-items: center; gap: 10px;">
                 <span id="scan-pulse" class="scanning-pulse"></span>
-                <h2 style="margin: 0;">Automation Daemon</h2>
+                <h2 style="margin: 0;" data-i18n="panel_daemon">Automation Daemon</h2>
             </div>
-            <p id="auto-status" style="opacity: 0.7; font-size: 0.85rem; margin-top: 5px;">Scanning for high-yield proxy bids...</p>
+            <p id="auto-status" style="opacity: 0.7; font-size: 0.85rem; margin-top: 5px;" data-i18n="msg_scanning">Scanning for high-yield proxy bids...</p>
         </div>
 
         <div class="panel" style="grid-column: span 2;">
-            <h2><span class="live-dot"></span>Live Task Feed (Race Against Rivals)</h2>
+            <h2><span class="live-dot"></span><span data-i18n="panel_tasks">Live Task Feed (Race Against Rivals)</span></h2>
             <table>
-                <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Reward</th><th>Action</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th data-i18n="col_id">ID</th>
+                        <th data-i18n="col_type">Type</th>
+                        <th data-i18n="col_status">Status</th>
+                        <th data-i18n="col_reward">Reward</th>
+                        <th data-i18n="col_action">Action</th>
+                    </tr>
+                </thead>
                 <tbody id="task-table-body"></tbody>
             </table>
         </div>
     </div>
 
-    <div class="mission-footer">
-        <div class="footer-left">
-            <span>&copy; 2026 PROXY NETWORK INC. // ALL RIGHTS RESERVED</span>
-            <span style="opacity: 0.5;">NODE_ID: {{ node.id if node else 'UNKNOWN' }} // LATENCY: 12ms</span>
-        </div>
-        <div class="footer-links">
-            <a href="/legal/docs" style="cursor:help;">DOCS</a>
-            <a href="/legal/aup" style="cursor:help;">AUP</a>
-            <a href="/legal/terms" style="cursor:help;">TERMS</a>
-            <span style="color: var(--accent);">● SYSTEMS OPTIMAL</span>
-        </div>
-    </div>
+    {% include 'components/footer.html' %}
 
     <div id="xp-history-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(10px);">
         <div style="background: #004d56; border: 2px solid #ff9f00; padding: 25px; border-radius: 8px; width: 90%; max-width: 550px; box-shadow: 0 0 40px rgba(255, 159, 0, 0.3);">
@@ -469,13 +323,19 @@
         function changeUnit(unit) {
             currentUnit = unit;
             localStorage.setItem('currencyUnit', unit);
-            document.getElementById('unit-label').innerText = unit;
+            const label = document.getElementById('unit-label');
+            if(label) label.innerText = unit;
             updateBalanceDisplay();
         }
 
         function updateBalanceDisplay() {
             const el = document.getElementById('hud-balance');
             if (!el) return;
+            // Safe parse if raw balance isn't ready
+            if (rawSatsBalance === 0) {
+                const txt = el.innerText.replace(/,/g, '').split(' ')[0];
+                if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt);
+            }
             let val = rawSatsBalance * RATES[currentUnit];
             
             if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS";
@@ -603,31 +463,70 @@
                 updateBalanceDisplay();
 
                 // XP Logic
-                document.getElementById('xp-bar').style.width = `${(data.xp % 5000) / 50}%`;
-                document.getElementById('xp-text').innerText = `${data.xp % 5000} / 5000`;
+                const currentLevel = Math.floor(data.xp / 5000) + 1;
+                const currentXP = data.xp % 5000;
+                const percent = (currentXP / 5000) * 100;
+
+                document.getElementById('xp-bar').style.width = `${percent}%`;
+                document.getElementById('xp-text').innerText = `${currentXP} / 5000`;
+                
+                const lvlEl = document.getElementById('level-num');
+                if(lvlEl) lvlEl.innerText = currentLevel;
+                
                 checkLevelUp(data.xp); 
 
                 const tbody = document.getElementById('task-table-body');
                 if(data.tasks.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">No active tasks. Market is dry.</td></tr>';
                 } else {
+                    const currentLang = localStorage.getItem('selectedLanguage') || 'en';
+                    // Use a safe accessor for translations
+                    const t = (window.TRANSLATIONS && window.TRANSLATIONS[currentLang]) ? window.TRANSLATIONS[currentLang] : (window.TRANSLATIONS ? window.TRANSLATIONS['en'] : {});
+                    
                     tbody.innerHTML = data.tasks.map(task => {
                         if (task.type === 'AUTOMATED') {
-                            return `<tr><td style="color:#2ecc71">${task.id}</td><td>${task.type}</td><td style="color:#2ecc71">SECURED BY DAEMON</td><td><span class="sats-badge">${task.reward}</span></td><td><span style="opacity:0.5">AUTO-CLAIMED</span></td></tr>`;
+                            return `<tr>
+                                <td style="color:#2ecc71">${task.id}</td>
+                                <td>${t.task_automated || 'AUTOMATED'}</td>
+                                <td style="color:#2ecc71">${t.task_secured || 'SECURED BY DAEMON'}</td>
+                                <td><span class="sats-badge">${task.reward}</span></td>
+                                <td><span style="opacity:0.5">${t.task_claimed || 'AUTO-CLAIMED'}</span></td>
+                            </tr>`;
                         } else {
-                            return `<tr><td>${task.id}</td><td>${task.type}</td><td><code>OPEN</code></td><td><span class="sats-badge">${task.reward}</span></td><td><button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">COMPLETE</button></td></tr>`;
+                            return `<tr>
+                                <td>${task.id}</td>
+                                <td>${task.type}</td>
+                                <td><code>${t.task_open || 'OPEN'}</code></td>
+                                <td><span class="sats-badge">${task.reward}</span></td>
+                                <td><button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">${t.btn_complete || 'COMPLETE'}</button></td>
+                            </tr>`;
                         }
                     }).join('');
                 }
             });
         }
 
+        // FIXED NETWORK STATS FUNCTION
         function updateNetworkStats() {
             fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
                 const healthSpan = document.getElementById('health-peers');
                 if (healthSpan) {
-                    if (data.peers > 0) { healthSpan.innerHTML = `● ${data.peers} CONNECTED`; healthSpan.style.color = "#2ecc71"; } 
-                    else { healthSpan.innerHTML = `● 0 PEERS (SEARCHING)`; healthSpan.style.color = "#f1c40f"; }
+                    // Check local storage for language, fallback to 'en'
+                    const lang = localStorage.getItem('selectedLanguage') || 'en';
+                    // Grab translation dictionary safely using window.TRANSLATIONS directly
+                    const t = (window.TRANSLATIONS && window.TRANSLATIONS[lang]) ? window.TRANSLATIONS[lang] : (window.TRANSLATIONS ? window.TRANSLATIONS['en'] : {});
+
+                    const txtConnected = t.status_connected || "CONNECTED";
+                    const txtPeers = t.status_peers || "PEERS";
+                    const txtSearching = t.status_searching || "SEARCHING";
+
+                    if (data.peers > 0) { 
+                        healthSpan.innerHTML = `● ${data.peers} ${txtConnected}`; 
+                        healthSpan.style.color = "#2ecc71"; 
+                    } else { 
+                        healthSpan.innerHTML = `● 0 ${txtPeers} (${txtSearching})`; 
+                        healthSpan.style.color = "#f1c40f"; 
+                    }
                 }
             });
         }
@@ -637,8 +536,19 @@
             const liveLog = document.getElementById('activity-log');
             const globalLog = document.getElementById('global-log');
             const title = document.getElementById('activity-title');
-            if (tab === 'live') { liveLog.style.display = 'block'; globalLog.style.display = 'none'; title.innerText = "Network Activity"; } 
-            else { liveLog.style.display = 'none'; globalLog.style.display = 'block'; title.innerText = "Global Event Log"; fetchGlobalEvents(); }
+            if (tab === 'live') { 
+                liveLog.style.display = 'block'; 
+                globalLog.style.display = 'none'; 
+                const lang = localStorage.getItem('selectedLanguage') || 'en';
+                const t = window.TRANSLATIONS && window.TRANSLATIONS[lang] ? window.TRANSLATIONS[lang] : {};
+                title.innerText = t.panel_activity || "Network Activity"; 
+            } 
+            else { 
+                liveLog.style.display = 'none'; 
+                globalLog.style.display = 'block'; 
+                title.innerText = "Global Event Log"; 
+                fetchGlobalEvents(); 
+            }
         }
         function fetchGlobalEvents() {
             fetch('/api/v1/network/events/history').then(r => r.json()).then(events => {
@@ -692,6 +602,25 @@
 
         window.onload = () => {
             if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            
+            // Initialize Language Engine
+            if (typeof LanguageEngine !== 'undefined') {
+                LanguageEngine.init('language-selector');
+                
+                // FORCE UPDATE ON CHANGE
+                const langSelect = document.getElementById('language-selector');
+                if(langSelect) {
+                    langSelect.addEventListener('change', () => {
+                        // Small delay to ensure local storage is updated by the engine first
+                        setTimeout(() => {
+                            updateNetworkStats();
+                            // Force re-scan of data-i18n attributes for static labels in case they were missed
+                            LanguageEngine.update();
+                        }, 50);
+                    });
+                }
+            }
+
             const savedTheme = localStorage.getItem('selectedTheme');
             if(savedTheme) {
                 if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme);

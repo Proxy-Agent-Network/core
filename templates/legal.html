@@ -3,34 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <title>Legal Protocols | Proxy Agent Network</title>
-    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+
+    <script>
+    // ANTI-FLASH: Apply theme before page renders
+        (function() {
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            }
+        })();
+    </script>
+
     <style>
-        body { margin: 0; padding: 0; overflow-x: hidden; background: var(--bg); color: var(--text); }
-        .mission-hud, .mission-footer { width: 100%; box-sizing: border-box; background: #1a1a1a; border-bottom: 2px solid #2ecc71; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
-        .mission-footer { border-bottom: none; border-top: 2px solid #2ecc71; margin-top: 40px; }
+        /* --- FULL WIDTH FIXES --- */
+        body { margin: 0; padding: 0; overflow-x: hidden; background-color: var(--bg); color: var(--text); }
+        .dashboard-grid { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        /* --- COMPONENT STYLES (Header/Footer Support) --- */
+        .mission-hud {
+            width: 100%; box-sizing: border-box; background: #1a1a1a; 
+            border-bottom: 2px solid #2ecc71; padding: 15px 30px; 
+            display: flex; align-items: center; gap: 40px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 25px;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+        .hud-identity { display: flex; flex-direction: column; flex-shrink: 0; }
+        .node-id { font-family: 'Courier New', monospace; font-weight: bold; color: #ecf0f1; font-size: 1.1em; letter-spacing: 1px; }
+        .net-status { font-size: 0.8em; color: #2ecc71; text-transform: uppercase; }
         
-        /* Light Mode Override */
-        [data-theme="business"] .mission-hud, [data-theme="business"] .mission-footer { background: #fff; border-color: var(--accent); color: #333; }
+        .hud-nav { display: flex; gap: 15px; background: #000; padding: 8px 20px; border-radius: 30px; border: 1px solid #333; align-items: center; flex-shrink: 0; }
+        .nav-link { color: #7f8c8d; text-decoration: none; font-weight: bold; text-transform: uppercase; font-size: 0.9em; transition: all 0.3s ease; padding: 5px 10px; }
+        .nav-link:hover, .nav-link.active { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.5); }
         
-        .legal-container { max-width: 800px; margin: 40px auto; padding: 30px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); border-radius: 8px; }
-        h1 { font-family: 'Orbitron', sans-serif; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 15px; }
-        .content { font-family: 'Inter', sans-serif; line-height: 1.6; opacity: 0.9; }
-        .content h3 { margin-top: 25px; color: var(--text); }
+        .nav-btn-settings { background: transparent; border: none; color: #7f8c8d; font-size: 1rem; cursor: pointer; padding: 5px 10px; transition: all 0.3s ease; border-left: 1px solid #333; margin-left: 5px; padding-left: 15px; }
+        .nav-btn-settings:hover { color: var(--accent); transform: rotate(90deg); }
+
+        .hud-wallet { display: flex; align-items: center; gap: 15px; margin-left: auto; }
+        .wallet-display { text-align: right; background: rgba(46, 204, 113, 0.1); padding: 5px 15px; border-radius: 4px; border-left: 3px solid #2ecc71; min-width: 150px; }
+        .sats-label { font-size: 0.75em; color: #95a5a6; display: block; }
+        .sats-value { font-family: 'Courier New', monospace; font-size: 1.2em; color: #2ecc71; font-weight: bold; }
+
+        .mission-footer {
+            width: 100%; box-sizing: border-box; background: #1a1a1a;
+            border-top: 2px solid #2ecc71; padding: 20px 30px; margin-top: 40px;
+            display: flex; justify-content: space-between; align-items: center;
+            font-family: 'Inter', sans-serif; font-size: 0.75rem; color: #7f8c8d;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+        .footer-left { display: flex; flex-direction: column; gap: 5px; }
+        .footer-links { display: flex; gap: 20px; }
+        .footer-links a { color: #7f8c8d; text-decoration: none; transition: color 0.2s; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+        .footer-links a:hover { color: var(--accent); }
+
+        /* Theme Overrides */
+        [data-theme="business"] .mission-hud, [data-theme="paperback"] .mission-hud, [data-theme="groovy"] .mission-hud { background: #ffffff; border-bottom: 2px solid var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        [data-theme="business"] .mission-footer, [data-theme="paperback"] .mission-footer, [data-theme="groovy"] .mission-footer { background: #ffffff; border-top: 2px solid var(--accent); color: #2c3e50; box-shadow: 0 -4px 10px rgba(0,0,0,0.05); }
+        [data-theme="business"] .node-id, [data-theme="paperback"] .node-id, [data-theme="groovy"] .node-id { color: #2c3e50; }
+        [data-theme="business"] .hud-nav, [data-theme="paperback"] .hud-nav, [data-theme="groovy"] .hud-nav { background: #f8f9fa; border: 1px solid #e0e0e0; }
+        [data-theme="business"] .nav-link, [data-theme="paperback"] .nav-link, [data-theme="groovy"] .nav-link { color: #7f8c8d; }
+        [data-theme="business"] .nav-link:hover, [data-theme="business"] .nav-link.active, [data-theme="paperback"] .nav-link:hover, [data-theme="paperback"] .nav-link.active, [data-theme="groovy"] .nav-link:hover, [data-theme="groovy"] .nav-link.active { color: var(--accent); text-shadow: none; background: rgba(0,0,0,0.05); border-radius: 4px; }
+
+        /* Settings Modal Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: var(--card-bg); border: 1px solid var(--accent); box-shadow: 0 0 30px rgba(0, 243, 255, 0.2); width: 400px; border-radius: 12px; padding: 20px; animation: modalSlideIn 0.3s ease-out; color: var(--text); }
+        @keyframes modalSlideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; }
+        .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--accent); }
+        .close-btn { background: none; border: none; color: #7f8c8d; font-size: 1.2rem; cursor: pointer; }
+        .close-btn:hover { color: var(--danger); }
+        .settings-group { margin-bottom: 20px; }
+        .settings-group label { display: block; color: #95a5a6; margin-bottom: 10px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .control-row { display: flex; align-items: center; gap: 15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
+        .theme-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text); padding: 10px; border-radius: 6px; cursor: pointer; text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
+        .theme-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent); }
+        .theme-btn.active { background: var(--accent); color: var(--bg); font-weight: bold; }
+        .version-info { text-align: center; font-size: 0.8rem; color: #7f8c8d; margin-top: 20px; opacity: 0.5; }
+
+        /* LEGAL CONTENT SPECIFIC */
+        .legal-container { 
+            max-width: 800px; margin: 40px auto; padding: 40px; 
+            border: 1px solid var(--border); background: var(--card-bg); 
+            border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 { font-family: 'Orbitron', sans-serif; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-top: 0; }
+        .content { font-family: 'Inter', sans-serif; line-height: 1.7; opacity: 0.9; font-size: 0.95rem; }
+        .content h3 { margin-top: 30px; color: var(--text); font-family: 'Orbitron', sans-serif; }
         
-        .back-btn { display: inline-block; margin-bottom: 20px; color: var(--accent); text-decoration: none; font-family: monospace; font-weight: bold; }
-        .back-btn:hover { text-decoration: underline; }
+        .back-btn { 
+            display: inline-block; margin-bottom: 20px; color: var(--accent); 
+            text-decoration: none; font-family: 'Courier Prime', monospace; font-weight: bold; 
+            border: 1px solid var(--accent); padding: 5px 10px; border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .back-btn:hover { background: var(--accent); color: var(--bg); }
     </style>
 </head>
 <body>
-    <script>window.OWNED_THEMES = JSON.parse('{{ owned|tojson|safe }}');</script>
+    <script>window.OWNED_THEMES = JSON.parse('{{ (owned or [])|tojson|safe }}');</script>
 
-    <div class="mission-hud">
-        <div style="font-family:'Courier New'; font-weight:bold;">PROXY LEGAL</div>
-        <select id="common-theme-selector" style="background:transparent; border:none; color:inherit;"><option>Loading...</option></select>
-        <div style="font-family:'Courier New'; color:#2ecc71;">{{ "{:,}".format(balance|default(0)) }} SATS</div>
+    {% include 'components/header.html' %}
+
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 data-i18n="settings_title"><i class="fas fa-cog"></i> System Settings</h2>
+                <button class="close-btn" onclick="toggleSettings()"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="settings-group">
+                <label data-i18n="lbl_currency">Currency Unit</label>
+                <select id="currency-select" onchange="changeUnit(this.value)" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text); border-radius: 6px;">
+                    <option value="AUD">AUD (Australia)</option>
+                    <option value="BTC">BTC (Bitcoin)</option>
+                    <option value="CAD">CAD (Canada)</option>
+                    <option value="CNY">CNY (China)</option>
+                    <option value="EUR">EUR (Eurozone)</option>
+                    <option value="GBP">GBP (United Kingdom)</option>
+                    <option value="JPY">JPY (Japan)</option>
+                    <option value="KRW">KRW (South Korea)</option>
+                    <option value="MXN">MXN (Mexico)</option>
+                    <option value="SATS">SATS (Satoshis)</option>
+                    <option value="TWD">TWD (Taiwan)</option>
+                    <option value="USD">USD (United States)</option>
+                </select>
+            </div>
+
+            <div class="settings-group">
+                <label data-i18n="lbl_language">System Language</label>
+                <select id="language-selector" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text); border-radius: 6px;">
+                    <option value="en">English (Default)</option>
+                    <option value="zh-CN">Chinese - Simplified (简体中文)</option>
+                    <option value="zh-TW">Chinese - Traditional (繁體中文)</option>
+                    <option value="es">Spanish (Español)</option>
+                    <option value="fr">French (Français)</option>
+                    <option value="de">German (Deutsch)</option>
+                    <option value="ja">Japanese (日本語)</option>
+                    <option value="ko">Korean (한국어)</option>
+                </select>
+            </div>
+
+            <div class="settings-group">
+                <label data-i18n="lbl_theme">Interface Theme</label>
+                <select id="settings-theme-selector" class="theme-picker-ui" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--accent); color: var(--text);">
+                    <option>Loading...</option>
+                </select>
+            </div>
+
+            <div class="modal-footer">
+                <div class="version-info">Proxy Node v0.2.1-beta</div>
+            </div>
+        </div>
     </div>
 
     <div class="legal-container">
@@ -39,16 +175,64 @@
         <div class="content">{{ content|safe }}</div>
     </div>
 
-    <div class="mission-footer">
-        <span>&copy; 2026 PROXY NETWORK INC.</span>
-        <div style="display:flex; gap:20px;">
-            <a href="/legal/docs" style="color:inherit; text-decoration:none;">DOCS</a>
-            <a href="/legal/aup" style="color:inherit; text-decoration:none;">AUP</a>
-            <a href="/legal/terms" style="color:inherit; text-decoration:none;">TERMS</a>
-            <a href="/legal/privacy" style="color:inherit; text-decoration:none;">PRIVACY</a>
-        </div>
-    </div>
+    {% include 'components/footer.html' %}
 
-    <script>window.onload = () => ThemeEngine.init('common-theme-selector');</script>
+    <script>
+        // Minimal script to handle settings and init
+        function toggleSettings() {
+            document.getElementById('settingsModal').classList.toggle('active');
+        }
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('settingsModal');
+            if (event.target == modal) modal.classList.remove('active');
+        }
+
+        // Currency handling logic needed for the Header
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        const currSelect = document.getElementById('currency-select');
+        if(currSelect) currSelect.value = currentUnit;
+        
+        const RATES = {
+            SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088,
+            CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051,
+            JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010
+        };
+
+        function changeUnit(unit) {
+            currentUnit = unit;
+            localStorage.setItem('currencyUnit', unit);
+            const label = document.getElementById('unit-label');
+            if(label) label.innerText = unit;
+            updateBalanceDisplay();
+        }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance');
+            if (!el) return;
+            // Balance is passed from backend in legal routes usually
+            let rawSats = {{ balance|default(0) }};
+            let val = rawSats * RATES[currentUnit];
+            
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS";
+            else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC";
+            else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
+        }
+
+        window.onload = () => {
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            if (typeof LanguageEngine !== 'undefined') LanguageEngine.init('language-selector');
+            
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if(savedTheme) {
+                if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme);
+            }
+            
+            const unitLabel = document.getElementById('unit-label');
+            if(unitLabel) unitLabel.innerText = currentUnit;
+            
+            updateBalanceDisplay();
+        };
+    </script>
 </body>
 </html>
