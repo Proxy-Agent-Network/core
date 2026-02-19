@@ -4,19 +4,24 @@ services:
   agent:
     image: proxy-node:v0.1-alpha
     container_name: proxy_agent_v1
+    # We override the default command to install the MCP SDK on boot and run our new server
+    command: >
+      bash -c "pip install mcp uvicorn starlette && python mcp_server.py"
     volumes:
       - .:/app
       - ./secrets/tls.cert:/root/.lnd/tls.cert
       - ./secrets/admin.macaroon:/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon
     environment:
       - FLASK_ENV=development
-      # --- NETWORK CONFIGURATION ---
-      # We are now talking directly to the container name
+      # LND Network config we established earlier
       - LND_GRPC_HOST=polar-n1-alice
-      # We use the INTERNAL port (10009), not the external one (10001)
       - LND_GRPC_PORT=10009
+      # Tell the MCP HTTP Server to bind to all interfaces
+      - HOST=0.0.0.0 
+      - PORT=8000
     ports:
       - "5000:5000"
+      - "8000:8000" # Expose the MCP SSE port to your Windows host
     networks:
       - default
       - polar_network
@@ -24,5 +29,4 @@ services:
 networks:
   polar_network:
     external: true
-    # This must match your 'docker network ls' output exactly
     name: polar-network-1_default
