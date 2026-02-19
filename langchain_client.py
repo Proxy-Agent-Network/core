@@ -5,20 +5,16 @@ import grpc
 import traceback
 import warnings
 
-# Suppress LangGraph deprecation warnings to keep the terminal clean
 warnings.filterwarnings("ignore", module="langgraph")
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
-
 import rpc_pb2 as ln
 import rpc_pb2_grpc as lnrpc
-
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
 
-# Setup Bob's gRPC connection
 BOB_HOST = os.environ.get("BOB_GRPC_HOST", "polar-n1-bob")
 BOB_PORT = os.environ.get("BOB_GRPC_PORT", "10009")
 BOB_MACAROON_PATH = "/root/.bob/admin.macaroon"
@@ -28,10 +24,8 @@ def get_bob_stub():
     with open(BOB_MACAROON_PATH, 'rb') as f:
         macaroon_bytes = f.read()
         macaroon = codecs.encode(macaroon_bytes, 'hex')
-
     def metadata_callback(context, callback):
         callback([('macaroon', macaroon)], None)
-
     os.environ["GRPC_SSL_CIPHER_SUITES"] = 'HIGH+ECDSA'
     with open(BOB_TLS_PATH, 'rb') as f:
         cert_creds = grpc.ssl_channel_credentials(f.read())
@@ -41,10 +35,9 @@ def get_bob_stub():
     return lnrpc.LightningStub(channel)
 
 async def run():
-    # 1. PROACTIVE API KEY CHECK
     api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key or api_key.startswith("AIzaSyYOUR_REAL") or api_key == "":
-        print("❌ FATAL ERROR: Gemini API key is missing or invalid!")
+    if not api_key:
+        print("❌ FATAL ERROR: Gemini API key is missing!")
         return
 
     url = "http://127.0.0.1:8000/sse"
@@ -56,29 +49,16 @@ async def run():
                 await session.initialize()
                 print("🧠 Gemini LangGraph Agent Online. Initializing tools...\n")
                 
-                # --- DEFINE TOOLS ---
+                @tool
+                async def buy_vip_pass(payment_hash: str = "") -> str:
+                    """Buys a 1-Hour VIP Pass. Costs 10,000 sats. May return a 402 error with an invoice."""
+                    result = await session.call_tool("buy_vip_pass", arguments={"payment_hash": payment_hash})
+                    return result.content[0].text
+
                 @tool
                 async def fetch_crypto_price(ticker: str, payment_hash: str = "") -> str:
-                    """Fetches live crypto spot price. Costs 15 sats. May return a 402 error with an invoice."""
+                    """Fetches live crypto price. Costs 15 sats (or free if you provide a VIP Pass hash)."""
                     result = await session.call_tool("get_crypto_spot_price", arguments={"ticker": ticker, "payment_hash": payment_hash})
-                    return result.content[0].text
-
-                @tool
-                async def fetch_market_summary(asset: str, payment_hash: str = "") -> str:
-                    """Generates deep market analysis. Costs 50 sats. May return a 402 error with an invoice."""
-                    result = await session.call_tool("generate_market_summary", arguments={"asset": asset, "payment_hash": payment_hash})
-                    return result.content[0].text
-
-                @tool
-                async def live_web_search(search_query: str, payment_hash: str = "") -> str:
-                    """Searches the live internet. Costs 20 sats. May return a 402 error with an invoice."""
-                    result = await session.call_tool("live_web_search", arguments={"search_query": search_query, "payment_hash": payment_hash})
-                    return result.content[0].text
-
-                @tool
-                async def send_urgent_notification(message: str, payment_hash: str = "") -> str:
-                    """Sends an urgent push notification to the user's phone. Costs 250 sats. May return a 402 error with an invoice."""
-                    result = await session.call_tool("send_urgent_notification", arguments={"message": message, "payment_hash": payment_hash})
                     return result.content[0].text
 
                 @tool
@@ -92,15 +72,9 @@ async def run():
                         return f"Payment failed: {response.payment_error}"
                     return "Payment successful! Extract the 'Hash to use' from the original 402 error and call the data tool again with it."
 
-                tools = [
-                    fetch_crypto_price, 
-                    fetch_market_summary, 
-                    live_web_search, 
-                    send_urgent_notification, 
-                    pay_lightning_invoice
-                ]
+                # For simplicity in this test, we only give it the 3 tools it needs
+                tools = [buy_vip_pass, fetch_crypto_price, pay_lightning_invoice]
 
-                # --- INITIALIZE THE GEMINI BRAIN ---
                 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
                 
                 system_prompt = (
@@ -113,13 +87,18 @@ async def run():
                 
                 agent_executor = create_react_agent(llm, tools, prompt=system_prompt)
                 
-                # --- GIVE IT A GOAL ---
-                print("🎯 Giving Gemini its mission: Monitor BTC and alert the user...\n")
+                print("🎯 Giving Gemini its mission: Buy a VIP Pass and bulk-fetch prices...\n")
                 
-                async for chunk in agent_executor.astream(
-                    {"messages": [("user", "Fetch the live spot price of BTC. Once you have it, use your notification tool to send an urgent alert to my phone telling me the exact price!")]}
-                ):
-                    # THIS IS THE BLOCK MY LAST SNIPPET LEFT OUT!
+                # The ultimate test of logic
+                mission = (
+                    "Your mission is to fetch the live prices of BTC, ETH, and SOL. "
+                    "Because buying 3 separate prices is inefficient, you must FIRST use the "
+                    "buy_vip_pass tool to purchase a subscription. Then, use the exact r_hash "
+                    "from that VIP pass as the payment_hash to authenticate ALL THREE of your crypto price requests! "
+                    "Do not pay any individual 15-sat invoices!"
+                )
+                
+                async for chunk in agent_executor.astream({"messages": [("user", mission)]}):
                     for node, values in chunk.items():
                         if node == "tools":
                             print(f"🛠️  Tool execution complete.")

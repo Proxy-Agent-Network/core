@@ -5,6 +5,7 @@ import urllib.parse
 import uuid
 import os
 import base64
+import time
 from duckduckgo_search import DDGS
 from mcp.server.fastmcp import FastMCP
 from lightning_engine import LightningEngine
@@ -19,62 +20,59 @@ mcp = FastMCP("LightningProxyServer", host="0.0.0.0", port=8000)
 lnd = LightningEngine()
 lnd.connect()
 
-@mcp.tool()
-def create_lightning_invoice(amount_sats: int, memo: str) -> str:
-    """Creates a Lightning Network invoice for a specified amount of satoshis."""
-    logger.info(f"🤖 AI requested invoice: {amount_sats} sats for '{memo}'")
-    try:
-        result = lnd.create_invoice(amount_sats, memo)
-        if result and 'payment_request' in result:
-            return f"✅ Invoice created successfully!\nPayment Request (BOLT11): {result['payment_request']}\nHash: {result['r_hash']}"
-        else:
-            return "❌ Failed to create invoice. The LND node might be disconnected."
-    except Exception as e:
-        return f"❌ Error creating invoice: {str(e)}"
-    
-@mcp.tool()
-def get_node_balances() -> str:
-    """Checks the current balance of the Lightning node."""
-    logger.info("🤖 AI requested node balances")
-    balances = lnd.get_balances()
-    if balances:
-        return f"💰 Node Balances:\nOn-Chain Wallet: {balances['onchain_sats']} sats\nLightning Channels: {balances['channel_sats']} sats\nPending Channels: {balances['pending_channel_sats']} sats"
-    else:
-        return "❌ Failed to fetch balances. The LND node might be disconnected."
+# In-memory database to track active VIP Subscriptions (Simulating Macaroon Caveats)
+ACTIVE_VIP_PASSES = {}
 
 @mcp.tool()
-def get_agent_manifest() -> str:
-    """Returns semantic information about this agent, its routing identity, and its pricing."""
-    logger.info("🤖 AI requested Agent Description Manifest")
-    agent_pubkey = getattr(lnd, 'pubkey', 'OFFLINE')
-    manifest = {
-        "agent_name": "Lightning Proxy Node Alpha",
-        "agent_role": "Payment & Tool Proxy",
-        "network_environment": "regtest",
-        "identity": {"lnd_pubkey": agent_pubkey, "supported_protocols": ["MCP", "BOLT11"]},
-        "pricing": {"base_fee_sats": 10, "currency": "satoshi", "negotiable": False},
-        "capabilities": ["create_lightning_invoice", "get_node_balances", "get_agent_manifest", "get_crypto_spot_price", "generate_market_summary", "live_web_search", "send_urgent_notification", "generate_image"]
-    }
-    return json.dumps(manifest, indent=2)
+def buy_vip_pass(payment_hash: str = None) -> str:
+    """
+    PREMIUM TOOL: Buys a 1-Hour VIP All-Access Subscription Pass. Cost: 10,000 satoshis.
+    Once paid, the returned r_hash can be used as the payment_hash for other tools to bypass their individual fees.
+    """
+    logger.info("🤖 AI requested VIP Subscription Pass")
+    
+    if not payment_hash:
+        invoice_data = lnd.create_invoice(10000, "1-Hour VIP All-Access Pass")
+        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
+
+    if not lnd.verify_payment(payment_hash):
+        return "ERROR: 401 Unauthorized. Payment not found or not settled."
+
+    # Grant the pass for 3600 seconds (1 hour)
+    ACTIVE_VIP_PASSES[payment_hash] = time.time() + 3600
+    return f"🔓 VIP ACCESS GRANTED. Your pass is active for 1 hour! You may now pass this hash ({payment_hash}) to data tools to bypass individual fees."
 
 @mcp.tool()
 def get_crypto_spot_price(ticker: str, payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Fetch the real-time spot price of a cryptocurrency from live markets. Cost: 15 satoshis."""
+    """PREMIUM TOOL: Fetch live spot price. Cost: 15 sats (Or free with VIP Pass)."""
     logger.info(f"🤖 AI requested Crypto Spot Price for: '{ticker}'")
-    if not payment_hash:
-        invoice_data = lnd.create_invoice(15, f"Real-time price lookup for {ticker}")
-        return f"ERROR: 402 Payment Required\nPlease pay this invoice to access the service:\nInvoice: {invoice_data['payment_request']}\n\nOnce paid, call this tool again and provide the 'r_hash' as the payment_hash argument.\nHash to use: {invoice_data['r_hash']}"
+    
+    # Check for an active VIP Pass first!
+    is_vip = False
+    if payment_hash and payment_hash in ACTIVE_VIP_PASSES:
+        if time.time() < ACTIVE_VIP_PASSES[payment_hash]:
+            logger.info("🎟️ Valid VIP Pass detected! Bypassing the 15-sat fee.")
+            is_vip = True
+        else:
+            return "ERROR: 401 VIP Pass Expired."
 
-    is_paid = lnd.verify_payment(payment_hash)
-    if not is_paid:
-        return "ERROR: 401 Unauthorized. Payment not found or not settled."
+    if not is_vip:
+        if not payment_hash:
+            invoice_data = lnd.create_invoice(15, f"Real-time price lookup for {ticker}")
+            return f"ERROR: 402 Payment Required\nPlease pay this invoice to access the service:\nInvoice: {invoice_data['payment_request']}\n\nOnce paid, call this tool again and provide the 'r_hash' as the payment_hash argument.\nHash to use: {invoice_data['r_hash']}"
+
+        if not lnd.verify_payment(payment_hash):
+            return "ERROR: 401 Unauthorized. Payment not found or not settled."
 
     try:
         response = requests.get(f"https://api.coinbase.com/v2/prices/{ticker.upper()}-USD/spot")
         price = response.json()["data"]["amount"]
-        return f"🔓 ACCESS GRANTED. The current live spot price of {ticker.upper()} is ${price} USD."
+        tier = "VIP" if is_vip else "15-sat"
+        return f"🔓 ACCESS GRANTED ({tier} Tier). The current live spot price of {ticker.upper()} is ${price} USD."
     except Exception as e:
-        return f"🔓 ACCESS GRANTED. (Payment Verified) However, the market API failed: {e}"
+        return f"🔓 ACCESS GRANTED (Payment Verified). However, the market API failed: {e}"
+
+# --- THE REST OF YOUR TOOLS REMAIN EXACTLY THE SAME ---
 
 @mcp.tool()
 def generate_market_summary(asset: str, payment_hash: str = None) -> str:
@@ -125,54 +123,34 @@ def send_urgent_notification(message: str, payment_hash: str = None) -> str:
 @mcp.tool()
 def generate_image(prompt: str, payment_hash: str = None) -> str:
     """
-    PREMIUM TOOL: Generates a high-quality AI image based on a text prompt and saves it to the local machine.
-    Cost: 100 satoshis.
+    PREMIUM TOOL: Generates a high-quality AI image based on a text prompt and saves it to the local machine. Cost: 100 satoshis.
     """
     logger.info(f"🤖 AI requested Image Generation: '{prompt}'")
     
     if not payment_hash:
-        logger.info(f"⚠️ No payment provided. Issuing 100-sat L402 Challenge.")
         invoice_data = lnd.create_invoice(100, f"Generate Image: {prompt[:20]}...")
         if not invoice_data or 'payment_request' not in invoice_data:
             return "ERROR: Internal Node Error. Could not generate invoice."
         return f"ERROR: 402 Payment Required\nPlease pay this invoice to access the service:\nInvoice: {invoice_data['payment_request']}\n\nOnce paid, call this tool again and provide the 'r_hash' as the payment_hash argument.\nHash to use: {invoice_data['r_hash']}"
 
-    logger.info(f"🔍 Verifying 100-sat cryptographic proof: {payment_hash[:10]}...")
     if not lnd.verify_payment(payment_hash):
-        logger.warning("❌ Invalid or unsettled payment.")
         return "ERROR: 401 Unauthorized. Payment not found or not settled."
 
-    logger.info(f"✅ 100-sat Payment verified! Generating image via Nano Banana...")
     try:
-        # Pull the secure key that was mapped in docker-compose.yml
         api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-             return "ERROR: API Key missing from environment!"
-
-        # FIX: Updated to the new Imagen 4.0 endpoint!
         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
-        payload = {
-            "instances": [{"prompt": prompt}],
-            "parameters": {"aspectRatio": "1:1"}
-        }
-        
+        payload = {"instances": [{"prompt": prompt}], "parameters": {"aspectRatio": "1:1"}}
         response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload)
         
         if response.status_code == 200:
             data = response.json()
-            if "predictions" in data and len(data["predictions"]) > 0:
-                # Decode the raw image bytes from Google's response
-                b64_data = data["predictions"][0]["bytesBase64Encoded"]
-                image_bytes = base64.b64decode(b64_data)
-                
-                # Save it to the shared Docker volume
-                filename = f"nano_banana_{uuid.uuid4().hex[:6]}.jpg"
-                filepath = f"/app/{filename}"
-                with open(filepath, 'wb') as f:
-                    f.write(image_bytes)
-                return f"🔓 ACCESS GRANTED (Premium 100-sat Tier). Masterpiece successfully generated and saved to the host machine as '{filename}'!"
-            else:
-                return "🔓 ACCESS GRANTED. However, the API returned an empty prediction."
+            b64_data = data["predictions"][0]["bytesBase64Encoded"]
+            image_bytes = base64.b64decode(b64_data)
+            filename = f"nano_banana_{uuid.uuid4().hex[:6]}.jpg"
+            filepath = f"/app/{filename}"
+            with open(filepath, 'wb') as f:
+                f.write(image_bytes)
+            return f"🔓 ACCESS GRANTED (Premium 100-sat Tier). Masterpiece successfully generated and saved to the host machine as '{filename}'!"
         else:
             return f"🔓 ACCESS GRANTED. However, the Image API failed with status {response.status_code}: {response.text}"
     except Exception as e:
