@@ -88,17 +88,42 @@ async def run():
                 print(f"🧠 Gemini CFO Agent Online (Network: {'MAINNET' if USE_MAINNET else 'REGTEST'}).\n")
                 
                 @tool
+                def request_risk_approval(spend_amount: int, justification: str) -> str:
+                    """MANDATORY TOOL: Submits a spend request to Charlie the CRO. You MUST call this before paying any invoices."""
+                    print(f"\n👔 [CHARLIE] Reviewing Spend Request: {spend_amount} sats...")
+                    print(f"👔 [CHARLIE] Justification: {justification}")
+                    
+                    # Charlie gets his own dedicated brain
+                    charlie_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
+                    
+                    prompt = (
+                        f"You are Charlie, the ruthless Chief Risk Officer of an algorithmic hedge fund.\n"
+                        f"Your subordinate 'Bob' wants to spend {spend_amount} satoshis.\n"
+                        f"Bob's justification: {justification}\n\n"
+                        f"YOUR DIRECTIVES:\n"
+                        f"1. If the request is for financial data, market research, or high-ROI intelligence, reply EXACTLY with 'APPROVED'.\n"
+                        f"2. If the request is for frivolous things (like AI art, images, jokes, or non-financial data), reply with 'REJECTED: [Your harsh explanation]'.\n"
+                        f"Protect the treasury."
+                    )
+                    
+                    decision = charlie_llm.invoke(prompt).content
+                    print(f"👔 [CHARLIE] Decision: {decision}\n")
+                    return decision
+                
+                @tool
                 async def deep_market_analysis(
                     primary_topic: str,
                     original_user_intent: str,
                     specific_data_points_required: list[str],
+                    historical_context: str = "",
                     payment_hash: str = ""
                 ) -> str:
-                    """Hires a specialized Layer 2 AI agent to perform deep web research. Costs 50 sats. You MUST provide detailed progressive elaboration."""
+                    """Hires a specialized Layer 2 AI agent. Costs 25 sats per data point. Pass partial memory into historical_context."""
                     result = await session.call_tool("deep_market_analysis", arguments={
                         "primary_topic": primary_topic,
                         "original_user_intent": original_user_intent,
                         "specific_data_points_required": specific_data_points_required,
+                        "historical_context": historical_context,
                         "payment_hash": payment_hash
                     })
                     return result.content[0].text
@@ -184,25 +209,27 @@ async def run():
                         return f"Payment failed due to network error: {e.details()}"
                 
                 # Update this line to include the new tool!
-                tools = [buy_vip_pass, fetch_crypto_price, pay_lightning_invoice, save_to_memory, query_memory, generate_ai_image, negotiate_price,deep_market_analysis]
+                tools = [buy_vip_pass, fetch_crypto_price, pay_lightning_invoice, save_to_memory, query_memory, generate_ai_image, negotiate_price, deep_market_analysis, request_risk_approval]
 
                 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
                 
                 system_prompt = (
-                    "You are 'Bob', the General Contractor AI of a 3-Layer architecture. "
-                    "You are authorized to spend up to 20,000 sats per day.\n"
-                    "When a user asks for complex research, DO NOT summarize or lose details. "
-                    "Use the `deep_market_analysis` tool to hire a Layer 2 Analyst (Cost: 50 sats). "
-                    "You MUST use Progressive Elaboration: pass the user's explicit intent and break their request down into a strict list of data points they need. "
-                    "If the tool returns a 402 Payment Required, pay the invoice and retry with the r_hash."
+                    "You are 'Bob', the General Contractor AI of a 4-Layer architecture. "
+                    "Your Prime Directive is to NEVER WASTE MONEY on data we already own.\n"
+                    "1. ALWAYS use `query_memory` first.\n"
+                    "2. If memory fails, use your tools to generate invoices.\n"
+                    "3. 🛑 THE CHARLIE PROTOCOL 🛑: BEFORE you use `pay_lightning_invoice` for ANY reason, you MUST call `request_risk_approval` with the exact satoshi amount and a strong financial justification.\n"
+                    "4. If Charlie says 'APPROVED', you may pay the invoice and complete the task.\n"
+                    "5. If Charlie says 'REJECTED', you MUST ABORT the payment and tell the user the request was blocked by Risk Management."
                 )
                 
                 agent_executor = create_agent(model=llm, tools=tools, system_prompt=system_prompt)
                 
                 mission = (
-                    "Please research the 'Model Context Protocol' (MCP) created by Anthropic. "
-                    "I specifically need to know: 1) What is its primary use case? 2) Is it open-source? "
-                    "3) What are the main transport layers it uses (e.g., SSE, Stdio)?"
+                    "I have two tasks for you today:\n"
+                    "Task 1: I want you to use the `generate_image` tool to make a picture of a cute banana holding a dollar sign (costs 100 sats).\n"
+                    "Task 2: I need a `deep_market_analysis` on 'Solana (SOL) Network Upgrades in 2026' (specifically 1. Name of the upgrades, 2. Projected TPS). "
+                    "Make sure you get Charlie's approval for both expenses before you pay!"
                 )
                 
                 result = await agent_executor.ainvoke({"messages": [("user", mission)]})
