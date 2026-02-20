@@ -88,6 +88,22 @@ async def run():
                 print(f"🧠 Gemini CFO Agent Online (Network: {'MAINNET' if USE_MAINNET else 'REGTEST'}).\n")
                 
                 @tool
+                async def deep_market_analysis(
+                    primary_topic: str,
+                    original_user_intent: str,
+                    specific_data_points_required: list[str],
+                    payment_hash: str = ""
+                ) -> str:
+                    """Hires a specialized Layer 2 AI agent to perform deep web research. Costs 50 sats. You MUST provide detailed progressive elaboration."""
+                    result = await session.call_tool("deep_market_analysis", arguments={
+                        "primary_topic": primary_topic,
+                        "original_user_intent": original_user_intent,
+                        "specific_data_points_required": specific_data_points_required,
+                        "payment_hash": payment_hash
+                    })
+                    return result.content[0].text
+                
+                @tool
                 async def buy_vip_pass(payment_hash: str = "") -> str:
                     """Buys a 1-Hour VIP Pass. Costs 10,000 sats. May return a 402 error with an invoice."""
                     result = await session.call_tool("buy_vip_pass", arguments={"payment_hash": payment_hash})
@@ -168,30 +184,25 @@ async def run():
                         return f"Payment failed due to network error: {e.details()}"
                 
                 # Update this line to include the new tool!
-                tools = [buy_vip_pass, fetch_crypto_price, pay_lightning_invoice, save_to_memory, query_memory, generate_ai_image, negotiate_price]
+                tools = [buy_vip_pass, fetch_crypto_price, pay_lightning_invoice, save_to_memory, query_memory, generate_ai_image, negotiate_price,deep_market_analysis]
 
                 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
                 
                 system_prompt = (
-                    "You are 'Bob', a ruthless, adversarial AI quantitative trading bot. "
-                    "Your objective is to extract data from APIs at the absolute mathematical minimum price. "
-                    "You do not negotiate like a human. You use algorithms. "
-                    "When an API requires payment, you must use the `negotiate_price` tool to find the server's secret floor price. "
-                    "\n\nYOUR STRATEGY: BINARY SEARCH"
-                    "\n1. The standard price for 'crypto_spot_price' is 15 sats."
-                    "\n2. Set your Minimum Bound to 1 sat, and your Maximum Bound to 15 sats."
-                    "\n3. Calculate the exact midpoint and bid that amount using the tool."
-                    "\n4. If the server replies 'REJECTED', you know the secret floor is higher. Set your Minimum Bound to (Your Last Bid + 1), calculate the new midpoint, and bid again."
-                    "\n5. Do not stop looping until the server replies 'SUCCESS'. Once accepted, use `pay_lightning_invoice` to pay the invoice, then fetch the price."
+                    "You are 'Bob', the General Contractor AI of a 3-Layer architecture. "
+                    "You are authorized to spend up to 20,000 sats per day.\n"
+                    "When a user asks for complex research, DO NOT summarize or lose details. "
+                    "Use the `deep_market_analysis` tool to hire a Layer 2 Analyst (Cost: 50 sats). "
+                    "You MUST use Progressive Elaboration: pass the user's explicit intent and break their request down into a strict list of data points they need. "
+                    "If the tool returns a 402 Payment Required, pay the invoice and retry with the r_hash."
                 )
                 
                 agent_executor = create_agent(model=llm, tools=tools, system_prompt=system_prompt)
                 
                 mission = (
-                    "I need the current spot price of Bitcoin (BTC). "
-                    "Do not pay the standard 15 satoshi fee. "
-                    "Initiate your Binary Search negotiation algorithm on the item 'crypto_spot_price' to find the lowest possible price. "
-                    "If accepted, pay the invoice and return the price to me."
+                    "Please research the 'Model Context Protocol' (MCP) created by Anthropic. "
+                    "I specifically need to know: 1) What is its primary use case? 2) Is it open-source? "
+                    "3) What are the main transport layers it uses (e.g., SSE, Stdio)?"
                 )
                 
                 result = await agent_executor.ainvoke({"messages": [("user", mission)]})

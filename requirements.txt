@@ -4,5 +4,10 @@ grpcio
 grpcio-tools
 googleapis-common-protos
 mcp
-duckduckgo_search
+duckduckgo-search
+ddgs
 uvicorn
+langchain
+langchain-community
+langgraph
+langchain-google-genai

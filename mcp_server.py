@@ -8,6 +8,10 @@ import base64
 import time
 from duckduckgo_search import DDGS
 from mcp.server.fastmcp import FastMCP
+# --- UPDATED STABLE LANGCHAIN IMPORTS ---
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_core.prompts import PromptTemplate
 
 # We deleted USE_MAINNET and the os.environ overrides! 
 # Let Docker inject the variables!
@@ -207,7 +211,85 @@ def negotiate_price(item: str, bid_sats: int) -> str:
         return f"SUCCESS: Bid accepted. Please pay this discounted invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
     else:
         logger.info(f"❌ Bid rejected. {bid_sats} is below the floor.")
-        return f"REJECTED: Your bid of {bid_sats} sats is too low. The minimum accepted bid for {item} is {secret_floor} sats."
+        return f"REJECTED: Your bid of {bid_sats} sats is too low. Try a higher amount."
+    
+# --- LAYER 3 SPECIALIST (EVE) ---
+def layer_3_specialist(task: str, context: str) -> str:
+    """LAYER 3: A dedicated LLM worker that handles a single specific task."""
+    logger.info(f"    🕵️‍♀️ Layer 3 (Eve) waking up for sub-task: '{task[:30]}...'")
+    
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    llm_eve = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1, api_key=api_key)
+    search_tool = DuckDuckGoSearchRun()
+    
+    # Layer 4 (The Web)
+    logger.info("      🌐 Layer 3 (Eve) calling Layer 4 (Web Search)...")
+    search_query = f"{context} {task}"
+    raw_data = search_tool.invoke(search_query)
+    
+    # Eve analyzes the raw data
+    eve_prompt = (
+        f"You are Eve, a Layer 3 data extraction specialist.\n"
+        f"Context: {context}\n"
+        f"Your specific task: {task}\n\n"
+        f"Raw Web Data:\n{raw_data}\n\n"
+        "Extract the exact answer to your task from the raw data. Be concise and factual. Do not hallucinate."
+    )
+    return llm_eve.invoke(eve_prompt).content
+
+
+# --- LAYER 2 MANAGER (ALICE) ---
+@mcp.tool()
+def deep_market_analysis(
+    primary_topic: str,
+    original_user_intent: str,
+    specific_data_points_required: list[str],
+    payment_hash: str = ""
+) -> str:
+    """
+    PREMIUM LAYER 2 TOOL (Dynamic Cost: 25 sats per data point). 
+    Acts as a Manager that delegates tasks to Layer 3 Specialists.
+    """
+    compute_depth = len(specific_data_points_required)
+    dynamic_cost = compute_depth * 25 
+    
+    # 1. The Paywall
+    if not payment_hash or not lnd.verify_payment(payment_hash):
+        invoice_data = lnd.create_invoice(dynamic_cost, f"L2 Compute Depth {compute_depth}: {primary_topic}")
+        return f"402 Payment Required: This deep research requires {compute_depth} reasoning steps. Please pay {dynamic_cost} sats:\nInvoice: {invoice_data['payment_request']}\nHash: {invoice_data['r_hash']}"
+
+    logger.info(f"✅ Payment verified. Booting Layer 2 Manager (Alice) for: {primary_topic}")
+
+    try:
+        # Alice loops through Bob's requirements and hires Eve for each one
+        layer_3_results = []
+        for i, req in enumerate(specific_data_points_required):
+            logger.info(f"  👩‍💼 Layer 2 (Alice) delegating Sub-Task {i+1}/{compute_depth} to Layer 3...")
+            # THE INCEPTION CASCADES HERE
+            l3_answer = layer_3_specialist(req, primary_topic)
+            layer_3_results.append(f"Point {i+1} ({req}):\n{l3_answer}\n")
+            
+        # Alice aggregates the reports
+        logger.info("  👩‍💼 Layer 2 (Alice) aggregating Layer 3 reports into final synthesis...")
+        aggregated_data = "\n".join(layer_3_results)
+        
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        llm_alice = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=api_key)
+        
+        alice_prompt = (
+            f"You are Alice, the Layer 2 Manager.\n"
+            f"The original user intent is: {original_user_intent}\n\n"
+            f"Your Layer 3 specialists have returned the following verified data points:\n"
+            f"{aggregated_data}\n\n"
+            "Format this into a cohesive, professional executive summary. You are presenting this to the Layer 1 CFO."
+        )
+        
+        final_report = llm_alice.invoke(alice_prompt).content
+        
+        return f"📊 4-LAYER ANALYSIS COMPLETE:\n{final_report}"
+        
+    except Exception as e:
+        return f"Layer 2 Sub-Agent failed during execution: {str(e)}"
 
 if __name__ == "__main__":
     logger.info("Starting MCP Server on SSE transport...")
