@@ -59,7 +59,7 @@ target/
 # Python Wheels (built packages)
 *.whl
 # Linux Shared Objects (if we cross-compile later)
-*.sosecrets/
+*.so
 
 # Mainnet Credentials (NEVER COMMIT THESE)
 mainnet_secrets/
