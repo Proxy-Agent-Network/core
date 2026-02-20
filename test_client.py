@@ -43,55 +43,61 @@ def pay_invoice_with_bob(payment_request):
     print("✅ Payment successfully routed over Lightning!")
     return response
 
+async def execute_premium_tool(session, tool_name: str, arguments: dict):
+    """A universal router that calls a tool, catches 402 errors, pays them, and retries."""
+    print(f"\n🚀 Attempting to execute '{tool_name}'...")
+    
+    # Strike 1: Initial Request
+    result = await session.call_tool(tool_name, arguments=arguments)
+    response_text = result.content[0].text
+    
+    # Check for Paywall
+    if "402 Payment Required" in response_text:
+        print(f"🛑 Hit L402 Paywall for {tool_name}! Engaging autonomous payment protocol...")
+        
+        # Parse Invoice and Hash
+        invoice_match = re.search(r"Invoice: (lnbc[a-zA-Z0-9]+)", response_text)
+        hash_match = re.search(r"Hash to use: ([a-f0-9]+)", response_text)
+        
+        if invoice_match and hash_match:
+            invoice = invoice_match.group(1)
+            r_hash = hash_match.group(1)
+            
+            # Autonomously Pay the Invoice
+            pay_invoice_with_bob(invoice)
+            
+            # Strike 2: Re-request with proof
+            print(f"🚀 Re-requesting '{tool_name}' with cryptographic proof: {r_hash[:10]}...")
+            arguments["payment_hash"] = r_hash # Inject the proof into the arguments
+            
+            result2 = await session.call_tool(tool_name, arguments=arguments)
+            return result2.content[0].text
+        else:
+            return "❌ Failed to parse invoice or hash."
+            
+    # If no paywall (or it was a free tool), just return the result
+    return response_text
+
 async def run():
     url = "http://127.0.0.1:8000/sse"
-    print(f"🔌 Connecting AI Agent to proxy at {url}...")
+    print(f"🔌 Connecting Universal AI Agent to proxy at {url}...")
     
     try:
         async with sse_client(url) as streams:
             async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
-                print("🤖 Agent Online. Attempting to fetch premium data...\n")
+                print("🤖 Agent Online. Entering marketplace...\n")
                 
-                # STRIKE 1: Request without paying
-                print("🚀 [Attempt 1] Requesting data...")
-                result = await session.call_tool(
-                    "get_crypto_spot_price", 
-                    arguments={"ticker": "BTC"}
-                )
+                # TASK 1: Buy the 15-sat Spot Price
+                print("=== TASK 1: Fetching BTC Spot Price (15 sats) ===")
+                result1 = await execute_premium_tool(session, "get_crypto_spot_price", {"ticker": "BTC"})
+                print(f"🎯 Final Result:\n{result1}\n")
                 
-                response_text = result.content[0].text
-                print(f"🎯 Server Response:\n{response_text}")
+                # TASK 2: Buy the 50-sat Market Summary
+                print("=== TASK 2: Fetching ETH Market Summary (50 sats) ===")
+                result2 = await execute_premium_tool(session, "generate_market_summary", {"asset": "ETH"})
+                print(f"🎯 Final Result:\n{result2}\n")
                 
-                # Check for L402 Paywall
-                if "402 Payment Required" in response_text:
-                    print("🛑 Hit L402 Paywall! Engaging autonomous payment protocol...")
-                    
-                    # Extract Invoice and Hash
-                    invoice_match = re.search(r"Invoice: (lnbc[a-zA-Z0-9]+)", response_text)
-                    hash_match = re.search(r"Hash to use: ([a-f0-9]+)", response_text)
-                    
-                    if invoice_match and hash_match:
-                        invoice = invoice_match.group(1)
-                        r_hash = hash_match.group(1)
-                        
-                        # Automate Payment
-                        pay_invoice_with_bob(invoice)
-                        
-                        # STRIKE 2: Re-request with proof of payment
-                        print(f"\n🚀 [Attempt 2] Re-requesting data with cryptographic proof: {r_hash[:10]}...")
-                        result2 = await session.call_tool(
-                            "get_crypto_spot_price", 
-                            arguments={
-                                "ticker": "BTC",
-                                "payment_hash": r_hash
-                            }
-                        )
-                        print("\n🎯 Final Server Response:")
-                        print(result2.content[0].text)
-                    else:
-                        print("❌ Failed to parse invoice or hash from the server response.")
-                        
     except Exception as e:
         print(f"❌ Error: {e}")
 

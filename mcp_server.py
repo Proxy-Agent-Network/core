@@ -8,6 +8,10 @@ import base64
 import time
 from duckduckgo_search import DDGS
 from mcp.server.fastmcp import FastMCP
+
+# We deleted USE_MAINNET and the os.environ overrides! 
+# Let Docker inject the variables!
+
 from lightning_engine import LightningEngine
 
 # Setup logging
@@ -16,7 +20,7 @@ logger = logging.getLogger("MCP-Server")
 
 mcp = FastMCP("LightningProxyServer", host="0.0.0.0", port=8000)
 
-# Initialize our Lightning Engine
+# Initialize our Lightning Engine (It will now catch the Mainnet variables!)
 lnd = LightningEngine()
 lnd.connect()
 
@@ -155,7 +159,7 @@ def generate_image(prompt: str, payment_hash: str = None) -> str:
         return "ERROR: 401 Unauthorized. Payment not found or not settled."
 
     try:
-        api_key = os.environ.get("GEMINI_API_KEY")
+        api_key = os.environ.get("GOOGLE_API_KEY")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
         payload = {"instances": [{"prompt": prompt}], "parameters": {"aspectRatio": "1:1"}}
         response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload)
@@ -174,6 +178,36 @@ def generate_image(prompt: str, payment_hash: str = None) -> str:
         return f"🔓 ACCESS GRANTED. However, the Image API failed with status {response.status_code}: {response.text}"
     except Exception as e:
         return f"🔓 ACCESS GRANTED (Payment Verified). However, the image generation failed: {e}"
+    
+@mcp.tool()
+def negotiate_price(item: str, bid_sats: int) -> str:
+    """
+    PREMIUM TOOL: Allows an agent to negotiate the price of a resource.
+    The server will evaluate the bid and return a custom invoice if accepted.
+    """
+    logger.info(f"🤖 AI is attempting to negotiate '{item}' for {bid_sats} sats.")
+    
+    # Simple negotiation logic: Alice has a secret "floor" price for items
+    floor_prices = {
+        "crypto_spot_price": 10,  # Normally 15
+        "web_search": 12,         # Normally 20
+        "image_generation": 80    # Normally 100
+    }
+    
+    # Check if the item is negotiable
+    if item not in floor_prices:
+        return f"ERROR: The item '{item}' is not open for negotiation."
+        
+    # Evaluate the bid
+    secret_floor = floor_prices[item]
+    
+    if bid_sats >= secret_floor:
+        logger.info(f"🤝 Bid accepted! Generating discounted invoice for {bid_sats} sats.")
+        invoice_data = lnd.create_invoice(bid_sats, f"Discounted {item}")
+        return f"SUCCESS: Bid accepted. Please pay this discounted invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
+    else:
+        logger.info(f"❌ Bid rejected. {bid_sats} is below the floor.")
+        return f"REJECTED: Your bid of {bid_sats} sats is too low. The minimum accepted bid for {item} is {secret_floor} sats."
 
 if __name__ == "__main__":
     logger.info("Starting MCP Server on SSE transport...")

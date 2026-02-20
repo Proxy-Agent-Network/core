@@ -60,3 +60,10 @@ target/
 *.whl
 # Linux Shared Objects (if we cross-compile later)
 *.sosecrets/
+
+# Mainnet Credentials (NEVER COMMIT THESE)
+mainnet_secrets/
+*.macaroon
+*.cert
+agent_memory.db
+polar_keys/

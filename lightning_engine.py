@@ -21,8 +21,8 @@ LND_HOST = os.getenv('LND_GRPC_HOST', 'host.docker.internal')
 LND_PORT = os.getenv('LND_GRPC_PORT', '10001')
 
 # PATHS (Mapped via Docker Volume)
-CERT_PATH = '/root/.lnd/tls.cert'
-MACAROON_PATH = '/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon'
+CERT_PATH = os.getenv('LND_TLS_CERT_PATH', '/root/.lnd/tls.cert')
+MACAROON_PATH = os.getenv('LND_MACAROON_PATH', '/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon')
 
 class LightningEngine:
     def __init__(self):

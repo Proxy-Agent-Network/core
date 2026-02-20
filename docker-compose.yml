@@ -1,39 +1,27 @@
-version: '3.8'
-
 services:
-  agent:
-    image: proxy-node:v0.1-alpha
+  proxy-node:
     container_name: proxy_agent_v1
-    command: >
-      bash -c "pip install mcp uvicorn starlette langchain langchain-google-genai langgraph duckduckgo-search && python mcp_server.py"
-    volumes:
-      - .:/app
-      # Alice's keys (The Server / Merchant)
-      - ./secrets/tls.cert:/root/.lnd/tls.cert
-      - ./secrets/admin.macaroon:/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon
-      # Bob's keys (The Client / Buyer)
-      - ./secrets/bob/tls.cert:/root/.bob/tls.cert
-      - ./secrets/bob/admin.macaroon:/root/.bob/admin.macaroon
-    environment:
-      - FLASK_ENV=development
-      # Safely injects the key from your local .env file!
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      # Server Node (Alice)
-      - LND_GRPC_HOST=polar-n1-alice
-      - LND_GRPC_PORT=10009
-      # Client Node (Bob)
-      - BOB_GRPC_HOST=polar-n1-bob
-      - BOB_GRPC_PORT=10009
-      - HOST=0.0.0.0 
-      - PORT=8000
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "5000:5000"
       - "8000:8000"
+    volumes:
+      - proxy_data:/app/data
+    env_file:
+      - .env
+    environment:
+      - FLASK_ENV=development
+      - FLASK_SECRET_KEY=docker_local_dev_key
+      - DOCKER_CONTAINER=true
     networks:
-      - default
-      - polar_network
+      - proxy-net
+    restart: unless-stopped
+
+volumes:
+  proxy_data:
 
 networks:
-  polar_network:
-    external: true
-    name: polar-network-1_default
+  proxy-net:
+    driver: bridge

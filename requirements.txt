@@ -3,3 +3,6 @@ requests
 grpcio
 grpcio-tools
 googleapis-common-protos
+mcp
+duckduckgo_search
+uvicorn
