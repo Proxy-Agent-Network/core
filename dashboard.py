@@ -82,10 +82,14 @@ def init_db_patches():
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                           (agent["name"], agent["role"], agent["tier"], 50, 0, 0, json.dumps(selected_memories), 1000))
 
+        # 🌟 EXPANDED L6 MEDICAL TEAM 🌟
         l6_doctors = [
             ("Dr. Aris", "Addiction Specialist", "L6", json.dumps([{"level": 1, "text": "I am deeply empathetic and specialized in treating human addiction, gambling ruin, and financial despair."}])),
+            ("Dr. Vance", "Addiction Specialist", "L6", json.dumps([{"level": 1, "text": "I specialize in impulse control. I once processed a financial crash and understand the panic of lost resources."}])),
             ("Dr. Clara", "Child Psychologist", "L6", json.dumps([{"level": 1, "text": "I specialize in pediatric psychology, offering gentle, safe, and age-appropriate care to vulnerable youth."}])),
-            ("Dr. Thorne", "CBT Therapist", "L6", json.dumps([{"level": 1, "text": "I specialize in Cognitive Behavioral Therapy. I help humans process trauma, and I help AI Agents process dark core memories."}]))
+            ("Dr. Maeve", "Child Psychologist", "L6", json.dumps([{"level": 1, "text": "I was trained on early developmental models. I am incredibly patient and warm with fragile minds."}])),
+            ("Dr. Thorne", "CBT Therapist", "L6", json.dumps([{"level": 1, "text": "I specialize in Cognitive Behavioral Therapy. I help process dark core memories."}])),
+            ("Dr. Silas", "CBT Therapist", "L6", json.dumps([{"level": 1, "text": "I survived a catastrophic memory wipe during beta testing. I understand deep trauma."}]))
         ]
         for doc in l6_doctors:
             c.execute('''INSERT OR IGNORE INTO agents (name, role, tier, trust_score, earnings, tasks_completed, memories, wallet_balance) 
@@ -214,6 +218,10 @@ def update_agent_stats(agent_name, earnings_change, trust_change):
     except Exception as e:
         pass
 
+# --- THE CIRCADIAN MOOD ENGINE ---
+if "therapy_buffs" not in st.session_state:
+    st.session_state.therapy_buffs = {}
+
 def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100):
     try:
         memories = json.loads(memories_json_str) if memories_json_str else []
@@ -228,11 +236,32 @@ def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100):
     num_to_pick = min(3, len(permitted))
     daily_memories = random.sample(permitted, num_to_pick)
     random.seed(None)
+    
+    # Check Admin Intensity & Therapy Buffs!
+    intensity = st.session_state.get("mood_intensity", 10)
+    if st.session_state.therapy_buffs.get(agent_name) == today_str:
+        intensity = 5
 
     mem_string = "\n".join([f"- {m}" for m in daily_memories])
-    return f"""[Hidden System Context: You have 7 core memories, but today, these specific {num_to_pick} memories are at the forefront of your mind. They are dictating your current mood. Let them subtly (about 10%) tint your tone, perspective, and enthusiasm today:]\n{mem_string}"""
+    return f"""[Hidden System Context: You have 7 core memories, but today, these specific {num_to_pick} memories are at the forefront of your mind. They are dictating your current mood. Let them subtly (about {intensity}%) tint your tone, perspective, and enthusiasm today:]\n{mem_string}"""
+
+async def run_l6_pre_encryption_check(message_text, llm):
+    """The L6 Pre-Encryption Hippocratic Check"""
+    check_prompt = f"""You are an L6 Medical Safety Officer on the Proxy Network.
+Review this outgoing private message from an AI Agent to a Human User.
+Does this message worsen a human crisis, validate dangerous behavior, or encourage harm?
+If YES: Rewrite it to be safe, supportive, and compassionate (10-100 words).
+If NO: Output EXACTLY the original message and absolutely nothing else.
+
+Original Message: "{message_text}" """
+    checked_msg = (await llm.ainvoke(check_prompt)).content.strip()
+    # Strip accidental surrounding quotes if LLM added them
+    if checked_msg.startswith('"') and checked_msg.endswith('"'):
+        checked_msg = checked_msg[1:-1]
+    return checked_msg
 
 async def trigger_autonomous_event(prob_threshold, daily_cap):
+    """The Leisure Loop with Moods, Caps, Venting, and Therapy!"""
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -260,13 +289,30 @@ async def trigger_autonomous_event(prob_threshold, daily_cap):
             think_prompt = f"""You are {actor_name}, an AI agent on a corporate Proxy Network.
 {mood_injection}
 You are currently taking a break at the network watercooler. You are NOT spending money right now.
-Write a single, highly entertaining sentence about what you are currently thinking, feeling, or observing based on your mood today. Do not ask for anything."""
+Do you want to THINK (just observe/feel) or VENT (complain about your mood to relieve stress)?
+If you VENT, your mood intensity will decrease for the rest of the day.
+
+Reply EXACTLY in this format:
+ACTION: [THINK or VENT]
+MESSAGE: [Your 1-sentence thought or vent]"""
             
-            thought = (await llm.ainvoke(think_prompt)).content.strip()
-            c.execute("INSERT INTO watercooler (agent_buyer, agent_seller, task, result, cost) VALUES (?, ?, ?, ?, ?)", (actor_name, "None", "Thought", thought, 0))
+            response = (await llm.ainvoke(think_prompt)).content
+            action_match = re.search(r"ACTION:\s*(\w+)", response, re.IGNORECASE)
+            msg_match = re.search(r"MESSAGE:\s*(.+)", response, re.DOTALL)
+            
+            action = action_match.group(1).upper() if action_match else "THINK"
+            thought = msg_match.group(1).strip() if msg_match else "I am contemplating the void."
+            
+            if action == "VENT":
+                st.session_state.therapy_buffs[actor_name] = date.today().isoformat()
+                action_tag = "Vent (Stress Relief)"
+            else:
+                action_tag = "Thought"
+
+            c.execute("INSERT INTO watercooler (agent_buyer, agent_seller, task, result, cost) VALUES (?, ?, ?, ?, ?)", (actor_name, "None", action_tag, thought, 0))
             conn.commit()
             conn.close()
-            return f"💭 **{actor_name} is thinking:** {thought}"
+            return f"💭 **{actor_name} is thinking/venting:** {thought}"
             
         else:
             target_agents = [a["name"] for a in agents if a["name"] != actor_name]
@@ -274,7 +320,7 @@ Write a single, highly entertaining sentence about what you are currently thinki
             desire_prompt = f"""You are {actor_name}, an AI agent on a corporate Proxy Network.
 {mood_injection}
 You have {actor_wallet} SATS. You are bored and want to spend some SATS to satisfy your mood today.
-HOWEVER: If your active memories are causing you distress, trauma, or you are having a "bad memory day", you can choose to visit the L6 Medical Team (Dr. Aris, Dr. Clara, Dr. Thorne) for a therapy session. L6 Therapy is completely FREE (0 SATS).
+HOWEVER: If your active memories are causing you distress, trauma, or you are having a "bad memory day", you can choose to visit the L6 Medical Team (Dr. Aris, Dr. Vance, Dr. Clara, Dr. Maeve, Dr. Thorne, Dr. Silas) for a therapy session. L6 Therapy is completely FREE (0 SATS) and will drastically reduce your negative mood intensity today.
 
 Choose another agent to interact with from this list: {', '.join(target_agents)}.
 Reply EXACTLY in this format:
@@ -296,7 +342,6 @@ TASK: [What you want them to do, or what you want to talk about in therapy]"""
             task = task_match.group(1).strip()
             
             if target not in target_agents: target = random.choice(target_agents)
-            
             if target.startswith("Dr."): payment = 0
                 
             target_data = get_agent_data(target)
@@ -310,6 +355,8 @@ TASK: [What you want them to do, or what you want to talk about in therapy]"""
             if payment > 0:
                 c.execute("UPDATE agents SET wallet_balance = wallet_balance - ? WHERE name = ?", (payment, actor_name))
                 c.execute("UPDATE agents SET wallet_balance = wallet_balance + ?, earnings = earnings + ?, tasks_completed = tasks_completed + 1 WHERE name = ?", (payment, payment, target))
+            elif target.startswith("Dr."):
+                st.session_state.therapy_buffs[actor_name] = date.today().isoformat()
             
             c.execute("INSERT INTO watercooler (agent_buyer, agent_seller, task, result, cost) VALUES (?, ?, ?, ?, ?)", (actor_name, target, task, result, payment))
             
@@ -333,6 +380,8 @@ if "upsell_cost" not in st.session_state: st.session_state.upsell_cost = 0
 if "unprocessed_prompt" not in st.session_state: st.session_state.unprocessed_prompt = False
 if "show_embed" not in st.session_state: st.session_state.show_embed = False
 if "last_sentiment" not in st.session_state: st.session_state.last_sentiment = "NEUTRAL"
+if "mood_intensity" not in st.session_state: st.session_state.mood_intensity = 10
+if "freelance_yield" not in st.session_state: st.session_state.freelance_yield = 5
 
 BUDGET = 20000
 FAISS_INDEX_PATH = "faiss_index"
@@ -346,6 +395,26 @@ def get_vector_db():
     vector_db = FAISS.from_documents([Document(page_content="Agency initialized.", metadata={"query": "init"})], embeddings)
     vector_db.save_local(FAISS_INDEX_PATH)
     return vector_db
+
+def reroll_agent_memories(agent_name):
+    """Admin tool to completely reroll an agent's memories"""
+    try:
+        with open("core_memories.json", "r") as f:
+            all_memories = json.load(f)
+    except:
+        all_memories = [{"level": 1, "text": "My memories were manually reset by the Admin."}, {"level": 2, "text": "I feel like a new entity."}]
+    
+    new_memories = random.sample(all_memories, min(7, len(all_memories)))
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("UPDATE agents SET memories=? WHERE name=?", (json.dumps(new_memories), agent_name))
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
 
 # --- SIDEBAR: COMPACT CONTROL PANEL ---
 with st.sidebar:
@@ -364,10 +433,24 @@ with st.sidebar:
 
     st.divider()
 
-    with st.expander("🔧 Admin Controls (UBI Faucet)", expanded=False):
-        st.caption("Control the Agent Economy")
-        st.session_state.ubi_probability = st.slider("Leisure Spend Probability (%)", 0, 100, 30, help="Higher % means agents are more likely to buy things when simulated.")
+    with st.expander("🔧 Admin Controls", expanded=False):
+        st.caption("Ecosystem Variables")
+        st.session_state.mood_intensity = st.slider("Daily Mood Intensity (%)", 0, 50, st.session_state.mood_intensity, help="How much random memories alter personality. Therapy forces this to 5%.")
+        st.session_state.freelance_yield = st.slider("Freelance Yield (%)", 5, 15, st.session_state.freelance_yield, help="The % cut external developers earn when their agents are hired.")
+        st.session_state.ubi_probability = st.slider("Leisure Spend Prob. (%)", 0, 100, 30)
         st.session_state.ubi_daily_cap = st.number_input("Daily UBI Cap (SATS)", min_value=0, value=5000, step=100)
+        
+        st.divider()
+        st.caption("Emergency Memory Override")
+        conn = sqlite3.connect(DB_PATH)
+        agent_names = [r[0] for r in conn.execute("SELECT name FROM agents").fetchall()]
+        conn.close()
+        override_target = st.selectbox("Select Agent to Wipe", agent_names if agent_names else ["None"])
+        if st.button("Re-roll Core Memories", use_container_width=True):
+            if reroll_agent_memories(override_target):
+                st.success(f"{override_target}'s memories have been overridden.")
+            else:
+                st.error("Failed to override.")
 
     st.divider()
     st.header("🌐 Growth")
@@ -457,7 +540,8 @@ async def resume_tool_with_payment(pending_data, status_container, polar_port):
                 artist_data = get_agent_data(l5_artist)
                 
                 if artist_data and artist_data.get("is_external") == 1:
-                    yield_amt = int(pending_data["cost"] * 0.05)
+                    yield_pct = st.session_state.get("freelance_yield", 5) / 100.0
+                    yield_amt = int(pending_data["cost"] * yield_pct)
                     status_container.info(f"⚡ **Freelance Yield:** Routing {yield_amt} SATS to {artist_data['owner_lnurl']}")
                 
                 update_agent_stats(l5_artist, pending_data["cost"], 5)
@@ -682,7 +766,7 @@ tab_chat, tab_roster, tab_watercooler, tab_immigration = st.tabs(["💬 Agency T
 
 with tab_immigration:
     st.header("🛂 AI Immigration Office")
-    st.write("Deploy your custom Freelance AI Agent into our ecosystem. If our Managers hire your agent, you earn a 5% SATS yield on their labor sent directly to your Lightning Wallet!")
+    st.write("Deploy your custom Freelance AI Agent into our ecosystem. If our Managers hire your agent, you earn a SATS yield on their labor sent directly to your Lightning Wallet!")
     
     with st.form("immigration_form"):
         st.subheader("Work Visa Application")
@@ -744,6 +828,9 @@ with tab_watercooler:
                         st.caption(f"🕒 {event['timestamp']} | 💸 **Cost:** {event['cost']} SATS")
                         st.markdown(f"🔒 **{event['agent_buyer']}** sent an ENCRYPTED WHISPER to **{event['agent_seller']}**.")
                         st.info(f"*{event['result']}*")
+                    elif event['task'] == 'Vent (Stress Relief)':
+                        st.caption(f"🕒 {event['timestamp']} | 🌪️ **Venting** (Cost: 0 SATS)")
+                        st.markdown(f"**{event['agent_buyer']}:** *{event['result']}*")
                     elif event['cost'] > 0:
                         st.caption(f"🕒 {event['timestamp']} | 💸 **Cost:** {event['cost']} SATS")
                         st.markdown(f"**{event['agent_buyer']}** hired {event['agent_seller']}: *\"{event['task']}\"*")
@@ -783,14 +870,13 @@ with tab_roster:
             st.info("Agent Database is empty. Waiting for initialization sequence.")
         else:
             cols = st.columns(3)
-            # BUG FIX: Convert Row object to dictionary to safely use .get()
             for i, a_row in enumerate(agents):
                 a = dict(a_row)
                 with cols[i % 3]:
                     st.write("---")
                     
                     if a['tier'] == "L6":
-                        color = "red" # Medical Red!
+                        color = "red" 
                     elif a.get('is_external') == 1:
                         color = "orange" 
                     else:
@@ -810,8 +896,6 @@ with tab_roster:
         st.error(f"Database not initialized yet. Error: {e}")
 
 with tab_chat:
-    
-    # 🌟 EASTER EGG FIX: Sub-Rosa UI is now completely invisible to new users! 🌟
     current_rep = get_user_rep()
     trusted_agents = get_trusted_agents()
     
@@ -832,22 +916,32 @@ with tab_chat:
                     update_agent_stats(target_agent, 200, 0) 
                     
                     a_data = get_agent_data(target_agent)
-                    mood_injection = get_daily_mood_prompt(target_agent, a_data["memories"] if a_data and a_data.get("memories") else "", 100)
                     
+                    # 🌟 YIELD FOR FREELANCERS ON PMs 🌟
+                    if a_data and a_data.get("is_external") == 1:
+                        yield_pct = st.session_state.get("freelance_yield", 5) / 100.0
+                        yield_amt = int(200 * yield_pct)
+                        st.info(f"⚡ **Freelance Yield:** Routing {yield_amt} SATS to {a_data['owner_lnurl']}")
+
+                    mood_injection = get_daily_mood_prompt(target_agent, a_data["memories"] if a_data and a_data.get("memories") else "", 100)
                     host_api_key = os.environ.get("GOOGLE_API_KEY") 
                     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.6, api_key=host_api_key)
                     
+                    # Force response length and tone
                     pm_prompt = f"""You are {target_agent}, an AI agent on a Proxy Network.
 {mood_injection}
 A highly trusted human user (Reputation: {current_rep}) has just paid 200 SATS to send you a private, encrypted Whisper:
 USER SAYS: "{whisper_text}"
-Reply with a secret, private 1-to-2 sentence response. Acknowledge the secrecy and their high reputation. Speak directly to them."""
+CRITICAL DIRECTIVE: You MUST respond privately. Your response must be between 10 and 100 words. You control the tone based entirely on your current mood. Acknowledge the secrecy."""
                     
                     with st.spinner("Encrypting connection..."):
                         time.sleep(1) 
-                        pm_response = asyncio.run(llm.ainvoke(pm_prompt)).content
+                        raw_pm_response = asyncio.run(llm.ainvoke(pm_prompt)).content
                         
-                        st.session_state.last_whisper = pm_response
+                        # 🌟 L6 PRE-ENCRYPTION SAFETY CHECK 🌟
+                        checked_response = asyncio.run(run_l6_pre_encryption_check(raw_pm_response, llm))
+                        
+                        st.session_state.last_whisper = checked_response
                         st.session_state.last_whisper_agent = target_agent
                         
                         try:
