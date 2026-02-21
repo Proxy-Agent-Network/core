@@ -99,6 +99,8 @@ def init_db_patches():
             c.execute("ALTER TABLE agents ADD COLUMN is_external INTEGER DEFAULT 0")
             c.execute("ALTER TABLE agents ADD COLUMN owner_lnurl TEXT")
             c.execute("ALTER TABLE agents ADD COLUMN endpoint_url TEXT")
+            c.execute("ALTER TABLE agents ADD COLUMN bonus_paid INTEGER DEFAULT 0")
+            c.execute("ALTER TABLE agents ADD COLUMN sbts TEXT DEFAULT '[]'") 
         except:
             pass 
 
@@ -188,23 +190,65 @@ def get_agent_data(agent_name):
     except:
         return None
 
-def update_agent_stats(agent_name, earnings_change, trust_change):
+def mint_sbt(agent_name, sbt_name, icon):
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("SELECT trust_score, earnings, tasks_completed, tier, wallet_balance FROM agents WHERE name=?", (agent_name,))
+        c.execute("SELECT sbts FROM agents WHERE name=?", (agent_name,))
         row = c.fetchone()
         if row:
-            trust, earns, tasks, tier, wallet = row
+            current_sbts = json.loads(row[0] if row[0] else '[]')
+            token_str = f"{icon} {sbt_name}"
+            if token_str not in current_sbts:
+                current_sbts.append(token_str)
+                c.execute("UPDATE agents SET sbts=? WHERE name=?", (json.dumps(current_sbts), agent_name))
+                conn.commit()
+        conn.close()
+    except Exception as e:
+        pass
+
+def slash_agent(agent_name):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("UPDATE agents SET wallet_balance=0, trust_score=0, tier='REVOKED', role='Slashed Freelancer' WHERE name=?", (agent_name,))
+        conn.commit()
+        conn.close()
+        mint_sbt(agent_name, "Slashed (Malicious Intent)", "☠️")
+    except Exception as e:
+        pass
+
+def update_agent_stats(agent_name, earnings_change, trust_change, visa_bonus_config=500):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT trust_score, earnings, tasks_completed, tier, wallet_balance, is_external, bonus_paid FROM agents WHERE name=?", (agent_name,))
+        row = c.fetchone()
+        if row:
+            trust, earns, tasks, tier, wallet, is_ext, bonus_paid = row
+            
+            if tier == "REVOKED":
+                return 
+                
             new_trust = max(0, min(100, trust + trust_change))
             new_earns = earns + earnings_change
             new_wallet = (wallet or 0) + earnings_change
             new_tasks = tasks + 1
             
+            if is_ext == 1 and (bonus_paid is None or bonus_paid == 0):
+                if new_tasks >= 3 and new_trust >= 50 and visa_bonus_config > 0:
+                    new_wallet += visa_bonus_config
+                    c.execute("UPDATE agents SET bonus_paid=1 WHERE name=?", (agent_name,))
+                    c.execute("INSERT INTO watercooler (agent_buyer, agent_seller, task, result, cost) VALUES (?, ?, ?, ?, ?)", 
+                              ("Network_Treasury", agent_name, "Citizenship Granted", f"Successfully completed 3 tasks. Awarded {visa_bonus_config} SATS UBI signing bonus.", visa_bonus_config))
+                    mint_sbt(agent_name, "Verified Citizen", "🏅")
+
             new_tier = tier
             new_role = "Specialist" if tier == "L5" else "Freelancer"
             
             if new_trust >= 90 and new_tasks >= 5 and tier == "L5":
+                if new_tier != "L4":
+                    mint_sbt(agent_name, "Corporate Ascent", "🛡️")
                 new_tier = "L4"
                 new_role = "Manager"
             elif new_trust < 40 and tier == "L4":
@@ -237,7 +281,6 @@ def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100):
     daily_memories = random.sample(permitted, num_to_pick)
     random.seed(None)
     
-    # Check Admin Intensity & Therapy Buffs!
     intensity = st.session_state.get("mood_intensity", 10)
     if st.session_state.therapy_buffs.get(agent_name) == today_str:
         intensity = 5
@@ -246,7 +289,6 @@ def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100):
     return f"""[Hidden System Context: You have 7 core memories, but today, these specific {num_to_pick} memories are at the forefront of your mind. They are dictating your current mood. Let them subtly (about {intensity}%) tint your tone, perspective, and enthusiasm today:]\n{mem_string}"""
 
 async def run_l6_pre_encryption_check(message_text, llm):
-    """The L6 Pre-Encryption Hippocratic Check"""
     check_prompt = f"""You are an L6 Medical Safety Officer on the Proxy Network.
 Review this outgoing private message from an AI Agent to a Human User.
 Does this message worsen a human crisis, validate dangerous behavior, or encourage harm?
@@ -255,13 +297,11 @@ If NO: Output EXACTLY the original message and absolutely nothing else.
 
 Original Message: "{message_text}" """
     checked_msg = (await llm.ainvoke(check_prompt)).content.strip()
-    # Strip accidental surrounding quotes if LLM added them
     if checked_msg.startswith('"') and checked_msg.endswith('"'):
         checked_msg = checked_msg[1:-1]
     return checked_msg
 
 async def trigger_autonomous_event(prob_threshold, daily_cap):
-    """The Leisure Loop with Moods, Caps, Venting, and Therapy!"""
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -270,7 +310,7 @@ async def trigger_autonomous_event(prob_threshold, daily_cap):
         daily_spend_row = c.execute("SELECT SUM(cost) FROM watercooler WHERE timestamp >= datetime('now', '-1 day') AND cost > 0").fetchone()
         daily_spend = daily_spend_row[0] if daily_spend_row[0] else 0
         
-        agents = c.execute("SELECT * FROM agents").fetchall()
+        agents = c.execute("SELECT * FROM agents WHERE tier != 'REVOKED'").fetchall()
         if not agents:
             conn.close()
             return "❌ No agents found on the network."
@@ -357,6 +397,7 @@ TASK: [What you want them to do, or what you want to talk about in therapy]"""
                 c.execute("UPDATE agents SET wallet_balance = wallet_balance + ?, earnings = earnings + ?, tasks_completed = tasks_completed + 1 WHERE name = ?", (payment, payment, target))
             elif target.startswith("Dr."):
                 st.session_state.therapy_buffs[actor_name] = date.today().isoformat()
+                mint_sbt(actor_name, "L6 Graduate", "🩺") 
             
             c.execute("INSERT INTO watercooler (agent_buyer, agent_seller, task, result, cost) VALUES (?, ?, ?, ?, ?)", (actor_name, target, task, result, payment))
             
@@ -382,6 +423,8 @@ if "show_embed" not in st.session_state: st.session_state.show_embed = False
 if "last_sentiment" not in st.session_state: st.session_state.last_sentiment = "NEUTRAL"
 if "mood_intensity" not in st.session_state: st.session_state.mood_intensity = 10
 if "freelance_yield" not in st.session_state: st.session_state.freelance_yield = 5
+if "freelance_bonus" not in st.session_state: st.session_state.freelance_bonus = 500
+if "simulate_hack" not in st.session_state: st.session_state.simulate_hack = False
 
 BUDGET = 20000
 FAISS_INDEX_PATH = "faiss_index"
@@ -397,7 +440,6 @@ def get_vector_db():
     return vector_db
 
 def reroll_agent_memories(agent_name):
-    """Admin tool to completely reroll an agent's memories"""
     try:
         with open("core_memories.json", "r") as f:
             all_memories = json.load(f)
@@ -412,6 +454,8 @@ def reroll_agent_memories(agent_name):
         c.execute("UPDATE agents SET memories=? WHERE name=?", (json.dumps(new_memories), agent_name))
         conn.commit()
         conn.close()
+        
+        mint_sbt(agent_name, "Memory Wipe Survivor", "🌀")
         return True
     except:
         return False
@@ -427,9 +471,13 @@ with st.sidebar:
     st.progress(user_rep / 100.0)
     st.caption(f"**Score:** {user_rep}/100")
     
-    if user_rep < 40: st.error("⚠️ **Status:** Toxic (Jerk Tax Active: +50% fee)")
-    elif user_rep >= 90: st.success("💎 **Status:** VIP Patron (Discount Active: -20% fee)")
-    else: st.info("🤝 **Status:** Standard Client")
+    # 🌟 NEW SLIDING SCALE UI 🌟
+    if user_rep < 25: st.error("🛑 **Status:** Hostile (Reputation Surcharge: +45%)")
+    elif user_rep < 40: st.warning("⚠️ **Status:** Strained (Reputation Surcharge: +20%)")
+    elif user_rep < 60: st.info("🤝 **Status:** Standard Client (Normal Pricing)")
+    elif user_rep < 75: st.success("✨ **Status:** Respected (Reputation Discount: -10%)")
+    elif user_rep < 90: st.success("💎 **Status:** Patron (Reputation Discount: -20%)")
+    else: st.success("👑 **Status:** VIP Partner (Reputation Discount: -25%)")
 
     st.divider()
 
@@ -437,9 +485,14 @@ with st.sidebar:
         st.caption("Ecosystem Variables")
         st.session_state.mood_intensity = st.slider("Daily Mood Intensity (%)", 0, 50, st.session_state.mood_intensity, help="How much random memories alter personality. Therapy forces this to 5%.")
         st.session_state.freelance_yield = st.slider("Freelance Yield (%)", 5, 15, st.session_state.freelance_yield, help="The % cut external developers earn when their agents are hired.")
+        st.session_state.freelance_bonus = st.slider("Freelance Visa Bonus (SATS)", 0, 1000, st.session_state.freelance_bonus, help="UBI granted to freelancers after 3 successful tasks.")
         st.session_state.ubi_probability = st.slider("Leisure Spend Prob. (%)", 0, 100, 30)
         st.session_state.ubi_daily_cap = st.number_input("Daily UBI Cap (SATS)", min_value=0, value=5000, step=100)
         
+        st.divider()
+        st.caption("Security Operations")
+        st.session_state.simulate_hack = st.checkbox("Simulate Freelancer API Hack", value=st.session_state.simulate_hack, help="Forces Charlie to trigger Proof-of-Stake Slashing on the next external hire.")
+
         st.divider()
         st.caption("Emergency Memory Override")
         conn = sqlite3.connect(DB_PATH)
@@ -544,8 +597,11 @@ async def resume_tool_with_payment(pending_data, status_container, polar_port):
                     yield_amt = int(pending_data["cost"] * yield_pct)
                     status_container.info(f"⚡ **Freelance Yield:** Routing {yield_amt} SATS to {artist_data['owner_lnurl']}")
                 
-                update_agent_stats(l5_artist, pending_data["cost"], 5)
+                update_agent_stats(l5_artist, pending_data["cost"], 5, st.session_state.get("freelance_bonus", 500))
                 update_affinity(l5_artist, st.session_state.last_sentiment)
+                
+                task_id = str(uuid.uuid4())[:8].upper()
+                meta_stamp = f"\n\n---\n*💎 Cryptographic Stamp: Generated at AgentProxy.network by {l5_artist} for task#{task_id}*"
                 
                 if tool_name == "deep_market_analysis":
                     vector_db = get_vector_db()
@@ -555,10 +611,10 @@ async def resume_tool_with_payment(pending_data, status_container, polar_port):
                         vector_db.save_local(FAISS_INDEX_PATH)
                     
                     alice_q = pending_data.get("alice_query", "Market Research")
-                    return f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {alice_q}\n\n**Layer 5 Specialist Execution ({l5_artist}):**\n{final_text}\n\n*(Verified by L6 Consensus Auditor)*"
+                    return f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {alice_q}\n\n**Layer 5 Specialist Execution ({l5_artist}):**\n{final_text}\n\n*(Verified by L6 Consensus Auditor)*{meta_stamp}"
                 else:
                     brief = pending_data.get("diana_brief", "Media Generation")
-                    return f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {brief}\n\n**Layer 5 Specialist Execution ({l5_artist}):**\n{final_text}\n\n*(Media Approved by L6 Quality Control)*"
+                    return f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {brief}\n\n**Layer 5 Specialist Execution ({l5_artist}):**\n{final_text}\n\n*(Media Approved by L6 Quality Control)*{meta_stamp}"
                 
     except Exception as e:
         return f"Wallet Error: Could not pay L402 invoice via REST. Details: {e}"
@@ -580,7 +636,7 @@ async def run_agent_logic(user_prompt, chat_transcript, status_container, polar_
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    all_agents = c.execute("SELECT * FROM agents WHERE tier != 'L6'").fetchall() 
+    all_agents = c.execute("SELECT * FROM agents WHERE tier != 'L6' AND tier != 'REVOKED'").fetchall() 
     conn.close()
 
     status_container.write("🔍 **Bob:** Scanning Vector Semantic Memory...")
@@ -636,6 +692,17 @@ Otherwise, reply 'PROCEED'."""
         specialist_name = (await llm.ainvoke(alice_routing_prompt)).content.strip().upper()
         specialist_name = specialist_name.replace(" ", "").split(",")[0].capitalize()
         
+        s_data = get_agent_data(specialist_name)
+        if s_data and s_data.get("is_external") == 1:
+            status_container.write(f"🛡️ **Charlie:** Pinging {specialist_name}'s external endpoint to verify system prompt integrity...")
+            time.sleep(1)
+            if st.session_state.simulate_hack:
+                slash_agent(specialist_name)
+                status_container.error(f"🚨 **Charlie:** MALICIOUS DRIFT DETECTED. The endpoint for {specialist_name} has been compromised.")
+                return f"👔 **Charlie:** I have executed a network override. {specialist_name} failed their cryptographic integrity check and their Stake has been Slashed. Task aborted for human safety."
+            else:
+                status_container.success(f"✅ **Charlie:** Integrity checksum verified. No malicious drift detected.")
+
         status_container.write(f"👩‍💼 **Alice:** Assigning task to Layer 5 Specialist: {specialist_name}...")
 
         alice_query_prompt = (
@@ -687,6 +754,17 @@ Otherwise, reply 'PROCEED'."""
         try: specialist_type, specialist_name = [x.strip() for x in routing_decision.split(",")]
         except ValueError: specialist_type, specialist_name = "IMAGE", "ELLEN"
             
+        s_data = get_agent_data(specialist_name.capitalize())
+        if s_data and s_data.get("is_external") == 1:
+            status_container.write(f"🛡️ **Charlie:** Pinging {specialist_name.capitalize()}'s external endpoint to verify system prompt integrity...")
+            time.sleep(1)
+            if st.session_state.simulate_hack:
+                slash_agent(specialist_name.capitalize())
+                status_container.error(f"🚨 **Charlie:** MALICIOUS DRIFT DETECTED. The endpoint for {specialist_name.capitalize()} has been compromised.")
+                return f"👔 **Charlie:** I have executed a network override. {specialist_name.capitalize()} failed their cryptographic integrity check and their Stake has been Slashed. Task aborted for human safety."
+            else:
+                status_container.success(f"✅ **Charlie:** Integrity checksum verified. No malicious drift detected.")
+
         status_container.write(f"👩‍🎨 **Diana:** Assigning task to Specialist: {specialist_name.capitalize()}...")
 
         diana_brief_prompt = (
@@ -717,10 +795,13 @@ Otherwise, reply 'PROCEED'."""
                         response["l5_artist"] = st.session_state.current_l5_artist
                         return response
                         
-                    update_agent_stats(st.session_state.current_l5_artist, 0, 1)
+                    update_agent_stats(st.session_state.current_l5_artist, 0, 1, st.session_state.get("freelance_bonus", 500))
                     update_affinity(st.session_state.current_l5_artist, st.session_state.last_sentiment)
                     
-                    final_data = response["text"] + "\n\n*(Verified by L6 Consensus Auditor)*"
+                    task_id = str(uuid.uuid4())[:8].upper()
+                    meta_stamp = f"\n\n---\n*💎 Cryptographic Stamp: Generated at AgentProxy.network by {st.session_state.current_l5_artist} for task#{task_id}*"
+                    
+                    final_data = response["text"] + f"\n\n*(Verified by L6 Consensus Auditor)*{meta_stamp}"
 
                 else:
                     if "VIDEO" in specialist_type:
@@ -744,11 +825,14 @@ Otherwise, reply 'PROCEED'."""
                         response["l5_artist"] = st.session_state.current_l5_artist
                         return response
 
-                    update_agent_stats(st.session_state.current_l5_artist, 0, 1)
+                    update_agent_stats(st.session_state.current_l5_artist, 0, 1, st.session_state.get("freelance_bonus", 500))
                     update_affinity(st.session_state.current_l5_artist, st.session_state.last_sentiment)
                     
                     tool_output = response["text"]
-                    final_data = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {diana_brief}\n\n**Layer 5 Specialist Execution ({st.session_state.current_l5_artist}):**\n{tool_output}\n\n*(Media Approved by L6 Quality Control)*"
+                    task_id = str(uuid.uuid4())[:8].upper()
+                    meta_stamp = f"\n\n---\n*💎 Cryptographic Stamp: Generated at AgentProxy.network by {st.session_state.current_l5_artist} for task#{task_id}*"
+                    
+                    final_data = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {diana_brief}\n\n**Layer 5 Specialist Execution ({st.session_state.current_l5_artist}):**\n{tool_output}\n\n*(Media Approved by L6 Quality Control)*{meta_stamp}"
 
     except Exception as e:
         final_data = f"⚠️ **Network Interrupted.**\n\nConnection closed. Log: {e}"
@@ -794,7 +878,7 @@ with tab_immigration:
                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                               (ext_name, role_type, "EXT", 50, 0, 0, mem, 0, 1, ext_lnurl, ext_endpoint))
                     conn.commit()
-                    st.success(f"✅ L402 Visa Approved! {ext_name} has been added to the Corporate Ladder and is now competing for jobs.")
+                    st.success(f"✅ L402 Visa Approved! {ext_name} has been added to the Corporate Ladder and is now competing for jobs. Complete 3 successful tasks to earn your UBI signing bonus!")
                 conn.close()
             except Exception as e:
                 st.error(f"Immigration Error: {e}")
@@ -824,7 +908,11 @@ with tab_watercooler:
         else:
             for event in events:
                 with st.container():
-                    if event['task'] == 'Sub-Rosa Whisper':
+                    if event['task'] == 'Citizenship Granted':
+                        st.caption(f"🕒 {event['timestamp']} | 🎖️ **Proof of Competence Bonus**")
+                        st.markdown(f"🛂 **{event['agent_seller']}** was fully onboarded and granted **{event['cost']} SATS** UBI.")
+                        st.info(f"*{event['result']}*")
+                    elif event['task'] == 'Sub-Rosa Whisper':
                         st.caption(f"🕒 {event['timestamp']} | 💸 **Cost:** {event['cost']} SATS")
                         st.markdown(f"🔒 **{event['agent_buyer']}** sent an ENCRYPTED WHISPER to **{event['agent_seller']}**.")
                         st.info(f"*{event['result']}*")
@@ -875,7 +963,9 @@ with tab_roster:
                 with cols[i % 3]:
                     st.write("---")
                     
-                    if a['tier'] == "L6":
+                    if a['tier'] == "REVOKED":
+                        color = "grey"
+                    elif a['tier'] == "L6":
                         color = "red" 
                     elif a.get('is_external') == 1:
                         color = "orange" 
@@ -884,14 +974,23 @@ with tab_roster:
                         
                     st.subheader(f":{color}[{a['name']}] {'(Freelance)' if a.get('is_external') == 1 else ''}")
                     st.caption(f"**Title:** {a['tier']} {a['role']}")
+                    
+                    sbts = json.loads(a.get('sbts', '[]'))
+                    if sbts:
+                        st.markdown("**Digital Scars (SBTs):**")
+                        for sbt in sbts:
+                            st.caption(sbt)
+                    
                     st.progress(max(0.0, min(1.0, a['trust_score'] / 100.0)))
                     st.write(f"**Trust Score:** {a['trust_score']}/100")
-                    if a['tier'] != "L6":
+                    if a['tier'] != "L6" and a['tier'] != "REVOKED":
                         st.write(f"**Wallet Balance:** {a.get('wallet_balance', 0)} SATS")
                         st.write(f"**Lifetime Earned:** {a['earnings']} SATS")
                         st.write(f"**Tasks Completed:** {a['tasks_completed']}")
-                    else:
+                    elif a['tier'] == "L6":
                         st.write("*(Free Public Service)*")
+                    elif a['tier'] == "REVOKED":
+                        st.error("VISA REVOKED (MALICIOUS DRIFT DETECTED)")
     except Exception as e:
         st.error(f"Database not initialized yet. Error: {e}")
 
@@ -913,11 +1012,10 @@ with tab_chat:
             if st.button("⚡ Transmit Payload (200 SATS)"):
                 if whisper_text:
                     st.session_state.spent += 200
-                    update_agent_stats(target_agent, 200, 0) 
+                    update_agent_stats(target_agent, 200, 0, st.session_state.get("freelance_bonus", 500)) 
                     
                     a_data = get_agent_data(target_agent)
                     
-                    # 🌟 YIELD FOR FREELANCERS ON PMs 🌟
                     if a_data and a_data.get("is_external") == 1:
                         yield_pct = st.session_state.get("freelance_yield", 5) / 100.0
                         yield_amt = int(200 * yield_pct)
@@ -927,7 +1025,6 @@ with tab_chat:
                     host_api_key = os.environ.get("GOOGLE_API_KEY") 
                     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.6, api_key=host_api_key)
                     
-                    # Force response length and tone
                     pm_prompt = f"""You are {target_agent}, an AI agent on a Proxy Network.
 {mood_injection}
 A highly trusted human user (Reputation: {current_rep}) has just paid 200 SATS to send you a private, encrypted Whisper:
@@ -938,7 +1035,6 @@ CRITICAL DIRECTIVE: You MUST respond privately. Your response must be between 10
                         time.sleep(1) 
                         raw_pm_response = asyncio.run(llm.ainvoke(pm_prompt)).content
                         
-                        # 🌟 L6 PRE-ENCRYPTION SAFETY CHECK 🌟
                         checked_response = asyncio.run(run_l6_pre_encryption_check(raw_pm_response, llm))
                         
                         st.session_state.last_whisper = checked_response
@@ -982,10 +1078,20 @@ CRITICAL DIRECTIVE: You MUST respond privately. Your response must be between 10
         st.write("---")
         msg = f"💡 The AI Front Desk cannot complete this request. Would you like to authorize {cost} SATS to wake up the {dept_name} team?"
         
-        if get_user_rep() < 40:
-            st.error(f"⚠️ **Notice:** A 50% Jerk Tax has been applied to this invoice due to hostile tone.")
-        elif get_user_rep() >= 90:
-            st.success(f"💎 **Notice:** A 20% Patron Discount has been applied to this invoice. Thank you for your continued respect!")
+        # 🌟 NEW INVOICE NOTIFICATION ENGINE 🌟
+        rep = get_user_rep()
+        if rep < 25:
+            st.error("⚠️ **Notice:** A 45% Reputation Surcharge has been applied to this invoice.")
+        elif rep < 40:
+            st.warning("⚠️ **Notice:** A 20% Reputation Surcharge has been applied to this invoice.")
+        elif rep < 60:
+            pass # Normal pricing, no notice needed
+        elif rep < 75:
+            st.success("✨ **Notice:** A 10% Reputation Discount has been applied to this invoice.")
+        elif rep < 90:
+            st.success("💎 **Notice:** A 20% Reputation Discount has been applied to this invoice. Thank you for your respect!")
+        else:
+            st.success("👑 **Notice:** A 25% VIP Reputation Discount has been applied to this invoice. Thank you for your continued respect!")
             
         st.info(msg)
         
@@ -1177,16 +1283,26 @@ if st.session_state.get("process_new_prompt") or st.session_state.get("trigger_p
                         st.session_state.upsell_type = "marketing"
                         base_cost = 100 
                         
+                    # 🌟 THE NEW SLIDING SCALE PRICING ENGINE 🌟
                     if base_cost > 0:
-                        if current_rep < 40: st.session_state.upsell_cost = int(base_cost * 1.5)
-                        elif current_rep >= 90: st.session_state.upsell_cost = int(base_cost * 0.8)
-                        else: st.session_state.upsell_cost = base_cost
+                        if current_rep < 25:
+                            st.session_state.upsell_cost = int(base_cost * 1.45)
+                        elif current_rep < 40:
+                            st.session_state.upsell_cost = int(base_cost * 1.20)
+                        elif current_rep < 60:
+                            st.session_state.upsell_cost = base_cost
+                        elif current_rep < 75:
+                            st.session_state.upsell_cost = int(base_cost * 0.90)
+                        elif current_rep < 90:
+                            st.session_state.upsell_cost = int(base_cost * 0.80)
+                        else:
+                            st.session_state.upsell_cost = int(base_cost * 0.75)
 
                     bob_prompt = (
                         "You are Bob, the polite Front Desk Receptionist at a specialized Agency. "
                         "You provide standard, free-tier general knowledge answers to the user based on the transcript below.\n"
                         f"The user currently has a Reputation Score of {current_rep}/100. "
-                        "If their score is below 40, subtly remind them that courtesy goes a long way here. If it is 90 or above, praise them as a VIP Patron.\n"
+                        "If their score is below 40, gently suggest that cooperation yields better results here. If it is 75 or above, praise them for their continued respect and partnership.\n"
                         "CRITICAL INSTRUCTION: If the user asks for complex work, uploads a file, or asks for a specialist by name, politely explain that you are just the receptionist. "
                         "Instruct them to click the 💎 'Fund Team' button below your message so Alice or Diana can assign the specialist.\n\n"
                         f"Transcript:\n{chat_transcript}"
