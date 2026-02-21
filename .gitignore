@@ -67,3 +67,11 @@ mainnet_secrets/
 *.cert
 agent_memory.db
 polar_keys/
+
+# --- AGENT GENERATED MEDIA & VECTOR DB ---
+nano_banana_*.jpg
+nano_banana_*.png
+veo_video_*.mp4
+lyria_track_*.mp3
+lyria_track_*.wav
+faiss_index/

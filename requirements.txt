@@ -11,3 +11,7 @@ langchain
 langchain-community
 langgraph
 langchain-google-genai
+faiss-cpu
+pypdf
+httpx
+streamlit

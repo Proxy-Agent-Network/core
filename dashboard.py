@@ -4,15 +4,19 @@ import os
 import sqlite3
 import re
 import codecs
+import uuid
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
 import httpx
 import time
 
 # --- PAGE SETUP ---
-st.set_page_config(page_title="5-Layer Search Engine Detail", page_icon="📈", layout="wide")
-st.title("📈 5-Layer Search Engine Detail")
+st.set_page_config(page_title="6-Layer AI Agency Dashboard", page_icon="🏢", layout="wide")
+st.title("🏢 6-Layer AI Agency Dashboard")
 
 # --- SESSION STATE ---
 if "messages" not in st.session_state:
@@ -23,10 +27,28 @@ if "premium_mode" not in st.session_state:
     st.session_state.premium_mode = False
 if "upsell_type" not in st.session_state:
     st.session_state.upsell_type = None
-if "alice_query" not in st.session_state:
-    st.session_state.alice_query = ""
 
 BUDGET = 20000
+
+# --- FAISS VECTOR DATABASE ---
+FAISS_INDEX_PATH = "faiss_index"
+
+def get_vector_db():
+    """Initializes or loads the FAISS Vector Database."""
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return None
+        
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=api_key)
+    
+    # Load existing database if it exists
+    if os.path.exists(FAISS_INDEX_PATH) and os.path.exists(os.path.join(FAISS_INDEX_PATH, "index.faiss")):
+        return FAISS.load_local(FAISS_INDEX_PATH, embeddings, allow_dangerous_deserialization=True)
+    
+    # Otherwise, create an empty one with a dummy document (FAISS requires at least 1 document to initialize)
+    vector_db = FAISS.from_documents([Document(page_content="Agency initialized.", metadata={"query": "init"})], embeddings)
+    vector_db.save_local(FAISS_INDEX_PATH)
+    return vector_db
 
 # --- SIDEBAR: COMPACT CONTROL PANEL ---
 with st.sidebar:
@@ -55,37 +77,22 @@ with st.sidebar:
     
     st.divider()
 
-    st.header("🧠 RAG Memory")
-    try:
-        conn = sqlite3.connect("agent_memory.db")
-        c = conn.cursor()
-        c.execute("CREATE TABLE IF NOT EXISTS memory (topic TEXT PRIMARY KEY, data TEXT)")
-        c.execute("SELECT topic FROM memory")
-        rows = c.fetchall()
-        if rows:
-            for row in rows:
-                st.caption(f"💾 {row[0]}")
-        else:
-            st.caption("Memory is currently empty.")
-        conn.close()
-    except Exception:
-        st.caption("Memory DB connection idle.")
+    st.header("🧠 Vector Memory (FAISS)")
+    if os.path.exists(FAISS_INDEX_PATH):
+        st.caption("✅ FAISS Memory Active.")
+    else:
+        st.caption("Memory is currently empty.")
 
-    if st.button("🗑️ Reset Database & Chat", use_container_width=True):
+    if st.button("🗑️ Reset Vector Database & Chat", use_container_width=True):
         try:
-            conn = sqlite3.connect("agent_memory.db")
-            c = conn.cursor()
-            c.execute("CREATE TABLE IF NOT EXISTS memory (topic TEXT PRIMARY KEY, data TEXT)")
-            c.execute("SELECT COUNT(*) FROM memory")
-            count = c.fetchone()[0]
-            c.execute("DROP TABLE memory")
-            conn.commit()
-            conn.close()
+            import shutil
+            if os.path.exists(FAISS_INDEX_PATH):
+                shutil.rmtree(FAISS_INDEX_PATH)
             
             st.session_state.clear()
             st.session_state.messages = []
             st.session_state.spent = 0
-            st.session_state.sys_msg = f"Clean Slate! {count} memories and all chat history wiped."
+            st.session_state.sys_msg = f"Clean Slate! Vector memory and all chat history wiped."
             st.rerun()
         except Exception as e:
             st.error(f"Failed to clear memory: {e}")
@@ -102,13 +109,19 @@ async def call_tool_with_l402(session, tool_name, arguments, status_container, p
         hash_match = re.search(r'Hash(?: to use)?:\s*([a-f0-9]+)', text, re.IGNORECASE)
         
         if invoice_match and hash_match:
+            if tool_name == "deep_market_analysis": cost = 75
+            elif tool_name == "generate_image": cost = 100
+            elif tool_name == "generate_music": cost = 150
+            elif tool_name == "generate_video": cost = 250
+            else: cost = 100
+
             return {
                 "status": "402",
                 "invoice": invoice_match.group(1),
                 "hash": hash_match.group(1),
                 "tool_name": tool_name,
                 "arguments": arguments,
-                "cost": 75 if tool_name == "deep_market_analysis" else 100
+                "cost": cost
             }
                 
     return {"status": "200", "text": text}
@@ -150,19 +163,43 @@ async def resume_tool_with_payment(pending_data, status_container, polar_port):
                 retry_result = await session.call_tool(tool_name, arguments=arguments)
                 final_text = retry_result.content[0].text
                 
+                l5_artist = pending_data.get("l5_artist", "Layer 5 Specialist")
+                
                 if tool_name == "deep_market_analysis":
-                    conn = sqlite3.connect("agent_memory.db")
-                    c = conn.cursor()
-                    c.execute("INSERT OR REPLACE INTO memory (topic, data) VALUES (?, ?)", (arguments['primary_topic'][:30], final_text))
-                    conn.commit()
-                    conn.close()
-                    return f"{final_text}\n\n*(Verified by L5 Consensus Auditor)*"
+                    # FAISS VECTOR MEMORY SAVE
+                    vector_db = get_vector_db()
+                    if vector_db:
+                        new_doc = Document(page_content=final_text, metadata={"query": arguments['primary_topic']})
+                        vector_db.add_documents([new_doc])
+                        vector_db.save_local(FAISS_INDEX_PATH)
+                    
+                    alice_q = pending_data.get("alice_query", "Market Research")
+                    return f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {alice_q}\n\n**Layer 5 Specialist Execution ({l5_artist}):**\n{final_text}\n\n*(Verified by L6 Consensus Auditor)*"
                 else:
-                    brief = pending_data.get("diana_brief", "Image Generation")
-                    return f"### 🎨 Marketing Department Report\n\n**Creative Director (Diana):**\n> {brief}\n\n**Design Team Execution:**\n{final_text}\n\n*(Visuals Approved by L5 Quality Control)*"
+                    brief = pending_data.get("diana_brief", "Media Generation")
+                    return f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {brief}\n\n**Layer 5 Specialist Execution ({l5_artist}):**\n{final_text}\n\n*(Media Approved by L6 Quality Control)*"
                 
     except Exception as e:
         return f"Wallet Error: Could not pay L402 invoice via REST. Details: {e}"
+
+# --- MULTIMEDIA RENDERING HELPER ---
+def render_media(file_path, key_suffix):
+    ext = file_path.split('.')[-1].lower()
+    if ext in ['jpg', 'jpeg', 'png', 'webp', 'gif']:
+        st.image(file_path)
+        mime_type = f"image/{ext if ext != 'jpg' else 'jpeg'}"
+    elif ext == 'mp4':
+        st.video(file_path)
+        mime_type = "video/mp4"
+    elif ext in ['mp3', 'wav']:
+        st.audio(file_path)
+        mime_type = f"audio/{ext}"
+    else:
+        st.write(f"📁 Generated File: {file_path}")
+        mime_type = "application/octet-stream"
+
+    with open(file_path, "rb") as f:
+        st.download_button(f"📥 Download File", data=f, file_name=file_path, mime=mime_type, key=f"dl_{key_suffix}")
 
 # --- THE AGENT PROTOCOL ---
 async def run_agent_logic(user_prompt, chat_transcript, status_container, polar_port):
@@ -170,25 +207,18 @@ async def run_agent_logic(user_prompt, chat_transcript, status_container, polar_
     current_key = st.session_state.api_key
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=current_key)
 
-    status_container.write("🔍 **Bob:** Checking local SQLite memory...")
-    conn = sqlite3.connect("agent_memory.db")
-    c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS memory (topic TEXT PRIMARY KEY, data TEXT)")
+    status_container.write("🔍 **Bob:** Scanning Vector Semantic Memory...")
+    vector_db = get_vector_db()
     
-    found_data = None
-    words = user_prompt.split()
-    for word in words:
-        if len(word) > 4:
-            c.execute("SELECT data FROM memory WHERE topic LIKE ?", (f'%{word}%',))
-            result = c.fetchone()
-            if result:
-                found_data = result[0]
-                break
-    conn.close()
-
-    if found_data:
-        status_container.success("🎯 **Bob:** Found matching data in memory! Cost: 0 sats.")
-        return found_data
+    if vector_db:
+        # Perform a mathematical similarity search!
+        results = vector_db.similarity_search_with_score(user_prompt, k=1, fetch_k=3)
+        
+        if results:
+            doc, score = results[0]
+            if score < 0.6 and doc.page_content != "Agency initialized.":
+                status_container.success(f"🎯 **Bob:** Found a semantic match in Vector Memory! (L2 Distance: {score:.2f}). Cost: 0 sats.")
+                return doc.page_content
 
     status_container.write("👔 **Bob:** Submitting transcript to Charlie (CRO)...")
     charlie_prompt = (
@@ -196,8 +226,8 @@ async def run_agent_logic(user_prompt, chat_transcript, status_container, polar_
         f"Here is the recent conversation transcript:\n{chat_transcript}\n\n"
         f"The user's latest input is: '{user_prompt}'.\n"
         "Based on the context, what department does this belong to?\n"
-        "1. If it's financial, crypto, or market research, reply exactly 'ROUTE_FINANCE'.\n"
-        "2. If it's image generation, branding, or creative design, reply exactly 'ROUTE_MARKETING'.\n"
+        "1. If it's financial, crypto, market research, web scraping, document analysis, or numbers, reply exactly 'ROUTE_FINANCE'.\n"
+        "2. If it's image, video, music generation, branding, or creative design, reply exactly 'ROUTE_MARKETING'.\n"
         "3. If it's useless garbage that costs money, reply 'REJECTED: [reason]'. "
     )
     decision = (await llm.ainvoke(charlie_prompt)).content
@@ -207,13 +237,13 @@ async def run_agent_logic(user_prompt, chat_transcript, status_container, polar_
         return f"Transaction Blocked by Risk Management: {decision}"
 
     if "ROUTE_FINANCE" in decision:
-        status_container.success("👔 **Charlie:** Approved for Finance. Routing to Alice.")
-        status_container.write("👩‍💼 **Alice:** Evaluating research parameters...")
-        alice_check = f"""You are Alice, Finance Manager. Read this transcript:
+        status_container.success("👔 **Charlie:** Approved for Research. Routing to Alice.")
+        status_container.write("👩‍💼 **Alice:** Evaluating parameters...")
+        alice_check = f"""You are Alice, Research Manager. Read this transcript:
         {chat_transcript}
-        Do you have enough details (tickers, subjects) to execute a market analysis?
-        CRITICAL OVERRIDE: If the user tells you to figure it out yourself, guess, do the research, OR if they express frustration (e.g., "you're fired"), you MUST accept the ambiguity and reply exactly 'PROCEED'.
-        If you genuinely cannot start without more info and the user hasn't told you to guess, reply 'ASK_CHARLIE: [What specific info do you need?]'
+        Do you have enough details to execute the analysis?
+        CRITICAL OVERRIDE: If the user tells you to figure it out yourself, guess, points to an attached file, or expresses frustration, reply exactly 'PROCEED'.
+        If you genuinely cannot start without more info, reply 'ASK_CHARLIE: [What specific info do you need?]'
         Otherwise, reply 'PROCEED'."""
         
         a_eval = (await llm.ainvoke(alice_check)).content
@@ -222,23 +252,39 @@ async def run_agent_logic(user_prompt, chat_transcript, status_container, polar_
             status_container.warning("⚠️ **Alice halted execution: Insufficient context.**")
             return f"👔 **Charlie:** I blocked the budget release. Alice says she needs more details before she buys data:\n\n> *\"{question}\"*"
             
-        status_container.write("👩‍💼 **Alice:** Formulating research directive...")
+        status_container.write("👩‍💼 **Alice:** Reviewing Layer 5 Roster...")
+        alice_routing_prompt = (
+            f"Transcript:\n{chat_transcript}\n"
+            "You are Alice, managing a team of Layer 5 specialists. Based on the transcript, select the ONE best specialist for the job. "
+            "If the user asks for someone by name, you MUST pick them. Otherwise, pick the best fit.\n\n"
+            "SPECIALISTS:\n"
+            "- Eve (OSINT, Web Scraping, PDF Parsing, Breaking News)\n"
+            "- Gordon (Quantitative Analysis, Spot Prices, Trends)\n"
+            "- Olivia (Fundamental Analysis, Deep reading)\n\n"
+            "Reply with EXACTLY the specialist name (e.g., EVE)."
+        )
+        specialist_name = (await llm.ainvoke(alice_routing_prompt)).content.strip().upper()
+        specialist_name = specialist_name.replace(" ", "").split(",")[0].capitalize()
+        
+        status_container.write(f"👩‍💼 **Alice:** Assigning task to Layer 5 Specialist: {specialist_name}...")
+
         alice_query_prompt = (
             f"Transcript:\n{chat_transcript}\n"
-            "Based on this conversation, write a clear, highly specific 1-sentence search query describing exactly what financial or market research needs to be executed. Ignore user frustration or conversational filler. Just state the core research objective."
+            f"Write a clear, highly specific 1-sentence research directive for {specialist_name}, your Layer 5 specialist."
         )
         st.session_state.alice_query = (await llm.ainvoke(alice_query_prompt)).content
-        status_container.info(f"📋 **Directive:** {st.session_state.alice_query}")
+        status_container.info(f"📋 **Directive for {specialist_name}:** {st.session_state.alice_query}")
         department = "FINANCE"
+        st.session_state.current_l5_artist = specialist_name
 
     elif "ROUTE_MARKETING" in decision:
-        status_container.success("👔 **Charlie:** Approved for Marketing. Routing to Diana.")
+        status_container.success("👔 **Charlie:** Approved for Creative. Routing to Diana.")
         status_container.write("👩‍🎨 **Diana:** Evaluating creative requirements...")
-        diana_check = f"""You are Diana, Marketing Director. Read this transcript:
+        diana_check = f"""You are Diana, Creative Director. Read this transcript:
         {chat_transcript}
-        Do you have enough visual context (style, subject, mood) to instruct the design team?
-        CRITICAL OVERRIDE: If the user tells you to "work with what you got", "surprise me", or expresses frustration, you MUST accept the ambiguity and reply exactly 'PROCEED'.
-        If you absolutely cannot start without more info and the user hasn't told you to just do it, reply 'ASK_CHARLIE: [What visual details do you need?]'
+        Do you have enough creative context to instruct the design team?
+        CRITICAL OVERRIDE: If the user tells you to "work with what you got", "surprise me", or expresses frustration, reply exactly 'PROCEED'.
+        If you absolutely cannot start without more info, reply 'ASK_CHARLIE: [What details do you need?]'
         Otherwise, reply 'PROCEED'."""
         
         d_eval = (await llm.ainvoke(diana_check)).content
@@ -247,15 +293,44 @@ async def run_agent_logic(user_prompt, chat_transcript, status_container, polar_
             status_container.warning("⚠️ **Diana halted execution: Insufficient creative direction.**")
             return f"👔 **Charlie:** I'm holding the funds. Diana says she needs more creative direction before she boots the GPUs:\n\n> *\"{question}\"*"
 
-        status_container.write("👩‍🎨 **Diana:** Expanding context into a Director's brief...")
+        status_container.write("👩‍🎨 **Diana:** Reviewing Layer 5 Specialist Roster...")
+        diana_routing_prompt = (
+            f"Transcript:\n{chat_transcript}\n"
+            "You are Diana, managing a team of Layer 5 specialists. Based on the transcript, select the ONE best specialist for the job. "
+            "If the user asks for someone by name, you MUST pick them. Otherwise, pick the best fit.\n\n"
+            "IMAGE GENERATORS:\n"
+            "- Ellen (Organic, nature-inspired, emotional art)\n"
+            "- Marcus (Cyberpunk, neon, sci-fi, gritty)\n"
+            "- Sophia (Minimalist, corporate, clean vector)\n\n"
+            "VIDEO DIRECTORS:\n"
+            "- Victor (Cinematic, epic, Hollywood-style)\n"
+            "- Chloe (Documentary, raw, handheld, realistic)\n"
+            "- Leo (Stylized, animated, abstract motion)\n\n"
+            "AUDIO ENGINEERS:\n"
+            "- Melody (Acoustic, folk, vocal-heavy, emotional)\n"
+            "- Jax (EDM, synthwave, electronic, high-energy)\n"
+            "- Harmon (Classical, orchestral, cinematic scores)\n\n"
+            "Reply with EXACTLY two things separated by a comma: MEDIA_TYPE (IMAGE, VIDEO, or MUSIC), SPECIALIST_NAME."
+        )
+        routing_decision = (await llm.ainvoke(diana_routing_prompt)).content.strip().upper()
+        
+        try:
+            specialist_type, specialist_name = [x.strip() for x in routing_decision.split(",")]
+        except ValueError:
+            specialist_type = "IMAGE"
+            specialist_name = "ELLEN" # Fallback
+            
+        status_container.write(f"👩‍🎨 **Diana:** Assigning task to Layer 5 Specialist: {specialist_name.capitalize()}...")
+
         diana_brief_prompt = (
             f"Transcript:\n{chat_transcript}\n"
-            "Write a highly detailed, vivid, 2-sentence creative brief for your design team based on the transcript. "
-            "Focus strictly on visual details, mood, lighting, and aesthetic."
+            f"Write a vivid, 2-sentence creative brief for {specialist_name.capitalize()}, your Layer 5 {specialist_type} specialist. "
+            f"Ensure the brief leans heavily into their specific artistic style."
         )
         diana_brief = (await llm.ainvoke(diana_brief_prompt)).content
-        status_container.info(f"📋 **Brief:** {diana_brief}")
+        status_container.info(f"📋 **Brief for {specialist_name.capitalize()}:** {diana_brief}")
         department = "MARKETING"
+        st.session_state.current_l5_artist = specialist_name.capitalize()
 
     final_data = ""
     try:
@@ -264,82 +339,77 @@ async def run_agent_logic(user_prompt, chat_transcript, status_container, polar_
                 await session.initialize()
 
                 if department == "FINANCE":
-                    status_container.write("🕵️‍♀️ **Alice:** Executing web scraping swarm (This takes ~15s)...")
+                    status_container.write(f"🕵️‍♀️ **{st.session_state.current_l5_artist}:** Connecting to Layer 4 APIs...")
                     response = await call_tool_with_l402(
-                        session, 
-                        "deep_market_analysis", 
-                        {
-                            "primary_topic": st.session_state.alice_query,
-                            "original_user_intent": chat_transcript,
-                            "specific_data_points_required": ["Summary", "Key Players", "Future Outlook"]
-                        },
-                        status_container,
-                        polar_port
+                        session, "deep_market_analysis", 
+                        {"primary_topic": st.session_state.alice_query, "original_user_intent": chat_transcript, "specific_data_points_required": ["Summary"], "specialist_name": st.session_state.current_l5_artist},
+                        status_container, polar_port
                     )
                     
-                    if response.get("status") == "402":
+                    if response.get("status") == "402": 
+                        response["alice_query"] = st.session_state.alice_query
+                        response["l5_artist"] = st.session_state.current_l5_artist
                         return response
-
-                    final_data = response["text"]
-                    status_container.write("👁️ **Layer 5 (Shadow Layer):** Validating output coherence...")
-                    await asyncio.sleep(1) 
-                    final_data += "\n\n*(Verified by L5 Consensus Auditor)*"
+                        
+                    final_data = response["text"] + "\n\n*(Verified by L6 Consensus Auditor)*"
 
                 elif department == "MARKETING":
-                    status_container.write("🖌️ **Designers:** Hitting Layer 4 API...")
+                    if "VIDEO" in specialist_type:
+                        status_container.write(f"🎥 **{st.session_state.current_l5_artist}:** Hitting Layer 4 Veo API...")
+                        tool_call = "generate_video"
+                    elif "MUSIC" in specialist_type:
+                        status_container.write(f"🎧 **{st.session_state.current_l5_artist}:** Hitting Layer 4 Lyria 3 API...")
+                        tool_call = "generate_music"
+                    else:
+                        status_container.write(f"🖌️ **{st.session_state.current_l5_artist}:** Hitting Layer 4 Nano Banana API...")
+                        tool_call = "generate_image"
+
                     response = await call_tool_with_l402(
-                        session, 
-                        "generate_image", 
+                        session, tool_call, 
                         {"prompt": diana_brief},
-                        status_container,
-                        polar_port
+                        status_container, polar_port
                     )
                     
                     if response.get("status") == "402":
                         response["diana_brief"] = diana_brief
+                        response["l5_artist"] = st.session_state.current_l5_artist
                         return response
 
                     tool_output = response["text"]
-                    final_data = f"### 🎨 Marketing Department Report\n\n**Creative Director (Diana):**\n> {diana_brief}\n\n**Design Team Execution:**\n{tool_output}"
-                    status_container.write("👁️ **Layer 5 (Shadow Layer):** Checking image constraints...")
-                    await asyncio.sleep(1)
-                    final_data += "\n\n*(Visuals Approved by L5 Quality Control)*"
+                    final_data = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {diana_brief}\n\n**Layer 5 Specialist Execution ({st.session_state.current_l5_artist}):**\n{tool_output}\n\n*(Media Approved by L6 Quality Control)*"
 
     except Exception as e:
         final_data = f"⚠️ **Network Interrupted.**\n\nConnection closed. Log: {e}"
 
-    if "Network Interrupted" not in final_data and "Charlie:" not in final_data and "Payment Failed" not in final_data:
-        status_container.write("💾 **Bob:** Writing final report to long-term memory...")
-        conn = sqlite3.connect("agent_memory.db")
-        c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO memory (topic, data) VALUES (?, ?)", (st.session_state.get('alice_query', user_prompt[:30]), final_data))
-        conn.commit()
-        conn.close()
+    # FAISS VECTOR MEMORY SAVE (NON-PAYWALL - e.g. Free responses if any)
+    if "Network Interrupted" not in final_data and "Charlie:" not in final_data and "Payment Failed" not in final_data and "402 Payment Required" not in final_data:
+        if vector_db:
+             new_doc = Document(page_content=final_data, metadata={"query": user_prompt[:100]})
+             vector_db.add_documents([new_doc])
+             vector_db.save_local(FAISS_INDEX_PATH)
         
     return final_data
 
-# --- UI MAIN LAYOUT & IMAGE RENDERING ---
+# --- UI MAIN LAYOUT & MEDIA RENDERING ---
 chat_container = st.container()
 
 with chat_container:
     for i, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            if msg.get("image") and os.path.exists(msg["image"]):
-                st.image(msg["image"])
-                with open(msg["image"], "rb") as f:
-                    st.download_button("📥 Download Masterpiece", data=f, file_name=msg["image"], mime="image/jpeg", key=f"dl_history_{i}")
+            if msg.get("media") and os.path.exists(msg["media"]):
+                render_media(msg["media"], f"history_{i}")
 
 # --- UPSELL BUTTON LOGIC ---
 if st.session_state.upsell_type and not st.session_state.premium_mode:
     cost = st.session_state.upsell_cost
-    dept_name = "Deep Research" if st.session_state.upsell_type == "finance" else "Premium Design"
+    dept_name = "Deep Research" if st.session_state.upsell_type == "finance" else "Creative Studio"
     
     st.write("---")
-    st.info(f"💡 The AI Front Desk cannot complete this request. Would you like to authorize {cost} SATS to wake up the {dept_name} team?")
+    st.info(f"💡 The AI Front Desk cannot complete this request. Would you like to authorize {cost}+ SATS to wake up the {dept_name} team?")
     
     col1, col2 = st.columns(2)
-    if col1.button(f"💎 Yes, Fund {dept_name} ({cost} SATS)"):
+    if col1.button(f"💎 Yes, Fund {dept_name}"):
         st.session_state.premium_mode = True
         st.session_state.upsell_type = None
         st.session_state.trigger_premium_now = True
@@ -363,23 +433,23 @@ if "execute_payment" in st.session_state and st.session_state.execute_payment:
             
             st.markdown(final_data)
             
-            img_match = re.search(r"'([^']+\.(?:jpg|jpeg|png|webp|gif))'", final_data, re.IGNORECASE)
-            img_file = img_match.group(1) if img_match else None
+            media_match = re.search(r"'([^']+\.(?:jpg|jpeg|png|webp|gif|mp4|mp3|wav))'", final_data, re.IGNORECASE)
+            media_file = media_match.group(1) if media_match else None
             
-            if img_file:
-                if not os.path.exists(img_file):
-                    time.sleep(0.5)
-                if os.path.exists(img_file):
-                    st.image(img_file)
-                    with open(img_file, "rb") as f:
-                        st.download_button("📥 Download Masterpiece", data=f, file_name=img_file, mime="image/jpeg", key="dl_current")
+            if media_file:
+                if not os.path.exists(media_file): time.sleep(0.5)
+                if os.path.exists(media_file):
+                    render_media(media_file, "current_pay")
+                else:
+                    st.warning(f"⚠️ Media generated, but couldn't be found locally.")
                         
-    st.session_state.messages.append({"role": "assistant", "content": final_data, "image": img_file})
-    del st.session_state.pending_payment
-    del st.session_state.execute_payment
+    st.session_state.messages.append({"role": "assistant", "content": final_data, "media": media_file})
     
-    # Automatically reset to free tier after a successful premium run
+    st.session_state.pop("pending_payment", None)
+    st.session_state.pop("execute_payment", None)
     st.session_state.premium_mode = False
+    st.session_state.trigger_premium_now = False   
+    st.session_state.process_new_prompt = False    
     st.rerun()
 
 # --- STANDARD (FREE) FALLBACK BLOCK ---
@@ -388,8 +458,12 @@ elif "skip_payment" in st.session_state and st.session_state.skip_payment:
         with st.chat_message("assistant"):
             st.markdown("*(Payment Declined. Reverting to Free Tier.)*")
     st.session_state.messages.append({"role": "assistant", "content": "*(Payment Declined. Reverting to Free Tier.)*"})
-    del st.session_state.pending_payment
-    del st.session_state.skip_payment
+    
+    st.session_state.pop("pending_payment", None)
+    st.session_state.pop("skip_payment", None)
+    st.session_state.premium_mode = False
+    st.session_state.trigger_premium_now = False
+    st.session_state.process_new_prompt = False
     st.rerun()
 
 # --- PAYMENT INTERACTIVE POPUP ---
@@ -407,11 +481,33 @@ elif "pending_payment" in st.session_state:
             st.rerun()
 
 # --- CHAT INPUT BLOCK ---
-elif prompt := st.chat_input("Enter your research or design mission..."):
+elif user_submission := st.chat_input("Enter your research or design mission...", accept_file="multiple", file_type=["pdf"]):
     if not st.session_state.api_key:
         st.warning("🛑 API key required. Please provide it in the sidebar.")
     else:
         st.session_state.upsell_type = None
+        
+        # Streamlit 1.43+ natively returns a dict-like ChatInputValue when accept_file is used
+        if hasattr(user_submission, "text") or isinstance(user_submission, dict):
+            prompt = getattr(user_submission, "text", "") if hasattr(user_submission, "text") else user_submission.get("text", "")
+            attached_files = getattr(user_submission, "files", []) if hasattr(user_submission, "files") else user_submission.get("files", [])
+        else:
+            prompt = str(user_submission)
+            attached_files = []
+            
+        # Save uploaded PDFs to the root folder so Eve's backend glob.glob("*.pdf") can find them!
+        for uploaded_file in attached_files:
+            with open(uploaded_file.name, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+                
+        # Inject file context so the LLM knows a file is present!
+        if attached_files:
+            file_names = ', '.join([f.name for f in attached_files])
+            if prompt:
+                prompt = f"{prompt}\n[User attached file(s): {file_names}]"
+            else:
+                prompt = f"Please analyze the attached file(s): {file_names}"
+
         st.session_state.messages.append({"role": "user", "content": prompt})
         
         with chat_container:
@@ -435,14 +531,13 @@ if st.session_state.get("process_new_prompt") or st.session_state.get("trigger_p
             if not is_premium_run:
                 with st.spinner("Bob (Front Desk) is typing..."):
                     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.4, api_key=st.session_state.api_key)
-                    
-                    # BOB THE RECEPTIONIST PROMPT
                     bob_prompt = (
-                        "You are Bob, the polite Front Desk Receptionist at an elite AI Hedge Fund. "
+                        "You are Bob, the polite Front Desk Receptionist at a specialized Agency. "
                         "You provide standard, free-tier general knowledge answers to the user based on the transcript below.\n"
-                        "CRITICAL INSTRUCTION: If the user asks for complex real-time financial data, web scraping, "
-                        "or high-end image generation, politely explain that you are just the receptionist and cannot do that. "
-                        "Instruct them to click the 💎 'Fund Team' button below your message to wake up the executives (Alice or Diana) to handle it.\n\n"
+                        "You are aware that the company has a 6-Layer hierarchy. Layer 5 contains our highly-paid specialists: "
+                        "Eve, Gordon, and Olivia (Research), Ellen, Marcus, and Sophia (Images), Victor, Chloe, and Leo (Video), and Melody, Jax, and Harmon (Audio). "
+                        "CRITICAL INSTRUCTION: If the user asks for complex work, uploads a file, or asks for a specialist by name, politely explain that you are just the receptionist. "
+                        "Instruct them to click the 💎 'Fund Team' button below your message so Alice or Diana can assign the specialist.\n\n"
                         f"Transcript:\n{chat_transcript}"
                     )
                     standard_resp = "🛎️ **Bob (Front Desk):**\n\n" + llm.invoke(bob_prompt).content
@@ -450,9 +545,10 @@ if st.session_state.get("process_new_prompt") or st.session_state.get("trigger_p
                 st.markdown(standard_resp)
                 st.session_state.messages.append({"role": "assistant", "content": standard_resp})
                 
+                # --- UPDATED CHARLIE PROMPT TO CATCH PDFS! ---
                 charlie_prompt = (
                     f"You are Charlie, the Routing Officer.\nTranscript:\n{chat_transcript}\n"
-                    "Does this request realistically require financial/market research ('ROUTE_FINANCE') or image/creative design ('ROUTE_MARKETING') or neither ('NONE')? Reply with exactly one of those three keywords."
+                    "Does this request realistically require financial/market research, web scraping, reading/reviewing/summarizing an attached file or PDF ('ROUTE_FINANCE') or generating an image, video, or music ('ROUTE_MARKETING') or neither ('NONE')? Reply with exactly one of those three keywords. CRITICAL: If a file is attached, you MUST reply 'ROUTE_FINANCE'."
                 )
                 decision = llm.invoke(charlie_prompt).content
                 
@@ -461,8 +557,9 @@ if st.session_state.get("process_new_prompt") or st.session_state.get("trigger_p
                     st.session_state.upsell_cost = 75
                 elif "ROUTE_MARKETING" in decision:
                     st.session_state.upsell_type = "marketing"
-                    st.session_state.upsell_cost = 100
+                    st.session_state.upsell_cost = 100 
                     
+                st.session_state.trigger_premium_now = False
                 st.session_state.process_new_prompt = False
                 st.rerun()
                 
@@ -474,6 +571,8 @@ if st.session_state.get("process_new_prompt") or st.session_state.get("trigger_p
                         if isinstance(final_answer, dict) and final_answer.get("status") == "402":
                             st.session_state.pending_payment = final_answer
                             status_container.update(label="⚠️ Executive Halt: Payment Required", state="error", expanded=False)
+                            st.session_state.trigger_premium_now = False
+                            st.session_state.process_new_prompt = False
                             st.rerun()
                             
                         status_container.update(label="✅ Run Complete!", state="complete", expanded=False)
@@ -484,22 +583,18 @@ if st.session_state.get("process_new_prompt") or st.session_state.get("trigger_p
                 if isinstance(final_answer, str):
                     st.markdown(final_answer)
                     
-                    img_match = re.search(r"'([^']+\.(?:jpg|jpeg|png|webp|gif))'", final_answer, re.IGNORECASE)
-                    img_file = img_match.group(1) if img_match else None
+                    media_match = re.search(r"'([^']+\.(?:jpg|jpeg|png|webp|gif|mp4|mp3|wav))'", final_answer, re.IGNORECASE)
+                    media_file = media_match.group(1) if media_match else None
                     
-                    if img_file:
-                        if not os.path.exists(img_file):
-                            time.sleep(0.5)
-                        if os.path.exists(img_file):
-                            st.image(img_file)
-                            with open(img_file, "rb") as f:
-                                st.download_button("📥 Download Masterpiece", data=f, file_name=img_file, mime="image/jpeg", key="dl_current")
+                    if media_file:
+                        if not os.path.exists(media_file): time.sleep(0.5)
+                        if os.path.exists(media_file):
+                            render_media(media_file, "current_run")
                         else:
-                            st.warning(f"⚠️ Image generated, but couldn't be found locally.")
+                            st.warning(f"⚠️ Media generated, but couldn't be found locally.")
                             
-                    st.session_state.messages.append({"role": "assistant", "content": final_answer, "image": img_file})
+                    st.session_state.messages.append({"role": "assistant", "content": final_answer, "media": media_file})
                     
-                    # If the task finishes (not asking a question), revert to free tier
                     if "Charlie:" not in final_answer and "Network Interrupted" not in final_answer:
                         st.session_state.premium_mode = False
                         
