@@ -9,6 +9,7 @@ services:
       - "8000:8000"
     volumes:
       - proxy_data:/app/data
+      - .:/app
     env_file:
       - .env
     environment:
