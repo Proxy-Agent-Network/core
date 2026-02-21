@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Search Agency | Proxy Agent Network</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        body { margin: 0; padding: 0; overflow-x: hidden; background-color: var(--bg); display: flex; flex-direction: column; min-height: 100vh;}
+        
+        /* The Iframe Container */
+        .iframe-container {
+            flex-grow: 1; /* Pushes footer to bottom */
+            width: 100%;
+            height: calc(100vh - 80px); /* Adjust based on header height */
+            background: var(--bg);
+            border: none;
+            margin-top: 10px;
+        }
+
+        /* --- STYLES COPIED FROM DASHBOARD FOR HEADER SUPPORT --- */
+        .mission-hud { width: 100%; box-sizing: border-box; background: #1a1a1a; border-bottom: 2px solid #2ecc71; padding: 15px 30px; display: flex; align-items: center; gap: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: background 0.3s ease, border-color 0.3s ease; }
+        .hud-identity { display: flex; flex-direction: column; flex-shrink: 0; }
+        .node-id { font-family: 'Courier New', monospace; font-weight: bold; color: #ecf0f1; font-size: 1.1em; letter-spacing: 1px; }
+        .net-status { font-size: 0.8em; color: #2ecc71; text-transform: uppercase; }
+        .hud-nav { display: flex; gap: 15px; background: #000; padding: 8px 20px; border-radius: 30px; border: 1px solid #333; align-items: center; flex-shrink: 0; }
+        .nav-link { color: #7f8c8d; text-decoration: none; font-weight: bold; text-transform: uppercase; font-size: 0.9em; transition: all 0.3s ease; padding: 5px 10px; }
+        .nav-link:hover, .nav-link.active { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.5); }
+        .nav-btn-settings { background: transparent; border: none; color: #7f8c8d; font-size: 1rem; cursor: pointer; padding: 5px 10px; transition: all 0.3s ease; border-left: 1px solid #333; margin-left: 5px; padding-left: 15px; }
+        .nav-btn-settings:hover { color: var(--accent); transform: rotate(90deg); }
+        .hud-wallet { display: flex; align-items: center; gap: 15px; margin-left: auto; }
+        .wallet-display { text-align: right; background: rgba(46, 204, 113, 0.1); padding: 5px 15px; border-radius: 4px; border-left: 3px solid #2ecc71; min-width: 150px; }
+        .sats-label { font-size: 0.75em; color: #95a5a6; display: block; }
+        .sats-value { font-family: 'Courier New', monospace; font-size: 1.2em; color: #2ecc71; font-weight: bold; }
+        .mission-footer { width: 100%; box-sizing: border-box; background: #1a1a1a; border-top: 2px solid #2ecc71; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; font-family: 'Inter', sans-serif; font-size: 0.75rem; color: #7f8c8d; transition: background 0.3s ease, border-color 0.3s ease; }
+        .footer-left { display: flex; flex-direction: column; gap: 5px; }
+        .footer-links { display: flex; gap: 20px; }
+        .footer-links a { color: #7f8c8d; text-decoration: none; transition: color 0.2s; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+        .footer-links a:hover { color: var(--accent); }
+
+        /* Theme Overrides */
+        [data-theme="business"] .mission-hud, [data-theme="paperback"] .mission-hud, [data-theme="groovy"] .mission-hud { background: #ffffff; border-bottom: 2px solid var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        [data-theme="business"] .node-id, [data-theme="paperback"] .node-id, [data-theme="groovy"] .node-id { color: #2c3e50; }
+        [data-theme="business"] .hud-nav, [data-theme="paperback"] .hud-nav, [data-theme="groovy"] .hud-nav { background: #f8f9fa; border: 1px solid #e0e0e0; }
+        [data-theme="business"] .nav-link, [data-theme="paperback"] .nav-link, [data-theme="groovy"] .nav-link { color: #7f8c8d; }
+        [data-theme="business"] .nav-link:hover, [data-theme="business"] .nav-link.active, [data-theme="paperback"] .nav-link:hover, [data-theme="paperback"] .nav-link.active, [data-theme="groovy"] .nav-link:hover, [data-theme="groovy"] .nav-link.active { color: var(--accent); text-shadow: none; background: rgba(0,0,0,0.05); border-radius: 4px; }
+        [data-theme="business"] .mission-footer, [data-theme="paperback"] .mission-footer, [data-theme="groovy"] .mission-footer { background: #ffffff; border-top: 2px solid var(--accent); color: #2c3e50; box-shadow: 0 -4px 10px rgba(0,0,0,0.05); }
+
+    </style>
+</head>
+<body>
+
+    {% include 'components/header.html' %}
+
+    <iframe src="http://localhost:8501" class="iframe-container" title="6-Layer AI Agency"></iframe>
+
+    {% include 'components/footer.html' %}
+
+    <script>
+        // Basic Theme Initialization for the Wrapper
+        (function() {
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            }
+        })();
+    </script>
+</body>
+</html>

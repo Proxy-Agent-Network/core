@@ -6,6 +6,9 @@ proxy_api_secret.txt
 # Added to prevent accidental credential leaks
 secrets/
 config.local.yaml
+# Secret Lore and Live Agent Databases
+core_memories.json
+agency_lore.db
 
 # --- TPM 2.0 HARDWARE (VITAL) ---
 # Protecting the Hardware Root of Trust

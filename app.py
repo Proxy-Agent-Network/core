@@ -405,6 +405,18 @@ def close_connection(exception):
 # FRONTEND ROUTES
 # ---------------------------------------------------------
 
+@app.route('/search')
+def search_engine():
+    """Renders the 6-Layer AI Agency Search Engine embedded in the main network UI."""
+    conn = get_db()
+    target_node = MY_NODE_ID 
+    
+    # We still need the secure balance so the Header HUD displays correctly!
+    balance = get_secure_balance(conn, target_node)
+    owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (target_node,)).fetchall()]
+    
+    return render_template('search.html', balance=balance, owned=owned)
+
 @app.route('/')
 def dashboard():
     """Main Dashboard View."""

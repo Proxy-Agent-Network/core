@@ -15,3 +15,5 @@ faiss-cpu
 pypdf
 httpx
 streamlit
+qrcode
+pillow

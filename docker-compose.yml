@@ -20,6 +20,23 @@ services:
       - proxy-net
     restart: unless-stopped
 
+  # --- NEW: STREAMLIT AGENCY SERVICE ---
+  agency-search:
+    container_name: proxy_agency_search
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    networks:
+      - proxy-net
+    restart: unless-stopped
+
 volumes:
   proxy_data:
 
