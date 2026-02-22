@@ -9,9 +9,9 @@ import re
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # --- IMPORT OUR NEW MODULES ---
-import ui_injector
-import db_manager as db
-import agent_engine as engine
+import streamlit_core.ui_injector as ui_injector
+import streamlit_core.db_manager as db
+import streamlit_core.agent_engine as engine
 
 # --- INIT ---
 ui_injector.inject_custom_ui()

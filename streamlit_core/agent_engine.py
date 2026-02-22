@@ -16,7 +16,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 import httpx
 
-import db_manager as db
+import streamlit_core.db_manager as db
 
 FAISS_INDEX_PATH = "faiss_index"
 

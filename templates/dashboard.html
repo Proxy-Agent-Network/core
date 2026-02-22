@@ -20,102 +20,27 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <script>
-    // ANTI-FLASH: Apply theme before page renders
         (function() {
             const savedTheme = localStorage.getItem('selectedTheme');
-            if (savedTheme) {
-                document.documentElement.setAttribute('data-theme', savedTheme);
-            }
+            if (savedTheme) { document.documentElement.setAttribute('data-theme', savedTheme); }
         })();
     </script>
 
     <style>
-        /* --- FULL WIDTH FIXES --- */
-        body { margin: 0; padding: 0; overflow-x: hidden; background-color: var(--bg); }
-        .dashboard-grid { max-width: 1400px; margin: 0 auto; padding: 20px; }
-
-        /* --- COMPONENT STYLES (Header/Footer/Modal Support) --- */
-        .mission-hud { width: 100%; box-sizing: border-box; background: #1a1a1a; border-bottom: 2px solid #2ecc71; padding: 15px 30px; display: flex; align-items: center; gap: 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 25px; transition: background 0.3s ease, border-color 0.3s ease; }
-        .hud-identity { display: flex; flex-direction: column; flex-shrink: 0; }
-        .node-id { font-family: 'Courier New', monospace; font-weight: bold; color: #ecf0f1; font-size: 1.1em; letter-spacing: 1px; }
-        .net-status { font-size: 0.8em; color: #2ecc71; text-transform: uppercase; }
-        .hud-nav { display: flex; gap: 15px; background: #000; padding: 8px 20px; border-radius: 30px; border: 1px solid #333; align-items: center; flex-shrink: 0; }
-        .nav-link { color: #7f8c8d; text-decoration: none; font-weight: bold; text-transform: uppercase; font-size: 0.9em; transition: all 0.3s ease; padding: 5px 10px; }
-        .nav-link:hover, .nav-link.active { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.5); }
-        .nav-btn-settings { background: transparent; border: none; color: #7f8c8d; font-size: 1rem; cursor: pointer; padding: 5px 10px; transition: all 0.3s ease; border-left: 1px solid #333; margin-left: 5px; padding-left: 15px; }
-        .nav-btn-settings:hover { color: var(--accent); transform: rotate(90deg); }
-        .hud-wallet { display: flex; align-items: center; gap: 15px; margin-left: auto; }
-        .wallet-display { text-align: right; background: rgba(46, 204, 113, 0.1); padding: 5px 15px; border-radius: 4px; border-left: 3px solid #2ecc71; min-width: 150px; }
-        .sats-label { font-size: 0.75em; color: #95a5a6; display: block; }
-        .sats-value { font-family: 'Courier New', monospace; font-size: 1.2em; color: #2ecc71; font-weight: bold; }
-        .mission-footer { width: 100%; box-sizing: border-box; background: #1a1a1a; border-top: 2px solid #2ecc71; padding: 20px 30px; margin-top: 40px; display: flex; justify-content: space-between; align-items: center; font-family: 'Inter', sans-serif; font-size: 0.75rem; color: #7f8c8d; transition: background 0.3s ease, border-color 0.3s ease; }
-        .footer-left { display: flex; flex-direction: column; gap: 5px; }
-        .footer-links { display: flex; gap: 20px; }
-        .footer-links a { color: #7f8c8d; text-decoration: none; transition: color 0.2s; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
-        .footer-links a:hover { color: var(--accent); }
-
-        /* Theme Overrides */
-        [data-theme="business"] .mission-hud, [data-theme="paperback"] .mission-hud, [data-theme="groovy"] .mission-hud { background: #ffffff; border-bottom: 2px solid var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        [data-theme="business"] .node-id, [data-theme="paperback"] .node-id, [data-theme="groovy"] .node-id { color: #2c3e50; }
-        [data-theme="business"] .hud-nav, [data-theme="paperback"] .hud-nav, [data-theme="groovy"] .hud-nav { background: #f8f9fa; border: 1px solid #e0e0e0; }
-        [data-theme="business"] .nav-link, [data-theme="paperback"] .nav-link, [data-theme="groovy"] .nav-link { color: #7f8c8d; }
-        [data-theme="business"] .nav-link:hover, [data-theme="business"] .nav-link.active, [data-theme="paperback"] .nav-link:hover, [data-theme="paperback"] .nav-link.active, [data-theme="groovy"] .nav-link:hover, [data-theme="groovy"] .nav-link.active { color: var(--accent); text-shadow: none; background: rgba(0,0,0,0.05); border-radius: 4px; }
-        [data-theme="business"] .mission-footer, [data-theme="paperback"] .mission-footer, [data-theme="groovy"] .mission-footer { background: #ffffff; border-top: 2px solid var(--accent); color: #2c3e50; box-shadow: 0 -4px 10px rgba(0,0,0,0.05); }
-
-        /* Lock Screen */
-        #lock-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; flex-direction: column; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif; }
-        .lock-container { text-align: center; color: var(--accent); animation: pulse-border 2s infinite; padding: 40px; border: 2px solid var(--accent); border-radius: 20px; box-shadow: 0 0 50px rgba(0,255,0,0.1); }
-        .lock-icon { font-size: 4rem; margin-bottom: 20px; color: var(--accent); }
-        .pin-display { font-size: 2rem; margin: 20px 0; letter-spacing: 15px; min-height: 40px; color: #fff; font-family: 'Courier Prime'; }
-        .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
-        .key-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--accent); color: var(--accent); font-size: 1.5rem; padding: 15px; border-radius: 10px; cursor: pointer; transition: all 0.2s; }
-        .key-btn:hover { background: var(--accent); color: #000; }
-        .key-btn:active { transform: scale(0.95); }
-
-        /* Settings Modal */
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px); z-index: 1000; display: none; align-items: center; justify-content: center; }
-        .modal-overlay.active { display: flex; }
-        .modal-content { background: var(--card-bg); border: 1px solid var(--accent); box-shadow: 0 0 30px rgba(0, 243, 255, 0.2); width: 400px; border-radius: 12px; padding: 20px; animation: modalSlideIn 0.3s ease-out; color: var(--text); }
-        @keyframes modalSlideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; }
-        .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--accent); }
-        .close-btn { background: none; border: none; color: #7f8c8d; font-size: 1.2rem; cursor: pointer; }
-        .close-btn:hover { color: var(--danger); }
-        .settings-group { margin-bottom: 20px; }
-        .settings-group label { display: block; color: #95a5a6; margin-bottom: 10px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
-        .control-row { display: flex; align-items: center; gap: 15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
-        .theme-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text); padding: 10px; border-radius: 6px; cursor: pointer; text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
-        .theme-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent); }
-        .theme-btn.active { background: var(--accent); color: var(--bg); font-weight: bold; }
-        .version-info { text-align: center; font-size: 0.8rem; color: #7f8c8d; margin-top: 20px; opacity: 0.5; }
-
-        /* Easter Egg Styles */
-        #bypass-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.95); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; font-family: 'Courier Prime', monospace; }
-        .bypass-title { font-size: 4rem; color: #00ff00; text-shadow: 6px 6px #ff0000; margin-bottom: 20px; text-align: center; }
-        .live-dot { height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-live 1.5s infinite; }
-        @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-        #marvin-sprite-container { display: none; position: fixed; bottom: -200px; right: 20px; width: 300px; z-index: 9000; cursor: pointer; filter: drop-shadow(0 0 15px var(--accent)); transition: opacity 1s, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275); opacity: 0; pointer-events: none; }
-        #marvin-sprite-container.active { display: block; opacity: 1; transform: translateY(-200px); pointer-events: auto; }
-        #marvin-image { width: 100%; height: auto; animation: idle-float 3s ease-in-out infinite; }
-        @keyframes idle-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(3deg); } }
-        .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
-        @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
-
-        /* Table Styles */
+        /* Table Styles Specific to Dashboard */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         th:nth-child(1), td:nth-child(1) { width: 15%; }
         th:nth-child(2), td:nth-child(2) { width: 20%; }
         th:nth-child(3), td:nth-child(3) { width: 30%; }
         th:nth-child(4), td:nth-child(4) { width: 15%; text-align: right; }
         th:nth-child(5), td:nth-child(5) { width: 20%; text-align: right; }
         td:nth-child(4) span { display: inline-block; float: right; }
-        td:nth-child(5) { text-align: right; }
-        td:nth-child(5) button { float: right; margin-left: 5px;}
+        td:nth-child(5) button { float: right; margin-left: 5px; cursor: pointer; padding: 5px 10px; background: var(--bg); border: 1px solid var(--accent); color: var(--text); font-family: var(--font); border-radius: 4px; transition: all 0.2s; }
+        td:nth-child(5) button:hover { background: var(--accent); color: var(--bg); }
     </style>
 </head>
 <body>
-
     <script>window.OWNED_THEMES = JSON.parse('{{ owned|tojson|safe }}');</script>
 
     <div id="lock-overlay">
@@ -140,10 +65,10 @@
         </div>
     </div>
 
-    <div id="audio-unlock-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:black; z-index:99999; display:flex; justify-content:center; align-items:center; flex-direction:column;">
-        <h1 style="color: #8e44ad; font-family:'Courier Prime'; margin-bottom:20px; font-size: 2rem; letter-spacing: 2px;">PROXY // NETWORK</h1>
-        <div style="color: #666; margin-bottom: 30px; font-family: 'Inter', sans-serif;">ESTABLISHING SECURE CONNECTION...</div>
-        <button onclick="unlockAudio()" style="padding:15px 30px; font-size:1.2rem; background:#8e44ad; color:white; border:none; cursor:pointer; font-family:'Courier Prime'; font-weight:bold; border-radius: 4px; box-shadow: 0 0 15px rgba(142, 68, 173, 0.5);">INITIALIZE UPLINK</button>
+    <div id="audio-unlock-overlay">
+        <h1 class="audio-title">PROXY // NETWORK</h1>
+        <div class="audio-subtitle">ESTABLISHING SECURE CONNECTION...</div>
+        <button class="audio-btn" onclick="unlockAudio()">INITIALIZE UPLINK</button>
     </div>
 
     <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
@@ -162,7 +87,6 @@
     </div>
 
     {% include 'components/header.html' %}
-
     {% include 'components/settings_modal.html' %}
 
     <div class="dashboard-grid">
@@ -195,8 +119,8 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <h2 id="activity-title" data-i18n="panel_activity">Network Activity</h2>
                 <div style="display: flex; gap: 10px;">
-                    <button onclick="switchTab('live')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px;" data-i18n="btn_live">LIVE</button>
-                    <button onclick="switchTab('global')" class="theme-btn-primary" style="font-size: 0.7rem; padding: 2px 8px; background: transparent; border: 1px solid var(--accent);" data-i18n="btn_global">GLOBAL</button>
+                    <button onclick="switchTab('live')" style="font-size: 0.7rem; padding: 2px 8px; background: var(--accent); border: none; color: var(--bg); cursor: pointer;" data-i18n="btn_live">LIVE</button>
+                    <button onclick="switchTab('global')" style="font-size: 0.7rem; padding: 2px 8px; background: transparent; border: 1px solid var(--accent); color: var(--text); cursor: pointer;" data-i18n="btn_global">GLOBAL</button>
                 </div>
             </div>
             <div id="activity-log"><div style="opacity:0.5; font-style:italic;" data-i18n="msg_telemetry">Initializing telemetry stream...</div></div>
@@ -251,10 +175,10 @@
     {% include 'components/footer.html' %}
 
     <div id="xp-history-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(10px);">
-        <div style="background: #004d56; border: 2px solid #ff9f00; padding: 25px; border-radius: 8px; width: 90%; max-width: 550px; box-shadow: 0 0 40px rgba(255, 159, 0, 0.3);">
+        <div style="background: var(--card-bg); border: 2px solid var(--accent); padding: 25px; border-radius: 8px; width: 90%; max-width: 550px; box-shadow: 0 0 40px rgba(0,0,0,0.5);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; color: #a3e3ed; font-family: 'Montserrat', sans-serif; letter-spacing: 1px;">Session XP Ledger</h2>
-                <button onclick="closeXPHistory()" style="background: #ff9f00; border: none; color: #002b31; font-weight: bold; padding: 5px 15px; border-radius: 4px; cursor: pointer;">CLOSE</button>
+                <h2 style="margin: 0; color: var(--accent); font-family: 'Montserrat', sans-serif; letter-spacing: 1px;">Session XP Ledger</h2>
+                <button onclick="closeXPHistory()" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); font-weight: bold; padding: 5px 15px; border-radius: 4px; cursor: pointer;">CLOSE</button>
             </div>
             <div id="xp-ledger-body" class="session-ledger" style="max-height: 400px; overflow-y: auto; font-family: 'Courier Prime', monospace;"></div>
         </div>
@@ -266,7 +190,6 @@
         let rawSatsBalance = 0;
         let lastLevel = -1; 
 
-        // --- AUDIO ---
         let audioMuted = localStorage.getItem('audioMuted') === 'true';
         let audioVolume = localStorage.getItem('audioVolume') || 0.5;
         
@@ -310,15 +233,11 @@
             document.querySelectorAll('audio').forEach(el => el.volume = val);
         }
 
-        // --- CURRENCY ---
         let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
-        document.getElementById('currency-select').value = currentUnit;
+        const currSelect = document.getElementById('currency-select');
+        if(currSelect) currSelect.value = currentUnit;
         
-        const RATES = {
-            SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088,
-            CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051,
-            JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010
-        };
+        const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051, JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010 };
 
         function changeUnit(unit) {
             currentUnit = unit;
@@ -331,7 +250,6 @@
         function updateBalanceDisplay() {
             const el = document.getElementById('hud-balance');
             if (!el) return;
-            // Safe parse if raw balance isn't ready
             if (rawSatsBalance === 0) {
                 const txt = el.innerText.replace(/,/g, '').split(' ')[0];
                 if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt);
@@ -343,7 +261,6 @@
             else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
         }
 
-        // --- EASTER EGGS ---
         const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
         let konamiIndex = 0;
         document.addEventListener('keydown', (e) => {
@@ -369,10 +286,8 @@
         }
 
         function triggerMarvin() {
-            // CORPORATE SUPPRESSION
             const currentTheme = document.documentElement.getAttribute('data-theme');
             if (currentTheme === 'business' || currentTheme === 'paperback') return;
-
             const marvin = document.getElementById('marvin-sprite-container');
             marvin.classList.add('active'); 
             setTimeout(() => { marvin.classList.remove('active'); }, 5000); 
@@ -391,16 +306,13 @@
             setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000); 
         }
 
-        // --- LOCK SCREEN ---
         let inputPin = "";
         function lockDashboard() {
             toggleSettings();
             const overlay = document.getElementById('lock-overlay');
             const msg = document.getElementById('lock-msg');
             const storedPin = localStorage.getItem('user_pin');
-            inputPin = "";
-            updatePinDots();
-            overlay.style.display = 'flex';
+            inputPin = ""; updatePinDots(); overlay.style.display = 'flex';
             if (!storedPin) { msg.innerText = "SET NEW PIN CODE"; msg.style.color = "#f1c40f"; } 
             else { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }
         }
@@ -412,26 +324,18 @@
                 const storedPin = localStorage.getItem('user_pin');
                 if (!storedPin) {
                     if (inputPin.length < 4) {
-                        msg.innerText = "PIN TOO SHORT";
-                        document.getElementById('audio-failure').play();
-                        setTimeout(() => msg.innerText = "SET NEW PIN CODE", 1000);
-                        inputPin = "";
+                        msg.innerText = "PIN TOO SHORT"; document.getElementById('audio-failure').play();
+                        setTimeout(() => msg.innerText = "SET NEW PIN CODE", 1000); inputPin = "";
                     } else {
-                        localStorage.setItem('user_pin', inputPin);
-                        msg.innerText = "PIN ESTABLISHED";
+                        localStorage.setItem('user_pin', inputPin); msg.innerText = "PIN ESTABLISHED";
                         document.getElementById('audio-success').play();
                         setTimeout(() => { document.getElementById('lock-overlay').style.display = 'none'; inputPin = ""; }, 1000);
                     }
                 } else {
                     if (inputPin === storedPin) {
-                        document.getElementById('audio-success').play();
-                        document.getElementById('lock-overlay').style.display = 'none';
-                        inputPin = "";
+                        document.getElementById('audio-success').play(); document.getElementById('lock-overlay').style.display = 'none'; inputPin = "";
                     } else {
-                        document.getElementById('audio-failure').play();
-                        msg.innerText = "ACCESS DENIED";
-                        msg.style.color = "#e74c3c";
-                        inputPin = "";
+                        document.getElementById('audio-failure').play(); msg.innerText = "ACCESS DENIED"; msg.style.color = "#e74c3c"; inputPin = "";
                         setTimeout(() => { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }, 1000);
                     }
                 }
@@ -440,195 +344,83 @@
         }
         function updatePinDots() { document.getElementById('pin-dots').innerText = "•".repeat(inputPin.length); }
 
-        // --- SETTINGS ---
-        function toggleSettings() {
-            document.getElementById('settingsModal').classList.toggle('active');
-        }
-        window.onclick = function(event) {
-            const modal = document.getElementById('settingsModal');
-            if (event.target == modal) modal.classList.remove('active');
-        }
+        function toggleSettings() { document.getElementById('settingsModal').classList.toggle('active'); }
+        window.onclick = function(event) { const modal = document.getElementById('settingsModal'); if (event.target == modal) modal.classList.remove('active'); }
 
-        // --- DASHBOARD DATA ---
         function refreshDashboard() {
             fetch('/api/v1/dashboard/live').then(r => r.json()).then(data => {
                 if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
                     document.getElementById('audio-success').play();
-                    addLog(`<span style="color:#2ecc71">🤖 DAEMON: ${data.daemon_event}</span>`);
-                    flashPulse('success');
-                    lastDaemonMsg = data.daemon_event;
+                    addLog(`<span style="color:var(--accent)">🤖 DAEMON: ${data.daemon_event}</span>`);
+                    flashPulse('success'); lastDaemonMsg = data.daemon_event;
                 }
                 
-                rawSatsBalance = data.balance;
-                updateBalanceDisplay();
-
-                // XP Logic
-                const currentLevel = Math.floor(data.xp / 5000) + 1;
-                const currentXP = data.xp % 5000;
+                rawSatsBalance = data.balance; updateBalanceDisplay();
+                const currentLevel = Math.floor(data.xp / 5000) + 1; const currentXP = data.xp % 5000;
                 const percent = (currentXP / 5000) * 100;
-
                 document.getElementById('xp-bar').style.width = `${percent}%`;
                 document.getElementById('xp-text').innerText = `${currentXP} / 5000`;
-                
-                const lvlEl = document.getElementById('level-num');
-                if(lvlEl) lvlEl.innerText = currentLevel;
-                
+                const lvlEl = document.getElementById('level-num'); if(lvlEl) lvlEl.innerText = currentLevel;
                 checkLevelUp(data.xp); 
 
                 const tbody = document.getElementById('task-table-body');
-                if(data.tasks.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">No active tasks. Market is dry.</td></tr>';
-                } else {
+                if(data.tasks.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">No active tasks. Market is dry.</td></tr>'; } 
+                else {
                     const currentLang = localStorage.getItem('selectedLanguage') || 'en';
-                    // Use a safe accessor for translations
                     const t = (window.TRANSLATIONS && window.TRANSLATIONS[currentLang]) ? window.TRANSLATIONS[currentLang] : (window.TRANSLATIONS ? window.TRANSLATIONS['en'] : {});
                     
                     tbody.innerHTML = data.tasks.map(task => {
                         if (task.type === 'AUTOMATED') {
-                            return `<tr>
-                                <td style="color:#2ecc71">${task.id}</td>
-                                <td>${t.task_automated || 'AUTOMATED'}</td>
-                                <td style="color:#2ecc71">${t.task_secured || 'SECURED BY DAEMON'}</td>
-                                <td><span class="sats-badge">${task.reward}</span></td>
-                                <td><span style="opacity:0.5">${t.task_claimed || 'AUTO-CLAIMED'}</span></td>
-                            </tr>`;
+                            return `<tr><td style="color:var(--accent)">${task.id}</td><td>${t.task_automated || 'AUTOMATED'}</td><td style="color:var(--accent)">${t.task_secured || 'SECURED BY DAEMON'}</td><td><span class="sats-badge">${task.reward}</span></td><td><span style="opacity:0.5">${t.task_claimed || 'AUTO-CLAIMED'}</span></td></tr>`;
                         } else {
-                            return `<tr>
-                                <td>${task.id}</td>
-                                <td>${task.type}</td>
-                                <td><code>${t.task_open || 'OPEN'}</code></td>
-                                <td><span class="sats-badge">${task.reward}</span></td>
-                                <td><button class="theme-btn-primary" onclick="completeTask('${task.id}', ${task.reward})">${t.btn_complete || 'COMPLETE'}</button></td>
-                            </tr>`;
+                            return `<tr><td>${task.id}</td><td>${task.type}</td><td><code>${t.task_open || 'OPEN'}</code></td><td><span class="sats-badge">${task.reward}</span></td><td><button style="cursor: pointer; padding: 5px 10px; background: var(--bg); border: 1px solid var(--accent); color: var(--text); border-radius: 4px;" onclick="completeTask('${task.id}', ${task.reward})">${t.btn_complete || 'COMPLETE'}</button></td></tr>`;
                         }
                     }).join('');
                 }
             });
         }
 
-        // FIXED NETWORK STATS FUNCTION
         function updateNetworkStats() {
             fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
                 const healthSpan = document.getElementById('health-peers');
                 if (healthSpan) {
-                    // Check local storage for language, fallback to 'en'
                     const lang = localStorage.getItem('selectedLanguage') || 'en';
-                    // Grab translation dictionary safely using window.TRANSLATIONS directly
                     const t = (window.TRANSLATIONS && window.TRANSLATIONS[lang]) ? window.TRANSLATIONS[lang] : (window.TRANSLATIONS ? window.TRANSLATIONS['en'] : {});
-
-                    const txtConnected = t.status_connected || "CONNECTED";
-                    const txtPeers = t.status_peers || "PEERS";
-                    const txtSearching = t.status_searching || "SEARCHING";
-
-                    if (data.peers > 0) { 
-                        healthSpan.innerHTML = `● ${data.peers} ${txtConnected}`; 
-                        healthSpan.style.color = "#2ecc71"; 
-                    } else { 
-                        healthSpan.innerHTML = `● 0 ${txtPeers} (${txtSearching})`; 
-                        healthSpan.style.color = "#f1c40f"; 
-                    }
+                    const txtConnected = t.status_connected || "CONNECTED"; const txtPeers = t.status_peers || "PEERS"; const txtSearching = t.status_searching || "SEARCHING";
+                    if (data.peers > 0) { healthSpan.innerHTML = `● ${data.peers} ${txtConnected}`; healthSpan.style.color = "#2ecc71"; } 
+                    else { healthSpan.innerHTML = `● 0 ${txtPeers} (${txtSearching})`; healthSpan.style.color = "#f1c40f"; }
                 }
             });
         }
 
-        // --- INIT ---
         function switchTab(tab) {
-            const liveLog = document.getElementById('activity-log');
-            const globalLog = document.getElementById('global-log');
-            const title = document.getElementById('activity-title');
-            if (tab === 'live') { 
-                liveLog.style.display = 'block'; 
-                globalLog.style.display = 'none'; 
-                const lang = localStorage.getItem('selectedLanguage') || 'en';
-                const t = window.TRANSLATIONS && window.TRANSLATIONS[lang] ? window.TRANSLATIONS[lang] : {};
-                title.innerText = t.panel_activity || "Network Activity"; 
-            } 
-            else { 
-                liveLog.style.display = 'none'; 
-                globalLog.style.display = 'block'; 
-                title.innerText = "Global Event Log"; 
-                fetchGlobalEvents(); 
-            }
+            const liveLog = document.getElementById('activity-log'); const globalLog = document.getElementById('global-log'); const title = document.getElementById('activity-title');
+            if (tab === 'live') { liveLog.style.display = 'block'; globalLog.style.display = 'none'; const lang = localStorage.getItem('selectedLanguage') || 'en'; const t = window.TRANSLATIONS && window.TRANSLATIONS[lang] ? window.TRANSLATIONS[lang] : {}; title.innerText = t.panel_activity || "Network Activity"; } 
+            else { liveLog.style.display = 'none'; globalLog.style.display = 'block'; title.innerText = "Global Event Log"; fetchGlobalEvents(); }
         }
-        function fetchGlobalEvents() {
-            fetch('/api/v1/network/events/history').then(r => r.json()).then(events => {
-                document.getElementById('global-log').innerHTML = events.map(e => `<div style="margin-bottom: 5px;"><span style="opacity:0.5">[${e.timestamp.split(' ')[1]}]</span> <b style="color:var(--accent)">${e.event_type}:</b> ${e.message}</div>`).join('') || "No historical events found.";
-            });
-        }
-        function addLog(msg) {
-            const log = document.getElementById('activity-log');
-            const entry = document.createElement('div');
-            entry.innerHTML = `<span style="color:var(--accent)">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
-            log.prepend(entry);
-        }
-        function flashPulse(type) {
-            const pulse = document.getElementById('scan-pulse');
-            const className = type === 'success' ? 'success-flash' : 'rival-alert';
-            pulse.classList.add(className);
-            setTimeout(() => pulse.classList.remove(className), 1200);
-        }
-        function completeTask(taskId, reward) {
-            fetch('/api/v1/tasks/complete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ node_id: NODE_ID, task_id: taskId, payout: reward }) }).then(r => r.json()).then(data => {
-                if (data.status === 'success') { document.getElementById('audio-success').play(); addLog(`Task ${taskId} completed manually. Reward credited.`); refreshDashboard(); }
-            });
-        }
-        function updateLeaderboard() {
-            fetch('/api/v1/network/leaderboard').then(r => r.json()).then(data => {
-                document.getElementById('leaderboard-list').innerHTML = data.map((entry, i) => `<div style="display: flex; justify-content: space-between; margin-bottom: 6px; ${entry.id === NODE_ID ? 'color:var(--accent); font-weight:bold;' : 'opacity:0.7;'}"><span>#${i+1} ${entry.id} ${entry.type === 'RIVAL' ? '🤖' : ''}</span><span>${entry.xp.toLocaleString()} XP</span></div>`).join('');
-            });
-        }
-        function openXPHistory() {
-            document.getElementById('xp-history-modal').style.display = 'flex';
-            fetch('/api/v1/node/xp_ledger/' + NODE_ID).then(r => r.json()).then(data => {
-                const body = document.getElementById('xp-ledger-body');
-                if (data.length === 0) { body.innerHTML = "<div style='text-align:center; padding:20px; opacity:0.5;'>No XP history recorded.</div>"; return; }
-                body.innerHTML = data.map(log => `<div class="ledger-row"><div class="ledger-parent"><div><span class="ledger-timestamp">[${log.time}]</span> <span class="ledger-task-id">${log.taskId}</span></div><div class="ledger-xp-total">+${log.totalXp} XP</div></div><div class="ledger-children">${log.bonuses.map(b => `<div class="ledger-child"><span class="ledger-child-name" style="color: ${b.color}">${b.name}</span><span class="ledger-child-xp">+${b.xp} XP</span></div>`).join('')}</div></div>`).join('');
-            });
-        }
+        function fetchGlobalEvents() { fetch('/api/v1/network/events/history').then(r => r.json()).then(events => { document.getElementById('global-log').innerHTML = events.map(e => `<div style="margin-bottom: 5px;"><span style="opacity:0.5">[${e.timestamp.split(' ')[1]}]</span> <b style="color:var(--accent)">${e.event_type}:</b> ${e.message}</div>`).join('') || "No historical events found."; }); }
+        function addLog(msg) { const log = document.getElementById('activity-log'); const entry = document.createElement('div'); entry.innerHTML = `<span style="color:var(--accent)">[${new Date().toLocaleTimeString()}]</span> ${msg}`; log.prepend(entry); }
+        function flashPulse(type) { const pulse = document.getElementById('scan-pulse'); const className = type === 'success' ? 'success-flash' : 'rival-alert'; pulse.classList.add(className); setTimeout(() => pulse.classList.remove(className), 1200); }
+        function completeTask(taskId, reward) { fetch('/api/v1/tasks/complete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ node_id: NODE_ID, task_id: taskId, payout: reward }) }).then(r => r.json()).then(data => { if (data.status === 'success') { document.getElementById('audio-success').play(); addLog(`Task ${taskId} completed manually. Reward credited.`); refreshDashboard(); } }); }
+        function updateLeaderboard() { fetch('/api/v1/network/leaderboard').then(r => r.json()).then(data => { document.getElementById('leaderboard-list').innerHTML = data.map((entry, i) => `<div style="display: flex; justify-content: space-between; margin-bottom: 6px; ${entry.id === NODE_ID ? 'color:var(--accent); font-weight:bold;' : 'opacity:0.7;'}"><span>#${i+1} ${entry.id} ${entry.type === 'RIVAL' ? '🤖' : ''}</span><span>${entry.xp.toLocaleString()} XP</span></div>`).join(''); }); }
+        function openXPHistory() { document.getElementById('xp-history-modal').style.display = 'flex'; fetch('/api/v1/node/xp_ledger/' + NODE_ID).then(r => r.json()).then(data => { const body = document.getElementById('xp-ledger-body'); if (data.length === 0) { body.innerHTML = "<div style='text-align:center; padding:20px; opacity:0.5;'>No XP history recorded.</div>"; return; } body.innerHTML = data.map(log => `<div class="ledger-row"><div class="ledger-parent"><div><span class="ledger-timestamp">[${log.time}]</span> <span class="ledger-task-id">${log.taskId}</span></div><div class="ledger-xp-total">+${log.totalXp} XP</div></div><div class="ledger-children">${log.bonuses.map(b => `<div class="ledger-child"><span class="ledger-child-name" style="color: ${b.color}">${b.name}</span><span class="ledger-child-xp">+${b.xp} XP</span></div>`).join('')}</div></div>`).join(''); }); }
         function closeXPHistory() { document.getElementById('xp-history-modal').style.display = 'none'; }
-        setInterval(updateNetworkStats, 30000);
-        setInterval(pollRivals, 5000);
-        function pollRivals() {
-            fetch('/api/v1/rivals/feed').then(r => r.json()).then(data => {
-                if (data.has_msg) {
-                    const feed = document.getElementById('rival-feed');
-                    const entry = document.createElement('div');
-                    entry.style.marginBottom = "8px";
-                    entry.innerHTML = `<span style="opacity:0.6">[${data.timestamp}]</span> <b style="color:var(--danger)">${data.rival}:</b> <span style="color:var(--text)">${data.message}</span>`;
-                    feed.prepend(entry);
-                }
-            });
-        }
+        setInterval(updateNetworkStats, 30000); setInterval(pollRivals, 5000);
+        function pollRivals() { fetch('/api/v1/rivals/feed').then(r => r.json()).then(data => { if (data.has_msg) { const feed = document.getElementById('rival-feed'); const entry = document.createElement('div'); entry.style.marginBottom = "8px"; entry.innerHTML = `<span style="opacity:0.6">[${data.timestamp}]</span> <b style="color:var(--danger)">${data.rival}:</b> <span style="color:var(--text)">${data.message}</span>`; feed.prepend(entry); } }); }
 
         window.onload = () => {
             if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
-            
-            // Initialize Language Engine
             if (typeof LanguageEngine !== 'undefined') {
                 LanguageEngine.init('language-selector');
-                
-                // FORCE UPDATE ON CHANGE
                 const langSelect = document.getElementById('language-selector');
                 if(langSelect) {
-                    langSelect.addEventListener('change', () => {
-                        // Small delay to ensure local storage is updated by the engine first
-                        setTimeout(() => {
-                            updateNetworkStats();
-                            // Force re-scan of data-i18n attributes for static labels in case they were missed
-                            LanguageEngine.update();
-                        }, 50);
-                    });
+                    langSelect.addEventListener('change', () => { setTimeout(() => { updateNetworkStats(); LanguageEngine.update(); }, 50); });
                 }
             }
-
             const savedTheme = localStorage.getItem('selectedTheme');
-            if(savedTheme) {
-                if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme);
-            }
+            if(savedTheme) { if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme); }
             document.getElementById('unit-label').innerText = currentUnit;
-            refreshDashboard();
-            updateLeaderboard();
-            updateNetworkStats();
+            refreshDashboard(); updateLeaderboard(); updateNetworkStats();
         };
     </script>
 </body>

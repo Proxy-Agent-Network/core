@@ -15,193 +15,13 @@
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
 
     <script>
-    // ANTI-FLASH: Apply theme before page renders
         (function() {
             const savedTheme = localStorage.getItem('selectedTheme');
-            if (savedTheme) {
-                document.documentElement.setAttribute('data-theme', savedTheme);
-            }
+            if (savedTheme) { document.documentElement.setAttribute('data-theme', savedTheme); }
         })();
     </script>
 
     <style>
-        /* --- FULL WIDTH FIXES --- */
-        body { margin: 0; padding: 0; overflow-x: hidden; background-color: var(--bg); }
-        .dashboard-grid { max-width: 1400px; margin: 0 auto; padding: 20px; }
-
-        /* --- SHARED COMPONENT STYLES (HEADER & FOOTER) --- */
-        .mission-hud {
-            width: 100%;
-            box-sizing: border-box;
-            background: #1a1a1a;
-            border-bottom: 2px solid #2ecc71;
-            padding: 15px 30px;
-            display: flex;
-            align-items: center;
-            gap: 40px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            margin-bottom: 25px;
-            transition: background 0.3s ease, border-color 0.3s ease;
-        }
-
-        .hud-identity {
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
-        }
-
-        .node-id {
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            color: #ecf0f1;
-            font-size: 1.1em;
-            letter-spacing: 1px;
-        }
-
-        .net-status {
-            font-size: 0.8em;
-            color: #2ecc71;
-            text-transform: uppercase;
-        }
-
-        .hud-nav {
-            display: flex;
-            gap: 15px;
-            background: #000;
-            padding: 8px 20px;
-            border-radius: 30px;
-            border: 1px solid #333;
-            align-items: center;
-            flex-shrink: 0;
-        }
-
-        .nav-link {
-            color: #7f8c8d;
-            text-decoration: none;
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 0.9em;
-            transition: all 0.3s ease;
-            padding: 5px 10px;
-        }
-
-        .nav-link:hover, .nav-link.active {
-            color: #fff;
-            text-shadow: 0 0 8px rgba(255,255,255,0.5);
-        }
-
-        .nav-btn-settings {
-            background: transparent;
-            border: none;
-            color: #7f8c8d;
-            font-size: 1rem;
-            cursor: pointer;
-            padding: 5px 10px;
-            transition: all 0.3s ease;
-            border-left: 1px solid #333;
-            margin-left: 5px;
-            padding-left: 15px;
-        }
-        .nav-btn-settings:hover {
-            color: var(--accent);
-            transform: rotate(90deg);
-        }
-
-        .hud-wallet {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-left: auto;
-        }
-
-        .wallet-display {
-            text-align: right;
-            background: rgba(46, 204, 113, 0.1);
-            padding: 5px 15px;
-            border-radius: 4px;
-            border-left: 3px solid #2ecc71;
-            min-width: 150px;
-        }
-
-        .sats-label {
-            font-size: 0.75em;
-            color: #95a5a6;
-            display: block;
-        }
-
-        .sats-value {
-            font-family: 'Courier New', monospace;
-            font-size: 1.2em;
-            color: #2ecc71;
-            font-weight: bold;
-        }
-
-        .mission-footer {
-            width: 100%;
-            box-sizing: border-box;
-            background: #1a1a1a;
-            border-top: 2px solid #2ecc71;
-            padding: 20px 30px;
-            margin-top: 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.75rem;
-            color: #7f8c8d;
-            transition: background 0.3s ease, border-color 0.3s ease;
-        }
-
-        .footer-left { display: flex; flex-direction: column; gap: 5px; }
-        .footer-links { display: flex; gap: 20px; }
-
-        .footer-links a {
-            color: #7f8c8d;
-            text-decoration: none;
-            transition: color 0.2s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: bold;
-        }
-        .footer-links a:hover { color: var(--accent); }
-
-        /* Component Theme Overrides */
-        [data-theme="business"] .mission-hud,
-        [data-theme="paperback"] .mission-hud,
-        [data-theme="groovy"] .mission-hud {
-            background: #ffffff;
-            border-bottom: 2px solid var(--accent);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        [data-theme="business"] .mission-footer,
-        [data-theme="paperback"] .mission-footer,
-        [data-theme="groovy"] .mission-footer {
-            background: #ffffff;
-            border-top: 2px solid var(--accent);
-            color: #2c3e50;
-            box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
-        }
-        [data-theme="business"] .node-id,
-        [data-theme="paperback"] .node-id,
-        [data-theme="groovy"] .node-id { color: #2c3e50; }
-        [data-theme="business"] .hud-nav,
-        [data-theme="paperback"] .hud-nav,
-        [data-theme="groovy"] .hud-nav { background: #f8f9fa; border: 1px solid #e0e0e0; }
-        [data-theme="business"] .nav-link,
-        [data-theme="paperback"] .nav-link,
-        [data-theme="groovy"] .nav-link { color: #7f8c8d; }
-        [data-theme="business"] .nav-link:hover,
-        [data-theme="business"] .nav-link.active,
-        [data-theme="paperback"] .nav-link:hover,
-        [data-theme="paperback"] .nav-link.active,
-        [data-theme="groovy"] .nav-link:hover,
-        [data-theme="groovy"] .nav-link.active {
-            color: var(--accent);
-            text-shadow: none;
-            background: rgba(0,0,0,0.05);
-            border-radius: 4px;
-        }
-
         /* --- SHOP GRID STYLES --- */
         .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
         .item-card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 25px; display: flex; flex-direction: column; justify-content: space-between; transition: border-color 0.2s; position: relative; }
@@ -214,65 +34,16 @@
         .item-desc { font-size: 0.9rem; opacity: 0.7; margin-bottom: 20px; line-height: 1.5; }
         .price-tag { font-family: 'Inter', sans-serif; font-weight: bold; color: var(--accent); font-size: 1rem; margin-bottom: 15px; padding: 5px 10px; background: rgba(128,128,128,0.05); display: inline-block; border-radius: 4px; }
         .buy-btn { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; text-transform: uppercase; font-size: 0.8rem; transition: all 0.2s; }
-        .buy-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+        .buy-btn:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
         .buy-btn:disabled { background: var(--bg); border-color: transparent; cursor: default; opacity: 0.5; }
         .status-active { color: #2ecc71; font-weight: bold; font-size: 0.8rem; display: flex; align-items: center; gap: 5px; }
         .status-active::before { content: "●"; }
-
-        /* --- SETTINGS MODAL STYLES (REQUIRED FOR INCLUDE) --- */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(5px);
-            z-index: 1000; display: none; align-items: center; justify-content: center;
-        }
-        .modal-overlay.active { display: flex; }
-        .modal-content {
-            background: var(--card-bg); border: 1px solid var(--accent);
-            box-shadow: 0 0 30px rgba(0, 243, 255, 0.2); width: 400px;
-            border-radius: 12px; padding: 20px; animation: modalSlideIn 0.3s ease-out;
-            color: var(--text);
-        }
-        @keyframes modalSlideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; }
-        .modal-header h2 { margin: 0; font-size: 1.2rem; color: var(--accent); }
-        .close-btn { background: none; border: none; color: #7f8c8d; font-size: 1.2rem; cursor: pointer; }
-        .close-btn:hover { color: var(--danger); }
-        .settings-group { margin-bottom: 20px; }
-        .settings-group label { display: block; color: #95a5a6; margin-bottom: 10px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
-        .control-row { display: flex; align-items: center; gap: 15px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
-        .theme-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text); padding: 10px; border-radius: 6px; cursor: pointer; text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
-        .theme-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent); }
-        .theme-btn.active { background: var(--accent); color: var(--bg); font-weight: bold; }
-        .version-info { text-align: center; font-size: 0.8rem; color: #7f8c8d; margin-top: 20px; opacity: 0.5; }
-
-        /* --- EASTER EGG STYLES --- */
-        #bypass-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.95); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; font-family: 'Courier Prime', monospace; }
-        .bypass-title { font-size: 4rem; color: #00ff00; text-shadow: 6px 6px #ff0000; margin-bottom: 20px; text-align: center; }
-        .live-dot { height: 8px; width: 8px; background-color: #e74c3c; border-radius: 50%; display: inline-block; margin-right: 5px; animation: pulse-live 1.5s infinite; }
-        @keyframes pulse-live { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-
-        #marvin-sprite-container { display: none; position: fixed; bottom: -200px; right: 20px; width: 300px; z-index: 9000; cursor: pointer; filter: drop-shadow(0 0 15px var(--accent)); transition: opacity 1s, transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275); opacity: 0; pointer-events: none; }
-        #marvin-sprite-container.active { display: block; opacity: 1; transform: translateY(-200px); pointer-events: auto; }
-        #marvin-image { width: 100%; height: auto; animation: idle-float 3s ease-in-out infinite; }
-        @keyframes idle-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-15px) rotate(3deg); } }
-        .laughing-anim { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both !important; }
-        @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
-
-        /* Lock Screen */
-        #lock-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; flex-direction: column; justify-content: center; align-items: center; font-family: 'Orbitron', sans-serif; }
-        .lock-container { text-align: center; color: var(--accent); animation: pulse-border 2s infinite; padding: 40px; border: 2px solid var(--accent); border-radius: 20px; box-shadow: 0 0 50px rgba(0,255,0,0.1); }
-        .lock-icon { font-size: 4rem; margin-bottom: 20px; color: var(--accent); }
-        .pin-display { font-size: 2rem; margin: 20px 0; letter-spacing: 15px; min-height: 40px; color: #fff; font-family: 'Courier Prime'; }
-        .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
-        .key-btn { background: rgba(255,255,255,0.1); border: 1px solid var(--accent); color: var(--accent); font-size: 1.5rem; padding: 15px; border-radius: 10px; cursor: pointer; transition: all 0.2s; }
-        .key-btn:hover { background: var(--accent); color: #000; }
-        .key-btn:active { transform: scale(0.95); }
 
         /* Notification Modal */
         #notification-modal .modal-content { max-width: 450px; text-align: center; }
         #notification-modal h2 { border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 15px; }
         #notification-modal p { margin-bottom: 30px; line-height: 1.6; }
-        .modal-btn { background: var(--accent); color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.8); border: none; padding: 12px 30px; font-weight: bold; font-size: 1rem; cursor: pointer; border-radius: 4px; text-transform: uppercase; font-family: var(--font); transition: all 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+        .modal-btn { background: var(--accent); color: var(--bg); border: none; padding: 12px 30px; font-weight: bold; font-size: 1rem; cursor: pointer; border-radius: 4px; text-transform: uppercase; font-family: var(--font); transition: all 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
         .modal-btn:hover { transform: scale(1.05); box-shadow: 0 0 15px var(--accent); }
     </style>
 </head>
@@ -301,10 +72,10 @@
         </div>
     </div>
 
-    <div id="audio-unlock-overlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:black; z-index:99999; display:flex; justify-content:center; align-items:center; flex-direction:column;">
-        <h1 style="color: #8e44ad; font-family:'Courier Prime'; margin-bottom:20px; font-size: 2rem; letter-spacing: 2px;">PROXY // NETWORK</h1>
-        <div style="color: #666; margin-bottom: 30px; font-family: 'Inter', sans-serif;">ESTABLISHING SECURE CONNECTION...</div>
-        <button onclick="unlockAudio()" style="padding:15px 30px; font-size:1.2rem; background:#8e44ad; color:white; border:none; cursor:pointer; font-family:'Courier Prime'; font-weight:bold; border-radius: 4px; box-shadow: 0 0 15px rgba(142, 68, 173, 0.5);">INITIALIZE UPLINK</button>
+    <div id="audio-unlock-overlay">
+        <h1 class="audio-title">PROXY // NETWORK</h1>
+        <div class="audio-subtitle">ESTABLISHING SECURE CONNECTION...</div>
+        <button class="audio-btn" onclick="unlockAudio()">INITIALIZE UPLINK</button>
     </div>
 
     <audio id="kaching" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
@@ -332,7 +103,6 @@
     </div>
 
     {% include 'components/header.html' %}
-
     {% include 'components/settings_modal.html' %}
 
     <div class="dashboard-grid">
@@ -441,322 +211,97 @@
         let audioMuted = localStorage.getItem('audioMuted') === 'true';
         let audioVolume = localStorage.getItem('audioVolume') || 0.5;
         
-        function toggleMute() {
-            audioMuted = !audioMuted;
-            localStorage.setItem('audioMuted', audioMuted);
-            toggleMuteUI();
-        }
-
+        function toggleMute() { audioMuted = !audioMuted; localStorage.setItem('audioMuted', audioMuted); toggleMuteUI(); }
         function toggleMuteUI() {
             document.querySelectorAll('audio').forEach(el => el.muted = audioMuted);
-            const btn = document.getElementById('mute-btn');
-            const icon = document.getElementById('mute-icon');
+            const btn = document.getElementById('mute-btn'); const icon = document.getElementById('mute-icon');
             if(btn && icon) {
-                if (audioMuted) {
-                    btn.style.color = '#e74c3c'; btn.style.borderColor = '#e74c3c';
-                    icon.className = 'fas fa-volume-mute';
-                } else {
-                    btn.style.color = ''; btn.style.borderColor = '';
-                    icon.className = 'fas fa-volume-up';
-                }
+                if (audioMuted) { btn.style.color = '#e74c3c'; btn.style.borderColor = '#e74c3c'; icon.className = 'fas fa-volume-mute'; } 
+                else { btn.style.color = ''; btn.style.borderColor = ''; icon.className = 'fas fa-volume-up'; }
             }
         }
-
-        function adjustVolume(val) {
-            localStorage.setItem('audioVolume', val);
-            document.querySelectorAll('audio').forEach(el => el.volume = val);
-        }
-
-        // Initialize Audio controls safely
+        function adjustVolume(val) { localStorage.setItem('audioVolume', val); document.querySelectorAll('audio').forEach(el => el.volume = val); }
         if (audioMuted) toggleMuteUI();
-        const slider = document.getElementById('volume-slider');
-        if (slider) slider.value = audioVolume;
-        adjustVolume(audioVolume);
-
-        // --- UNLOCK LOGIC (Safe) ---
-        if (sessionStorage.getItem('audioUnlocked')) {
-            const overlay = document.getElementById('audio-unlock-overlay');
-            if (overlay) overlay.style.display = 'none';
-        }
-
+        const slider = document.getElementById('volume-slider'); if (slider) slider.value = audioVolume; adjustVolume(audioVolume);
+        if (sessionStorage.getItem('audioUnlocked')) { const overlay = document.getElementById('audio-unlock-overlay'); if (overlay) overlay.style.display = 'none'; }
         function unlockAudio() {
-            const audioIds = ['audio-click', 'audio-success', 'audio-failure', 'audio-marvin', 'audio-powerup'];
-            
-            audioIds.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.play().then(() => el.pause()).catch(e => console.log("Audio play failed:", e));
-                }
-            });
-
-            const overlay = document.getElementById('audio-unlock-overlay');
-            if (overlay) overlay.style.display = 'none';
-            
-            sessionStorage.setItem('audioUnlocked', 'true');
-            
-            const clickSound = document.getElementById('audio-click');
-            if (clickSound) clickSound.play().catch(e => {});
+            ['audio-click', 'audio-success', 'audio-failure', 'audio-marvin', 'audio-powerup'].forEach(id => { const el = document.getElementById(id); if (el) el.play().then(() => el.pause()).catch(e => {}); });
+            const overlay = document.getElementById('audio-unlock-overlay'); if (overlay) overlay.style.display = 'none'; sessionStorage.setItem('audioUnlocked', 'true');
+            const clickSound = document.getElementById('audio-click'); if (clickSound) clickSound.play().catch(e => {});
         }
 
         // --- CURRENCY ---
         let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
-        const currSelect = document.getElementById('currency-select');
-        if(currSelect) currSelect.value = currentUnit;
-        
-        const RATES = {
-            SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088,
-            CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051,
-            JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010
-        };
-
-        function changeUnit(unit) {
-            currentUnit = unit;
-            localStorage.setItem('currencyUnit', unit);
-            const label = document.getElementById('unit-label');
-            if(label) label.innerText = unit;
-            updateBalanceDisplay();
-        }
-
+        const currSelect = document.getElementById('currency-select'); if(currSelect) currSelect.value = currentUnit;
+        const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051, JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010 };
+        function changeUnit(unit) { currentUnit = unit; localStorage.setItem('currencyUnit', unit); const label = document.getElementById('unit-label'); if(label) label.innerText = unit; updateBalanceDisplay(); }
         function updateBalanceDisplay() {
-            const el = document.getElementById('hud-balance');
-            if (!el) return;
-            
-            if (rawSatsBalance === 0) {
-                const txt = el.innerText.replace(/,/g, '').split(' ')[0];
-                if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt);
-            }
-            
+            const el = document.getElementById('hud-balance'); if (!el) return;
+            if (rawSatsBalance === 0) { const txt = el.innerText.replace(/,/g, '').split(' ')[0]; if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt); }
             let val = rawSatsBalance * RATES[currentUnit];
-            
-            // IMMEDIATE UPDATE (No Fade)
-            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS";
-            else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC";
-            else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
-        }
-
-        // --- LOCK SCREEN ---
-        let inputPin = "";
-        function lockDashboard() {
-            toggleSettings();
-            const overlay = document.getElementById('lock-overlay');
-            const msg = document.getElementById('lock-msg');
-            const storedPin = localStorage.getItem('user_pin');
-            inputPin = "";
-            updatePinDots();
-            overlay.style.display = 'flex';
-            if (!storedPin) { msg.innerText = "SET NEW PIN CODE"; msg.style.color = "#f1c40f"; } 
-            else { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }
-        }
-
-        function enterDigit(digit) {
-            const msg = document.getElementById('lock-msg');
-            if (digit === 'clear') { inputPin = ""; } 
-            else if (digit === 'enter') {
-                const storedPin = localStorage.getItem('user_pin');
-                if (!storedPin) {
-                    if (inputPin.length < 4) {
-                        msg.innerText = "PIN TOO SHORT";
-                        document.getElementById('audio-failure').play();
-                        setTimeout(() => msg.innerText = "SET NEW PIN CODE", 1000);
-                        inputPin = "";
-                    } else {
-                        localStorage.setItem('user_pin', inputPin);
-                        msg.innerText = "PIN ESTABLISHED";
-                        document.getElementById('audio-success').play();
-                        setTimeout(() => { document.getElementById('lock-overlay').style.display = 'none'; inputPin = ""; }, 1000);
-                    }
-                } else {
-                    if (inputPin === storedPin) {
-                        document.getElementById('audio-success').play();
-                        document.getElementById('lock-overlay').style.display = 'none';
-                        inputPin = "";
-                    } else {
-                        document.getElementById('audio-failure').play();
-                        msg.innerText = "ACCESS DENIED";
-                        msg.style.color = "#e74c3c";
-                        inputPin = "";
-                        setTimeout(() => { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }, 1000);
-                    }
-                }
-            } else { if (inputPin.length < 8) inputPin += digit; }
-            updatePinDots();
-        }
-        function updatePinDots() { document.getElementById('pin-dots').innerText = "•".repeat(inputPin.length); }
-
-        // --- EASTER EGGS ---
-        const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
-        let konamiIndex = 0;
-        document.addEventListener('keydown', (e) => {
-            if (e.key === konamiCode[konamiIndex]) {
-                konamiIndex++;
-                if (konamiIndex === konamiCode.length) { 
-                    document.getElementById('bypass-overlay').style.display = 'flex';
-                    document.getElementById('audio-powerup').play();
-                    setTimeout(() => { document.getElementById('bypass-overlay').style.display = 'none'; }, 3000);
-                    konamiIndex = 0; 
-                }
-            } else { konamiIndex = 0; }
-        });
-        
-        let lastLevel = -1;
-        function checkLevelUp(currentXP) {
-            const level = Math.floor(currentXP / 5000);
-            if (lastLevel === -1) { lastLevel = level; return; }
-            if (level > lastLevel) {
-                lastLevel = level;
-                const currentTheme = document.documentElement.getAttribute('data-theme');
-                if (currentTheme !== 'business' && currentTheme !== 'paperback') {
-                    const marvin = document.getElementById('marvin-sprite-container');
-                    marvin.classList.add('active'); 
-                    setTimeout(() => { marvin.classList.remove('active'); }, 5000);
-                }
-            }
-        }
-        function handleMarvinClick() { 
-            const img = document.getElementById('marvin-image'); 
-            img.style.transform = "scale(1.1) rotate(5deg)"; 
-            setTimeout(() => img.style.transform = "scale(1) rotate(0deg)", 150); 
-        }
-        function marvinLaugh() { 
-            const audio = document.getElementById('audio-marvin'); 
-            audio.currentTime = 0; audio.play(); 
-            document.getElementById('marvin-image').classList.add('laughing-anim'); 
-            setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000); 
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS"; else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC"; else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
         }
 
         // --- MODAL & SHOP LOGIC ---
         function toggleSettings() { document.getElementById('settingsModal').classList.toggle('active'); }
-        window.onclick = function(event) { 
-            if (event.target == document.getElementById('settingsModal')) document.getElementById('settingsModal').classList.remove('active');
-            if (event.target == document.getElementById('notification-modal')) closeModal();
-        }
-
-        function showModal(title, message) {
-            document.getElementById('modal-title').innerText = title;
-            document.getElementById('modal-message').innerText = message;
-            document.getElementById('notification-modal').style.display = 'flex';
-        }
+        window.onclick = function(event) { if (event.target == document.getElementById('settingsModal')) document.getElementById('settingsModal').classList.remove('active'); if (event.target == document.getElementById('notification-modal')) closeModal(); }
+        function showModal(title, message) { document.getElementById('modal-title').innerText = title; document.getElementById('modal-message').innerText = message; document.getElementById('notification-modal').style.display = 'flex'; }
         function closeModal() { document.getElementById('notification-modal').style.display = 'none'; }
 
         function buyItem(itemId) {
             const lang = localStorage.getItem('selectedLanguage') || 'en';
-            // Safe robust check for translations
-            let dict = window.TRANSLATIONS;
-            if (!dict && typeof TRANSLATIONS !== 'undefined') dict = TRANSLATIONS;
+            let dict = window.TRANSLATIONS; if (!dict && typeof TRANSLATIONS !== 'undefined') dict = TRANSLATIONS;
             const t = (dict && dict[lang]) ? dict[lang] : (dict && dict['en'] ? dict['en'] : {});
 
             const allowedItems = ['license_auto', 'license_speed', 'theme_neon', 'disco', 'matrix'];
-            if (!allowedItems.includes(itemId)) { 
-                showModal(t.msg_restricted_title || "RESTRICTED", t.msg_restricted_body || "This item is not yet available for provisioning."); 
-                return; 
-            }
+            if (!allowedItems.includes(itemId)) { showModal(t.msg_restricted_title || "RESTRICTED", t.msg_restricted_body || "This item is not yet available for provisioning."); return; }
 
-            const btn = event.target;
-            const originalText = btn.innerText;
-            btn.innerText = t.btn_allocating || "ALLOCATING...";
-            btn.disabled = true;
+            const btn = event.target; const originalText = btn.innerText;
+            btn.innerText = t.btn_allocating || "ALLOCATING..."; btn.disabled = true;
 
-            fetch('/api/v1/shop/buy', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ item_id: itemId, node_id: NODE_ID })
-            })
+            fetch('/api/v1/shop/buy', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ item_id: itemId, node_id: NODE_ID }) })
             .then(r => r.json())
             .then(data => {
                 if(data.success) {
-                    document.getElementById('kaching').play();
-                    btn.innerText = t.btn_provisioned || "PROVISIONED";
-                    rawSatsBalance = data.new_balance;
-                    updateBalanceDisplay();
-                    
-                    if(['theme_neon','disco','matrix'].includes(itemId)) {
-                        showModal(t.msg_theme_title || "THEME UNLOCKED", t.msg_theme_body || "New visual interface acquired. Check your settings.");
-                    } else {
-                        showModal(t.msg_prov_title || "PROVISIONING COMPLETE", t.msg_prov_body || "Resource allocated successfully.");
-                    }
+                    document.getElementById('kaching').play(); btn.innerText = t.btn_provisioned || "PROVISIONED"; rawSatsBalance = data.new_balance; updateBalanceDisplay();
+                    if(['theme_neon','disco','matrix'].includes(itemId)) { showModal(t.msg_theme_title || "THEME UNLOCKED", t.msg_theme_body || "New visual interface acquired. Check your settings."); } else { showModal(t.msg_prov_title || "PROVISIONING COMPLETE", t.msg_prov_body || "Resource allocated successfully."); }
                     setTimeout(() => location.reload(), 2000); 
-                } else {
-                    showModal(t.msg_fail_title || "TRANSACTION FAILED", data.error);
-                    btn.innerText = originalText;
-                    btn.disabled = false;
-                }
+                } else { showModal(t.msg_fail_title || "TRANSACTION FAILED", data.error); btn.innerText = originalText; btn.disabled = false; }
             })
-            .catch(err => {
-                console.error(err);
-                showModal(t.msg_net_error_title || "NETWORK ERROR", t.msg_net_error_body || "Connection to provisioning server lost.");
-                btn.innerText = originalText;
-                btn.disabled = false;
-            });
+            .catch(err => { showModal(t.msg_net_error_title || "NETWORK ERROR", t.msg_net_error_body || "Connection to provisioning server lost."); btn.innerText = originalText; btn.disabled = false; });
         }
 
-        // --- NETWORK STATS WITH TRANSLATION ---
+        // --- NETWORK STATS ---
         function updateNetworkStats() {
             fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
                 const healthSpan = document.getElementById('health-peers');
                 if (healthSpan) {
                     const lang = localStorage.getItem('selectedLanguage') || 'en';
-                    // Robust check for window.TRANSLATIONS or fallback to global TRANSLATIONS
-                    let dict = window.TRANSLATIONS;
-                    if (!dict && typeof TRANSLATIONS !== 'undefined') dict = TRANSLATIONS;
-                    
+                    let dict = window.TRANSLATIONS; if (!dict && typeof TRANSLATIONS !== 'undefined') dict = TRANSLATIONS;
                     const t = (dict && dict[lang]) ? dict[lang] : (dict && dict['en'] ? dict['en'] : {});
-                    
-                    const txtConnected = t.status_connected || "CONNECTED";
-                    const txtPeers = t.status_peers || "PEERS";
-                    const txtSearching = t.status_searching || "SEARCHING";
-
-                    if (data.peers > 0) { 
-                        healthSpan.innerHTML = `● ${data.peers} ${txtConnected}`; 
-                        healthSpan.style.color = "#2ecc71"; 
-                    } else { 
-                        healthSpan.innerHTML = `● 0 ${txtPeers} (${txtSearching})`; 
-                        healthSpan.style.color = "#f1c40f"; 
-                    }
+                    if (data.peers > 0) { healthSpan.innerHTML = `● ${data.peers} ${t.status_connected || "CONNECTED"}`; healthSpan.style.color = "#2ecc71"; } 
+                    else { healthSpan.innerHTML = `● 0 ${t.status_peers || "PEERS"} (${t.status_searching || "SEARCHING"})`; healthSpan.style.color = "#f1c40f"; }
                 }
             });
         }
 
         window.addEventListener('DOMContentLoaded', () => {
             if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
-            
-            // Initialize Language Engine
             if (typeof LanguageEngine !== 'undefined') {
                 LanguageEngine.init('language-selector');
-                
-                // Add event listener for language change to update network stats immediately
                 const langSelect = document.getElementById('language-selector');
                 if(langSelect) {
                     langSelect.addEventListener('change', () => {
-                        const lang = langSelect.value;
-                        // EXPLICITLY SET STORAGE TO FIX TIMING ISSUE
-                        localStorage.setItem('selectedLanguage', lang);
-                        
-                        // Force network stats update
+                        localStorage.setItem('selectedLanguage', langSelect.value);
                         setTimeout(updateNetworkStats, 50);
                     });
                     langSelect.dispatchEvent(new Event('change'));
                 }
             }
-
             const savedTheme = localStorage.getItem('selectedTheme');
-            if(savedTheme) {
-                if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme);
-            }
-            
-            const unitLabel = document.getElementById('unit-label');
-            if(unitLabel) unitLabel.innerText = currentUnit;
-            updateBalanceDisplay();
-            updateNetworkStats();
-            setInterval(updateNetworkStats, 30000);
-            
-            // Sync balance from server periodically
-            setInterval(() => {
-                fetch('/api/v1/dashboard/live').then(r => r.json()).then(data => {
-                    rawSatsBalance = data.balance;
-                    updateBalanceDisplay();
-                    checkLevelUp(data.xp);
-                });
-            }, 5000);
+            if(savedTheme) { if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme); }
+            const unitLabel = document.getElementById('unit-label'); if(unitLabel) unitLabel.innerText = currentUnit;
+            updateBalanceDisplay(); updateNetworkStats(); setInterval(updateNetworkStats, 30000);
         });
     </script>
 </body>

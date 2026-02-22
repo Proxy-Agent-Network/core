@@ -5,7 +5,7 @@ window.TRANSLATIONS = {
         "nav_exchange": "Exchange",
         "nav_armory": "Armory",
         "reserves": "RESERVES",
-        "node_id_label": "Node Identity",
+        "node_id_label": "ProxyAgent.Network",
         "lbl_security": "SECURITY:",
         "status_simulation": "[SIMULATION_MODE] ⚠️",
         "status_hw_locked": "[HARDWARE_LOCKED] 🔒",
