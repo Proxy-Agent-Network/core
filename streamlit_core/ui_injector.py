@@ -75,7 +75,14 @@ def inject_custom_ui():
         .stTabs [aria-selected="true"] p { color: var(--accent) !important; opacity: 1; text-shadow: 0px 0px 12px var(--accent), 1px 1px 3px rgba(0,0,0,0.9); }
         .stTabs [aria-selected="true"] { border-bottom: 3px solid var(--accent) !important; }
         
-        /* 🌟 RETRO ARCADE FONT OVERRIDES 🌟 */
+        /* 🌟 FIX: REMOVE GLOW ON LIGHT BACKGROUND THEMES 🌟 */
+        [data-theme="business"] .stTabs [data-baseweb="tab"] p,
+        [data-theme="paperback"] .stTabs [data-baseweb="tab"] p,
+        [data-theme="groovy"] .stTabs [data-baseweb="tab"] p {
+            text-shadow: none !important;
+        }
+
+        /* RETRO ARCADE FONT OVERRIDES */
         [data-theme="retro"] .stTabs [data-baseweb="tab"] p { font-size: 0.65rem !important; }
         [data-theme="retro"] section[data-testid="stSidebar"] h2 { font-size: 0.9rem !important; }
         [data-theme="retro"] section[data-testid="stSidebar"] h1 { font-size: 1rem !important; }
@@ -111,7 +118,6 @@ def inject_custom_ui():
     """
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    # INJECT MARVIN (AUDIO NATIVELY INSIDE IFRAME NOW)
     MARVIN_HTML = """
     <div class="marvin-tutorial" id="marvin-tutor-container">
         <div class="speech-bubble">
@@ -124,13 +130,11 @@ def inject_custom_ui():
     """
     st.markdown(MARVIN_HTML, unsafe_allow_html=True)
 
-    # THE POST-MESSAGE RECEIVER
     JS_BRIDGE = """
     <script>
         const streamlitWin = window.parent;
         const streamlitDoc = streamlitWin.document;
 
-        // Audio Engine
         streamlitWin.playLocalMarvinAudio = function() {
             const audio = streamlitDoc.getElementById('marvin-audio');
             if(audio) {
@@ -145,7 +149,6 @@ def inject_custom_ui():
             }
         };
 
-        // PREVENT TAB AUTO-SCROLL JUMPING
         streamlitDoc.addEventListener('click', function(e) {
             if(e.target.closest('[data-baseweb="tab"]')) {
                 try {
@@ -157,7 +160,6 @@ def inject_custom_ui():
             }
         }, true);
 
-        // SECURE MESSAGE LISTENER
         streamlitWin.addEventListener('message', (event) => {
             const data = event.data;
             if (!data || !data.theme) return;
@@ -191,7 +193,8 @@ def inject_custom_ui():
                     let displayVal = rem * rate;
                     if (data.currency === 'SATS') metricVals[0].innerText = Math.floor(displayVal).toLocaleString() + " SATS";
                     else if (data.currency === 'BTC') metricVals[0].innerText = displayVal.toFixed(8) + " BTC";
-                    else metricVals[0].innerText = displayVal.toLocaleString(data.language, {style: 'currency', currency: data.currency});
+                    // 🌟 FIX: Force standard en-US format so it prints $13.00 perfectly 🌟
+                    else metricVals[0].innerText = displayVal.toLocaleString('en-US', {style: 'currency', currency: data.currency});
                 }
             }
 

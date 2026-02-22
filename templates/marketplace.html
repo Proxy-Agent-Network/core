@@ -268,7 +268,7 @@
             const el = document.getElementById('hud-balance'); if (!el) return;
             if (rawSatsBalance === 0) { const txt = el.innerText.replace(/,/g, '').split(' ')[0]; if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt); }
             let val = rawSatsBalance * RATES[currentUnit];
-            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS"; else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC"; else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS"; else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC"; else el.innerText = val.toLocaleString('en-US', {style: 'currency', currency: currentUnit});
         }
 
         function handleBroadcast(e) {

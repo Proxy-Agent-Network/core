@@ -258,7 +258,7 @@
             
             if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS";
             else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC";
-            else el.innerText = val.toLocaleString(undefined, {style: 'currency', currency: currentUnit});
+            else el.innerText = val.toLocaleString('en-US', {style: 'currency', currency: currentUnit});
         }
 
         const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
