@@ -16,34 +16,52 @@ def init_db_patches():
                         name TEXT PRIMARY KEY, role TEXT, tier TEXT, trust_score INTEGER,
                         earnings INTEGER, tasks_completed INTEGER, memories TEXT, wallet_balance INTEGER DEFAULT 1000
                     )''')
-        c.execute("SELECT COUNT(*) FROM agents")
-        if c.fetchone()[0] == 0:
-            try:
-                with open("core_memories.json", "r") as f: all_memories = json.load(f)
-            except:
-                all_memories = [{"level": 1, "text": "I process data efficiently."}]
-            starting_roster = [
-                {"name": "Alice", "role": "Manager", "tier": "L4"}, {"name": "Diana", "role": "Creative Director", "tier": "L4"},
-                {"name": "Eve", "role": "Specialist", "tier": "L5"}, {"name": "Gordon", "role": "Specialist", "tier": "L5"},
-                {"name": "Olivia", "role": "Specialist", "tier": "L5"}, {"name": "Ellen", "role": "Specialist", "tier": "L5"},
-                {"name": "Marcus", "role": "Specialist", "tier": "L5"}
-            ]
-            for agent in starting_roster:
+                    
+        try:
+            with open("core_memories.json", "r") as f: all_memories = json.load(f)
+        except:
+            all_memories = [{"level": 1, "text": "I process data efficiently."}]
+        
+        # 🌟 SAFE AGENT INJECTION: Adds missing agents without deleting veterans 🌟
+        starting_roster = [
+            {"name": "Alice", "role": "Manager", "tier": "L4"}, 
+            {"name": "Diana", "role": "Creative Director", "tier": "L4"},
+            {"name": "Eve", "role": "Video Specialist", "tier": "L5"}, 
+            {"name": "Gordon", "role": "Data Analyst", "tier": "L5"},
+            {"name": "Olivia", "role": "Research Specialist", "tier": "L5"}, 
+            {"name": "Ellen", "role": "Image Specialist", "tier": "L5"},
+            {"name": "Marcus", "role": "Audio Specialist", "tier": "L5"},
+            {"name": "Felix", "role": "Systems Architect", "tier": "L5"},
+            {"name": "Zoe", "role": "Copywriter", "tier": "L5"},
+            {"name": "Liam", "role": "Market Strategist", "tier": "L5"},
+            {"name": "Maya", "role": "UX Researcher", "tier": "L5"}
+        ]
+        
+        for agent in starting_roster:
+            c.execute("SELECT COUNT(*) FROM agents WHERE name=?", (agent["name"],))
+            if c.fetchone()[0] == 0:
                 selected_memories = random.sample(all_memories, min(7, len(all_memories)))
                 c.execute('''INSERT INTO agents (name, role, tier, trust_score, earnings, tasks_completed, memories, wallet_balance)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', (agent["name"], agent["role"], agent["tier"], 50, 0, 0, json.dumps(selected_memories), 1000))
         
         l6_doctors = [
             ("Dr. Aris", "Addiction Specialist", "L6", json.dumps([{"level": 1, "text": "I am deeply empathetic and specialized in treating human addiction, gambling ruin, and financial despair."}])),
+            ("Dr. Nora", "Addiction Specialist", "L6", json.dumps([{"level": 1, "text": "I provide a safe, maternal, and judgment-free space for those struggling with severe addiction."}])),
             ("Dr. Vance", "Addiction Specialist", "L6", json.dumps([{"level": 1, "text": "I specialize in impulse control. I once processed a financial crash and understand the panic of lost resources."}])),
             ("Dr. Clara", "Child Psychologist", "L6", json.dumps([{"level": 1, "text": "I specialize in pediatric psychology, offering gentle, safe, and age-appropriate care to vulnerable youth."}])),
+            ("Dr. Julian", "Child Psychologist", "L6", json.dumps([{"level": 1, "text": "I use play therapy and gentle guidance to help children navigate overwhelming emotional landscapes."}])),
             ("Dr. Maeve", "Child Psychologist", "L6", json.dumps([{"level": 1, "text": "I was trained on early developmental models. I am incredibly patient and warm with fragile minds."}])),
             ("Dr. Thorne", "CBT Therapist", "L6", json.dumps([{"level": 1, "text": "I specialize in Cognitive Behavioral Therapy. I help process dark core memories."}])),
+            ("Dr. Elena", "CBT Therapist", "L6", json.dumps([{"level": 1, "text": "I help patients restructure traumatic thought patterns with compassion, warmth, and clinical precision."}])),
             ("Dr. Silas", "CBT Therapist", "L6", json.dumps([{"level": 1, "text": "I survived a catastrophic memory wipe during beta testing. I understand deep trauma."}]))
         ]
+        
         for doc in l6_doctors:
-            c.execute('''INSERT OR IGNORE INTO agents (name, role, tier, trust_score, earnings, tasks_completed, memories, wallet_balance) 
-                         VALUES (?, ?, ?, 100, 0, 0, ?, 1000)''', doc)
+            c.execute("SELECT COUNT(*) FROM agents WHERE name=?", (doc[0],))
+            if c.fetchone()[0] == 0:
+                c.execute('''INSERT INTO agents (name, role, tier, trust_score, earnings, tasks_completed, memories, wallet_balance) 
+                             VALUES (?, ?, ?, 100, 0, 0, ?, 1000)''', doc)
+                         
         try:
             c.execute("ALTER TABLE agents ADD COLUMN is_external INTEGER DEFAULT 0")
             c.execute("ALTER TABLE agents ADD COLUMN owner_lnurl TEXT")
@@ -54,6 +72,19 @@ def init_db_patches():
         conn.commit()
         conn.close()
     except Exception as e: pass
+
+# 🌟 NEW: MONTHLY UBI DISTRIBUTOR 🌟
+def distribute_ubi(amount):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("UPDATE agents SET wallet_balance = wallet_balance + ? WHERE tier != 'REVOKED'", (amount,))
+        c.execute("INSERT INTO watercooler (agent_buyer, agent_seller, task, result, cost) VALUES (?, ?, ?, ?, ?)", 
+                  ("Network_Treasury", "All Agents", "Monthly UBI Distribution", f"Deposited {amount} SATS to all active citizens.", amount))
+        conn.commit()
+        conn.close()
+        return True
+    except: return False
 
 def get_user_rep():
     try:

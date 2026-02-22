@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, g, redirect, url_for
 
 # --- LIGHTNING ENGINE INTEGRATION ---
 try:
-    from lightning_engine import lnd
+    from backend.core.lightning_engine import lnd
     print(" [SYSTEM] ⚡ Lightning Treasury Layer Loaded.")
 except ImportError:
     print(" [WARN] ⚠️  lightning_engine.py not found. Running without payment rails.")
@@ -262,10 +262,6 @@ def simulate_rival_snatch():
             msg = f"SECURITY ALERT: {attacker_name} intercepted Bid #{bid['bid_id']} ({bid['sats_offered']} Sats)"
             conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", ("THREAT", msg))
             
-            # Rival gains XP (for the leaderboard)
-            # We assume rival nodes exist in the nodes table, or we ignore them for now.
-            # But let's log it to the console.
-    
     conn.commit()
 
 def run_automation_daemon(node_id):
@@ -439,11 +435,8 @@ def dashboard():
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
     tasks = [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks]
 
-    # --- CRITICAL FIX: FETCH OWNED ITEMS ---
     owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (target_node,)).fetchall()]
 
-    # PASS THE HARDWARE STATUS TO THE UI
-    # UPDATED: Passing 'balance' explicitly for the new Header HUD
     return render_template('dashboard.html', 
                          node=my_node_data, 
                          tasks=tasks, 
@@ -465,12 +458,8 @@ def marketplace():
         color = request.form.get('color') or '#2ecc71'
         
         if lnd:
-            # 1. Try to create the invoice
             invoice = lnd.create_invoice(sats, f"Broadcast Task: {task_type}")
-            
-            # 2. CHECK IF IT WORKED
             if invoice:
-                # --- CHECK FOR TURBO LICENSE ---
                 has_speed = conn.execute(
                     "SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_speed'", 
                     (MY_NODE_ID,)
@@ -485,7 +474,6 @@ def marketplace():
                         "invoice": invoice
                     })
             else:
-                # Handle Failure Gracefully
                 print(" [ERROR] ❌ LND Invoice creation failed. Check Docker logs.")
                 if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                     return jsonify({"status": "ERROR", "message": "Treasury Backend Unreachable"}), 500
@@ -521,10 +509,8 @@ def marketplace():
 
     has_auto = conn.execute("SELECT 1 FROM purchases WHERE item_id='license_auto'").fetchone()
 
-    # UPDATED: Fetch balance for the new Header HUD
     balance = get_secure_balance(conn, MY_NODE_ID)
     
-    # UPDATED: Passing 'balance' explicitly
     return render_template('marketplace.html', 
                            bids=filtered_bids, 
                            unlock_auto=bool(has_auto), 
@@ -537,9 +523,7 @@ def shop():
     target_node = MY_NODE_ID 
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
     
-    # SECURE READ
     balance = get_secure_balance(conn, target_node)
-    
     node_id = my_node['node_id'] if my_node else target_node
     
     if request.args.get('buy'):
@@ -569,7 +553,6 @@ def shop():
         return redirect(url_for('shop'))
 
     if request.args.get('cheat_fund'):
-        # SECURE UPDATE (Add funds)
         update_secure_wallet(conn, node_id, 50000)
         conn.commit()
         flash("DEV MODE: Added 50,000 Sats to wallet.", "success")
@@ -578,7 +561,18 @@ def shop():
     owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (node_id,)).fetchall()]
     return render_template('shop.html', items=SHOP_ITEMS, balance=balance, owned=owned, node_id=node_id)
 
-# --- NEW LEGAL ROUTE ---
+# 🌟 THE FAQ ROUTE (Un-nested!) 🌟
+@app.route('/faq')
+def faq():
+    conn = get_db()
+    balance = get_secure_balance(conn, MY_NODE_ID)
+    owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
+    return render_template('faq.html', 
+                           node_id=MY_NODE_ID, 
+                           balance=balance, 
+                           hw_secured=HW_SECURED,
+                           owned=owned)
+
 @app.route('/legal/<doc_type>')
 def legal(doc_type):
     doc = LEGAL_DOCS.get(doc_type)
@@ -595,24 +589,20 @@ def legal(doc_type):
 
 @app.route('/api/v1/shop/buy', methods=['POST'])
 def shop_buy_api():
-    """Handles shop purchases via AJAX/Fetch."""
     data = request.json
     item_id = data.get('item_id')
     node_id = data.get('node_id', MY_NODE_ID)
     
     conn = get_db()
-    
     if item_id not in SHOP_ITEMS:
         return jsonify({"success": False, "error": "Invalid Item ID"}), 400
         
     item = SHOP_ITEMS[item_id]
     price = item['price']
     
-    # SECURE READ
     current_balance = get_secure_balance(conn, node_id)
     
     if current_balance >= price:
-        # SECURE UPDATE
         new_balance = update_secure_wallet(conn, node_id, -price)
         conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (?, ?)", (node_id, item_id))
         conn.commit()
@@ -659,9 +649,6 @@ def finalize_bid():
 @app.route('/api/v1/network/stats')
 def get_network_stats():
     conn = get_db()
-    # Note: SUM() won't work perfectly on encrypted strings. 
-    # For now, we return basic node count to avoid crashes.
-    total_sats = 0 
     active_cutoff = time.time() - 300
     active_nodes = conn.execute("SELECT COUNT(*) FROM nodes WHERE last_seen > ?", (active_cutoff,)).fetchone()[0]
     
@@ -717,14 +704,12 @@ def dashboard_live():
     target_node = MY_NODE_ID 
     simulate_rival_snatch()
     
-    # --- RUN AUTOMATION DAEMON ---
     run_automation_daemon(target_node) 
     
     daemon_event = session.pop('daemon_msg', None)
     my_node = conn.execute('SELECT total_earned, xp FROM nodes WHERE node_id = ?', (target_node,)).fetchone()
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY ROWID DESC LIMIT 5').fetchall()
     
-    # SECURE READ
     balance = get_secure_balance(conn, target_node)
     
     return jsonify({
@@ -742,7 +727,6 @@ def claim_bid(bid_id):
         conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid_id,))
         target_node = request.json.get('node_id', MY_NODE_ID) 
         
-        # SECURE UPDATE (Add bid funds)
         update_secure_wallet(conn, target_node, bid['sats_offered'])
         
         new_task_id = f"TASK-{random.randint(1000, 9999)}"
@@ -779,10 +763,8 @@ def complete_task_api():
 
     total_xp_gain = 500 + payout + bypass_bonus
     
-    # SECURE UPDATE (Add payout)
     update_secure_wallet(conn, data.get('node_id'), payout)
     
-    # Regular XP update (not encrypted)
     conn.execute("UPDATE nodes SET xp = xp + ? WHERE node_id = ?", 
                  (total_xp_gain, data.get('node_id')))
     
@@ -793,13 +775,10 @@ def complete_task_api():
     conn.commit()
     return jsonify({"status": "success"})
 
-# --- NEW: Secure Wallet API Endpoint ---
 @app.route('/api/v1/wallet', methods=['GET'])
 def get_wallet():
     conn = get_db()
     target_node = MY_NODE_ID
-    
-    # Decrypt for display
     secure_balance = get_secure_balance(conn, target_node)
 
     return jsonify({
@@ -871,5 +850,4 @@ if __name__ == '__main__':
                    ("SYSTEM", "Proxy Protocol v1.6.0 initialized. Registry online."))
         db.commit()
     
-    # DOCKER REQUIREMENT: BIND TO 0.0.0.0
     app.run(host='0.0.0.0', port=5000, debug=True)

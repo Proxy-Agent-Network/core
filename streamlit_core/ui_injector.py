@@ -75,6 +75,12 @@ def inject_custom_ui():
         .stTabs [aria-selected="true"] p { color: var(--accent) !important; opacity: 1; text-shadow: 0px 0px 12px var(--accent), 1px 1px 3px rgba(0,0,0,0.9); }
         .stTabs [aria-selected="true"] { border-bottom: 3px solid var(--accent) !important; }
         
+        /* 🌟 RETRO ARCADE FONT OVERRIDES 🌟 */
+        [data-theme="retro"] .stTabs [data-baseweb="tab"] p { font-size: 0.65rem !important; }
+        [data-theme="retro"] section[data-testid="stSidebar"] h2 { font-size: 0.9rem !important; }
+        [data-theme="retro"] section[data-testid="stSidebar"] h1 { font-size: 1rem !important; }
+        [data-theme="retro"] [data-testid="stExpander"] summary p { font-size: 0.75rem !important; }
+        
         /* MAIN BODY ELEMENTS */
         .stButton > button { background-color: var(--card-bg) !important; color: var(--text) !important; border: 1px solid var(--accent) !important; font-family: var(--font) !important; border-radius: 4px; transition: all 0.2s; text-transform: uppercase; font-weight: bold;}
         .stButton > button:hover { background-color: var(--accent) !important; color: var(--bg) !important; box-shadow: 0 0 15px var(--accent); }
@@ -105,7 +111,7 @@ def inject_custom_ui():
     """
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-    # 🌟 FIX: AUDIO CLICK IS NOW NATIVE TO THE STREAMLIT WINDOW 🌟
+    # INJECT MARVIN (AUDIO NATIVELY INSIDE IFRAME NOW)
     MARVIN_HTML = """
     <div class="marvin-tutorial" id="marvin-tutor-container">
         <div class="speech-bubble">
@@ -113,18 +119,18 @@ def inject_custom_ui():
             <span id="marvin-desc">Use the Tabs below to switch between the Roster, Breakroom, and Immigration Office.</span>
         </div>
         <audio id="marvin-audio" preload="auto"></audio>
-        <img id="marvin-img" src="" alt="Marvin" ondblclick="window.playLocalMarvinAudio()"/>
+        <img id="marvin-img" src="" alt="Marvin" ondblclick="window.parent.playLocalMarvinAudio()"/>
     </div>
     """
     st.markdown(MARVIN_HTML, unsafe_allow_html=True)
 
-    # 🌟 THE POST-MESSAGE RECEIVER 🌟
+    # THE POST-MESSAGE RECEIVER
     JS_BRIDGE = """
     <script>
         const streamlitWin = window.parent;
         const streamlitDoc = streamlitWin.document;
 
-        // 1. Audio Engine - Placed on Streamlit Window so ondblclick works
+        // Audio Engine
         streamlitWin.playLocalMarvinAudio = function() {
             const audio = streamlitDoc.getElementById('marvin-audio');
             if(audio) {
@@ -139,7 +145,7 @@ def inject_custom_ui():
             }
         };
 
-        // 2. PREVENT TAB AUTO-SCROLL JUMPING
+        // PREVENT TAB AUTO-SCROLL JUMPING
         streamlitDoc.addEventListener('click', function(e) {
             if(e.target.closest('[data-baseweb="tab"]')) {
                 try {
@@ -151,7 +157,7 @@ def inject_custom_ui():
             }
         }, true);
 
-        // 3. SECURE MESSAGE LISTENER
+        // SECURE MESSAGE LISTENER
         streamlitWin.addEventListener('message', (event) => {
             const data = event.data;
             if (!data || !data.theme) return;

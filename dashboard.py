@@ -8,7 +8,6 @@ import time
 import re
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-# --- IMPORT OUR NEW MODULES ---
 import streamlit_core.ui_injector as ui_injector
 import streamlit_core.db_manager as db
 import streamlit_core.agent_engine as engine
@@ -32,10 +31,8 @@ if "therapy_buffs" not in st.session_state: st.session_state.therapy_buffs = {}
 
 BUDGET = 20000
 
-# 🌟 INJECT HIDDEN DATA FOR THE JS CURRENCY BRIDGE 🌟
 st.markdown(f'<div id="raw-dashboard-data" data-budget="{BUDGET}" data-spent="{st.session_state.spent}" style="display:none;"></div>', unsafe_allow_html=True)
 
-# --- MEDIA RENDERER ---
 def render_media(file_path, key_suffix):
     ext = file_path.split('.')[-1].lower()
     if ext in ['jpg', 'jpeg', 'png', 'webp', 'gif']: st.image(file_path)
@@ -63,8 +60,18 @@ with st.sidebar:
         st.session_state.freelance_yield = st.slider("Freelance Yield (%)", 5, 15, st.session_state.freelance_yield)
         st.session_state.freelance_bonus = st.slider("Visa Bonus (SATS)", 0, 1000, st.session_state.freelance_bonus)
         st.session_state.ubi_probability = st.slider("Leisure Spend Prob. (%)", 0, 100, 30)
-        st.session_state.ubi_daily_cap = st.number_input("Daily UBI Cap (SATS)", min_value=0, value=5000, step=100)
+        st.session_state.ubi_daily_cap = st.number_input("Daily Leisure Cap", min_value=0, value=5000, step=100)
         
+        # 🌟 NEW UBI DISTRIBUTION UI 🌟
+        st.divider()
+        st.caption("Agent Economy")
+        ubi_amount = st.slider("Monthly UBI (SATS)", 100, 1000, 500, step=100)
+        if st.button("Distribute UBI"):
+            if db.distribute_ubi(ubi_amount):
+                st.success(f"Deposited {ubi_amount} SATS to all agents!")
+
+        st.divider()
+        st.caption("Security")
         st.session_state.simulate_hack = st.checkbox("Simulate Freelancer Hack", value=st.session_state.simulate_hack)
 
         import sqlite3
@@ -189,7 +196,6 @@ with tab_chat:
                     final_data = asyncio.run(engine.resume_tool_with_payment(st.session_state.pending_payment, s_cont, polar_port))
                 st.markdown(final_data)
                 
-                # 🌟 FIX: PARSE AND RENDER THE MEDIA FOR PAID TASKS 🌟
                 media_match = re.search(r"'([^']+\.(?:jpg|jpeg|png|webp|gif|mp4|mp3|wav))'", final_data, re.IGNORECASE)
                 media_file = media_match.group(1) if media_match else None
                 if media_file and os.path.exists(media_file):
