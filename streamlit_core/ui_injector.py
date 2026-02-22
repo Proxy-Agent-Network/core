@@ -75,7 +75,6 @@ def inject_custom_ui():
         .stTabs [aria-selected="true"] p { color: var(--accent) !important; opacity: 1; text-shadow: 0px 0px 12px var(--accent), 1px 1px 3px rgba(0,0,0,0.9); }
         .stTabs [aria-selected="true"] { border-bottom: 3px solid var(--accent) !important; }
         
-        /* 🌟 FIX: REMOVE GLOW ON LIGHT BACKGROUND THEMES 🌟 */
         [data-theme="business"] .stTabs [data-baseweb="tab"] p,
         [data-theme="paperback"] .stTabs [data-baseweb="tab"] p,
         [data-theme="groovy"] .stTabs [data-baseweb="tab"] p {
@@ -95,6 +94,24 @@ def inject_custom_ui():
         .stChatInputContainer { background-color: var(--card-bg) !important; border: 1px solid var(--border) !important; }
         hr { border-color: var(--border) !important; }
         .stProgress > div > div > div > div { background-color: var(--accent) !important; }
+
+        /* 🌟 FIX: OVERRIDE STREAMLIT'S NATIVE AVATAR SIZE 🌟 */
+        [data-testid="stChatMessageAvatar"] {
+            width: 50px !important;
+            height: 50px !important;
+            min-width: 50px !important;
+            min-height: 50px !important;
+        }
+        [data-testid="stChatMessageAvatar"] img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            border-radius: 50% !important;
+        }
+        [data-testid="stChatMessageAvatar"] svg {
+            width: 100% !important;
+            height: 100% !important;
+        }
 
         /* MARVIN CHOREOGRAPHY */
         .marvin-tutorial {
@@ -193,7 +210,6 @@ def inject_custom_ui():
                     let displayVal = rem * rate;
                     if (data.currency === 'SATS') metricVals[0].innerText = Math.floor(displayVal).toLocaleString() + " SATS";
                     else if (data.currency === 'BTC') metricVals[0].innerText = displayVal.toFixed(8) + " BTC";
-                    // 🌟 FIX: Force standard en-US format so it prints $13.00 perfectly 🌟
                     else metricVals[0].innerText = displayVal.toLocaleString('en-US', {style: 'currency', currency: data.currency});
                 }
             }

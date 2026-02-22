@@ -1,45 +1,56 @@
+version: '3.8'
+
 services:
-  proxy-node:
-    container_name: proxy_agent_v1
-    build:
-      context: .
-      dockerfile: Dockerfile
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: proxy_admin
+      POSTGRES_PASSWORD: proxy_secure_password
+      POSTGRES_DB: proxy_network
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # 🌟 NEW: The Healthcheck!
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proxy_admin -d proxy_network"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  proxy_agent_v1:
+    build: .
     ports:
       - "5000:5000"
       - "8000:8000"
-    volumes:
-      - proxy_data:/app/data
-      - .:/app
-    env_file:
-      - .env
     environment:
-      - FLASK_ENV=development
-      - FLASK_SECRET_KEY=docker_local_dev_key
-      - DOCKER_CONTAINER=true
-    networks:
-      - proxy-net
-    restart: unless-stopped
+      - DATABASE_URL=postgresql://proxy_admin:proxy_secure_password@db:5432/proxy_network
+      - FLASK_SECRET_KEY=super_secure_production_key_change_me
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    depends_on:
+      db:
+        # 🌟 NEW: Wait for the Healthcheck to pass before booting!
+        condition: service_healthy 
+    volumes:
+      - .:/app
+      - faiss_data:/app/faiss_index
 
-  # --- NEW: STREAMLIT AGENCY SERVICE ---
-  agency-search:
-    container_name: proxy_agency_search
-    build:
+  proxy_agency_search:
+    build: 
       context: .
-      dockerfile: Dockerfile
-    command: python -m streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false
+    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
     ports:
       - "8501:8501"
+    environment:
+      - DATABASE_URL=postgresql://proxy_admin:proxy_secure_password@db:5432/proxy_network
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    depends_on:
+      proxy_agent_v1:
+        condition: service_started
     volumes:
       - .:/app
-    env_file:
-      - .env
-    networks:
-      - proxy-net
-    restart: unless-stopped
+      - faiss_data:/app/faiss_index
 
 volumes:
-  proxy_data:
-
-networks:
-  proxy-net:
-    driver: bridge
+  pgdata:
+  faiss_data:
