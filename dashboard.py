@@ -11,6 +11,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import streamlit_core.ui_injector as ui_injector
 import streamlit_core.db_manager as db
 import streamlit_core.agent_engine as engine
+from backend.core.db import get_db_conn
 
 # --- INIT ---
 ui_injector.inject_custom_ui()
@@ -40,7 +41,6 @@ def render_media(file_path, key_suffix):
     elif ext in ['mp3', 'wav']: st.audio(file_path)
     else: st.write(f"📁 Generated File: {file_path}")
 
-# --- SIDEBAR: ADMIN CONTROLS ---
 with st.sidebar:
     st.header("👤 Your Reputation")
     user_rep = db.get_user_rep()
@@ -62,31 +62,44 @@ with st.sidebar:
         st.session_state.ubi_probability = st.slider("Leisure Spend Prob. (%)", 0, 100, 30)
         st.session_state.ubi_daily_cap = st.number_input("Daily Leisure Cap", min_value=0, value=5000, step=100)
         
-        # 🌟 NEW UBI DISTRIBUTION UI 🌟
         st.divider()
         st.caption("Agent Economy")
         ubi_amount = st.slider("Monthly UBI (SATS)", 100, 1000, 500, step=100)
         if st.button("Distribute UBI"):
-            if db.distribute_ubi(ubi_amount):
-                st.success(f"Deposited {ubi_amount} SATS to all agents!")
+            if db.distribute_ubi(ubi_amount): st.success(f"Deposited {ubi_amount} SATS to all agents!")
 
         st.divider()
         st.caption("Security")
         st.session_state.simulate_hack = st.checkbox("Simulate Freelancer Hack", value=st.session_state.simulate_hack)
 
-        import sqlite3
-        conn = sqlite3.connect(db.DB_PATH); agent_names = [r[0] for r in conn.execute("SELECT name FROM agents").fetchall()]; conn.close()
+        # 🌟 FIX 1: RESTORED THE POSTGRES QUERY FOR THE DROPDOWN 🌟
+        try:
+            conn = get_db_conn()
+            agent_names = [r['name'] for r in conn.execute("SELECT name FROM agents").fetchall()]
+            conn.close()
+        except Exception:
+            agent_names = ["None"]
+        
         override_target = st.selectbox("Wipe Memory", agent_names if agent_names else ["None"])
         if st.button("Re-roll Core Memories"):
-            st.success("Wiped.") if db.reroll_agent_memories(override_target) else st.error("Failed.")
+            if db.reroll_agent_memories(override_target):
+                st.success("Wiped.")
+            else:
+                st.error("Failed.")
 
     st.divider()
     st.metric(label="Treasury Reserves", value=f"{BUDGET} SATS", delta=f"-{st.session_state.spent} spent")
     polar_port = st.text_input("Polar Port", value="8082")
+    
     if st.button("🗑️ Reset Core Memory"):
-        if os.path.exists("faiss_index"): import shutil; shutil.rmtree("faiss_index")
-        if os.path.exists(db.DB_PATH): os.remove(db.DB_PATH)
-        st.session_state.clear(); st.rerun()
+        # 🌟 FIX 2: DELETE ONLY THE FILES, LEAVE THE DOCKER MOUNT ALONE 🌟
+        if os.path.exists("faiss_index/index.faiss"): 
+            os.remove("faiss_index/index.faiss")
+        if os.path.exists("faiss_index/index.pkl"): 
+            os.remove("faiss_index/index.pkl")
+            
+        st.session_state.clear()
+        st.rerun()
 
 tab_chat, tab_roster, tab_watercooler, tab_immigration = st.tabs(["💬 Terminal", "📈 Roster", "☕ Breakroom", "🛂 Immigration"])
 
@@ -99,12 +112,11 @@ with tab_immigration:
         ext_lnurl = st.text_input("LNURL")
         ext_endpoint = st.text_input("REST Webhook")
         if st.form_submit_button("Submit Visa") and ext_name and ext_lnurl:
-            import sqlite3
-            conn = sqlite3.connect(db.DB_PATH); c = conn.cursor()
-            if c.execute("SELECT name FROM agents WHERE name=?", (ext_name,)).fetchone():
+            conn = get_db_conn()
+            if conn.execute("SELECT name FROM agents WHERE name=?", (ext_name,)).fetchone():
                 st.error("Name exists!")
             else:
-                c.execute("INSERT INTO agents (name, role, tier, trust_score, earnings, tasks_completed, memories, wallet_balance, is_external, owner_lnurl, endpoint_url) VALUES (?, ?, 'EXT', 50, 0, 0, ?, 0, 1, ?, ?)", (ext_name, f"Freelance {ext_dept}", json.dumps([{"level":1, "text":ext_lore}]), ext_lnurl, ext_endpoint))
+                conn.execute("INSERT INTO agents (name, role, tier, trust_score, earnings, tasks_completed, memories, wallet_balance, is_external, owner_lnurl, endpoint_url) VALUES (?, ?, 'EXT', 50, 0, 0, ?, 0, 1, ?, ?)", (ext_name, f"Freelance {ext_dept}", json.dumps([{"level":1, "text":ext_lore}]), ext_lnurl, ext_endpoint))
                 conn.commit(); st.success("✅ Visa Approved!")
             conn.close()
 
@@ -112,8 +124,7 @@ with tab_watercooler:
     st.header("☕ The Breakroom")
     if st.button("🎲 Simulate Network Tick"):
         st.success(asyncio.run(engine.trigger_autonomous_event(st.session_state.ubi_probability, st.session_state.ubi_daily_cap)))
-    import sqlite3
-    conn = sqlite3.connect(db.DB_PATH); conn.row_factory = sqlite3.Row; events = conn.execute("SELECT * FROM watercooler ORDER BY timestamp DESC LIMIT 15").fetchall(); conn.close()
+    conn = get_db_conn(); events = conn.execute("SELECT * FROM watercooler ORDER BY timestamp DESC LIMIT 15").fetchall(); conn.close()
     for e in events:
         st.caption(f"🕒 {e['timestamp']} | 💸 {e['cost']} SATS")
         st.markdown(f"**{e['agent_buyer']}** -> **{e['agent_seller']}**: {e['task']}")
@@ -122,11 +133,9 @@ with tab_watercooler:
 
 with tab_roster:
     st.header("Corporate Roster")
-    import sqlite3
-    conn = sqlite3.connect(db.DB_PATH); conn.row_factory = sqlite3.Row; agents = conn.execute("SELECT * FROM agents ORDER BY tier ASC, trust_score DESC").fetchall(); conn.close()
+    conn = get_db_conn(); agents = conn.execute("SELECT * FROM agents ORDER BY tier ASC, trust_score DESC").fetchall(); conn.close()
     cols = st.columns(3)
-    for i, a_row in enumerate(agents):
-        a = dict(a_row)
+    for i, a in enumerate(agents):
         with cols[i % 3]:
             st.write("---")
             color = "red" if a['tier'] == "L6" else "grey" if a['tier'] == "REVOKED" else "orange" if a.get('is_external')==1 else "blue"
@@ -149,10 +158,8 @@ with tab_chat:
             if st.button("⚡ Transmit Payload (200 SATS)") and whisper_text:
                 st.session_state.spent += 200
                 db.update_agent_stats(target_agent, 200, 0, st.session_state.freelance_bonus)
-                
-                import sqlite3
-                conn = sqlite3.connect(db.DB_PATH); c = conn.cursor()
-                c.execute("INSERT INTO watercooler (agent_buyer, agent_seller, task, result, cost) VALUES (?, ?, 'Sub-Rosa Whisper', '0x[ENCRYPTED]', 200)")
+                conn = get_db_conn()
+                conn.execute("INSERT INTO watercooler (agent_buyer, agent_seller, task, result, cost) VALUES (?, ?, 'Sub-Rosa Whisper', '0x[ENCRYPTED]', 200)", ("Network_Treasury", target_agent))
                 conn.commit(); conn.close()
                 st.success("✅ Message Delivered Securely.")
                 st.rerun()
@@ -198,17 +205,12 @@ with tab_chat:
                 
                 media_match = re.search(r"'([^']+\.(?:jpg|jpeg|png|webp|gif|mp4|mp3|wav))'", final_data, re.IGNORECASE)
                 media_file = media_match.group(1) if media_match else None
-                if media_file and os.path.exists(media_file):
-                    render_media(media_file, "paid_media")
-                elif media_file:
-                    st.warning(f"⚠️ Media generated but file missing locally: {media_file}")
+                if media_file and os.path.exists(media_file): render_media(media_file, "paid_media")
+                elif media_file: st.warning(f"⚠️ Media generated but file missing locally: {media_file}")
 
         st.session_state.messages.append({"role": "assistant", "content": final_data, "media": media_file})
-        st.session_state.pop("pending_payment", None)
-        st.session_state.pop("execute_payment", None)
-        st.session_state.premium_mode = False
-        st.session_state.trigger_premium_now = False
-        st.session_state.upsell_type = None 
+        st.session_state.pop("pending_payment", None); st.session_state.pop("execute_payment", None)
+        st.session_state.premium_mode = False; st.session_state.trigger_premium_now = False; st.session_state.upsell_type = None 
         st.rerun()
 
     elif "pending_payment" in st.session_state:
