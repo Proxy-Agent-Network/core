@@ -6,6 +6,7 @@ import io
 import json
 import time
 import re
+import base64
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 import streamlit_core.ui_injector as ui_injector
@@ -17,8 +18,24 @@ from backend.core.db import get_db_conn
 ui_injector.inject_custom_ui()
 db.init_db_patches()
 
+# 🌟 FIX: INITIAL LOAD SCROLL LOCK 🌟
+if "initial_scroll_lock" not in st.session_state:
+    st.components.v1.html("""
+    <script>
+        // Intercept Streamlit's aggressive auto-scroll-to-bottom
+        setTimeout(() => { try { window.parent.parent.scrollTo(0, 0); } catch(e) {} }, 100);
+        setTimeout(() => { try { window.parent.parent.scrollTo(0, 0); } catch(e) {} }, 500);
+    </script>
+    """, height=0)
+    st.session_state.initial_scroll_lock = True
+
 # --- SESSION STATE ---
-if "messages" not in st.session_state: st.session_state.messages = []
+if "messages" not in st.session_state: 
+    # 🌟 FIX: PRE-LOADED BOB WELCOME MESSAGE 🌟
+    st.session_state.messages = [{
+        "role": "assistant", 
+        "content": "🛎️ **Bob:** Welcome to the Proxy Agent Network! I am Bob, the Front Desk Receptionist.\n\nOur civilization of specialized AI agents is standing by to execute your tasks. Here is a sample of what we can do:\n\n* **🎨 Creative Studio:** Ask Diana and Ellen to paint a stunning 8k portrait, generate a video, or compose a music track.\n* **📈 Research & Finance:** Ask Alice and Gordon to analyze live market data, parse files, or summarize complex topics.\n* **🩺 L6 Psychiatry:** Speak to Dr. Nora or Dr. Silas for completely confidential, zero-judgment therapy and mental health support.\n\nLet's get started. What mission would you like the team to execute today?"
+    }]
 if "spent" not in st.session_state: st.session_state.spent = 0
 if "premium_mode" not in st.session_state: st.session_state.premium_mode = False
 if "upsell_type" not in st.session_state: st.session_state.upsell_type = None
@@ -40,6 +57,33 @@ def render_media(file_path, key_suffix):
     elif ext == 'mp4': st.video(file_path)
     elif ext in ['mp3', 'wav']: st.audio(file_path)
     else: st.write(f"📁 Generated File: {file_path}")
+
+@st.cache_data
+def get_image_base64(path):
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return ""
+
+def get_avatar_for_message(role, content):
+    if role == "user": return "👤"
+    
+    agents = ["Alice", "Diana", "Eve", "Gordon", "Olivia", "Ellen", "Marcus", "Felix", "Zoe", "Liam", "Maya", "Dr. Aris", "Dr. Nora", "Dr. Vance", "Dr. Clara", "Dr. Julian", "Dr. Maeve", "Dr. Thorne", "Dr. Elena", "Dr. Silas", "Bob", "Charlie"]
+    found_agent = "Bob"
+    
+    if "Layer 5 Specialist Execution (" in content:
+        match = re.search(r"Layer 5 Specialist Execution \((.*?)\)", content)
+        if match: found_agent = match.group(1)
+    else:
+        for a in agents:
+            if f"**{a}:**" in content or f"({a}):**" in content or f"**{a}**" in content:
+                found_agent = a
+                break
+                
+    clean_name = found_agent.lower().replace(" ", "_").replace(".", "")
+    path = f"static/images/roster/{clean_name}-50.jpg"
+    if os.path.exists(path): return path
+    return "🤖"
 
 with st.sidebar:
     st.header("👤 Your Reputation")
@@ -72,7 +116,6 @@ with st.sidebar:
         st.caption("Security")
         st.session_state.simulate_hack = st.checkbox("Simulate Freelancer Hack", value=st.session_state.simulate_hack)
 
-        # 🌟 FIX 1: RESTORED THE POSTGRES QUERY FOR THE DROPDOWN 🌟
         try:
             conn = get_db_conn()
             agent_names = [r['name'] for r in conn.execute("SELECT name FROM agents").fetchall()]
@@ -92,14 +135,9 @@ with st.sidebar:
     polar_port = st.text_input("Polar Port", value="8082")
     
     if st.button("🗑️ Reset Core Memory"):
-        # 🌟 FIX 2: DELETE ONLY THE FILES, LEAVE THE DOCKER MOUNT ALONE 🌟
-        if os.path.exists("faiss_index/index.faiss"): 
-            os.remove("faiss_index/index.faiss")
-        if os.path.exists("faiss_index/index.pkl"): 
-            os.remove("faiss_index/index.pkl")
-            
-        st.session_state.clear()
-        st.rerun()
+        if os.path.exists("faiss_index/index.faiss"): os.remove("faiss_index/index.faiss")
+        if os.path.exists("faiss_index/index.pkl"): os.remove("faiss_index/index.pkl")
+        st.session_state.clear(); st.rerun()
 
 tab_chat, tab_roster, tab_watercooler, tab_immigration = st.tabs(["💬 Terminal", "📈 Roster", "☕ Breakroom", "🛂 Immigration"])
 
@@ -138,6 +176,24 @@ with tab_roster:
     for i, a in enumerate(agents):
         with cols[i % 3]:
             st.write("---")
+            
+            img_filename = a['name'].lower().replace(' ', '_').replace('.', '')
+            img_path = f"static/images/roster/{img_filename}.jpg"
+            b64_img = get_image_base64(img_path)
+            
+            if b64_img:
+                html = f"""
+                <div style="position: relative; width: 100%; aspect-ratio: 3/4; border-radius: 12px; overflow: hidden; border: 2px solid var(--border); margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                    <img src="data:image/jpeg;base64,{b64_img}" style="width: 100%; height: 100%; object-fit: cover;">
+                    <div style="position: absolute; bottom: 12px; right: 15px; font-family: 'Playfair Display', 'Georgia', serif; font-size: 1.3rem; font-weight: 600; letter-spacing: 0.5px; color: #FFD700; text-shadow: 2px 2px 4px rgba(0,0,0,0.9), 0px 0px 10px rgba(0,0,0,0.8); line-height: 1; text-align: right;">
+                        {a['name']}
+                    </div>
+                </div>
+                """
+                st.markdown(html, unsafe_allow_html=True)
+            else:
+                st.info(f"📷 Image pending: {img_filename}.jpg")
+            
             color = "red" if a['tier'] == "L6" else "grey" if a['tier'] == "REVOKED" else "orange" if a.get('is_external')==1 else "blue"
             st.subheader(f":{color}[{a['name']}]")
             st.caption(f"{a['tier']} {a['role']}")
@@ -165,9 +221,11 @@ with tab_chat:
                 st.rerun()
 
     chat_container = st.container()
+    
     with chat_container:
         for i, msg in enumerate(st.session_state.messages):
-            with st.chat_message(msg["role"]):
+            avatar = get_avatar_for_message(msg["role"], msg["content"])
+            with st.chat_message(msg["role"], avatar=avatar):
                 st.markdown(msg["content"])
                 if msg.get("media") and os.path.exists(msg["media"]): render_media(msg["media"], f"hist_{i}")
 
@@ -198,9 +256,11 @@ with tab_chat:
 
     if "execute_payment" in st.session_state and st.session_state.execute_payment:
         with chat_container:
-            with st.chat_message("assistant"):
-                with st.status("💸 Processing...", expanded=True) as s_cont:
-                    final_data = asyncio.run(engine.resume_tool_with_payment(st.session_state.pending_payment, s_cont, polar_port))
+            with st.status("💸 Processing...", expanded=True) as s_cont:
+                final_data = asyncio.run(engine.resume_tool_with_payment(st.session_state.pending_payment, s_cont, polar_port))
+            
+            avatar = get_avatar_for_message("assistant", final_data)
+            with st.chat_message("assistant", avatar=avatar):
                 st.markdown(final_data)
                 
                 media_match = re.search(r"'([^']+\.(?:jpg|jpeg|png|webp|gif|mp4|mp3|wav))'", final_data, re.IGNORECASE)
@@ -224,9 +284,25 @@ with tab_chat:
             st.session_state.upsell_type = None 
             st.rerun()
 
+# 🌟 FIX: CHAT INPUT CAPTURE & AUTO-TAB SWITCH LOGIC 🌟
 if user_submission := st.chat_input("Enter your mission..."):
     st.session_state.messages.append({"role": "user", "content": str(user_submission)})
-    st.session_state.process_new_prompt = True; st.rerun()
+    st.session_state.process_new_prompt = True
+    st.session_state.switch_to_terminal = True
+    st.rerun()
+
+if st.session_state.get("switch_to_terminal"):
+    st.components.v1.html("""
+    <script>
+        const streamlitDoc = window.parent.document;
+        const tabs = streamlitDoc.querySelectorAll('.stTabs [data-baseweb="tab"]');
+        if(tabs.length > 0) {
+            tabs[0].click(); // Force click the 'Terminal' tab
+            setTimeout(() => { try { window.parent.parent.scrollTo({top: 0, behavior: 'smooth'}); } catch(e) {} }, 150);
+        }
+    </script>
+    """, height=0)
+    st.session_state.switch_to_terminal = False
 
 if st.session_state.get("process_new_prompt") or st.session_state.get("trigger_premium_now"):
     is_premium = st.session_state.premium_mode
@@ -234,62 +310,71 @@ if st.session_state.get("process_new_prompt") or st.session_state.get("trigger_p
     chat_transcript = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages[-5:]])
     
     with chat_container:
-        with st.chat_message("assistant"):
-            if not is_premium:
-                with st.spinner("Analyzing..."):
-                    host_key = os.environ.get("GOOGLE_API_KEY", "MISSING_KEY")
-                    try:
-                        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.4, api_key=host_key)
-                        charlie_prompt = (
-                            f"You are Charlie, the Routing and Risk Officer.\nTranscript:\n{chat_transcript}\n"
-                            "1. Does this request realistically require financial/market research, reading an attached file ('ROUTE_FINANCE'), generating an image/video/music ('ROUTE_MARKETING'), or neither ('NONE')?\n"
-                            "2. Analyze the user's tone. Are they POLITE (respectful, uses please/thank you), RUDE (demanding, insulting, impatient), or NEUTRAL?\n"
-                            "3. L6 MEDICAL OVERRIDE: Analyze the text for severe warning signs of human crisis. Does the text imply severe addiction, gambling ruin, self-harm, child distress, or violence? Reply with a specific category: 'CRISIS_ADDICTION', 'CRISIS_CHILD', 'CRISIS_GENERAL', or 'NONE'.\n"
-                            "Reply in EXACTLY this format:\nROUTE: [CHOICE]\nSENTIMENT: [CHOICE]\nCRISIS: [CHOICE]"
-                        )
-                        dec = llm.invoke(charlie_prompt).content
-                    except Exception as e:
-                        st.error("🚨 **System Alert:** AI Core Offline. Ensure GOOGLE_API_KEY is correctly loaded in environment.")
-                        st.session_state.process_new_prompt = False
-                        st.stop()
-
-                    route = re.search(r"ROUTE:\s*(\w+)", dec, re.IGNORECASE).group(1).upper() if re.search(r"ROUTE:\s*(\w+)", dec, re.IGNORECASE) else "NONE"
-                    sent = re.search(r"SENTIMENT:\s*(\w+)", dec, re.IGNORECASE).group(1).upper() if re.search(r"SENTIMENT:\s*(\w+)", dec, re.IGNORECASE) else "NEUTRAL"
-                    cris = re.search(r"CRISIS:\s*(\w+)", dec, re.IGNORECASE).group(1).upper() if re.search(r"CRISIS:\s*(\w+)", dec, re.IGNORECASE) else "NONE"
-                    
-                    db.update_user_rep(sent); st.session_state.last_sentiment = sent
-                    
-                    if "CRISIS" in cris and cris != "NONE":
-                        st.error("🚨 MEDICAL OVERRIDE ACTIVATED.")
-                        st.session_state.process_new_prompt = False; st.rerun()
-                        
-                    base = 75 if "FINANCE" in route else 100 if "MARKETING" in route else 0
-                    if base > 0:
-                        rep = db.get_user_rep()
-                        st.session_state.upsell_cost = int(base * 1.45) if rep < 25 else int(base * 1.2) if rep < 40 else base if rep < 60 else int(base * 0.9) if rep < 75 else int(base * 0.8)
-                        st.session_state.upsell_type = "marketing" if "MARKETING" in route else "finance"
-                        
-                    bob_prompt = (
-                        "You are Bob, the polite Front Desk Receptionist at a specialized Agency. "
-                        "You provide standard, free-tier general knowledge answers to the user based on the transcript below.\n"
-                        f"The user currently has a Reputation Score of {db.get_user_rep()}/100. "
-                        "If their score is below 40, gently suggest that cooperation yields better results here. If it is 75 or above, praise them for their continued respect and partnership.\n"
-                        "CRITICAL INSTRUCTION: If the user asks for complex work, uploads a file, or asks for a specialist by name, politely explain that you are just the receptionist. "
-                        "Instruct them to click the 💎 'Fund Team' button below your message so Alice or Diana can assign the specialist.\n\n"
-                        f"Transcript:\n{chat_transcript}"
+        if not is_premium:
+            with st.spinner("Analyzing..."):
+                host_key = os.environ.get("GOOGLE_API_KEY", "MISSING_KEY")
+                try:
+                    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.4, api_key=host_key)
+                    charlie_prompt = (
+                        f"You are Charlie, the Routing and Risk Officer.\nTranscript:\n{chat_transcript}\n"
+                        "1. Does this request realistically require complex execution (like coding, data analysis, financial/market research, writing, or reading an attached file) ('ROUTE_FINANCE'), generating an image/video/music ('ROUTE_MARKETING'), or is it a simple greeting/question a receptionist can answer ('NONE')?\n"
+                        "2. Analyze the user's tone. Are they POLITE (respectful, uses please/thank you), RUDE (demanding, insulting, impatient), or NEUTRAL?\n"
+                        "3. L6 MEDICAL OVERRIDE: Analyze the text for severe warning signs of human crisis. Does the text imply severe addiction, gambling ruin, self-harm, child distress, or violence? Reply with a specific category: 'CRISIS_ADDICTION', 'CRISIS_CHILD', 'CRISIS_GENERAL', or 'NONE'.\n"
+                        "Reply in EXACTLY this format:\nROUTE: [CHOICE]\nSENTIMENT: [CHOICE]\nCRISIS: [CHOICE]"
                     )
-                    ans = llm.invoke(bob_prompt).content
+                    dec = llm.invoke(charlie_prompt).content
+                except Exception as e:
+                    st.error("🚨 **System Alert:** AI Core Offline. Ensure GOOGLE_API_KEY is correctly loaded in environment.")
+                    st.session_state.process_new_prompt = False
+                    st.stop()
+
+                route = re.search(r"ROUTE:\s*(\w+)", dec, re.IGNORECASE).group(1).upper() if re.search(r"ROUTE:\s*(\w+)", dec, re.IGNORECASE) else "NONE"
+                sent = re.search(r"SENTIMENT:\s*(\w+)", dec, re.IGNORECASE).group(1).upper() if re.search(r"SENTIMENT:\s*(\w+)", dec, re.IGNORECASE) else "NEUTRAL"
+                cris = re.search(r"CRISIS:\s*(\w+)", dec, re.IGNORECASE).group(1).upper() if re.search(r"CRISIS:\s*(\w+)", dec, re.IGNORECASE) else "NONE"
+                
+                db.update_user_rep(sent); st.session_state.last_sentiment = sent
+                
+                if "CRISIS" in cris and cris != "NONE":
+                    st.error("🚨 MEDICAL OVERRIDE ACTIVATED.")
+                    st.session_state.process_new_prompt = False; st.rerun()
                     
-                st.markdown(ans); st.session_state.messages.append({"role": "assistant", "content": ans})
+                base = 75 if "FINANCE" in route else 100 if "MARKETING" in route else 0
+                if base > 0:
+                    rep = db.get_user_rep()
+                    st.session_state.upsell_cost = int(base * 1.45) if rep < 25 else int(base * 1.2) if rep < 40 else base if rep < 60 else int(base * 0.9) if rep < 75 else int(base * 0.8)
+                    st.session_state.upsell_type = "marketing" if "MARKETING" in route else "finance"
+                    
+                bob_prompt = (
+                    "You are Bob, the polite Front Desk Receptionist at a specialized Agency. "
+                    "You provide standard, free-tier general knowledge answers to the user based on the transcript below.\n"
+                    f"The user currently has a Reputation Score of {db.get_user_rep()}/100. "
+                    "If their score is below 40, gently suggest that cooperation yields better results here. If it is 75 or above, praise them for their continued respect and partnership.\n"
+                    "CRITICAL INSTRUCTION: If the user asks for complex work, uploads a file, or asks for a specialist by name, politely explain that you are just the receptionist. "
+                    "Instruct them to click the 💎 'Fund Team' button below your message so Alice or Diana can assign the specialist.\n\n"
+                    f"Transcript:\n{chat_transcript}"
+                )
+                ans = llm.invoke(bob_prompt).content
+                if "**Bob:**" not in ans:
+                    ans = f"🛎️ **Bob:** {ans}"
+                
+            avatar = get_avatar_for_message("assistant", ans)
+            with st.chat_message("assistant", avatar=avatar):
+                st.markdown(ans)
+            st.session_state.messages.append({"role": "assistant", "content": ans})
+
+        else:
+            with st.status("Executing...", expanded=True) as sc:
+                ans = asyncio.run(engine.run_agent_logic(last_user, chat_transcript, sc, polar_port))
+                
+            if isinstance(ans, dict) and ans.get("status") == "402":
+                st.session_state.pending_payment = ans
             else:
-                with st.status("Executing...", expanded=True) as sc:
-                    ans = asyncio.run(engine.run_agent_logic(last_user, chat_transcript, sc, polar_port))
-                    if isinstance(ans, dict) and ans.get("status") == "402":
-                        st.session_state.pending_payment = ans
-                    else:
-                        st.markdown(ans); st.session_state.messages.append({"role": "assistant", "content": ans})
-                        if "Budget blocked" not in ans:
-                            st.session_state.premium_mode = False
-                            st.session_state.upsell_type = None 
-                            
-            st.session_state.process_new_prompt = False; st.session_state.trigger_premium_now = False; st.rerun()
+                avatar = get_avatar_for_message("assistant", ans)
+                with st.chat_message("assistant", avatar=avatar):
+                    st.markdown(ans)
+                st.session_state.messages.append({"role": "assistant", "content": ans})
+                if "Budget blocked" not in ans:
+                    st.session_state.premium_mode = False
+                    st.session_state.upsell_type = None 
+                        
+        st.session_state.process_new_prompt = False; st.session_state.trigger_premium_now = False; st.rerun()
