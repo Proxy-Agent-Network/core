@@ -1,25 +1,54 @@
 version: '3.8'
 
 services:
+  # --- THE DATABASE (Stability Layer) ---
   db:
     image: postgres:15-alpine
+    container_name: proxy_db
     environment:
       POSTGRES_USER: proxy_admin
       POSTGRES_PASSWORD: proxy_secure_password
       POSTGRES_DB: proxy_network
-    ports:
-      - "5432:5432"
+    # 🌟 SECURITY FIX: Exposed internally to the Agent only. No public door.
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # 🌟 NEW: The Healthcheck!
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U proxy_admin -d proxy_network"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # --- THE BANK (Value Layer: Lightning Network) ---
+  lnd:
+    image: lightninglabs/lnd:v0.17.0-beta
+    container_name: lnd_node
+    # 🌟 SECURITY FIX: Resolves port conflicts and isolates the Bank.
+    expose:
+      - "10009" # gRPC for the Agent
+      - "8080"  # REST for potential web tools
+      - "9735"  # P2P Network
+    environment:
+      - LND_DEBUGLEVEL=info
+    volumes:
+      - lnd_data:/root/.lnd
+    command: >
+      --bitcoin.active
+      --bitcoin.regtest
+      --bitcoin.node=neutrino
+      --rpclisten=0.0.0.0:10009
+      --restlisten=0.0.0.0:8080
+      --alias=Proxy_Demo_Bank
+      --nobootstrap
+
+  # --- THE AI AGENT (The Principal) ---
   proxy_agent_v1:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxy_agent
+    # The Agent has public doors so you can view the PowerChat UI.
     ports:
       - "5000:5000"
       - "8000:8000"
@@ -27,30 +56,47 @@ services:
       - DATABASE_URL=postgresql://proxy_admin:proxy_secure_password@db:5432/proxy_network
       - FLASK_SECRET_KEY=super_secure_production_key_change_me
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # Pointing to the internal Docker service 'lnd'
+      - LND_GRPC_HOST=lnd
+      - LND_GRPC_PORT=10009
+      - LND_MACAROON_PATH=/home/proxyuser/.lnd/data/chain/bitcoin/regtest/admin.macaroon
+      - LND_TLS_CERT_PATH=/home/proxyuser/.lnd/tls.cert
     depends_on:
       db:
-        # 🌟 NEW: Wait for the Healthcheck to pass before booting!
-        condition: service_healthy 
+        condition: service_healthy
+      lnd:
+        condition: service_started
     volumes:
       - .:/app
       - faiss_data:/app/faiss_index
+      # Mount the bank's secrets into the non-privileged user's home (Read-Only)
+      - lnd_data:/home/proxyuser/.lnd:ro
 
+  # --- THE SEARCH ENGINE & DASHBOARD ---
   proxy_agency_search:
     build: 
       context: .
+    container_name: proxy_search
     command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
+    # The Search UI has a public door so you can view it.
     ports:
       - "8501:8501"
     environment:
       - DATABASE_URL=postgresql://proxy_admin:proxy_secure_password@db:5432/proxy_network
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - LND_GRPC_HOST=lnd
+      - LND_GRPC_PORT=10009
     depends_on:
-      proxy_agent_v1:
+      db:
+        condition: service_healthy
+      lnd:
         condition: service_started
     volumes:
       - .:/app
       - faiss_data:/app/faiss_index
+      - lnd_data:/home/proxyuser/.lnd:ro
 
 volumes:
   pgdata:
   faiss_data:
+  lnd_data:

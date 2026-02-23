@@ -1,28 +1,36 @@
 import grpc
 import os
+import sys
 import codecs
 import logging
 import base64
 import urllib.parse
 import requests 
 
+# 🌟 INFRASTRUCTURE FIX: Python Path Injection
+# Generated gRPC files try to directly import each other. We force Python 
+# to look in both the root folder and the grpc folder to guarantee it finds them.
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(CURRENT_DIR, '../../')))    # Looks in /app
+sys.path.append(os.path.abspath(os.path.join(CURRENT_DIR, '../grpc')))   # Looks in /app/backend/grpc
+
 # --- PROTOCOL BUFFERS ---
 try:
     import rpc_pb2 as ln
     import rpc_pb2_grpc as lnrpc
-except ImportError:
+except ImportError as e:
     ln = None
     lnrpc = None
-    print(" [WARN] ⚠️  LND gRPC modules not found.")
+    print(f"\n[CRITICAL WARN] ⚠️ LND gRPC modules failed to load!")
+    print(f"Exact Python Error: {e}\n")
 
-# CONFIGURATION
-# We default to the Docker-friendly host if not specified
-LND_HOST = os.getenv('LND_GRPC_HOST', 'host.docker.internal')
-LND_PORT = os.getenv('LND_GRPC_PORT', '10001')
+# --- SECURE DOCKER CONFIGURATION ---
+LND_HOST = os.getenv('LND_GRPC_HOST', 'lnd')
+LND_PORT = os.getenv('LND_GRPC_PORT', '10009')
 
-# PATHS (Mapped via Docker Volume)
-CERT_PATH = os.getenv('LND_TLS_CERT_PATH', '/root/.lnd/tls.cert')
-MACAROON_PATH = os.getenv('LND_MACAROON_PATH', '/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon')
+HOME = os.path.expanduser("~")
+CERT_PATH = os.getenv('LND_TLS_CERT_PATH', f'{HOME}/.lnd/tls.cert')
+MACAROON_PATH = os.getenv('LND_MACAROON_PATH', f'{HOME}/.lnd/data/chain/bitcoin/regtest/admin.macaroon')
 
 class LightningEngine:
     def __init__(self):
@@ -59,26 +67,21 @@ class LightningEngine:
 
             self.logger.info(f"🔑 Loading credentials from {CERT_PATH}...")
 
-            # 1. Load TLS Cert
             with open(CERT_PATH, 'rb') as f:
                 cert_creds = grpc.ssl_channel_credentials(f.read())
 
-            # 2. Load Macaroon
             with open(MACAROON_PATH, 'rb') as f:
                 macaroon_bytes = f.read()
                 macaroon = codecs.encode(macaroon_bytes, 'hex')
 
-            # 3. Build Auth Metadata
             def metadata_callback(context, callback):
                 callback([('macaroon', macaroon)], None)
 
             auth_creds = grpc.metadata_call_credentials(metadata_callback)
             combined_creds = grpc.composite_channel_credentials(cert_creds, auth_creds)
 
-            # 4. Connect with SSL OVERRIDE (The Fix)
             self.logger.info(f"🔌 Connecting to LND at {LND_HOST}:{LND_PORT}...")
             
-            # We are inside the network now, so we trust the container name.
             channel = grpc.secure_channel(
                 f"{LND_HOST}:{LND_PORT}", 
                 combined_creds
@@ -86,7 +89,6 @@ class LightningEngine:
 
             self.stub = lnrpc.LightningStub(channel)
             
-            # 5. Verify Connection
             info = self.stub.GetInfo(ln.GetInfoRequest())
             self.connected = True
             self.pubkey = info.identity_pubkey
@@ -116,30 +118,28 @@ class LightningEngine:
                 'payment_request': payment_request
             }
             
-            # QR code logic has been completely deleted.
+            qr_code = self._generate_qr_base64(payment_request)
             
             self.logger.info(f"🧾 Invoice Created: {sats} sats | Hash: {r_hash_hex[:8]}...")
             
             return {
                 'payment_request': payment_request,
                 'r_hash': r_hash_hex,
-                'amount': sats
+                'amount': sats,
+                'qr_code': qr_code
             }
         except Exception as e:
             self.logger.error(f"❌ Invoice Creation Error: {e}")
             return None
         
     def get_balances(self):
-        """Fetches the on-chain and lightning channel balances."""
         if not self.connected:
             if not self.connect(): 
                 return None
         try:
-            # Get On-Chain Wallet Balance
             wallet_req = ln.WalletBalanceRequest()
             wallet_resp = self.stub.WalletBalance(wallet_req)
             
-            # Get Lightning Channel Balance
             channel_req = ln.ChannelBalanceRequest()
             channel_resp = self.stub.ChannelBalance(channel_req)
             
@@ -155,16 +155,13 @@ class LightningEngine:
             return None
         
     def verify_payment(self, r_hash_hex):
-        """Checks if a specific Lightning invoice has been paid."""
         if not self.connected:
             if not self.connect(): 
                 return False
         try:
-            # We ask LND for the status of this specific invoice hash
             request = ln.PaymentHash(r_hash_str=r_hash_hex)
             invoice = self.stub.LookupInvoice(request, timeout=10)
             
-            # State 1 means SETTLED (Paid)
             if invoice.state == 1:
                 self.logger.info(f"✅ Payment Verified for hash: {r_hash_hex[:8]}")
                 return True

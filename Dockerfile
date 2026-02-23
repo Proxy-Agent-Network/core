@@ -63,6 +63,18 @@ COPY . /app
 # Make the launch script executable
 RUN chmod +x start_node.sh
 
+# Create a system group and user
+RUN groupadd -r proxygroup && useradd -r -g proxygroup -m -d /home/proxyuser proxyuser
+
+# Set ownership of the application directory
+RUN chown -R proxyuser:proxygroup /app
+
+# (Crucial) Create the .lnd directory in the user's home so gRPC can find it
+RUN mkdir -p /home/proxyuser/.lnd && chown -R proxyuser:proxygroup /home/proxyuser/.lnd
+
+# Switch to the non-privileged user
+USER proxyuser
+
 # Run the Agent
 EXPOSE 5000
 EXPOSE 8000

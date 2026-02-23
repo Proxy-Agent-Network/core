@@ -5,6 +5,7 @@ import json
 import base64
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash
 from backend.core.db import get_db_conn
+from duckduckgo_search import DDGS
 
 try:
     from backend.core.lightning_engine import lnd
@@ -14,14 +15,23 @@ except ImportError:
     lnd = None
 
 try:
-    from node.tpm_binding import NodeHardware
+    # We explicitly import from the compiled Rust wheel
+    from proxy_core import NodeHardware
     print(" [SYSTEM] 🔒 Connecting to Rust TPM Engine...")
     hw_bridge = NodeHardware()
     MY_NODE_ID = hw_bridge.get_fingerprint()
-    HW_SECURED = not MY_NODE_ID.startswith("MOCK")
+    # If the ID is the one we set in Rust, HW_SECURED is True
+    HW_SECURED = "0x8F9B" in MY_NODE_ID
     print(f" [SYSTEM] ✅ Identity Confirmed: {MY_NODE_ID}")
-except:
-    MY_NODE_ID = "NODE_SOFTWARE_FALLBACK"
+except Exception as e:
+    # If Rust fails, we fall back to the renamed legacy folder
+    print(f" [WARN] ⚠️ Rust Enclave not found, using legacy fallback: {e}")
+    try:
+        from node_legacy.tpm_binding import NodeHardware
+        hw_bridge = NodeHardware()
+        MY_NODE_ID = hw_bridge.get_fingerprint()
+    except:
+        MY_NODE_ID = "EMERGENCY_SOFTWARE_BOOT"
     HW_SECURED = False
 
 app = Flask(__name__)
@@ -42,23 +52,41 @@ LEGAL_DOCS = {
     'privacy': {'title': 'PRIVACY POLICY', 'content': '<p>All wallet balances are encrypted using ChaCha20-Poly1305.</p>'}
 }
 
+def update_secure_wallet(conn, node_id, amount):
+    # 1. Get current balance (decrypts if necessary)
+    current_balance = get_secure_balance(conn, node_id)
+    new_balance = current_balance + amount
+    
+    # 2. ENCRYPT THE NEW BALANCE (The "Vault Lock")
+    try:
+        # This calls your Rust lib.rs logic
+        encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
+        print(f" [SYSTEM] 🔒 Vaulting new balance: {encrypted_balance[:25]}...")
+    except Exception as e:
+        print(f" [WARN] ⚠️ Encryption failed, saving as plaintext: {e}")
+        encrypted_balance = str(new_balance)
+        
+    # 3. Write the blob to the database
+    conn.execute("UPDATE nodes SET total_earned = ? WHERE node_id = ?", (encrypted_balance, node_id))
+    conn.commit()
+    return new_balance
+
 def get_secure_balance(conn, node_id):
     row = conn.execute("SELECT total_earned FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
     if not row: return 0
+    
     stored_val = str(row['total_earned'])
-    try:
-        decrypted = hw_bridge.decrypt_data(stored_val)
-        if "ERR_" in decrypted or "ACCESS_DENIED" in decrypted: return int(float(stored_val))
-        return int(decrypted)
-    except: return int(float(stored_val)) if stored_val.isdigit() else 0
-
-def update_secure_wallet(conn, node_id, amount):
-    current_balance = get_secure_balance(conn, node_id)
-    new_balance = current_balance + amount
-    try: encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
-    except: encrypted_balance = str(new_balance)
-    conn.execute("UPDATE nodes SET total_earned = ? WHERE node_id = ?", (encrypted_balance, node_id))
-    return new_balance
+    
+    # 4. DECRYPT IF NECESSARY
+    if stored_val.startswith("SECURE::"):
+        try:
+            decrypted = hw_bridge.decrypt_data(stored_val)
+            return int(decrypted)
+        except:
+            return 0
+    
+    # Fallback for old plaintext data (like your current '100')
+    return int(float(stored_val)) if stored_val.replace('.','',1).isdigit() else 0
 
 def simulate_rival_snatch():
     conn = get_db()
@@ -122,6 +150,45 @@ def search_engine():
     balance = get_secure_balance(conn, MY_NODE_ID)
     owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
     return render_template('search.html', balance=balance, owned=owned)
+
+@app.route('/api/v1/search/execute', methods=['POST'])
+def api_execute_search():
+    """L402 Protected Search Endpoint."""
+    from duckduckgo_search import DDGS
+    data = request.json
+    query = data.get('query')
+    payment_hash = data.get('payment_hash')
+    cost = 10  # Standard cost for search mission in SATS
+
+    # 1. Validation Logic: Verify if valid payment exists for this session
+    if lnd:
+        is_paid = lnd.check_status(payment_hash) == "SETTLED" if payment_hash else False
+        
+        if not is_paid:
+            # Generate fresh BOLT11 invoice for the search
+            invoice_data = lnd.create_invoice(cost, f"Proxy Search: {query[:30]}")
+            if not invoice_data:
+                return jsonify({"status": "ERROR", "message": "Lightning Treasury Offline"}), 500
+            
+            # Return standard L402 challenge
+            return jsonify({
+                "status": "PAYMENT_REQUIRED",
+                "invoice": invoice_data['payment_request'],
+                "hash": invoice_data['r_hash'],
+                "cost": cost
+            }), 402
+
+    # 2. Fulfillment Logic: Only executes if paid (or LND disabled)
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=5))
+        return jsonify({
+            "status": "SUCCESS",
+            "results": results,
+            "hw_attestation": MY_NODE_ID
+        })
+    except Exception as e:
+        return jsonify({"status": "ERROR", "message": str(e)}), 500
 
 @app.route('/')
 def dashboard():
