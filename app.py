@@ -302,6 +302,80 @@ def rival_feed():
         return jsonify({'has_msg': True, 'rival': rv, 'message': f"Task #{random.randint(1000,9999)} seized.", 'timestamp': time.strftime("%H:%M:%S")})
     return jsonify({'has_msg': False})
 
+# ==========================================
+# 🌟 NATIVE HTML/JS POWERCHAT ROUTES 🌟
+# ==========================================
+
+@app.route('/powerchat')
+def powerchat():
+    """Serves the new, lightning-fast native JS chat interface."""
+    conn = get_db_conn()
+    row = conn.execute("SELECT wallet_balance FROM agents WHERE name = 'User'").fetchone()
+    balance = row['wallet_balance'] if row else 20000
+    conn.close()
+    return render_template('powerchat.html', balance=balance)
+
+@app.route('/team')
+def team_roster():
+    """Serves the 22-agent Roster page."""
+    conn = get_db_conn()
+    row = conn.execute("SELECT wallet_balance FROM agents WHERE name = 'User'").fetchone()
+    balance = row['wallet_balance'] if row else 20000
+    conn.close()
+    return render_template('team.html', balance=balance)
+
+@app.route('/api/v1/chat', methods=['POST'])
+def api_chat():
+    """The REST API endpoint that the JS frontend will communicate with."""
+    import asyncio
+    from agent_engine_v2 import process_chat  # Import our new V2 Engine!
+    
+    data = request.json
+    user_message = data.get('message', '')
+    chat_history = data.get('history', [])
+    locked_agent = data.get('locked_agent', None)
+    
+    # Run the totally decoupled, Streamlit-free logic
+    try:
+        response_payload = asyncio.run(process_chat(user_message, chat_history, locked_agent))
+        return jsonify(response_payload)
+    except Exception as e:
+        return jsonify({"type": "message", "role": "assistant", "content": f"⚠️ Core Engine Error: {str(e)}"})
+    
+@app.route('/api/v1/execute', methods=['POST'])
+def api_execute():
+    """Handles the actual L5 execution AFTER the user clicks pay."""
+    import asyncio
+    import traceback
+    from agent_engine_v2 import execute_paid_tool
+    
+    try:
+        data = request.json
+        # Simulate payment processing time
+        time.sleep(1) 
+        
+        arguments = data.get('arguments', {})
+        arguments['payment_hash'] = data.get('hash', 'mock_hash')
+        
+        final_payload = asyncio.run(execute_paid_tool(
+            data.get('tool_name'),
+            arguments,
+            data.get('l5_artist', 'Specialist'),
+            data.get('prompt_text', '')
+        ))
+        
+        # Failsafe: If the payload is a raw string, wrap it in a valid JSON structure
+        if isinstance(final_payload, str):
+            return jsonify({"type": "message", "role": "assistant", "content": final_payload})
+            
+        return jsonify(final_payload)
+        
+    except Exception as e:
+        # Failsafe: Never crash Flask. Return the exact Python error to the frontend UI!
+        error_details = f"Backend Execution Crashed: {str(e)}"
+        print(f"CRITICAL FLASK ERROR:\n{traceback.format_exc()}")
+        return jsonify({"type": "error", "role": "assistant", "content": error_details})
+
 if __name__ == '__main__':
     with app.app_context():
         db = get_db()

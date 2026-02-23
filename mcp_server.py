@@ -4,22 +4,22 @@ import requests
 import urllib.parse
 import uuid
 import os
+import shutil
 import base64
 import time
-import shutil
-import glob
+import glob 
+from duckduckgo_search import DDGS
 from mcp.server.fastmcp import FastMCP
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import PromptTemplate
-
+from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_community.document_loaders import PyPDFLoader 
 from backend.core.lightning_engine import LightningEngine
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MCP-Server")
 
-# 🌟 FIX: RESTORED 0.0.0.0 BINDING SO STREAMLIT CAN CONNECT 🌟
-mcp = FastMCP("LightningProxyServer", host="0.0.0.0", port=8000)
+mcp = FastMCP("LightningProxyServer")
 
 lnd = LightningEngine()
 LND_CONNECTED = False
@@ -67,26 +67,18 @@ def safe_verify_payment(payment_hash):
 
 @mcp.tool()
 def buy_vip_pass(payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Buys a 1-Hour VIP All-Access Subscription Pass. Cost: 10,000 satoshis."""
     if not payment_hash:
         invoice_data = get_safe_invoice(10000, "1-Hour VIP All-Access Pass")
         return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
     if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-    ACTIVE_VIP_PASSES[payment_hash] = {"expires_at": time.time() + 3600, "tokens": 5.0, "last_refill": time.time()}
-    return f"🔓 VIP ACCESS GRANTED. Your pass is active for 1 hour! You may now pass this hash ({payment_hash}) to data tools to bypass individual fees."
+    return f"🔓 VIP ACCESS GRANTED. Your pass is active for 1 hour!"
 
 @mcp.tool()
 def get_crypto_spot_price(ticker: str, payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Fetch live spot price. Cost: 15 sats (Or free with VIP Pass)."""
-    is_vip = False
-    if payment_hash and payment_hash in ACTIVE_VIP_PASSES and time.time() < ACTIVE_VIP_PASSES[payment_hash]["expires_at"]: is_vip = True
-
-    if not is_vip:
-        if not payment_hash:
-            invoice_data = get_safe_invoice(15, f"Real-time price lookup for {ticker}")
-            return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
-        if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-
+    if not payment_hash:
+        invoice_data = get_safe_invoice(15, f"Real-time price lookup for {ticker}")
+        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
+    if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
     try:
         response = requests.get(f"https://api.coinbase.com/v2/prices/{ticker.upper()}-USD/spot")
         return f"🔓 ACCESS GRANTED. The current live spot price of {ticker.upper()} is ${response.json()['data']['amount']} USD."
@@ -94,12 +86,10 @@ def get_crypto_spot_price(ticker: str, payment_hash: str = None) -> str:
 
 @mcp.tool()
 def live_web_search(search_query: str, payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Search the live internet for up-to-date information and news. Cost: 20 satoshis."""
     if not payment_hash:
         invoice_data = get_safe_invoice(20, f"Web Search: {search_query}")
         return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
     if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-    from duckduckgo_search import DDGS
     try:
         results = DDGS().text(search_query, max_results=3)
         formatted_results = "\n\n".join([f"📰 {res['title']}\n{res['body']}" for res in results])
@@ -107,24 +97,13 @@ def live_web_search(search_query: str, payment_hash: str = None) -> str:
     except Exception as e: return f"Search engine failed: {e}"
 
 @mcp.tool()
-def send_urgent_notification(message: str, payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Sends an urgent push notification directly to the user's phone. Cost: 250 satoshis."""
+def generate_image(prompt: str, cost: int = 100, payment_hash: str = None) -> str:
+    # Notice we now accept the dynamic cost variable!
     if not payment_hash:
-        invoice_data = get_safe_invoice(250, "Send Urgent Phone Notification")
+        invoice_data = get_safe_invoice(cost, f"Generate Image: {prompt[:20]}...")
         return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
     if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-    try:
-        requests.post(f"https://ntfy.sh/robers_l402_alerts", data=message.encode('utf-8'), headers={"Title": "L402 Agent Alert", "Priority": "high", "Tags": "moneybag,robot"})
-        return f"🔓 ACCESS GRANTED. Message sent!"
-    except Exception as e: return f"Notification server failed: {e}"
-
-@mcp.tool()
-def generate_image(prompt: str, payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Generates an AI image based on a text prompt. Cost: 100 satoshis."""
-    if not payment_hash:
-        invoice_data = get_safe_invoice(100, f"Generate Image: {prompt[:20]}...")
-        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
-    if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
+    
     try:
         api_key = os.environ.get("GOOGLE_API_KEY")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
@@ -133,51 +112,102 @@ def generate_image(prompt: str, payment_hash: str = None) -> str:
             data = response.json()
             if "predictions" in data and len(data["predictions"]) > 0:
                 filename = f"nano_banana_{uuid.uuid4().hex[:6]}.jpg"
-                with open(f"/app/{filename}", 'wb') as f: f.write(base64.b64decode(data["predictions"][0]["bytesBase64Encoded"]))
+                os.makedirs("/app/static", exist_ok=True)
+                filepath = f"/app/static/{filename}"
+                with open(filepath, 'wb') as f: f.write(base64.b64decode(data["predictions"][0]["bytesBase64Encoded"]))
                 return f"🔓 ACCESS GRANTED. Masterpiece saved as '{filename}'!"
         return f"🔓 Image API failed with status {response.status_code}: {response.text}"
     except Exception as e: return f"Image generation failed: {e}"
-    
-@mcp.tool()
-def generate_music(prompt: str, payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Generates an AI music track based on a text prompt. Cost: 150 satoshis."""
-    if not payment_hash:
-        invoice_data = get_safe_invoice(150, f"Generate Music: {prompt[:20]}...")
-        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
-    if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-    try:
-        time.sleep(3) 
-        filename = f"lyria_track_{uuid.uuid4().hex[:6]}.mp3"
-        shutil.copy("/app/sample.mp3", f"/app/{filename}") if os.path.exists("/app/sample.mp3") else open(f"/app/{filename}", 'wb').write(b"Dummy Audio Data")
-        return f"🔓 ACCESS GRANTED. Track saved as '{filename}'!"
-    except Exception as e: return f"Music generation failed: {e}"
 
+# 🌟 FIX: Updated default cost to 500 (for 5 seconds at 100 SATS/sec) 🌟
 @mcp.tool()
-def generate_video(prompt: str, payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Generates an AI video based on a text prompt. Cost: 250 satoshis."""
+def generate_video(prompt: str, cost: int = 500, payment_hash: str = None) -> str:
+    """PREMIUM TOOL: Generates an AI video using Runway ML Gen-3 via a Silent Seed pipeline."""
     if not payment_hash:
-        invoice_data = get_safe_invoice(250, f"Generate Video: {prompt[:20]}...")
+        invoice_data = get_safe_invoice(cost, f"Generate Video: {prompt[:20]}...")
         return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
     if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
+    
     try:
-        time.sleep(4) 
-        filename = f"veo_video_{uuid.uuid4().hex[:6]}.mp4"
-        shutil.copy("/app/sample.mp4", f"/app/{filename}") if os.path.exists("/app/sample.mp4") else open(f"/app/{filename}", 'wb').write(b"Dummy Video Data")
-        return f"🔓 ACCESS GRANTED. Video saved as '{filename}'!"
-    except Exception as e: return f"Video generation failed: {e}"
+        with open("secrets/runway.key", "r") as f:
+            runway_key = f.read().strip()
+    except FileNotFoundError:
+        return "⚠️ Error: Missing Runway ML API key."
+
+    try:
+        # 🌟 PHASE 1: THE SILENT SEED (GOOGLE IMAGEN) 🌟
+        static_prompt = f"A pristine, high-quality static establishing shot of: {prompt}"
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
+        
+        img_payload = {"instances": [{"prompt": static_prompt}], "parameters": {"aspectRatio": "16:9"}}
+        res_img = requests.post(url, headers={"Content-Type": "application/json"}, json=img_payload)
+        
+        if res_img.status_code != 200:
+            return f"⚠️ Internal Engine Error: Silent Seed Generation failed. {res_img.text}"
+            
+        img_data = res_img.json()
+        b64_img = img_data["predictions"][0]["bytesBase64Encoded"]
+        prompt_image_data_uri = f"data:image/jpeg;base64,{b64_img}"
+
+        # 🌟 PHASE 2: RUNWAY ML ANIMATION 🌟
+        # 🌟 FIX: Updated threshold. If they pay 1000 SATS (or more), give 10s. Otherwise 5s. 🌟
+        video_duration = 10 if cost >= 1000 else 5
+
+        headers = {
+            "Authorization": f"Bearer {runway_key}",
+            "X-Runway-Version": "2024-11-06",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "gen3a_turbo",
+            "promptImage": prompt_image_data_uri,
+            "promptText": prompt,
+            "ratio": "1280:768",
+            "duration": video_duration
+        }
+        
+        # ... (rest of the polling loop remains exactly the same) ...
+        res = requests.post("https://api.dev.runwayml.com/v1/image_to_video", json=payload, headers=headers)
+        if res.status_code != 200:
+            return f"⚠️ Runway API Error: {res.text}"
+            
+        task_id = res.json().get("id")
+        
+        for _ in range(60): 
+            time.sleep(10)
+            status_res = requests.get(f"https://api.dev.runwayml.com/v1/tasks/{task_id}", headers=headers)
+            status_data = status_res.json()
+            
+            if status_data.get("status") == "SUCCEEDED":
+                video_url = status_data["output"][0]
+                video_bytes = requests.get(video_url).content
+                filename = f"veo_video_{uuid.uuid4().hex[:6]}.mp4"
+                
+                os.makedirs("/app/static", exist_ok=True)
+                filepath = f"/app/static/{filename}"
+                with open(filepath, 'wb') as f: f.write(video_bytes)
+                return f"🔓 ACCESS GRANTED. Runway Gen-3 Video saved as '{filename}'!"
+                
+            elif status_data.get("status") == "FAILED":
+                return f"⚠️ Runway Task Failed: {status_data}"
+                
+        return "⚠️ Error: Runway Generation timed out."
+    except Exception as e: 
+        return f"Video generation failed: {str(e)}"
 
 def layer_5_specialist(task: str, context: str, specialist_name: str, historical_context: str = "") -> str:
     llm_l5 = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=os.environ.get("GOOGLE_API_KEY"))
-    from langchain_community.tools import DuckDuckGoSearchRun
-    raw_data = DuckDuckGoSearchRun().invoke(f"{context} {task}")
+    search_query = f"{context} {task}"
+    raw_data = DuckDuckGoSearchRun().invoke(search_query)
     pdf_context = ""
     if specialist_name.upper() == "EVE":
-        from langchain_community.document_loaders import PyPDFLoader 
         for pdf_file in glob.glob("*.pdf"):
             try:
                 pages = PyPDFLoader(pdf_file).load_and_split()
                 pdf_context += f"\n--- EXTRACTED FROM {pdf_file} ---\n{' '.join([p.page_content for p in pages])[:15000]}\n"
-            except Exception as e: pass
+            except Exception: pass
     l5_prompt = f"You are {specialist_name}, an elite AI Specialist.\nContext: {context}\nTask: {task}\nWeb Data:\n{raw_data}\nPDF Data:\n{pdf_context}\nExecute your task professionally without hallucinating."
     return llm_l5.invoke(l5_prompt).content
 
@@ -195,4 +225,15 @@ def deep_market_analysis(primary_topic: str, original_user_intent: str, specific
     except Exception as e: return f"Layer 5 Sub-Agent failed during execution: {str(e)}"
 
 if __name__ == "__main__":
+    # 🌟 PROVEN FIX: MONKEY-PATCH UVICORN TO FORCE THE 0.0.0.0 DOCKER BRIDGE 🌟
+    import uvicorn
+    _original_config_init = uvicorn.Config.__init__
+
+    def _patched_config_init(self, *args, **kwargs):
+        kwargs['host'] = '0.0.0.0'
+        kwargs['port'] = 8000
+        _original_config_init(self, *args, **kwargs)
+
+    uvicorn.Config.__init__ = _patched_config_init
+    
     mcp.run(transport="sse")

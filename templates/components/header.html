@@ -7,8 +7,11 @@
     </div>
 
     <div class="hud-nav">
-        <a href="/search" class="nav-link {% if request.path == '/search' %}active{% endif %}" data-i18n="nav_search">
+        <a href="/powerchat" class="nav-link {% if request.path == '/powerchat' %}active{% endif %}" data-i18n="nav_search">
             Search
+        </a>
+        <a href="/team" class="nav-link {% if request.path == '/team' %}active{% endif %}" data-i18n="nav_team">
+            Team
         </a>
         <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}" data-i18n="nav_command">
             Command
