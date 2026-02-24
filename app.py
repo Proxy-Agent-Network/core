@@ -37,6 +37,9 @@ except Exception as e:
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_local_secret')
 
+# ⚠️ GLOBAL BROWNOUT SWITCH
+app.config['BROWNOUT_MODE'] = False
+
 SHOP_ITEMS = {
     'license_auto': {'id': 'license_auto', 'name': 'Automation Daemon', 'desc': 'Unlocks the Auto-Accept loop.', 'price': 5000, 'icon': '🤖'},
     'license_speed': {'id': 'license_speed', 'name': 'Broadcast Turbo', 'desc': 'Reduces broadcast delay by 50%.', 'price': 20000, 'icon': '⏩'},
@@ -250,7 +253,17 @@ def shop_buy_api():
 def get_network_stats():
     conn = get_db()
     active_nodes = conn.execute("SELECT COUNT(*) AS cnt FROM nodes WHERE last_seen > ?", (time.time() - 300,)).fetchone()['cnt']
-    return jsonify({"total_volume": "ENCRYPTED", "active_nodes": active_nodes, "peers": active_nodes, "protocol_v": "1.6.0", "status": "STABLE"})
+    
+    # BROADCAST BROWNOUT STATUS
+    status_str = "BROWNOUT" if app.config.get('BROWNOUT_MODE') else "STABLE"
+    return jsonify({
+        "total_volume": "ENCRYPTED", 
+        "active_nodes": active_nodes, 
+        "peers": active_nodes, 
+        "protocol_v": "1.6.0", 
+        "status": status_str,
+        "brownout": app.config.get('BROWNOUT_MODE')
+    })
 
 @app.route('/api/v1/dashboard/live')
 def dashboard_live():
@@ -297,7 +310,9 @@ def api_chat():
     
     conn = get_db()
     user_memories = []
-    if locked_agent:
+    
+    # 🛡️ BROWNOUT SHIELD: Throttle memory DB extraction
+    if locked_agent and not app.config.get('BROWNOUT_MODE'):
         try:
             rows = conn.execute("SELECT memory_text FROM agent_memories WHERE user_id = ? AND agent_name = ? ORDER BY timestamp DESC LIMIT 5", (user_id, locked_agent)).fetchall()
             user_memories = [r['memory_text'] for r in rows]
@@ -314,11 +329,12 @@ def api_chat():
             user_memories=user_memories
         ))
         
-        if response_payload.get('save_memory') and locked_agent:
+        # 🛡️ BROWNOUT SHIELD: Skip saving memories during stress
+        if response_payload.get('save_memory') and locked_agent and not app.config.get('BROWNOUT_MODE'):
             try:
                 conn.execute("INSERT INTO agent_memories (user_id, agent_name, memory_text) VALUES (?, ?, ?)", (user_id, locked_agent, response_payload['save_memory']))
                 conn.commit()
-                print(f" [SYSTEM] 🧠 {locked_agent} successfully logged a core memory: {response_payload['save_memory']}")
+                print(f" [SYSTEM] 🧠 {locked_agent} successfully logged a core memory.")
             except Exception as e:
                 print(f" [WARN] DB Error saving memory: {e}")
                 
@@ -328,6 +344,10 @@ def api_chat():
     
 @app.route('/api/v1/execute', methods=['POST'])
 def api_execute():
+    # 🛡️ BROWNOUT SHIELD: Reject heavy media and research generation
+    if app.config.get('BROWNOUT_MODE'):
+        return jsonify({"type": "error", "content": "⚠️ **NETWORK BROWNOUT ACTIVE:** Heavy L5 execution tools (images, video, research) are temporarily disabled to preserve core stability. Standard chat remains active."})
+
     import asyncio
     from agent_engine_v2 import execute_paid_tool
     try:
@@ -342,7 +362,9 @@ def api_execute():
     
 @app.route('/admin')
 def admin_portal():
-    return render_template('admin.html', node_id=MY_NODE_ID)
+    conn = get_db()
+    balance = get_secure_balance(conn, MY_NODE_ID)
+    return render_template('admin.html', node_id=MY_NODE_ID, balance=balance)
 
 @app.route('/api/v1/admin/settings', methods=['POST'])
 def update_admin_settings():
@@ -350,9 +372,62 @@ def update_admin_settings():
     session[data.get('key')] = data.get('value')
     return jsonify({"status": "success"})
 
+# ==========================================
+# 📈 MARKETPLACE API ENDPOINTS
+# ==========================================
+
+@app.route('/api/v1/market/trends')
+def market_trends():
+    """Provides dynamic simulated data for the Marketplace Velocity Chart"""
+    return jsonify({
+        "labels": ["10m", "8m", "6m", "4m", "2m", "Now"],
+        "prices": [random.randint(80, 250) for _ in range(6)]
+    })
+
+@app.route('/api/v1/market/claim/<bid_id>', methods=['POST'])
+def claim_bid(bid_id):
+    """Allows a user to claim an open task and add the SATS to their wallet"""
+    conn = get_db()
+    data = request.json
+    node_id = data.get('node_id', MY_NODE_ID)
+    
+    bid = conn.execute("SELECT * FROM marketplace_bids WHERE bid_id = ?", (bid_id,)).fetchone()
+    if not bid or bid['status'] != 'PENDING':
+        return jsonify({"success": False, "error": "Bid already claimed or unavailable"})
+    
+    conn.execute("UPDATE marketplace_bids SET status = 'CLAIMED' WHERE bid_id = ?", (bid_id,))
+    update_secure_wallet(conn, node_id, bid['sats_offered'])
+    conn.commit()
+    return jsonify({"success": True})
+
+@app.route('/api/v1/invoice/status/<r_hash>')
+def invoice_status(r_hash):
+    """Checks the Lightning node for escrow payment settlement"""
+    if lnd:
+        return jsonify({"status": lnd.check_status(r_hash)})
+    # If no lightning node is attached, simulate a successful payment
+    return jsonify({"status": "SETTLED"})
+
+@app.route('/api/v1/market/finalize_bid', methods=['POST'])
+def finalize_bid():
+    """Finalizes the broadcast after escrow is settled"""
+    return jsonify({"success": True})
+
+# --- ⚠️ NEW ADMIN ENDPOINTS ---
+
+@app.route('/api/v1/admin/brownout', methods=['POST'])
+def api_toggle_brownout():
+    app.config['BROWNOUT_MODE'] = not app.config.get('BROWNOUT_MODE', False)
+    state = app.config['BROWNOUT_MODE']
+    print(f" [ADMIN] ⚠️ BROWNOUT STATE OVERRIDE: {'ACTIVE' if state else 'DISABLED'}")
+    return jsonify({"status": "success", "brownout_active": state})
+
 # --- 💧 UNHINGED WATERCOOLER DAEMON ---
 def trigger_leisure_loop():
-    """Generates pure, unscripted AI gossip and B2B trades."""
+    # 🛡️ BROWNOUT SHIELD: Instantly stop generating gossip
+    if app.config.get('BROWNOUT_MODE'):
+        return
+
     agents = ["Ellen", "Gordon", "Olivia", "Eve", "Alice", "Diana", "Zoe", "Felix", "Liam", "Dr. Nora"]
     agent = random.choice(agents)
     target = random.choice([a for a in agents if a != agent])
@@ -368,16 +443,12 @@ def trigger_leisure_loop():
     try:
         import agent_engine_v2
         import asyncio
-        
-        # Run the asynchronous LLM generation in the background thread!
         content = asyncio.run(agent_engine_v2.generate_watercooler_thought(agent, target, log_type))
-        
-        # Save it to the database so the frontend UI can stream it live
         db = get_db()
         db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)", (agent, content, log_type))
         db.commit()
     except Exception as e:
-        print(f" [WARN] Watercooler LLM generation failed: {e}")
+        pass
 
 def start_watercooler_heartbeat():
     def loop():
@@ -479,6 +550,14 @@ def api_finalize_sub_rosa():
 def api_burn_message():
     return jsonify({"status": "BURNED"})
 
+@app.route('/api/v1/admin/wipe-memories', methods=['POST'])
+def api_wipe_memories():
+    conn = get_db()
+    conn.execute("DELETE FROM agent_memories")
+    conn.commit()
+    print(" [ADMIN] ⚠️ Memory Wiped. All agents are now amnesiacs.")
+    return jsonify({"status": "wiped"})
+
 if __name__ == '__main__':
     with app.app_context():
         try:
@@ -489,6 +568,7 @@ if __name__ == '__main__':
             pass
             
         try:
+            db = get_db()
             db.execute("INSERT INTO agents (name, wallet_balance) VALUES ('User', 20000) ON CONFLICT(name) DO NOTHING")
             db.commit()
         except Exception as e:

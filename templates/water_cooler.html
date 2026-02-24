@@ -96,6 +96,12 @@
         async function fetchWatercooler() {
             try {
                 const r = await fetch('/api/v1/watercooler/logs');
+                // Added a safety check! If the server sends a 500, don't try to parse it as JSON.
+                if (!r.ok) {
+                    console.warn(`[SYSTEM] Feed sync delayed. Server status: ${r.status}`);
+                    return;
+                }
+                
                 const data = await r.json();
                 const feed = document.getElementById('feed');
                 
@@ -111,8 +117,6 @@
                         const timestamp = log.timestamp || 'Just now';
                         
                         const imgName = agentName.toLowerCase().replace(/ /g, '_').replace(/\./g, '');
-                        
-                        // FIX: Safely escaped quotes for the fallback HTML injection!
                         const fallbackHtml = "this.outerHTML='<div class=&quot;cooler-avatar&quot;>🤖</div>'";
 
                         const card = document.createElement('div');
@@ -139,7 +143,7 @@
                 }
 
             } catch (e) { 
-                console.error("Feed error", e); 
+                console.warn("[SYSTEM] Awaiting database synchronization...", e); 
             }
         }
 
