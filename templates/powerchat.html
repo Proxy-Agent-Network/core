@@ -93,9 +93,13 @@
 
     {% include 'components/header.html' %}
     
+    <div id="brownout-banner" style="display: none; background: #f39c12; color: #000; text-align: center; padding: 10px; font-family: 'Orbitron'; font-weight: bold; font-size: 0.8rem; z-index: 1000; border-bottom: 2px solid #000;">
+        ⚠️ NETWORK BROWNOUT ACTIVE: Heavy media rendering is temporarily paused to preserve core stability. Standard messaging remains online.
+    </div>
+    
     <div class="hud-bar">
-        <div id="health-peers">● 0 PEERS (SEARCHING)</div>
-        <div class="balance-display" id="powerchat-hud-balance">{{ balance|default(0) }} SATS</div>
+        <div id="health-peers">● 0 PEERS (SEARCHING) </div>
+        <div class="balance-display" id="powerchat-hud-balance"> {{ balance|default(0) }} SATS</div>
     </div>
 
     <div class="chat-container" id="drop-zone">
@@ -400,7 +404,16 @@
         function updateNetworkStats() {
             fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
                 const el = document.getElementById('health-peers');
-                if (el) { el.innerHTML = data.peers > 0 ? `● ${data.peers} CONNECTED` : `● 0 PEERS (SEARCHING)`; el.style.color = data.peers > 0 ? "#2ecc71" : "#f1c40f"; }
+                if (el) { 
+                    el.innerHTML = data.peers > 0 ? `● ${data.peers} CONNECTED` : `● 0 PEERS (SEARCHING)`; 
+                    el.style.color = data.peers > 0 ? "#2ecc71" : "#f1c40f"; 
+                }
+                
+                // Toggle the Brownout Banner!
+                const banner = document.getElementById('brownout-banner');
+                if (banner) {
+                    banner.style.display = data.brownout ? 'block' : 'none';
+                }
             });
         }
 
