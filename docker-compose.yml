@@ -6,9 +6,9 @@ services:
     image: postgres:15-alpine
     container_name: proxy_db
     environment:
-      POSTGRES_USER: proxy_admin
-      POSTGRES_PASSWORD: proxy_secure_password
-      POSTGRES_DB: proxy_network
+      - POSTGRES_USER=proxy_admin
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=proxy_network
     expose:
       - "5432"
     volumes:
@@ -76,8 +76,8 @@ services:
       - "5000:5000"
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://proxy_admin:proxy_secure_password@db:5432/proxy_network
-      - FLASK_SECRET_KEY=super_secure_production_key_change_me
+      - DATABASE_URL=postgresql://proxy_admin:${POSTGRES_PASSWORD}@db:5432/proxy_network
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - LND_GRPC_HOST=lnd
       - LND_GRPC_PORT=10009
