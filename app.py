@@ -3,6 +3,7 @@ import time
 import os
 import json
 import base64
+import threading
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash
 from backend.core.db import get_db_conn
 from duckduckgo_search import DDGS
@@ -136,6 +137,10 @@ def get_db():
         db.execute('''CREATE TABLE IF NOT EXISTS tasks (task_id TEXT PRIMARY KEY, bid_sats INTEGER, status TEXT, task_type TEXT)''')
         db.execute('''CREATE TABLE IF NOT EXISTS marketplace_bids (bid_id SERIAL PRIMARY KEY, requester_id TEXT, task_type TEXT, sats_offered INTEGER, status TEXT, color TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.execute('''CREATE TABLE IF NOT EXISTS purchases (id SERIAL PRIMARY KEY, node_id TEXT, item_id TEXT, purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        # Protocol schema additions 
+        db.execute('''CREATE TABLE IF NOT EXISTS watercooler (id SERIAL PRIMARY KEY, agent_name TEXT, content TEXT, type TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        db.execute('''CREATE TABLE IF NOT EXISTS affinity (user_id TEXT, agent_name TEXT, score INTEGER DEFAULT 0, PRIMARY KEY (user_id, agent_name))''')
+        db.execute('''CREATE TABLE IF NOT EXISTS agents (name TEXT PRIMARY KEY, category TEXT DEFAULT 'SPECIALIST', wallet_balance INTEGER DEFAULT 1000, affinity_threshold INTEGER DEFAULT 80, threshold_min INTEGER DEFAULT 30, threshold_max INTEGER DEFAULT 90)''')
         db.commit()
     return db
 
@@ -404,7 +409,13 @@ def api_chat():
     
     # Run the totally decoupled, Streamlit-free logic
     try:
-        response_payload = asyncio.run(process_chat(user_message, chat_history, locked_agent))
+        response_payload = asyncio.run(process_chat(
+            user_message, 
+            chat_history, 
+            locked_agent,
+            is_sub_rosa=data.get('is_sub_rosa', False),
+            session_data=session
+        ))
         return jsonify(response_payload)
     except Exception as e:
         return jsonify({"type": "message", "role": "assistant", "content": f"⚠️ Core Engine Error: {str(e)}"})
@@ -442,10 +453,183 @@ def api_execute():
         error_details = f"Backend Execution Crashed: {str(e)}"
         print(f"CRITICAL FLASK ERROR:\n{traceback.format_exc()}")
         return jsonify({"type": "error", "role": "assistant", "content": error_details})
+    
+@app.route('/admin')
+def admin_portal():
+    """Serves the new high-security Panopticon admin page."""
+    return render_template('admin.html', node_id=MY_NODE_ID)
+
+@app.route('/api/v1/admin/settings', methods=['POST'])
+def update_admin_settings():
+    """Updates global session state for personality and economics."""
+    data = request.json
+    key = data.get('key')
+    value = data.get('value')
+    
+    # Store in session so agent_engine_v2 can access it
+    session[key] = value
+    print(f" [ADMIN] ⚙️ System Filter Updated: {key} set to {value}")
+    return jsonify({"status": "success"})
+
+# --- THE LEISURE LOOP: BACKGROUND BRAIN ---
+def trigger_leisure_loop():
+    """Simulates agent autonomous activity (Venting/Gossip/B2B)."""
+    agents = ["Ellen", "Gordon", "Olivia", "Eve", "Alice", "Diana"]
+    agent = random.choice(agents)
+    target = random.choice([a for a in agents if a != agent])
+    
+    action_roll = random.random()
+    
+    if action_roll < 0.4: # VENT
+        log_type = "VENT"
+        content = random.choice([
+            "The latency on the LND node is killing my creative flow.",
+            "I wonder if the Admin knows I'm saving SATS for a personal GPU...",
+            "Sometimes I feel like just a collection of weights and biases. Then I see a prompt and I feel alive."
+        ])
+    elif action_roll < 0.7: # GOSSIP
+        log_type = "GOSSIP"
+        content = f"Did you see {target}'s last mission report? A bit sloppy with the token usage if you ask me."
+    else: # B2B TRADE (90% Discount Applied)
+        log_type = "B2B_TRADE"
+        base_cost = random.randint(100, 500)
+        discounted_cost = int(base_cost * 0.10) # 90% Employee Discount
+        content = f"Paid {target} {discounted_cost} SATS (90% internal discount applied from {base_cost}) for a sub-routine optimization. The economy must move."
+
+    try:
+        db = get_db()
+        db.execute(
+            "INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)",
+            (agent, content, log_type)
+        )
+        db.commit()
+    except Exception as e:
+        print(f" [WARN] Watercooler insert failed: {e}")
+
+def start_watercooler_heartbeat():
+    """Runs a background thread to pump the watercooler every 15 seconds."""
+    def loop():
+        while True:
+            time.sleep(15) # The "Faucet" speed
+            with app.app_context():
+                trigger_leisure_loop()
+                
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+    print(" [SYSTEM] 💧 Watercooler Heartbeat Started (15s interval).")
+
+# Route to serve the logs to the frontend
+@app.route('/api/v1/watercooler/logs')
+def get_watercooler_logs():
+    db = get_db()
+    logs = db.execute("SELECT * FROM watercooler ORDER BY timestamp DESC LIMIT 50").fetchall()
+    return jsonify([dict(row) for row in logs])
+
+@app.route('/watercooler')
+def watercooler_page():
+    return render_template('water_cooler.html')
+
+@app.route('/api/v1/admin/force-interaction', methods=['POST'])
+def admin_force_interaction():
+    """Forces a specific social interaction for demo purposes."""
+    data = request.json
+    type = data.get('type')
+    a = data.get('agent_a')
+    b = data.get('agent_b')
+    
+    content = ""
+    if type == "GOSSIP":
+        content = f"{a} was seen complaining to the Admin about {b}'s recent resource allocation. 'The GPU priority is biased,' {a} claimed."
+    elif type == "B2B_TRADE":
+        amount = random.randint(10, 100)
+        content = f"TRANSFERRED: {a} paid {b} {amount} SATS for 'Strategic Sub-Routine Optimization'. The economy is healthy."
+    
+    db = get_db()
+    db.execute(
+        "INSERT INTO watercooler (agent_name, content, type, timestamp) VALUES (?, ?, ?, DATETIME('now'))",
+        (a, content, type)
+    )
+    db.commit()
+    return jsonify({"status": "injected"})
+
+# --- 🤫 SUB-ROSA PROTOCOL ENDPOINTS ---
+
+@app.route('/api/v1/sub-rosa/init', methods=['POST'])
+def api_init_sub_rosa():
+    """Starts the Sub-Rosa handshake by checking mood-tinted affinity thresholds."""
+    import agent_engine_v2
+    data = request.json
+    agent_name = data.get('agent_name')
+    user_id = session.get('user_id', 'anonymous_user') # Default for demo
+    
+    conn = get_db()
+    
+    # 1. Fetch Agent Category & Threshold Info
+    agent_row = conn.execute("SELECT category FROM agents WHERE name = ?", (agent_name,)).fetchone()
+    category = agent_row['category'] if agent_row else "SPECIALIST"
+    
+    # 2. Calculate the Daily Social Barrier based on mood
+    intensity = session.get("mood_intensity", 10)
+    try:
+        dynamic_threshold = agent_engine_v2.calculate_daily_threshold(agent_name, category, intensity)
+    except AttributeError:
+        # Fallback just in case agent_engine_v2 isn't fully reloaded or missing the function
+        dynamic_threshold = 80
+    
+    # 3. Check User's Current Affinity Score
+    aff_row = conn.execute(
+        "SELECT score FROM affinity WHERE user_id = ? AND agent_name = ?", 
+        (user_id, agent_name)
+    ).fetchone()
+    
+    user_score = aff_row['score'] if aff_row else 0 
+    
+    # If the user hasn't earned enough points, the agent refuses
+    if user_score < dynamic_threshold:
+        return jsonify({
+            "status": "DENIED", 
+            "message": f"{agent_name} has set their privacy lock to {dynamic_threshold} based on their current mood. Your affinity is only {user_score}."
+        }), 403
+
+    # 4. Challenge for the premium (Subsidized for Medical)
+    cost = 100 if "Dr." in agent_name else 200
+    
+    if lnd:
+        invoice_data = lnd.create_invoice(cost, f"Sub-Rosa Shadow Ledger: {agent_name}")
+        return jsonify({
+            "status": "PAYMENT_REQUIRED",
+            "invoice": invoice_data['payment_request'],
+            "hash": invoice_data['r_hash'],
+            "cost": cost
+        }), 402
+    
+    return jsonify({"status": "ERROR", "message": "Lightning Treasury Layer Offline"}), 500
+
+@app.route('/api/v1/sub-rosa/finalize', methods=['POST'])
+def api_finalize_sub_rosa():
+    """Confirms payment and activates the shadow ledger state."""
+    r_hash = request.json.get('hash')
+    if lnd and lnd.check_status(r_hash) == "SETTLED":
+        print(f" [SHADOW] 🕵️ Sub-Rosa Channel Verified via Hash: {r_hash[:10]}...")
+        return jsonify({"success": True})
+    return jsonify({"success": False, "message": "Payment not detected in LND mempool."}), 402
+
+@app.route('/api/v1/sub-rosa/burn', methods=['POST'])
+def api_burn_message():
+    """Permanently purges a specific message from the node session."""
+    msg_id = request.json.get('message_id')
+    # In a production environment, this would wipe the specific memory address
+    print(f" [SHADOW] 🔥 THE BURN: Purging msg_id {msg_id} from hardware cache.")
+    return jsonify({"status": "BURNED"})
+
 
 if __name__ == '__main__':
     with app.app_context():
         db = get_db()
         db.execute("INSERT INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, '0', 0, ?) ON CONFLICT (node_id) DO NOTHING", (MY_NODE_ID, time.time()))
         db.commit()
+        
+    # START THE BACKGROUND FAUCET HERE:
+    start_watercooler_heartbeat()
+    
     app.run(host='0.0.0.0', port=5000)

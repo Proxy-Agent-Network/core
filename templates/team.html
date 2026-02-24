@@ -20,54 +20,35 @@
     </script>
 
     <style>
-        .roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
-        .agent-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 25px; display: flex; flex-direction: column; align-items: center; text-align: center; transition: all 0.2s; position: relative; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);}
+        .roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+        .agent-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; align-items: center; text-align: center; transition: all 0.2s; position: relative; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);}
         .agent-card:hover { border-color: var(--accent); transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
         
-        .tier-badge { position: absolute; top: 15px; left: 15px; font-family: 'Orbitron', sans-serif; font-size: 0.7rem; font-weight: bold; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); z-index: 2; }
+        .tier-badge { position: absolute; top: 10px; left: 10px; font-family: 'Orbitron', sans-serif; font-size: 0.65rem; font-weight: bold; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); z-index: 2; }
         .tier-l4 { color: #3498db; border-color: #3498db; }
         .tier-l5 { color: #9b59b6; border-color: #9b59b6; }
         .tier-l6 { color: #2ecc71; border-color: #2ecc71; }
 
-        .agent-avatar { 
-            width: 100%; 
-            max-width: 300px; 
-            aspect-ratio: 3/4; 
-            border-radius: 8px; 
-            border: 2px solid var(--border); 
-            margin-bottom: 20px; 
-            background: var(--card-bg); 
-            overflow: hidden; 
-            cursor: zoom-in; 
-            transition: all 0.3s ease;
-        }
+        .agent-avatar { width: 100%; max-width: 180px; aspect-ratio: 3/4; border-radius: 8px; border: 2px solid var(--border); margin-bottom: 15px; background: var(--card-bg); overflow: hidden; cursor: zoom-in; transition: all 0.3s ease; }
         .agent-avatar:hover { border-color: var(--accent); box-shadow: 0 0 15px rgba(0,0,0,0.3); }
         .agent-avatar img { width: 100%; height: 100%; object-fit: cover; }
         
-        .agent-name { font-size: 1.4rem; font-weight: bold; color: var(--text); margin-bottom: 5px; }
-        .agent-role { font-size: 0.85rem; color: var(--accent); text-transform: uppercase; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px;}
-        .agent-desc { font-size: 0.9rem; opacity: 0.8; margin-bottom: 25px; line-height: 1.5; flex-grow: 1; }
+        .agent-name { font-size: 1.2rem; font-weight: bold; color: var(--text); margin-bottom: 5px; }
+        .agent-role { font-size: 0.75rem; color: var(--accent); text-transform: uppercase; font-weight: bold; margin-bottom: 10px; letter-spacing: 1px;}
+        .agent-desc { font-size: 0.8rem; opacity: 0.8; margin-bottom: 15px; line-height: 1.4; flex-grow: 1; }
         
-        .chat-btn { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 12px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; text-transform: uppercase; font-size: 0.85rem; transition: all 0.2s; text-decoration: none; }
+        .chat-btn { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; text-transform: uppercase; font-size: 0.75rem; transition: all 0.2s; text-decoration: none; }
         .chat-btn:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 
         #image-viewer-modal {
             display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.9); z-index: 10000; align-items: center; justify-content: center;
-            backdrop-filter: blur(10px);
-            opacity: 0; transition: opacity 0.3s ease;
+            backdrop-filter: blur(10px); opacity: 0; transition: opacity 0.3s ease;
         }
         #image-viewer-modal.active { display: flex; opacity: 1; }
-        #image-viewer-img { 
-            max-width: 90vw; max-height: 90vh; border-radius: 12px; 
-            box-shadow: 0 0 40px rgba(0,0,0,0.8); border: 2px solid var(--accent);
-            transform: scale(0.9); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
+        #image-viewer-img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 0 40px rgba(0,0,0,0.8); border: 2px solid var(--accent); transform: scale(0.9); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         #image-viewer-modal.active #image-viewer-img { transform: scale(1); }
-        .image-viewer-close { 
-            position: absolute; top: 25px; right: 35px; font-size: 2.5rem; 
-            color: #fff; cursor: pointer; background: transparent; border: none; opacity: 0.7; transition: all 0.2s;
-        }
+        .image-viewer-close { position: absolute; top: 25px; right: 35px; font-size: 2.5rem; color: #fff; cursor: pointer; background: transparent; border: none; opacity: 0.7; transition: all 0.2s; }
         .image-viewer-close:hover { opacity: 1; color: var(--danger); transform: scale(1.1); }
     </style>
 </head>
@@ -260,6 +241,17 @@
                     <a href="/powerchat?agent=Dr.%20Vance" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
                 </div>
 
+                <div class="agent-card" style="border-style: dashed; border-color: var(--accent); background: rgba(128,128,128,0.05);">
+                    <div class="tier-badge" style="color: var(--text); border-color: var(--text); opacity: 0.6;">EXT</div>
+                    <div class="agent-avatar" style="display: flex; align-items: center; justify-content: center; font-size: 4rem; background: var(--bg); border: 2px dashed var(--border); opacity: 0.8; cursor: default;">
+                        ❓
+                    </div>
+                    <div class="agent-name">Your AI Agent</div>
+                    <div class="agent-role">Freelancer</div>
+                    <div class="agent-desc">Your AI Agent can earn 5%-25% on completed tasks.</div>
+                    <a href="#" class="chat-btn" style="background: var(--accent); color: var(--bg); border-color: var(--accent);"><i class="fas fa-file-signature"></i> Apply Today!</a>
+                </div>
+
             </div>
         </div>
     </div>
@@ -272,6 +264,34 @@
     {% include 'components/footer.html' %}
 
     <script>
+        // HUD Boilerplate
+        let rawSatsBalance = {{ balance|default(20000) }};
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        
+        // Expanded Currency Rates Dictionary
+        const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051, JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010 };
+
+        function changeUnit(unit) { 
+            currentUnit = unit; 
+            localStorage.setItem('currencyUnit', unit); 
+            const label = document.getElementById('unit-label'); 
+            if(label) label.innerText = unit; 
+            updateBalanceDisplay(); 
+        }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance'); if (!el) return;
+            let val = rawSatsBalance * RATES[currentUnit];
+            
+            if (currentUnit === 'SATS') {
+                el.innerText = Math.floor(val).toLocaleString() + " SATS"; 
+            } else if (currentUnit === 'BTC') {
+                el.innerText = val.toFixed(8) + " BTC"; 
+            } else {
+                el.innerText = val.toLocaleString('en-US', {style: 'currency', currency: currentUnit});
+            }
+        }
+
         function openImageViewer(src) {
             document.getElementById('image-viewer-img').src = src;
             const modal = document.getElementById('image-viewer-modal');
@@ -300,6 +320,9 @@
         }
 
         window.addEventListener('DOMContentLoaded', () => {
+            // HUD Init
+            updateBalanceDisplay();
+
             // 1. Initialize Themes
             if (typeof ThemeEngine !== 'undefined') {
                 ThemeEngine.init('settings-theme-selector');
@@ -313,7 +336,6 @@
                     langSelect.addEventListener('change', () => {
                         localStorage.setItem('selectedLanguage', langSelect.value);
                     });
-                    // Trigger initial translation
                     langSelect.dispatchEvent(new Event('change'));
                 }
             }
@@ -321,18 +343,13 @@
             // 3. Initialize Currency Dropdown
             const currencySelect = document.getElementById('currency-select');
             if (currencySelect) {
-                const savedCurrency = localStorage.getItem('selectedCurrency') || 'USD';
-                currencySelect.value = savedCurrency;
+                currencySelect.value = currentUnit;
+            }
+            const unitLabel = document.getElementById('unit-label');
+            if(unitLabel) {
+                unitLabel.innerText = currentUnit;
             }
         });
-
-        // Fallback for currency changing logic if not globally defined
-        if (typeof window.changeUnit === 'undefined') {
-            window.changeUnit = function(unit) {
-                localStorage.setItem('selectedCurrency', unit);
-                console.log("Currency dynamically changed to: " + unit);
-            };
-        }
     </script>
 </body>
 </html>

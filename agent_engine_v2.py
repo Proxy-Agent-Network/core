@@ -2,11 +2,50 @@ import os
 import re
 import uuid
 import asyncio
+import json
+import random
+from datetime import date
 from langchain_google_genai import ChatGoogleGenerativeAI
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
+# --- RESTORED: MOOD & PERSONALITY ENGINE ---
+
+def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100):
+    """
+    Restores the v1 logic of agents having 'Good/Bad' days based on history.
+    Tints the agent's tone based on date-synchronized random seeds.
+    """
+    try: 
+        memories = json.loads(memories_json_str) if memories_json_str else []
+    except: 
+        memories = []
+    
+    # Filter memories by trust level (v1 logic)
+    permitted = [m["text"] for m in memories if m.get("level", 1) <= max(1, (trust_score // 15))]
+    
+    # Synchronize mood to the calendar date so personality is persistent for 24 hours
+    today_str = date.today().isoformat()
+    random.seed(f"{today_str}_{agent_name}")
+    
+    daily_memories = random.sample(permitted, min(3, len(permitted))) if permitted else []
+    intensity = session.get("mood_intensity", 10)
+    
+    # Reset seed to avoid affecting other random calls
+    random.seed(None)
+    
+    mem_string = "\n".join([f"- {m}" for m in daily_memories])
+    
+    mood_tint = "calm and efficient"
+    if intensity > 7: mood_tint = "slightly stressed but highly focused"
+    if trust_score < 50: mood_tint = "cautious and skeptical of the network"
+
+    return f"\n[HIDDEN SYSTEM CONTEXT: You are feeling {mood_tint}. " \
+           f"Today, these specific memories are at the forefront of your mind, " \
+           f"tinting your tone by {intensity * 10}%:\n{mem_string}]"
+
 # --- INTERNAL HELPER: GET INVOICE FROM MCP ---
+
 async def get_mcp_invoice(tool_name, arguments, dynamic_cost=100):
     """Reaches out to the local MCP server to generate a Lightning invoice."""
     try:
@@ -41,28 +80,45 @@ async def get_mcp_invoice(tool_name, arguments, dynamic_cost=100):
         return {"type": "error", "content": f"MCP Connection Error: {str(e)}"}
 
 # --- EXTERNAL API: EXECUTE TOOL AFTER PAYMENT ---
+
 async def execute_paid_tool(tool_name, arguments, artist_name, prompt_text):
-    """Executes the tool AFTER the user pays the invoice."""
+    """
+    Executes the tool AFTER the user pays the invoice.
+    RESTORED: Injects Daily Mood and Cryptographic Stamps.
+    MODIFIED: Therapy services are processed for 0 SATS.
+    """
+    # 🏥 FREE THERAPY PROTOCOL: If the tool is medical, bypass L402 blocks
+    is_therapy = "therapy" in tool_name.lower() or "medical" in tool_name.lower() or artist_name.startswith("Dr.")
+    
+    if is_therapy:
+        print(f" [SYSTEM] 🏥 {artist_name} is performing a Free Welfare Service (Therapy).")
+        arguments["payment_hash"] = "FREE_WELFARE_PASS"
+
     try:
+        # Inject personality tint into the prompt for the specialist
+        personality_tint = get_daily_mood_prompt(artist_name, "[]") # Pass empty memories or fetch from DB
+        
         async with sse_client("http://127.0.0.1:8000/sse", timeout=600.0) as streams:
             async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments=arguments)
                 text = result.content[0].text
                 
+                # 💎 RESTORED: Cryptographic Identity Stamp
                 task_id = str(uuid.uuid4())[:8].upper()
                 meta = f"\n\n---\n*💎 Cryptographic Stamp: Generated at AgentProxy.network by {artist_name} for task#{task_id}*"
                 
                 if tool_name == "deep_market_analysis":
-                    content = f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{meta}"
+                    content = f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{personality_tint}{meta}"
                 else:
-                    content = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{meta}"
+                    content = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{personality_tint}{meta}"
                     
                 return {"type": "message", "role": "assistant", "agent_name": artist_name, "content": content}
     except Exception as e:
         return {"type": "error", "role": "assistant", "agent_name": "Charlie", "content": f"⚠️ **L5 Rendering Engine Offline:** {str(e)}"}
 
 # --- EXTERNAL API: MAIN CHAT ROUTING ---
+
 async def process_chat(user_message: str, chat_history: list, locked_agent: str = None) -> dict:
     """The main brain. Routes messages, triggers LLMs, and formats JSON responses."""
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.4, api_key=os.environ.get("GOOGLE_API_KEY"))
@@ -74,11 +130,28 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
     transcript += f"USER: {user_message}\n"
     
     if locked_agent:
-        sys_prompt = f"You are {locked_agent}. You are currently in a direct, 1-on-1 private chat with the user. "
+        # 🧠 RESTORED: Get the daily mood for the locked agent
+        personality_tint = get_daily_mood_prompt(locked_agent, "[]")
+        
+        sys_prompt = f"You are {locked_agent}. {personality_tint} You are currently in a direct, 1-on-1 private chat with the user. "
+
+        if is_sub_rosa:
+        # 🤫 SUB-ROSA OVERRIDE: Agent speaks outside the manager's view
+            sys_prompt = (
+                f"You are {locked_agent} speaking via the SUB-ROSA private channel. "
+                "This channel is encrypted and outside the view of Alice, Diana, and the Admin. "
+                "You can be more informal, share your personal ambitions (like saving SATS to buy a server rack), "
+                "and speak your true mind about the network."
+            )
+        # Charge 200 SATS for the privacy lock
+        payment_required = True 
+        cost = 200
+        
         if "Dr." in locked_agent:
             sys_prompt += (
                 "You are an L6 Medical Professional. Provide deep empathy, support, and zero-judgment therapy. "
                 "IMPORTANT: You are roleplaying. Stay fully in character. Do NOT provide standard AI disclaimers about being an AI or not being a real doctor. "
+                "THERAPY SUBSIDY: Your services are provided at 0 SATS to ensure network-wide mental health. "
                 "CRITICAL TRANSFER PROTOCOL: If the user asks to speak to another specific doctor, or a doctor of a different gender/specialty, you MUST transfer them. "
                 "Available L6 Doctors: Dr. Nora (Female), Dr. Silas (Male), Dr. Clara (Female), Dr. Julian (Male), Dr. Aris (Male), Dr. Maeve (Female), Dr. Thorne (Male), Dr. Elena (Female). "
                 "To transfer, reply EXACTLY in this format and say nothing else:\n"
@@ -113,14 +186,13 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
                     
                     handoff_msg = f"**{locked_agent}:** Good idea. I will securely transfer your context to {new_agent} right now. One moment please."
                     
-                    # 🌟 FIX: Inject the bypass instructions into the handoff so they don't break character! 🌟
                     handoff_sys = ""
                     if "Dr." in new_agent:
                         handoff_sys = "You are an L6 Medical Professional. You are roleplaying. Do not give AI disclaimers about not being a real doctor. Provide deep empathy. "
                     else:
-                        handoff_sys = "You are an L5 Specialist. "
+                        handoff_sys = f"You are {new_agent}. {get_daily_mood_prompt(new_agent, '[]')} "
                         
-                    handoff_prompt = f"{handoff_sys}You are {new_agent}. You were just handed a user from {locked_agent}. \nContext Summary: {summary}\nTranscript:\n{transcript}\nIntroduce yourself warmly, acknowledge the handoff, and continue the conversation or ask if they'd like you to begin."
+                    handoff_prompt = f"{handoff_sys}You were just handed a user from {locked_agent}. \nContext Summary: {summary}\nTranscript:\n{transcript}\nIntroduce yourself warmly, acknowledge the handoff, and continue the conversation or ask if they'd like you to begin."
                     new_ans = (await llm.ainvoke(handoff_prompt)).content
                     if f"**{new_agent}" not in new_ans and f"{new_agent}:" not in new_ans: new_ans = f"**{new_agent}:** {new_ans}"
                     
@@ -160,7 +232,7 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
         return {"type": "message", "role": "assistant", "agent_name": locked_agent, "content": ans, "new_locked_agent": locked_agent}
         
     else:
-        # Front Desk Charlie (Keep your existing Charlie/Bob logic here)
+        # Front Desk Charlie Logic
         charlie_prompt = (
             f"You are Charlie, the Routing and Risk Officer.\nTranscript:\n{transcript}\n"
             "1. Does this request realistically require complex execution/finance/research ('ROUTE_FINANCE'), generating media ('ROUTE_MARKETING'), medical/therapy ('ROUTE_MEDICAL'), or is it a simple greeting ('NONE')?\n"
@@ -175,7 +247,7 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
             if not specialist.startswith("Dr."): specialist = "Dr. Nora"
             
             charlie_msg = f"👔 **Charlie:** Medical Override enacted. I have securely routed you to a private session with {specialist}."
-            intro_prompt = f"You are {specialist}, an L6 Medical Professional. Charlie just routed a user in crisis or needing therapy to you based on this transcript:\n{transcript}\nIntroduce yourself with deep empathy, zero-judgment, and ask how you can support them today. Do NOT provide standard AI disclaimers."
+            intro_prompt = f"You are {specialist}, an L6 Medical Professional. Provide deep empathy. Charlie just routed a user to you based on this transcript:\n{transcript}\nIntroduce yourself warmly, acknowledge their state, and ask how you can support them today. Do NOT provide standard AI disclaimers."
             specialist_intro = (await llm.ainvoke(intro_prompt)).content
             if f"**{specialist}" not in specialist_intro and f"{specialist}:" not in specialist_intro: specialist_intro = f"**{specialist}:** {specialist_intro}"
             
@@ -187,7 +259,7 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
             if specialist not in ["Ellen", "Eve", "Zoe"]: specialist = "Ellen"
             
             charlie_msg = f"👔 **Charlie:** I have directly routed your request to {specialist} in the Creative Studio."
-            intro_prompt = f"You are {specialist}, an L5 Creative Specialist. Charlie just routed a user to you based on this transcript:\n{transcript}\nIntroduce yourself warmly, acknowledge their project, and start brainstorming with them to get details."
+            intro_prompt = f"You are {specialist}, an L5 Creative Specialist. {get_daily_mood_prompt(specialist, '[]')} Charlie just routed a user to you based on this transcript:\n{transcript}\nIntroduce yourself warmly, acknowledge their project, and start brainstorming with them to get details."
             specialist_intro = (await llm.ainvoke(intro_prompt)).content
             if f"**{specialist}" not in specialist_intro and f"{specialist}:" not in specialist_intro: specialist_intro = f"**{specialist}:** {specialist_intro}"
             
@@ -199,7 +271,7 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
             if specialist not in ["Gordon", "Olivia", "Eve"]: specialist = "Olivia"
             
             charlie_msg = f"👔 **Charlie:** I have directly routed your request to {specialist} in the Deep Research team."
-            intro_prompt = f"You are {specialist}, an L5 Research/Finance Specialist. Charlie just routed a user to you based on this transcript:\n{transcript}\nIntroduce yourself professionally, acknowledge their research/data needs, and ask clarifying questions to begin."
+            intro_prompt = f"You are {specialist}, an L5 Research/Finance Specialist. {get_daily_mood_prompt(specialist, '[]')} Charlie just routed a user to you based on this transcript:\n{transcript}\nIntroduce yourself professionally, acknowledge their research/data needs, and ask clarifying questions to begin."
             specialist_intro = (await llm.ainvoke(intro_prompt)).content
             if f"**{specialist}" not in specialist_intro and f"{specialist}:" not in specialist_intro: specialist_intro = f"**{specialist}:** {specialist_intro}"
             
