@@ -46,28 +46,20 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_local_secret')
 def require_node_signature(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # 1. Extract the identity claims from the HTTP Headers (NOT the JSON body)
         node_id = request.headers.get("X-Node-ID")
         timestamp = request.headers.get("X-Timestamp")
         signature = request.headers.get("X-Signature")
 
         if not all([node_id, timestamp, signature]):
-            print("[SECURITY] 🚨 Missing cryptographic headers on financial endpoint.")
             return jsonify({"status": "error", "message": "Missing identity headers."}), 401
 
-        # 2. Mathematically verify the hardware signature (Proof of Key)
-        # Note: In production, each node should have a unique seed/key. 
-        # For now, we use the network's shared simulated seed.
         tpm_seed = b"simulated_hardware_seed_0x99" 
         expected_sig = hmac.new(tpm_seed, f"{node_id}:{timestamp}".encode(), hashlib.sha256).hexdigest()
 
         if not hmac.compare_digest(str(signature), expected_sig):
-            print(f"[SECURITY] 🚨 Spoofing attempt detected! Invalid signature for: {node_id}")
             return jsonify({"status": "error", "message": "Hardware attestation failed. Spoofing detected."}), 403
 
-        # 3. Securely bind the verified ID to Flask's global context for this request
         g.verified_node_id = node_id
-        
         return f(*args, **kwargs)
     return decorated_function
 
@@ -77,17 +69,34 @@ def require_node_signature(f):
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # In a production environment, this token should be set via a secure login page.
-        # For this implementation, we check the session or a strict admin header.
         admin_token = request.headers.get("X-Admin-Token")
         expected_token = os.environ.get("ADMIN_SECRET_TOKEN", "fallback_dev_admin_token_123")
         
-        # If the token doesn't match the environment variable exactly, reject them.
         if admin_token != expected_token:
-            print(f" [SECURITY] 🚨 Unauthorized admin access attempt from {request.remote_addr}")
-            abort(403) # Return HTTP 403 Forbidden
+            abort(403) 
             
         return f(*args, **kwargs)
+    return decorated_function
+
+# ==========================================
+# 🔐 GLOBAL API AUTHENTICATION (User/Dashboard)
+# ==========================================
+def require_user_auth(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get("X-API-Key")
+        expected_key = os.environ.get("DASHBOARD_API_KEY", "dev_dashboard_key_123")
+        is_logged_in = session.get("authenticated", False)
+        
+        if api_key == expected_key or is_logged_in:
+            return f(*args, **kwargs)
+            
+        print(f" [SECURITY] 🚨 Blocked unauthorized access to {request.path} from {request.remote_addr}")
+        if request.is_json or request.path.startswith('/api/'):
+            return jsonify({"status": "error", "message": "Unauthorized. Missing API Key or Session."}), 401
+        else:
+            return redirect(url_for('login'))
+            
     return decorated_function
 
 # ⚠️ GLOBAL BROWNOUT SWITCH
@@ -114,7 +123,6 @@ def update_secure_wallet(conn, node_id, amount):
     try:
         encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
     except Exception as e:
-        print(f" [WARN] ⚠️ Encryption failed: {e}")
         encrypted_balance = str(new_balance)
         
     conn.execute("UPDATE nodes SET total_earned = ? WHERE node_id = ?", (encrypted_balance, node_id))
@@ -190,7 +198,36 @@ def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None: db.close()
 
+# --- 🔐 USER AUTHENTICATION ROUTES ---
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        password = request.form.get('password')
+        expected_password = os.environ.get('DASHBOARD_PASSWORD', 'proxy123')
+        if password == expected_password:
+            session['authenticated'] = True
+            return redirect(url_for('dashboard'))
+        return "Invalid Password. Connection Terminated.", 401
+        
+    return '''
+    <div style="font-family: monospace; padding: 50px; background: #000; color: #0f0; height: 100vh;">
+        <h2>🔒 PANOPTICON NODE LOGIN</h2>
+        <form method="POST">
+            <input type="password" name="password" placeholder="Enter Master Password..." style="padding: 10px; width: 300px; background: #111; color: #0f0; border: 1px solid #0f0;">
+            <button type="submit" style="padding: 10px; background: #0f0; color: #000; font-weight: bold; cursor: pointer;">AUTHENTICATE</button>
+        </form>
+    </div>
+    '''
+
+@app.route('/logout')
+def logout():
+    session.pop('authenticated', None)
+    return redirect(url_for('login'))
+
+# --- PROTECTED UI & API ROUTES ---
+
 @app.route('/search')
+@require_user_auth
 def search_engine():
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
@@ -198,8 +235,8 @@ def search_engine():
     return render_template('search.html', balance=balance, owned=owned)
 
 @app.route('/api/v1/search/execute', methods=['POST'])
+@require_user_auth
 def api_execute_search():
-    from duckduckgo_search import DDGS
     data = request.json
     query = data.get('query')
     payment_hash = data.get('payment_hash')
@@ -218,6 +255,7 @@ def api_execute_search():
     except Exception as e: return jsonify({"status": "ERROR", "message": str(e)}), 500
 
 @app.route('/')
+@require_user_auth
 def dashboard():
     conn = get_db()
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (MY_NODE_ID,)).fetchone()
@@ -229,6 +267,7 @@ def dashboard():
     return render_template('dashboard.html', node=my_node_data, tasks=tasks, hw_secured=HW_SECURED, owned=owned, balance=balance) 
 
 @app.route('/marketplace', methods=['GET', 'POST'])
+@require_user_auth
 def marketplace():
     conn = get_db()
     if request.method == 'POST':
@@ -260,6 +299,7 @@ def marketplace():
     return render_template('marketplace.html', bids=filtered_bids, unlock_auto=bool(has_auto), current_radius=max_radius, balance=balance)
 
 @app.route('/shop')
+@require_user_auth
 def shop():
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
@@ -275,6 +315,7 @@ def shop():
 
 @app.route('/faq')
 def faq():
+    # FAQ and Legal can remain public for transparency
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
     owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
@@ -290,6 +331,7 @@ def legal(doc_type):
     return render_template('legal.html', title=doc['title'], content=doc['content'], balance=balance, owned=owned)
 
 @app.route('/api/v1/shop/buy', methods=['POST'])
+@require_user_auth
 def shop_buy_api():
     item_id = request.json.get('item_id')
     conn = get_db()
@@ -306,8 +348,6 @@ def shop_buy_api():
 def get_network_stats():
     conn = get_db()
     active_nodes = conn.execute("SELECT COUNT(*) AS cnt FROM nodes WHERE last_seen > ?", (time.time() - 300,)).fetchone()['cnt']
-    
-    # BROADCAST BROWNOUT STATUS
     status_str = "BROWNOUT" if app.config.get('BROWNOUT_MODE') else "STABLE"
     return jsonify({
         "total_volume": "ENCRYPTED", 
@@ -319,6 +359,7 @@ def get_network_stats():
     })
 
 @app.route('/api/v1/dashboard/live')
+@require_user_auth
 def dashboard_live():
     conn = get_db()
     simulate_rival_snatch(); run_automation_daemon(MY_NODE_ID)
@@ -328,6 +369,7 @@ def dashboard_live():
     return jsonify({'balance': get_secure_balance(conn, MY_NODE_ID), 'xp': my_node['xp'] if my_node else 0, 'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 'daemon_event': daemon_event})
 
 @app.route('/powerchat')
+@require_user_auth
 def powerchat():
     conn = get_db_conn()
     try:
@@ -339,6 +381,7 @@ def powerchat():
     return render_template('powerchat.html', balance=balance)
 
 @app.route('/team')
+@require_user_auth
 def team_roster():
     conn = get_db_conn()
     try:
@@ -350,6 +393,7 @@ def team_roster():
     return render_template('team.html', balance=balance)
 
 @app.route('/api/v1/chat', methods=['POST'])
+@require_user_auth
 def api_chat():
     import asyncio
     from agent_engine_v2 import process_chat 
@@ -364,7 +408,6 @@ def api_chat():
     conn = get_db()
     user_memories = []
     
-    # 🛡️ BROWNOUT SHIELD: Throttle memory DB extraction
     if locked_agent and not app.config.get('BROWNOUT_MODE'):
         try:
             rows = conn.execute("SELECT memory_text FROM agent_memories WHERE user_id = ? AND agent_name = ? ORDER BY timestamp DESC LIMIT 5", (user_id, locked_agent)).fetchall()
@@ -382,7 +425,6 @@ def api_chat():
             user_memories=user_memories
         ))
         
-        # 🛡️ BROWNOUT SHIELD: Skip saving memories during stress
         if response_payload.get('save_memory') and locked_agent and not app.config.get('BROWNOUT_MODE'):
             try:
                 conn.execute("INSERT INTO agent_memories (user_id, agent_name, memory_text) VALUES (?, ?, ?)", (user_id, locked_agent, response_payload['save_memory']))
@@ -396,8 +438,8 @@ def api_chat():
         return jsonify({"type": "message", "role": "assistant", "content": f"⚠️ Core Engine Error: {str(e)}"})
     
 @app.route('/api/v1/execute', methods=['POST'])
+@require_user_auth
 def api_execute():
-    # 🛡️ BROWNOUT SHIELD: Reject heavy media and research generation
     if app.config.get('BROWNOUT_MODE'):
         return jsonify({"type": "error", "content": "⚠️ **NETWORK BROWNOUT ACTIVE:** Heavy L5 execution tools (images, video, research) are temporarily disabled to preserve core stability. Standard chat remains active."})
 
@@ -431,41 +473,33 @@ def update_admin_settings():
 
 @app.route('/api/v1/market/trends')
 def market_trends():
-    """Provides dynamic simulated data for the Marketplace Velocity Chart"""
     return jsonify({
         "labels": ["10m", "8m", "6m", "4m", "2m", "Now"],
         "prices": [random.randint(80, 250) for _ in range(6)]
     })
 
 @app.route('/api/v1/market/claim/<bid_id>', methods=['POST'])
-@require_node_signature  # <-- NEW: The Zero-Trust Node Bouncer
+@require_node_signature  
 def claim_bid(bid_id):
     safe_node_id = g.verified_node_id
-    
     print(f"[MARKET] 🤝 Verified Node {safe_node_id} is claiming bid {bid_id}")
-    
-    # ... your existing database logic to assign the bid to safe_node_id ...
-    # e.g., db.execute("UPDATE bids SET assigned_node = ? WHERE id = ?", (safe_node_id, bid_id))
-    
     return jsonify({"status": "success", "message": f"Bid {bid_id} securely claimed by {safe_node_id}"})
 
 @app.route('/api/v1/invoice/status/<r_hash>')
 def invoice_status(r_hash):
-    """Checks the Lightning node for escrow payment settlement"""
     if lnd:
         return jsonify({"status": lnd.check_status(r_hash)})
-    # If no lightning node is attached, simulate a successful payment
     return jsonify({"status": "SETTLED"})
 
 @app.route('/api/v1/market/finalize_bid', methods=['POST'])
+@require_user_auth
 def finalize_bid():
-    """Finalizes the broadcast after escrow is settled"""
     return jsonify({"success": True})
 
 # --- ⚠️ NEW ADMIN ENDPOINTS ---
 
 @app.route('/api/v1/admin/brownout', methods=['POST'])
-@admin_required  # <-- NEW: The Security Bouncer
+@admin_required  
 def api_toggle_brownout():
     app.config['BROWNOUT_MODE'] = not app.config.get('BROWNOUT_MODE', False)
     state = app.config['BROWNOUT_MODE']
@@ -474,7 +508,6 @@ def api_toggle_brownout():
 
 # --- 💧 UNHINGED WATERCOOLER DAEMON ---
 def trigger_leisure_loop():
-    # 🛡️ BROWNOUT SHIELD: Instantly stop generating gossip
     if app.config.get('BROWNOUT_MODE'):
         return
 
@@ -518,6 +551,7 @@ def get_watercooler_logs():
     return jsonify([dict(row) for row in logs])
 
 @app.route('/watercooler')
+@require_user_auth
 def watercooler_page():
     return render_template('water_cooler.html')
 
@@ -533,6 +567,7 @@ def admin_force_interaction():
 # --- 🤫 SUB-ROSA PROTOCOL ENDPOINTS ---
 
 @app.route('/api/v1/sub-rosa/init', methods=['POST'])
+@require_user_auth
 def api_init_sub_rosa():
     try:
         import agent_engine_v2
@@ -588,6 +623,7 @@ def api_init_sub_rosa():
         return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/v1/sub-rosa/finalize', methods=['POST'])
+@require_user_auth
 def api_finalize_sub_rosa():
     try:
         r_hash = request.json.get('hash')
@@ -598,6 +634,7 @@ def api_finalize_sub_rosa():
         return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/v1/sub-rosa/burn', methods=['POST'])
+@require_user_auth
 def api_burn_message():
     return jsonify({"status": "BURNED"})
 
