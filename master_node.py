@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify, render_template_string
 import logging
 import random
 import time
+import hmac
+import hashlib
 
 app = Flask(__name__)
 log = logging.getLogger('werkzeug')
@@ -13,8 +15,38 @@ log.setLevel(logging.ERROR)
 network_state = {
     "treasury_balance": 1000000,
     "active_nodes": {},
-    "ledger": []
+    "ledger": [],
+    "completed_tasks": set()
 }
+
+# ==========================================
+# ⚡ LND GATEWAY (Simulated L402 Settlement)
+# ==========================================
+class LightningGateway:
+    @staticmethod
+    def pay_invoice(invoice_string: str):
+        """
+        Simulates passing the invoice to a local Bitcoin Lightning Node.
+        In production: response = lnd_client.pay_invoice(invoice_string)
+        """
+        if not invoice_string.startswith("lnbc"):
+            raise ValueError("Invalid Lightning Invoice format.")
+            
+        try:
+            # Extract the amount for our internal ledger simulation
+            amount_str = invoice_string.split('u1')[0].replace('lnbc', '')
+            amount = int(amount_str)
+            
+            # Extract the payment hash from the invoice (the mock part after 'u1')
+            payment_hash = invoice_string.split('u1')[1]
+            
+            # Simulate the cryptographic Preimage returned by the Lightning Network
+            # In L402, the hash of the Preimage MUST equal the payment_hash.
+            simulated_preimage = f"PREIMAGE_FOR_{payment_hash}"
+            
+            return amount, simulated_preimage
+        except Exception:
+            raise ValueError("Invoice decoding failed.")
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -100,17 +132,35 @@ def stats():
 
 @app.route('/api/v1/node/register', methods=['POST'])
 def register_node():
-    data = request.get_json()
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify({"status": "error", "message": "No payload"}), 400
+
     node_id = data.get("node_id", "")
+    timestamp = data.get("timestamp", "")
+    signature = data.get("signature", "")
     
+    # 1. The basic prefix check
     if not node_id.startswith("TPM2-EK-"):
-        return jsonify({"status": "rejected"}), 403
+        return jsonify({"status": "rejected", "message": "Hardware root of trust missing."}), 403
+
+    # ==========================================
+    # 🛑 THE ZERO-TRUST BOUNDARY (ATTESTATION)
+    # ==========================================
+    # In production, the Master Node verifies the signature against the TPM's Public Key.
+    # Here, we simulate it with a shared cryptographic seed.
+    tpm_seed = b"simulated_hardware_seed_0x99"
+    expected_sig = hmac.new(tpm_seed, f"{node_id}:{timestamp}".encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(str(signature), expected_sig):
+        print(f"\n[FRONT DESK] 🚨 REJECTED: Cryptographic signature invalid for {node_id}")
+        return jsonify({"status": "rejected", "message": "Hardware attestation failed. Spoofing detected."}), 403
 
     # Add the node to our active tracking state
     if node_id not in network_state["active_nodes"]:
         network_state["active_nodes"][node_id] = {"tasks_completed": 0, "total_earned": 0}
         
-    print(f"\n[FRONT DESK] ✅ ACCEPTED: Hardware identity {node_id} verified.")
+    print(f"\n[FRONT DESK] ✅ ACCEPTED: Hardware identity and signature verified for {node_id[:20]}...")
     return jsonify({"status": "connected"}), 200
 
 @app.route('/api/v1/task/request', methods=['POST'])
@@ -125,15 +175,41 @@ def dispatch_task():
 
 @app.route('/api/v1/task/submit', methods=['POST'])
 def submit_task_and_pay():
-    data = request.get_json()
+    # Fixed: Simply call request.get_json()
+    data = request.get_json(force=True, silent=True) 
+    
+    if not data:
+         return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
+         
     node_id = data.get("node_id")
     task_id = data.get("task_id")
     
-    # Extract the requested amount from our mock Lightning invoice (e.g., lnbc41u1...)
+    # ==========================================
+    # 🛑 THE ZERO-TRUST BOUNDARY (ANTI-REPLAY)
+    # ==========================================
+    if task_id in network_state["completed_tasks"]:
+        print(f"[SECURITY] 🚨 REPLAY ATTACK BLOCKED! Node {node_id[:15]} attempted double-spend on {task_id}.")
+        return jsonify({
+            "status": "rejected",
+            "message": "Idempotency collision. Task already settled."
+        }), 409
+        
+    # Mark the task as settled so it can never be paid again
+    network_state["completed_tasks"].add(task_id)
+    
+    invoice = data.get("invoice", "")
+
+    # ==========================================
+    # 🛑 THE ZERO-TRUST BOUNDARY (L402 SETTLEMENT)
+    # ==========================================
     try:
-        amount = int(data.get("invoice").split('u1')[0].replace('lnbc', ''))
-    except:
-        amount = 25
+        # We NO LONGER trust the invoice. We force the LND gateway to settle it.
+        amount, preimage = LightningGateway.pay_invoice(invoice)
+    except ValueError as e:
+        print(f"[TREASURY] 🚨 FRAUD DETECTED: Invalid L402 invoice from {node_id[:15]}")
+        # We must remove the task from completed_tasks so the node can try again legitimately
+        network_state["completed_tasks"].remove(task_id) 
+        return jsonify({"status": "rejected", "message": str(e)}), 402
 
     # 1. Update the Treasury and Node balances
     network_state["treasury_balance"] -= amount
@@ -152,7 +228,9 @@ def submit_task_and_pay():
         network_state["ledger"].pop()
 
     print(f"[TREASURY] 💸 Payment Sent. (Treasury Remaining: {network_state['treasury_balance']} SATS)")
-    return jsonify({"status": "paid", "preimage": "0xDEADBEEF"}), 200
+    
+    # Return the cryptographic preimage as proof of payment
+    return jsonify({"status": "paid", "preimage": preimage}), 200
 
 if __name__ == '__main__':
     print("🌐 PROXY MASTER NODE IS ONLINE.")

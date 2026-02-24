@@ -4,6 +4,8 @@ import time
 import requests
 import platform
 import json
+import hmac
+import hashlib
 from datetime import datetime, timezone
 from node_wallet import LightningWallet
 from agent_engine import AgentEngine
@@ -66,16 +68,25 @@ def main():
     time.sleep(1)
 
     # 3. The Handshake
-    print(f"📡 Attempting Handshake with Network ({MASTER_NODE_URL})...")
+    print(f"📡 Attempting Handshake with Network (http://127.0.0.1:5000/api/v1/node/register)...")
+    
+    # Generate a fresh timestamp
+    iso_timestamp = datetime.now(timezone.utc).isoformat()
+    
+    # 🛑 The Node mathematically signs its identity using its simulated TPM private key
+    tpm_seed = b"simulated_hardware_seed_0x99" 
+    payload_signature = hmac.new(tpm_seed, f"{node_id}:{iso_timestamp}".encode(), hashlib.sha256).hexdigest()
+
     payload = {
         "node_id": node_id,
         "public_key": pub_key,
         "hardware_stats": hw_stats,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": iso_timestamp,
+        "signature": payload_signature # <-- The Cryptographic Proof
     }
 
     try:
-        response = requests.post(MASTER_NODE_URL, json=payload)
+        response = requests.post("http://127.0.0.1:5000/api/v1/node/register", json=payload)
         if response.status_code == 200:
             print("\n✅ HANDSHAKE SUCCESSFUL!")
             print("\n🚀 NODE IS NOW ACTIVE. ENTERING TASK LOOP...")
