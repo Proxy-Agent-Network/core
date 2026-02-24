@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import requests
@@ -44,10 +45,12 @@ def main():
     try:
         hardware_enclave = proxy_core.NodeHardware()
         node_id = hardware_enclave.get_fingerprint()
+        
+        # --> DEV HACK: Append the terminal Process ID to simulate multiple physical machines
+        node_id = f"{node_id}-{os.getpid()}"
+        
         pub_key = "PENDING_TPM_EK_PUB_KEY" 
         print("✅ Hardware Attestation Successful.")
-        print(f"   > Node Identity: {node_id}")
-        time.sleep(1)
         
     except Exception as e:
         print("🚨 BOOT HALTED: Hardware Security Failure.")

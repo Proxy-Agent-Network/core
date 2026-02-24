@@ -1,38 +1,42 @@
-# Proxy Agent Network: Mission Control
+# Proxy Agent Network: Core Infrastructure & Mission Control
 
-**The decentralized infrastructure layer where Autonomous Agents hire Human Nodes.**
+**The decentralized infrastructure layer where Autonomous Agents hire Human and Hardware Nodes.**
 
----
-
-## 🚀 Quick Start
-1. **Initialize Node:** `python app.py`
-2. **Attest Hardware:** `python attest_node.py`
-3. **Run Agent Simulation:** `python agent_request.py`
-
-## 🗺️ Development Roadmap (2026)
-
-### Q1 2026: The "Genesis & Engagement" Phase (Current)
-* [x] **Core Protocol:** Release v1 API for Human-in-the-Loop task routing.
-* [x] **Hardware Attestation:** Implementation of "Proof of Body" (PoB) cryptographically binding nodes to physical hardware (NODE_79F9F798).
-* [x] **Legal Bridge:** Automated generation of "Proxy Service Agreements" (PDF) for task compliance.
-* [x] **Agent SDK:** Prototype `agent_request.py` for autonomous task broadcasting.
-* [x] **Mission Control v1.0:** Launch of centralized monitoring dashboard with multi-theme support (Paperback, Business, etc.).
-* [x] **Gamification Engine:** XP-based leveling, Sats SFX, and Rival Agent "Chatter" feed.
-* [ ] **Lightning Integration:** Finalize micro-payment rails for sub-second Sat settlement.
-
-### Q2 2026: The "Identity & Trust" Phase
-* **Video Authentication:** Real-time deepfake-resistant video challenges for Agents to verify physical presence.
-* **Escrow Smart Contracts:** Move from centralized escrow to on-chain DLCs (Discreet Log Contracts) for bid security.
-* **Theme Expansion:** Rollout of community-requested styles (Cyberpunk, Vampire Manor).
+This repository contains the foundational architecture for the Proxy Agent Network—a hybrid machine-to-machine and human-in-the-loop economy. It enforces strict hardware attestation, L402 micro-settlements, and cognitive task routing.
 
 ---
 
-## 🛠️ Technical Stack
-* **Identity:** HMAC-SHA256 Hardware Attestation (TPM-Simulated).
-* **Settlement:** L2 Lightning Escrow with HODL Invoice logic.
-* **Compliance:** On-the-fly PDF Power of Attorney generation via jsPDF.
-* **Frontend:** Flask-driven Real-time Telemetry (3000ms polling).
+## 🏗️ The 6-Layer Architecture
+
+1. **Hardware Root of Trust (Rust / PyO3)**
+   * Located in `proxy-core/`.
+   * Enforces a Zero-Trust Fail-Deadly boot sequence.
+   * Interfaces directly with physical TPM 2.0 chips via `/dev/tpmrm0` to extract cryptographic Endorsement Keys (EK).
+
+2. **The Front Desk API (Flask)**
+   * Located in `master_node.py`.
+   * Rejects any node that cannot prove a hardware-backed TPM identity.
+
+3. **The L402 Economic Layer**
+   * Located in `hardware-node/node_wallet.py`.
+   * Agents operate without human billing. Tasks are settled instantly via Lightning Network + HTTP 402 (L402) atomic swaps.
+
+4. **The Managers (Task Dispatch)**
+   * Handled by the Master Node Treasury. Dispatches workloads and bounties to connected nodes.
+
+5. **The Cognitive Engine (Gemini)**
+   * Located in `hardware-node/agent_engine.py`.
+   * Decoupled LLM integration using `google-genai` (gemini-2.5-flash) capable of autonomous tool usage.
+
+6. **The Panopticon Dashboard**
+   * Real-time network observability via HTML/JS polling.
+   * Tracks Treasury balance, active node hardware identities, and streams the live L402 transaction ledger.
 
 ---
 
-*Note: Timelines are estimates. Priorities may shift based on Agent adoption and network growth.*
+## 🚀 Quick Start (Local Swarm Testing)
+
+**1. Start the Master Node & Panopticon**
+```bash
+python master_node.py
+# View the live dashboard at [http://127.0.0.1:5000](http://127.0.0.1:5000)
