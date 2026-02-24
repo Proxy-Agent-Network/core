@@ -5,6 +5,7 @@ import platform
 import json
 from datetime import datetime, timezone
 from node_wallet import LightningWallet
+from agent_engine import AgentEngine
 
 # Import our compiled Rust hardware enclave library
 try:
@@ -52,9 +53,13 @@ def main():
         print("🚨 BOOT HALTED: Hardware Security Failure.")
         sys.exit(1)
 
-    # 2.5 Initialize Economic Layer
+    # 2.5 Initialize Economic & Cognitive Layers
     print("⚡ Spinning up L402 Lightning Wallet...")
     wallet = LightningWallet(node_id)
+    time.sleep(1)
+
+    print("🧠 Booting Cognitive Engine...")
+    brain = AgentEngine()
     time.sleep(1)
 
     # 3. The Handshake
@@ -93,18 +98,18 @@ def main():
                 print(f"\n[NODE] 📥 Received Task: {task['task_id']} | Bounty: {task['payout_sats']} SATS")
                 print(f"       > Prompt: '{task['prompt']}'")
                 
-                # B. Simulate doing the AI inference work
-                time.sleep(2) 
-                print(f"[NODE] 🧠 Inference complete. Generating invoice...")
+                # B. Execute the AI inference work
+                print(f"[NODE] 🧠 Routing task to Cognitive Engine...")
+                ai_answer = brain.process_task(task['prompt'])
                 
                 # C. Generate the Lightning Invoice
                 invoice, p_hash = wallet.generate_invoice(task['payout_sats'])
                 
-                # D. Submit the answer AND the invoice
+                # D. Submit the REAL answer AND the invoice
                 submit_payload = {
                     "node_id": node_id,
                     "task_id": task['task_id'],
-                    "result": "Clause 4.2 contains a standard arbitration agreement.",
+                    "result": ai_answer, # <-- Dynamically generated AI output
                     "invoice": invoice
                 }
                 pay_resp = requests.post("http://127.0.0.1:5000/api/v1/task/submit", json=submit_payload)
