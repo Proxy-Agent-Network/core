@@ -44,16 +44,19 @@ impl NodeHardware {
 }
 
 // ==========================================
-// 🪟 WINDOWS DEVELOPMENT LOGIC
+// 🪟 WINDOWS DEVELOPMENT LOGIC (BYPASS FOR API TESTING)
 // ==========================================
 #[cfg(target_os = "windows")]
 #[pymethods]
 impl NodeHardware {
     #[new]
     pub fn new() -> PyResult<Self> {
-        println!("[SYSTEM] ⚠️ (WINDOWS DEV) TPM 2.0 Physical pass-through blocked by OS.");
-        println!("❌ FATAL: Cannot access Linux physical /dev/tpmrm0 on Windows platform.");
-        Err(pyo3::exceptions::PyRuntimeError::new_err("HardwareNotFound: Windows Environment"))
+        println!("[SYSTEM] ⚠️ (WINDOWS DEV) Bypassing physical TPM for local API testing.");
+        
+        // We simulate reading an Endorsement Key so the Master Node accepts our handshake
+        Ok(Self { 
+            ek_pub_hex: "DEV-BYPASS-0xABCD1234".to_string() 
+        })
     }
 
     pub fn get_fingerprint(&self) -> String { format!("TPM2-EK-{}", self.ek_pub_hex) }
