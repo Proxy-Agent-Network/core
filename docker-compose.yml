@@ -9,7 +9,6 @@ services:
       POSTGRES_USER: proxy_admin
       POSTGRES_PASSWORD: proxy_secure_password
       POSTGRES_DB: proxy_network
-    # 🌟 SECURITY FIX: Exposed internally to the Agent only. No public door.
     expose:
       - "5432"
     volumes:
@@ -20,11 +19,32 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- THE BANK (Value Layer: Lightning Network) ---
+  # --- LAYER 1: BITCOIN CORE (The Truth Layer) ---
+  bitcoind:
+    image: lncm/bitcoind:v25.0
+    container_name: bitcoin_core
+    environment:
+      - BITCOIN_NETWORK=mainnet
+      - BITCOIN_RPC_USER=proxy_btc
+      - BITCOIN_RPC_PASSWORD=proxy_btc_pass
+    expose:
+      - "8332"  # RPC Port
+      - "28332" # ZMQ Block Port
+      - "28333" # ZMQ Tx Port
+    volumes:
+      - bitcoin_data:/data
+    # 🌟 NEW: Prune the blockchain to 10GB to save hard drive space
+    command: >
+      -prune=10000
+      -server=1
+      -listen=1
+
+  # --- LAYER 2: THE BANK (Lightning Network) ---
   lnd:
     image: lightninglabs/lnd:v0.17.0-beta
     container_name: lnd_node
-    # 🌟 SECURITY FIX: Resolves port conflicts and isolates the Bank.
+    depends_on:
+      - bitcoind
     expose:
       - "10009" # gRPC for the Agent
       - "8080"  # REST for potential web tools
@@ -35,12 +55,16 @@ services:
       - lnd_data:/root/.lnd
     command: >
       --bitcoin.active
-      --bitcoin.regtest
-      --bitcoin.node=neutrino
+      --bitcoin.mainnet
+      --bitcoin.node=bitcoind
+      --bitcoind.rpchost=bitcoind:8332
+      --bitcoind.rpcuser=proxy_btc
+      --bitcoind.rpcpass=proxy_btc_pass
+      --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
       --rpclisten=0.0.0.0:10009
       --restlisten=0.0.0.0:8080
-      --alias=Proxy_Demo_Bank
-      --nobootstrap
+      --alias=Proxy_Master_Treasury
 
   # --- THE AI AGENT (The Principal) ---
   proxy_agent_v1:
@@ -48,7 +72,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: proxy_agent
-    # The Agent has public doors so you can view the PowerChat UI.
     ports:
       - "5000:5000"
       - "8000:8000"
@@ -56,11 +79,11 @@ services:
       - DATABASE_URL=postgresql://proxy_admin:proxy_secure_password@db:5432/proxy_network
       - FLASK_SECRET_KEY=super_secure_production_key_change_me
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      # Pointing to the internal Docker service 'lnd'
       - LND_GRPC_HOST=lnd
       - LND_GRPC_PORT=10009
-      - LND_MACAROON_PATH=/home/proxyuser/.lnd/data/chain/bitcoin/regtest/admin.macaroon
+      - LND_MACAROON_PATH=/home/proxyuser/.lnd/data/chain/bitcoin/mainnet/admin.macaroon
       - LND_TLS_CERT_PATH=/home/proxyuser/.lnd/tls.cert
+      - ADMIN_SECRET_TOKEN=${ADMIN_SECRET_TOKEN}
     depends_on:
       db:
         condition: service_healthy
@@ -69,7 +92,6 @@ services:
     volumes:
       - .:/app
       - faiss_data:/app/faiss_index
-      # Mount the bank's secrets into the non-privileged user's home (Read-Only)
       - lnd_data:/home/proxyuser/.lnd:ro
 
   # --- THE SEARCH ENGINE & DASHBOARD ---
@@ -78,7 +100,6 @@ services:
       context: .
     container_name: proxy_search
     command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
-    # The Search UI has a public door so you can view it.
     ports:
       - "8501:8501"
     environment:
@@ -100,3 +121,4 @@ volumes:
   pgdata:
   faiss_data:
   lnd_data:
+  bitcoin_data: # Docker will automatically manage this volume

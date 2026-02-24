@@ -27,7 +27,7 @@
         .admin-header { background: #000; border-bottom: 2px solid var(--admin-red); padding: 20px; display: flex; justify-content: space-between; align-items: center; }
         .admin-header h1 { margin: 0; font-family: 'Orbitron', sans-serif; color: var(--admin-red); font-size: 1.5rem; letter-spacing: 2px; }
 
-        .hud-bar { display: flex; justify-content: space-between; padding: 10px 20px; background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border); font-family: 'Orbitron'; font-size: 0.8rem; }
+        .hud-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border); font-family: 'Orbitron'; font-size: 0.8rem; }
         .balance-display { color: var(--primary); font-weight: bold; }
 
         .admin-container { max-width: 1200px; margin: 40px auto; padding: 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
@@ -52,6 +52,10 @@
         .btn-warning:hover { background: var(--admin-gold); color: #000; }
 
         .admin-input { width: 100%; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: 'Courier Prime', monospace; margin-bottom: 10px; }
+        
+        /* New styling for the token input in the HUD */
+        .token-input { width: 250px; padding: 5px 10px; background: rgba(0,0,0,0.5); border: 1px solid var(--admin-red); color: var(--admin-gold); border-radius: 4px; font-family: 'Courier Prime', monospace; font-size: 0.8rem; margin-left: 15px; }
+        .token-input:focus { outline: none; border-color: var(--admin-gold); }
     </style>
 </head>
 <body>
@@ -64,7 +68,10 @@
     </div>
 
     <div class="hud-bar">
-        <div id="health-peers">● SECURE ADMIN LINK ACTIVE</div>
+        <div id="health-peers" style="display: flex; align-items: center;">
+            ● SECURE ADMIN LINK ACTIVE
+            <input type="password" id="admin-token" class="token-input" placeholder="Enter X-Admin-Token...">
+        </div>
         <div class="balance-display" id="hud-balance">{{ balance|default(0) }} SATS</div>
     </div>
 
@@ -194,6 +201,30 @@
         let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
         const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, EUR: 0.00060, GBP: 0.00051 };
 
+        // Handle Admin Token State
+        const tokenInput = document.getElementById('admin-token');
+        tokenInput.value = localStorage.getItem('panopticon_admin_token') || '';
+        tokenInput.addEventListener('change', (e) => {
+            localStorage.setItem('panopticon_admin_token', e.target.value);
+        });
+
+        // Helper function to build secure headers
+        function getSecureHeaders(additionalHeaders = {}) {
+            return {
+                "X-Admin-Token": tokenInput.value,
+                ...additionalHeaders
+            };
+        }
+
+        // Helper function to handle 403 Forbidden responses
+        function checkAuthError(res) {
+            if (res.status === 403) {
+                alert("🚨 SECURITY VIOLATION: Invalid or Missing Admin Token.");
+                return true;
+            }
+            return false;
+        }
+
         function updateBalanceDisplay() {
             const el = document.getElementById('hud-balance'); if (!el) return;
             let val = rawSatsBalance * RATES[currentUnit];
@@ -203,18 +234,34 @@
         async function updateSetting(key, val) {
             let suffix = (key.includes('rate') || key.includes('compliance') || key.includes('creativity')) ? '%' : '';
             document.getElementById(`val-${key}`).innerText = val + suffix;
-            await fetch('/api/v1/admin/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ key, value: val }) });
+            
+            const res = await fetch('/api/v1/admin/settings', { 
+                method: 'POST', 
+                headers: getSecureHeaders({'Content-Type': 'application/json'}), 
+                body: JSON.stringify({ key, value: val }) 
+            });
+            checkAuthError(res);
         }
 
         async function toggleBrownout() {
-            const res = await fetch('/api/v1/admin/brownout', { method: 'POST' });
+            const res = await fetch('/api/v1/admin/brownout', { 
+                method: 'POST',
+                headers: getSecureHeaders()
+            });
+            if (checkAuthError(res)) return;
+            
             const data = await res.json();
             alert(data.brownout_active ? "⚠️ BROWNOUT ACTIVE" : "✅ SYSTEM STABLE");
         }
 
         async function resetMemories() {
-            if(confirm("Wipe all agent memory data?")) {
-                await fetch('/api/v1/admin/wipe-memories', { method: 'POST' });
+            if(confirm("Wipe all agent memory data? This cannot be undone.")) {
+                const res = await fetch('/api/v1/admin/wipe-memories', { 
+                    method: 'POST',
+                    headers: getSecureHeaders()
+                });
+                if (checkAuthError(res)) return;
+                
                 alert("Amnesia Protocol Success.");
             }
         }
@@ -222,8 +269,14 @@
         async function forceSocial(type) {
             const a = document.getElementById('agent-a').value;
             const b = document.getElementById('agent-b').value;
-            await fetch('/api/v1/admin/force-interaction', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ type, agent_a: a, agent_b: b }) });
-            alert("Injected.");
+            const res = await fetch('/api/v1/admin/force-interaction', { 
+                method: 'POST', 
+                headers: getSecureHeaders({'Content-Type': 'application/json'}), 
+                body: JSON.stringify({ type, agent_a: a, agent_b: b }) 
+            });
+            if (checkAuthError(res)) return;
+            
+            alert("Interaction Injected Successfully.");
         }
 
         window.addEventListener('DOMContentLoaded', updateBalanceDisplay);

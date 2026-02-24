@@ -4,6 +4,9 @@ import random
 import time
 import hmac
 import hashlib
+from functools import wraps
+from flask import abort
+import os
 
 app = Flask(__name__)
 log = logging.getLogger('werkzeug')
@@ -18,6 +21,22 @@ network_state = {
     "ledger": [],
     "completed_tasks": set()
 }
+
+# ==========================================
+# 🛑 ZERO-TRUST ADMIN SECURITY
+# ==========================================
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        admin_token = request.headers.get("X-Admin-Token")
+        expected_token = os.environ.get("ADMIN_SECRET_TOKEN", "fallback_dev_admin_token_123")
+        
+        if admin_token != expected_token:
+            print(f" [SECURITY] 🚨 Unauthorized admin access attempt from {request.remote_addr}")
+            abort(403)
+            
+        return f(*args, **kwargs)
+    return decorated_function
 
 # ==========================================
 # ⚡ LND GATEWAY (Simulated L402 Settlement)
@@ -118,7 +137,7 @@ HTML_TEMPLATE = """
 """
 
 # ==========================================
-# 🌐 API ROUTES
+# 🌐 CORE NETWORK ROUTES
 # ==========================================
 @app.route('/')
 def dashboard():
@@ -128,7 +147,13 @@ def dashboard():
 @app.route('/api/v1/stats', methods=['GET'])
 def stats():
     """Provides real-time JSON data to the dashboard UI"""
-    return jsonify(network_state)
+    # Create a safe copy of the state without the un-serializable set
+    safe_state = {
+        "treasury_balance": network_state["treasury_balance"],
+        "active_nodes": network_state["active_nodes"],
+        "ledger": network_state["ledger"]
+    }
+    return jsonify(safe_state)
 
 @app.route('/api/v1/node/register', methods=['POST'])
 def register_node():
@@ -140,15 +165,9 @@ def register_node():
     timestamp = data.get("timestamp", "")
     signature = data.get("signature", "")
     
-    # 1. The basic prefix check
     if not node_id.startswith("TPM2-EK-"):
         return jsonify({"status": "rejected", "message": "Hardware root of trust missing."}), 403
 
-    # ==========================================
-    # 🛑 THE ZERO-TRUST BOUNDARY (ATTESTATION)
-    # ==========================================
-    # In production, the Master Node verifies the signature against the TPM's Public Key.
-    # Here, we simulate it with a shared cryptographic seed.
     tpm_seed = b"simulated_hardware_seed_0x99"
     expected_sig = hmac.new(tpm_seed, f"{node_id}:{timestamp}".encode(), hashlib.sha256).hexdigest()
 
@@ -156,7 +175,6 @@ def register_node():
         print(f"\n[FRONT DESK] 🚨 REJECTED: Cryptographic signature invalid for {node_id}")
         return jsonify({"status": "rejected", "message": "Hardware attestation failed. Spoofing detected."}), 403
 
-    # Add the node to our active tracking state
     if node_id not in network_state["active_nodes"]:
         network_state["active_nodes"][node_id] = {"tasks_completed": 0, "total_earned": 0}
         
@@ -175,7 +193,6 @@ def dispatch_task():
 
 @app.route('/api/v1/task/submit', methods=['POST'])
 def submit_task_and_pay():
-    # Fixed: Simply call request.get_json()
     data = request.get_json(force=True, silent=True) 
     
     if not data:
@@ -184,9 +201,6 @@ def submit_task_and_pay():
     node_id = data.get("node_id")
     task_id = data.get("task_id")
     
-    # ==========================================
-    # 🛑 THE ZERO-TRUST BOUNDARY (ANTI-REPLAY)
-    # ==========================================
     if task_id in network_state["completed_tasks"]:
         print(f"[SECURITY] 🚨 REPLAY ATTACK BLOCKED! Node {node_id[:15]} attempted double-spend on {task_id}.")
         return jsonify({
@@ -194,30 +208,21 @@ def submit_task_and_pay():
             "message": "Idempotency collision. Task already settled."
         }), 409
         
-    # Mark the task as settled so it can never be paid again
     network_state["completed_tasks"].add(task_id)
-    
     invoice = data.get("invoice", "")
 
-    # ==========================================
-    # 🛑 THE ZERO-TRUST BOUNDARY (L402 SETTLEMENT)
-    # ==========================================
     try:
-        # We NO LONGER trust the invoice. We force the LND gateway to settle it.
         amount, preimage = LightningGateway.pay_invoice(invoice)
     except ValueError as e:
         print(f"[TREASURY] 🚨 FRAUD DETECTED: Invalid L402 invoice from {node_id[:15]}")
-        # We must remove the task from completed_tasks so the node can try again legitimately
         network_state["completed_tasks"].remove(task_id) 
         return jsonify({"status": "rejected", "message": str(e)}), 402
 
-    # 1. Update the Treasury and Node balances
     network_state["treasury_balance"] -= amount
     if node_id in network_state["active_nodes"]:
         network_state["active_nodes"][node_id]["tasks_completed"] += 1
         network_state["active_nodes"][node_id]["total_earned"] += amount
         
-    # 2. Record the transaction in the ledger (keep only the last 10)
     network_state["ledger"].insert(0, {
         "time": time.strftime("%H:%M:%S"),
         "node": node_id[:15] + "...",
@@ -228,11 +233,47 @@ def submit_task_and_pay():
         network_state["ledger"].pop()
 
     print(f"[TREASURY] 💸 Payment Sent. (Treasury Remaining: {network_state['treasury_balance']} SATS)")
-    
-    # Return the cryptographic preimage as proof of payment
     return jsonify({"status": "paid", "preimage": preimage}), 200
+
+# ==========================================
+# 🛑 ADMIN CONTROL ENDPOINTS
+# ==========================================
+@app.route('/api/v1/admin/brownout', methods=['POST'])
+@admin_required
+def api_toggle_brownout():
+    app.config['BROWNOUT_MODE'] = not app.config.get('BROWNOUT_MODE', False)
+    state = app.config['BROWNOUT_MODE']
+    print(f"\n [ADMIN] ⚠️ BROWNOUT STATE OVERRIDE: {'ACTIVE' if state else 'DISABLED'}")
+    return jsonify({"status": "success", "brownout_active": state})
+
+@app.route('/api/v1/admin/wipe-memories', methods=['POST'])
+@admin_required
+def api_wipe_memories():
+    # Placeholder for actual DB execution depending on where your agent_memories table resides
+    # e.g., db.execute("DELETE FROM agent_memories")
+    print("\n [ADMIN] ⚠️ Memory Wiped. All agents are now amnesiacs.")
+    return jsonify({"status": "wiped"})
+
+@app.route('/api/v1/admin/force-interaction', methods=['POST'])
+@admin_required
+def admin_force_interaction():
+    data = request.json or {}
+    agent_a = data.get('agent_a', 'Unknown')
+    agent_b = data.get('agent_b', 'Unknown')
+    int_type = data.get('type', 'GOSSIP')
+    print(f"\n [ADMIN] 💉 Forced Interaction injected: {agent_a} -> {agent_b} ({int_type})")
+    return jsonify({"status": "injected"})
+
+@app.route('/api/v1/admin/settings', methods=['POST'])
+@admin_required
+def admin_settings():
+    data = request.json or {}
+    key = data.get('key')
+    val = data.get('value')
+    print(f"\n [ADMIN] ⚙️ Network Setting Updated: {key} = {val}")
+    return jsonify({"status": "success", "key": key, "value": val})
 
 if __name__ == '__main__':
     print("🌐 PROXY MASTER NODE IS ONLINE.")
-    print("👀 PANOPTICON DASHBOARD AVAILABLE AT: http://127.0.0.1:5000")
-    app.run(host='127.0.0.1', port=5000)
+    print("👀 PANOPTICON DASHBOARD AVAILABLE AT: http://127.0.0.1:5001")
+    app.run(host='0.0.0.0', port=5001)

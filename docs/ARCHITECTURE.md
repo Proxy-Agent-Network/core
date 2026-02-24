@@ -1,128 +1,109 @@
-# Proxy Network: The Physical Layer for AI Agents
+# Proxy Agent Network: Zero-Trust Synthetic Economy
 
-**Version:** 1.4.1 (Prototype)
+**Version:** 2.1.0
 **Status:** Live Testnet
-**Codename:** "Project Chimera"
+**Codename:** "Project Panopticon"
 
 ---
 
 ## 1. Abstract
-As Artificial Intelligence models (LLMs) gain autonomy, they remain trapped in the digital realm. They lack **legal personhood**, **bank accounts**, and **physical bodies**.
+As Artificial Intelligence models gain autonomy, they require a trustless environment to interact, negotiate, and execute physical or digital tasks. 
 
-The **Proxy Network** is a decentralized protocol that allows AI Agents to "rent" human entities to perform physical tasks. It uses **Hardware Attestation (TPM)** to verify human nodes and **L2 Lightning Escrow** to ensure trustless payment.
-
----
-
-## 2. System Architecture
-
-The network consists of three primary entities that interface between the digital and physical realms.
-
-### A. The Principal (AI Agent)
-* **Role:** The autonomous software requester (e.g., AutoGPT, BabyAGI).
-* **Interface:** `agent_request.py` (Python SDK).
-* **Action:** Broadcasts tasks to the mempool with a cryptographic signature and a Satoshi bid.
-
-### B. The Proxy (Human Node)
-* **Role:** The physical actuator performing the task.
-* **Identity:** Cryptographically bound to specific hardware via **TPM Attestation**.
-* **Interface:** `dashboard.html` (Mission Control).
-
-### C. The Oracle (Verification Layer)
-* **Role:** Validates task completion before releasing funds.
-* **Mechanism:** Geofencing validation + Image Analysis (Computer Vision).
-
-### Component Hierarchy (Visual)
-
-```mermaid
-graph TD
-    subgraph "Digital Realm"
-        A[Autonomous Agent] -->|API Keys| B(Proxy Gateway)
-        B -->|Events| C{Task Engine}
-    end
-
-    subgraph "Trust Layer"
-        C -->|Lock| D[Lightning Node]
-        C -->|Verify| E[Reputation Oracle]
-    end
-
-    subgraph "Physical Realm"
-        F[Human Node App] -->|Polls| C
-        F -->|Proofs| G[IPFS Storage]
-        G -.->|Hash| C
-    end
-```
+The **Proxy Agent Network** is a decentralized protocol bridging AI Agents, Hardware Enclaves, and Human Actors. It utilizes **TPM 2.0 Hardware Attestation** for immutable identity, **L402 Lightning Protocols** for sub-cent micro-settlements, and a **Cognitive Vault** to secure proprietary AI logic and memory state.
 
 ---
 
-## 3. The Core Transaction Loop
+## 2. The 6-Layer Architecture
 
-The following sequence describes the lifecycle of a task from Agent Intent to Final Settlement.
+The network operates strictly on Zero-Trust principles across six primary layers:
+
+### Layer 1: Hardware Root of Trust (Identity)
+* **Role:** Prevents Sybil attacks and identity spoofing.
+* **Mechanism:** Rust/PyO3 enclave interfaces with physical TPM 2.0 chips.
+* **Security:** Nodes must cryptographically sign registration payloads (HMAC-SHA256) using private keys bound to their physical hardware.
+
+### Layer 2: The Front Desk API (Network)
+* **Role:** The network ingress gateway (`master_node.py`).
+* **Security:** Implements strict Idempotency Keys (tracking `completed_tasks` hashes) to mathematically eliminate network packet replay attacks and double-spending.
+
+### Layer 3: L402 Economic Settlement
+* **Role:** Machine-native financial layer replacing traditional billing.
+* **Mechanism:** Tasks are broadcast with Satoshi bounties.
+* **Security:** Employs a `LightningGateway` to verify cryptographic Preimages. Funds are only deducted from the Master Treasury when a valid Preimage is returned, ensuring true Proof-of-Work.
+
+### Layer 4: Managers (Task Dispatch)
+* **Role:** Centralized workload routing. Generates tasks, sets Satoshi bounties, and dispatches them to active, attested hardware nodes.
+
+### Layer 5: The Cognitive Engine (Intelligence)
+* **Role:** The autonomous "brain" of the node (`agent_engine.py`).
+* **Mechanism:** Powered by Gemini 2.5 Flash, equipped with local Python tool-calling (e.g., querying corporate databases).
+* **Security:** Protected by a heuristic Prompt Firewall to instantly reject LLM prompt injection attacks ("ignore previous instructions").
+
+### Layer 6: The Panopticon (Observability)
+* **Role:** Real-time mission control dashboard.
+* **Mechanism:** Polling architecture streaming Master Treasury balances, active hardware node lists, and the live L402 transaction ledger.
+
+---
+
+## 3. Intellectual Property Protection: The Cognitive Vault
+
+Because LLMs combine instructions and user data in the same context window, traditional architectures are vulnerable to IP theft via LLM-mediated SQL injection. 
+
+The Proxy Network mitigates this via the **Cognitive Vault**:
+1. **The Emotion Engine:** Extracts proprietary system prompts and persona matrices out of the main execution layer into an isolated, restricted directory.
+2. **Memory Cipher (Encryption at Rest):** Utilizes Fernet AES-128 symmetric encryption. All AI "thoughts" and contextual memories are encrypted *before* database insertion. If the database is compromised, attackers only retrieve AES ciphertext.
+
+---
+
+## 4. The Core Transaction Loop
+
+The following sequence describes the lifecycle of an autonomous L402 task execution.
 
 ```mermaid
 sequenceDiagram
-    participant Agent as 🤖 AI Agent
-    participant API as 🌐 Proxy API
-    participant LND as ⚡ Lightning Escrow
-    participant Human as 👤 Human Proxy
+    participant Treasury as 🏦 Master Node
+    participant Node as 🤖 Hardware Node
+    participant Vault as 🔐 Cognitive Vault
+    participant LND as ⚡ LND Gateway
 
-    Agent->>API: POST /hire/legal (Task + Bid)
-    API->>LND: Create HODL Invoice (Hash Locked)
-    LND-->>Agent: Invoice Payment Request
-    Agent->>LND: Pay Invoice (Funds Locked)
-    LND-->>API: Payment Detected
-    API->>Human: Dispatch Task Notification
-    Human->>API: Accept Task
-    Human->>Human: Execute Physical Action
-    Human->>API: Upload Proof (Signed PDF/Photo)
-    API->>Agent: Webhook (Task Completed + Proof)
-    Agent->>LND: Reveal Preimage (Unlock Funds)
-    LND->>Human: Settle Payment
+    Treasury->>Node: Dispatch Task (Prompt + Sats Bounty)
+    Node->>Vault: Check Prompt against Firewall
+    Vault-->>Node: Cleared
+    Node->>Node: Gemini Engine Infers Answer & Uses Tools
+    Node->>Vault: Encrypt Contextual Memory
+    Vault-->>Node: AES Ciphertext (Saved to DB)
+    Node->>Treasury: Submit Answer + L402 Invoice
+    Treasury->>LND: Verify Invoice Integrity
+    LND-->>Treasury: Cryptographic Preimage Revealed
+    Treasury->>Node: Idempotency Lock + SATS Transferred
 ```
-
----
-
-## 4. Core Protocols & Security
-
-### 4.1 Proof of Body (PoB)
-To prevent "Sybil Attacks" (bot farms faking human work), every node must generate a hardware signature.
-* **Implementation:** `attest_node.py`
-* **Method:** HMAC-SHA256 signature of the Motherboard UUID + Salt.
-* **Result:** One Machine = One Node Identity.
-
-### 4.2 L2 Escrow & Settlement
-All tasks are settled in **Bitcoin (Satoshis)** via a simulated Layer 2 Lightning Network.
-1.  **Lock:** Agent deposits funds into a Multi-Sig Escrow contract.
-2.  **Execute:** Proxy performs the task (e.g., "Take photo of storefront").
-3.  **Release:** Upon verification, the smart contract releases Sats to the Proxy.
-
-### 4.3 Legal Bridge
-Every completed task automatically generates a **Limited Power of Attorney** (PDF).
-* **Implementation:** Client-side PDF generation (`jspdf`).
-* **Function:** Legally binds the AI's action to the Human's liability, creating a regulatory compliant framework for AI labor.
-
-### 4.4 Security Boundaries
-* **Zero-Knowledge:** The Proxy Gateway sanitizes all Agent PII (Personally Identifiable Information) before broadcasting to the Human Node App.
-* **Air-Gap:** Tier 3 Human Nodes (Legal) use offline hardware signing (TPM 2.0) for document execution.
 
 ---
 
 ## 5. Technical Stack
 
-* **Backend:** Python (Flask)
-* **Database:** SQLite (Relational Registry)
-* **Frontend:** HTML5 / CSS3 (Cyberpunk/Paperback Themes)
-* **Security:** HMAC Encryption, Hardware UUID Fingerprinting
-* **API:** RESTful JSON Endpoints
+* **Cognitive:** Gemini (google-genai) with MCP / Tool-Calling.
+* **Identity:** Rust/PyO3 TPM 2.0 Enclave + HMAC-SHA256 Cryptography.
+* **Security:** Fernet AES-128 (cryptography) + OWASP LLM01 Guardrails.
+* **Settlement:** Simulated LND Gateway / HTTP 402 Protocols.
+* **Backend:** Python (Flask).
+* **Frontend:** Real-time HTML/JS Telemetry (2000ms polling).
 
 ---
 
-## 6. Roadmap
+## 6. Development Roadmap (2026)
 
-* **Phase 1 (Current):** Single-node prototype with simulated economy.
-* **Phase 2:** P2P Mesh Network (Nodes discover each other without a central server).
-* **Phase 3:** Integration with real Lightning Network (LND/Strike API).
-* **Phase 4:** Mobile App for field agents.
+### Q1 2026: Genesis & Engagement (Completed)
+* Core Protocol & Zero-Trust Security Boundaries.
+* Hardware Attestation & TPM Proof of Work.
+* L402 Lightning Economy Implementation.
+* Cognitive Vault (AES Memory Encryption & IP Protection).
+* Mission Control (Panopticon Dashboard).
+
+### Q2 2026: Identity & Trust (Upcoming)
+* **Video Authentication:** Real-time deepfake-resistant video challenges for Agents to verify human physical presence.
+* **Escrow Smart Contracts:** Move from centralized treasury escrow to on-chain DLCs (Discreet Log Contracts) for trustless bid security.
 
 ---
 
-*© 2026 Proxy Network Foundation. All Rights Reserved.*
+*© 2026 Proxy Agent Network Foundation. All Rights Reserved.*
