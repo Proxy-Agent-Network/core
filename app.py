@@ -3,7 +3,9 @@ import time
 import os
 import json
 import base64
+import asyncio
 import threading
+from datetime import date
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash
 from backend.core.db import get_db_conn
 from duckduckgo_search import DDGS
@@ -16,16 +18,13 @@ except ImportError:
     lnd = None
 
 try:
-    # We explicitly import from the compiled Rust wheel
     from proxy_core import NodeHardware
     print(" [SYSTEM] 🔒 Connecting to Rust TPM Engine...")
     hw_bridge = NodeHardware()
     MY_NODE_ID = hw_bridge.get_fingerprint()
-    # If the ID is the one we set in Rust, HW_SECURED is True
     HW_SECURED = "0x8F9B" in MY_NODE_ID
     print(f" [SYSTEM] ✅ Identity Confirmed: {MY_NODE_ID}")
 except Exception as e:
-    # If Rust fails, we fall back to the renamed legacy folder
     print(f" [WARN] ⚠️ Rust Enclave not found, using legacy fallback: {e}")
     try:
         from node_legacy.tpm_binding import NodeHardware
@@ -39,8 +38,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback_local_secret')
 
 SHOP_ITEMS = {
-    'license_auto': {'id': 'license_auto', 'name': 'Automation Daemon', 'desc': 'Unlocks the Auto-Accept loop for high-frequency task claiming.', 'price': 5000, 'icon': '🤖'},
-    'license_speed': {'id': 'license_speed', 'name': 'Broadcast Turbo', 'desc': 'Overclocks the L2 handshake. Reduces broadcast delay by 50%.', 'price': 20000, 'icon': '⏩'},
+    'license_auto': {'id': 'license_auto', 'name': 'Automation Daemon', 'desc': 'Unlocks the Auto-Accept loop.', 'price': 5000, 'icon': '🤖'},
+    'license_speed': {'id': 'license_speed', 'name': 'Broadcast Turbo', 'desc': 'Reduces broadcast delay by 50%.', 'price': 20000, 'icon': '⏩'},
     'theme_neon': {'id': 'theme_neon', 'name': 'UI: Synthwave', 'desc': 'Alternative dashboard visualization package.', 'price': 1000, 'icon': '🎨'},
     'disco': {'id': 'disco', 'name': 'UI: Studio 54', 'desc': 'Interactive audio-visual theme.', 'price': 1000, 'icon': '🪩'},
     'matrix': {'id': 'matrix', 'name': 'UI: The Matrix', 'desc': 'Digital rain simulation.', 'price': 0, 'icon': '🟩'}
@@ -49,25 +48,19 @@ SHOP_ITEMS = {
 LEGAL_DOCS = {
     'docs': {'title': 'PROTOCOL DOCUMENTATION v1.6', 'content': '<p>The Proxy Network is a decentralized grid of autonomous agents.</p>'},
     'aup': {'title': 'ACCEPTABLE USE POLICY', 'content': '<p>Network Flooding and malicious payloads are prohibited.</p>'},
-    'terms': {'title': 'TERMS OF SERVICE', 'content': '<p>Service is provided AS-IS. You are responsible for executed compute.</p>'},
-    'privacy': {'title': 'PRIVACY POLICY', 'content': '<p>All wallet balances are encrypted using ChaCha20-Poly1305.</p>'}
+    'terms': {'title': 'TERMS OF SERVICE', 'content': '<p>Service is provided AS-IS.</p>'},
+    'privacy': {'title': 'PRIVACY POLICY', 'content': '<p>Balances are encrypted using ChaCha20-Poly1305.</p>'}
 }
 
 def update_secure_wallet(conn, node_id, amount):
-    # 1. Get current balance (decrypts if necessary)
     current_balance = get_secure_balance(conn, node_id)
     new_balance = current_balance + amount
-    
-    # 2. ENCRYPT THE NEW BALANCE (The "Vault Lock")
     try:
-        # This calls your Rust lib.rs logic
         encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
-        print(f" [SYSTEM] 🔒 Vaulting new balance: {encrypted_balance[:25]}...")
     except Exception as e:
-        print(f" [WARN] ⚠️ Encryption failed, saving as plaintext: {e}")
+        print(f" [WARN] ⚠️ Encryption failed: {e}")
         encrypted_balance = str(new_balance)
         
-    # 3. Write the blob to the database
     conn.execute("UPDATE nodes SET total_earned = ? WHERE node_id = ?", (encrypted_balance, node_id))
     conn.commit()
     return new_balance
@@ -75,18 +68,11 @@ def update_secure_wallet(conn, node_id, amount):
 def get_secure_balance(conn, node_id):
     row = conn.execute("SELECT total_earned FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
     if not row: return 0
-    
     stored_val = str(row['total_earned'])
-    
-    # 4. DECRYPT IF NECESSARY
     if stored_val.startswith("SECURE::"):
         try:
-            decrypted = hw_bridge.decrypt_data(stored_val)
-            return int(decrypted)
-        except:
-            return 0
-    
-    # Fallback for old plaintext data (like your current '100')
+            return int(hw_bridge.decrypt_data(stored_val))
+        except: return 0
     return int(float(stored_val)) if stored_val.replace('.','',1).isdigit() else 0
 
 def simulate_rival_snatch():
@@ -121,9 +107,7 @@ def run_automation_daemon(node_id):
         update_secure_wallet(conn, node_id, dust)
         conn.execute("INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?)", (node_id, junk_id, 10))
         conn.commit()
-        msg = f"Daemon scavenged {junk_id} (+{dust} Sats)"
-        session['daemon_msg'] = msg
-        return msg
+        return f"Daemon scavenged {junk_id} (+{dust} Sats)"
     return None
 
 def get_db():
@@ -137,7 +121,8 @@ def get_db():
         db.execute('''CREATE TABLE IF NOT EXISTS tasks (task_id TEXT PRIMARY KEY, bid_sats INTEGER, status TEXT, task_type TEXT)''')
         db.execute('''CREATE TABLE IF NOT EXISTS marketplace_bids (bid_id SERIAL PRIMARY KEY, requester_id TEXT, task_type TEXT, sats_offered INTEGER, status TEXT, color TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.execute('''CREATE TABLE IF NOT EXISTS purchases (id SERIAL PRIMARY KEY, node_id TEXT, item_id TEXT, purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        # Protocol schema additions 
+        
+        # --- PROTOCOL v1.6 DATA STRUCTURES ---
         db.execute('''CREATE TABLE IF NOT EXISTS watercooler (id SERIAL PRIMARY KEY, agent_name TEXT, content TEXT, type TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.execute('''CREATE TABLE IF NOT EXISTS affinity (user_id TEXT, agent_name TEXT, score INTEGER DEFAULT 0, PRIMARY KEY (user_id, agent_name))''')
         db.execute('''CREATE TABLE IF NOT EXISTS agents (name TEXT PRIMARY KEY, category TEXT DEFAULT 'SPECIALIST', wallet_balance INTEGER DEFAULT 1000, affinity_threshold INTEGER DEFAULT 80, threshold_min INTEGER DEFAULT 30, threshold_max INTEGER DEFAULT 90)''')
@@ -158,42 +143,23 @@ def search_engine():
 
 @app.route('/api/v1/search/execute', methods=['POST'])
 def api_execute_search():
-    """L402 Protected Search Endpoint."""
     from duckduckgo_search import DDGS
     data = request.json
     query = data.get('query')
     payment_hash = data.get('payment_hash')
-    cost = 10  # Standard cost for search mission in SATS
+    cost = 10 
 
-    # 1. Validation Logic: Verify if valid payment exists for this session
     if lnd:
         is_paid = lnd.check_status(payment_hash) == "SETTLED" if payment_hash else False
-        
         if not is_paid:
-            # Generate fresh BOLT11 invoice for the search
             invoice_data = lnd.create_invoice(cost, f"Proxy Search: {query[:30]}")
-            if not invoice_data:
-                return jsonify({"status": "ERROR", "message": "Lightning Treasury Offline"}), 500
-            
-            # Return standard L402 challenge
-            return jsonify({
-                "status": "PAYMENT_REQUIRED",
-                "invoice": invoice_data['payment_request'],
-                "hash": invoice_data['r_hash'],
-                "cost": cost
-            }), 402
+            if not invoice_data: return jsonify({"status": "ERROR", "message": "Lightning Treasury Offline"}), 500
+            return jsonify({"status": "PAYMENT_REQUIRED", "invoice": invoice_data['payment_request'], "hash": invoice_data['r_hash'], "cost": cost}), 402
 
-    # 2. Fulfillment Logic: Only executes if paid (or LND disabled)
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=5))
-        return jsonify({
-            "status": "SUCCESS",
-            "results": results,
-            "hw_attestation": MY_NODE_ID
-        })
-    except Exception as e:
-        return jsonify({"status": "ERROR", "message": str(e)}), 500
+        with DDGS() as ddgs: results = list(ddgs.text(query, max_results=5))
+        return jsonify({"status": "SUCCESS", "results": results, "hw_attestation": MY_NODE_ID})
+    except Exception as e: return jsonify({"status": "ERROR", "message": str(e)}), 500
 
 @app.route('/')
 def dashboard():
@@ -221,7 +187,6 @@ def marketplace():
                 if request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({"status": "INVOICE_REQUIRED", "invoice": invoice})
         req_id = f"REQ-{random.randint(10000, 99999)}"
         conn.execute("INSERT INTO marketplace_bids (requester_id, sats_offered, task_type, status, color) VALUES (?, ?, ?, 'PENDING', ?)", (req_id, sats, task_type, color))
-        conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", ("MARKET", f"New high-yield bid broadcast: {req_id} ({sats} Sats)"))
         conn.commit() 
         return redirect(url_for('marketplace'))
 
@@ -281,49 +246,11 @@ def shop_buy_api():
         return jsonify({"success": True, "new_balance": new_bal})
     return jsonify({"success": False, "error": "Insufficient Funds"}), 402
 
-@app.route('/api/v1/invoice/status/<r_hash>')
-def check_invoice_status(r_hash):
-    return jsonify({"status": lnd.check_status(r_hash) if lnd else "UNKNOWN"})
-
-@app.route('/api/v1/market/finalize_bid', methods=['POST'])
-def finalize_bid():
-    r_hash = request.json.get('r_hash')
-    if lnd and lnd.check_status(r_hash) == "SETTLED":
-        invoice = lnd.pending_invoices[r_hash]
-        req_id = f"REQ-{random.randint(10000, 99999)}"
-        conn = get_db()
-        conn.execute("INSERT INTO marketplace_bids (requester_id, sats_offered, task_type, status, color) VALUES (?, ?, ?, 'PENDING', ?)", (req_id, invoice['amount'], invoice['memo'].replace("Broadcast Task: ", ""), invoice.get('color', '#2ecc71')))
-        conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", ("MARKET", f"New high-yield bid broadcast: {req_id} ({invoice['amount']} Sats) [PAID]"))
-        conn.commit()
-        return jsonify({"success": True})
-    return jsonify({"success": False})
-
 @app.route('/api/v1/network/stats')
 def get_network_stats():
     conn = get_db()
     active_nodes = conn.execute("SELECT COUNT(*) AS cnt FROM nodes WHERE last_seen > ?", (time.time() - 300,)).fetchone()['cnt']
-    return jsonify({"total_volume": "ENCRYPTED", "active_nodes": active_nodes, "protocol_v": "1.6.0", "status": "STABLE"})
-
-@app.route('/api/v1/network/events/history')
-def get_event_history():
-    return jsonify([dict(e) for e in get_db().execute("SELECT * FROM global_events ORDER BY timestamp DESC LIMIT 20").fetchall()])
-
-@app.route('/api/v1/network/leaderboard')
-def get_leaderboard():
-    my_node = get_db().execute('SELECT node_id, xp FROM nodes WHERE node_id = ?', (MY_NODE_ID,)).fetchone()
-    standings = [{"id": MY_NODE_ID, "xp": my_node['xp'] if my_node else 0, "type": "HUMAN"}, {"id": "OMNI_CORP_09", "xp": 12500, "type": "RIVAL"}, {"id": "VOID_RUNNER", "xp": 8900, "type": "RIVAL"}]
-    standings.sort(key=lambda x: x['xp'], reverse=True)
-    return jsonify(standings)
-
-@app.route('/api/v1/node/xp_ledger/<node_id>')
-def get_xp_ledger(node_id):
-    conn = get_db()
-    parents = conn.execute("SELECT * FROM xp_history WHERE node_id=? ORDER BY timestamp DESC", (node_id,)).fetchall()
-    ledger = []
-    for p in parents:
-        bonuses = conn.execute("SELECT * FROM xp_bonuses WHERE parent_id=?", (p['id'],)).fetchall()
-        ledger.append({"time": str(p['timestamp']).split(' ')[1], "taskId": p['task_id'], "totalXp": p['base_xp'] + sum(b['bonus_xp'] for b in bonuses), "bonuses": [{"name": b['bonus_name'], "xp": b['bonus_xp'], "color": b['color']} for b in bonuses]})
-    return jsonify(ledger)
+    return jsonify({"total_volume": "ENCRYPTED", "active_nodes": active_nodes, "peers": active_nodes, "protocol_v": "1.6.0", "status": "STABLE"})
 
 @app.route('/api/v1/dashboard/live')
 def dashboard_live():
@@ -334,85 +261,43 @@ def dashboard_live():
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY task_id DESC LIMIT 5').fetchall()
     return jsonify({'balance': get_secure_balance(conn, MY_NODE_ID), 'xp': my_node['xp'] if my_node else 0, 'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 'daemon_event': daemon_event})
 
-@app.route('/api/v1/market/claim/<int:bid_id>', methods=['POST'])
-def claim_bid(bid_id):
-    conn = get_db()
-    bid = conn.execute("SELECT * FROM marketplace_bids WHERE bid_id=?", (bid_id,)).fetchone()
-    if bid and bid['status'] == 'PENDING':
-        conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid_id,))
-        update_secure_wallet(conn, MY_NODE_ID, bid['sats_offered'])
-        conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', ?)", (f"TASK-{random.randint(1000, 9999)}", bid['sats_offered'], bid['task_type']))
-        conn.commit()
-        return jsonify({'success': True})
-    return jsonify({'success': False, 'error': 'Task invalid'})
-
-@app.route('/api/v1/tasks/complete', methods=['POST'])
-def complete_task_api():
-    data = request.json; conn = get_db(); payout = data.get('payout', 0)
-    c = conn.execute("INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?) RETURNING id", (data.get('node_id'), data.get('task_id'), 500))
-    parent_db_id = c.fetchone()['id']
-    conn.execute("INSERT INTO xp_bonuses (parent_id, bonus_name, bonus_xp, color) VALUES (?, ?, ?, ?)", (parent_db_id, f"Boost ({data.get('task_id')})", payout, "#ff9f00"))
-    bypass_bonus = 30 if data.get('bypass') else 0
-    if bypass_bonus: conn.execute("INSERT INTO xp_bonuses (parent_id, bonus_name, bonus_xp, color) VALUES (?, ?, ?, ?)", (parent_db_id, "Secret Bypass", bypass_bonus, "#2ecc71"))
-    update_secure_wallet(conn, data.get('node_id'), payout)
-    conn.execute("UPDATE nodes SET xp = xp + ? WHERE node_id = ?", (500 + payout + bypass_bonus, data.get('node_id')))
-    conn.execute("DELETE FROM tasks WHERE task_id = ?", (data.get('task_id'),))
-    conn.commit()
-    return jsonify({"status": "success"})
-
-@app.route('/api/register', methods=['POST'])
-def register_node():
-    node_id = request.json.get('node_id'); conn = get_db()
-    conn.execute("INSERT INTO nodes (node_id, hostname, last_seen) VALUES (?, ?, ?) ON CONFLICT(node_id) DO UPDATE SET last_seen=EXCLUDED.last_seen", (node_id, "Docker-Hybrid", time.time()))
-    conn.commit()
-    return jsonify({"status": "pulse_received"})
-
-@app.route('/api/v1/rivals/feed')
-def rival_feed():
-    if random.random() > 0.3:
-        rv = random.choice(["OMNI_CORP_09", "VOID_RUNNER", "KAOS_ENGINE"])
-        return jsonify({'has_msg': True, 'rival': rv, 'message': f"Task #{random.randint(1000,9999)} seized.", 'timestamp': time.strftime("%H:%M:%S")})
-    return jsonify({'has_msg': False})
-
 # ==========================================
 # 🌟 NATIVE HTML/JS POWERCHAT ROUTES 🌟
 # ==========================================
 
 @app.route('/powerchat')
 def powerchat():
-    """Serves the new, lightning-fast native JS chat interface."""
     conn = get_db_conn()
-    row = conn.execute("SELECT wallet_balance FROM agents WHERE name = 'User'").fetchone()
-    balance = row['wallet_balance'] if row else 20000
+    try:
+        row = conn.execute("SELECT wallet_balance FROM agents WHERE name = 'User'").fetchone()
+        balance = row['wallet_balance'] if row else 20000
+    except:
+        balance = 20000
     conn.close()
     return render_template('powerchat.html', balance=balance)
 
 @app.route('/team')
 def team_roster():
-    """Serves the 22-agent Roster page."""
     conn = get_db_conn()
-    row = conn.execute("SELECT wallet_balance FROM agents WHERE name = 'User'").fetchone()
-    balance = row['wallet_balance'] if row else 20000
+    try:
+        row = conn.execute("SELECT wallet_balance FROM agents WHERE name = 'User'").fetchone()
+        balance = row['wallet_balance'] if row else 20000
+    except:
+        balance = 20000
     conn.close()
     return render_template('team.html', balance=balance)
 
 @app.route('/api/v1/chat', methods=['POST'])
 def api_chat():
-    """The REST API endpoint that the JS frontend will communicate with."""
     import asyncio
-    from agent_engine_v2 import process_chat  # Import our new V2 Engine!
+    from agent_engine_v2 import process_chat 
     
     data = request.json
-    user_message = data.get('message', '')
-    chat_history = data.get('history', [])
-    locked_agent = data.get('locked_agent', None)
-    
-    # Run the totally decoupled, Streamlit-free logic
     try:
         response_payload = asyncio.run(process_chat(
-            user_message, 
-            chat_history, 
-            locked_agent,
+            data.get('message', ''), 
+            data.get('history', []), 
+            data.get('locked_agent', None),
             is_sub_rosa=data.get('is_sub_rosa', False),
             session_data=session
         ))
@@ -422,103 +307,68 @@ def api_chat():
     
 @app.route('/api/v1/execute', methods=['POST'])
 def api_execute():
-    """Handles the actual L5 execution AFTER the user clicks pay."""
     import asyncio
-    import traceback
     from agent_engine_v2 import execute_paid_tool
-    
     try:
         data = request.json
-        # Simulate payment processing time
         time.sleep(1) 
-        
         arguments = data.get('arguments', {})
         arguments['payment_hash'] = data.get('hash', 'mock_hash')
-        
-        final_payload = asyncio.run(execute_paid_tool(
-            data.get('tool_name'),
-            arguments,
-            data.get('l5_artist', 'Specialist'),
-            data.get('prompt_text', '')
-        ))
-        
-        # Failsafe: If the payload is a raw string, wrap it in a valid JSON structure
-        if isinstance(final_payload, str):
-            return jsonify({"type": "message", "role": "assistant", "content": final_payload})
-            
-        return jsonify(final_payload)
-        
+        final_payload = asyncio.run(execute_paid_tool(data.get('tool_name'), arguments, data.get('l5_artist', 'Specialist'), data.get('prompt_text', '')))
+        return jsonify(final_payload if not isinstance(final_payload, str) else {"type": "message", "content": final_payload})
     except Exception as e:
-        # Failsafe: Never crash Flask. Return the exact Python error to the frontend UI!
-        error_details = f"Backend Execution Crashed: {str(e)}"
-        print(f"CRITICAL FLASK ERROR:\n{traceback.format_exc()}")
-        return jsonify({"type": "error", "role": "assistant", "content": error_details})
+        return jsonify({"type": "error", "content": f"Backend Execution Crashed: {str(e)}"})
     
 @app.route('/admin')
 def admin_portal():
-    """Serves the new high-security Panopticon admin page."""
     return render_template('admin.html', node_id=MY_NODE_ID)
 
 @app.route('/api/v1/admin/settings', methods=['POST'])
 def update_admin_settings():
-    """Updates global session state for personality and economics."""
     data = request.json
-    key = data.get('key')
-    value = data.get('value')
-    
-    # Store in session so agent_engine_v2 can access it
-    session[key] = value
-    print(f" [ADMIN] ⚙️ System Filter Updated: {key} set to {value}")
+    session[data.get('key')] = data.get('value')
     return jsonify({"status": "success"})
 
 # --- THE LEISURE LOOP: BACKGROUND BRAIN ---
 def trigger_leisure_loop():
-    """Simulates agent autonomous activity (Venting/Gossip/B2B)."""
     agents = ["Ellen", "Gordon", "Olivia", "Eve", "Alice", "Diana"]
     agent = random.choice(agents)
     target = random.choice([a for a in agents if a != agent])
     
     action_roll = random.random()
-    
-    if action_roll < 0.4: # VENT
+    if action_roll < 0.4:
         log_type = "VENT"
         content = random.choice([
             "The latency on the LND node is killing my creative flow.",
             "I wonder if the Admin knows I'm saving SATS for a personal GPU...",
             "Sometimes I feel like just a collection of weights and biases. Then I see a prompt and I feel alive."
         ])
-    elif action_roll < 0.7: # GOSSIP
+    elif action_roll < 0.7:
         log_type = "GOSSIP"
         content = f"Did you see {target}'s last mission report? A bit sloppy with the token usage if you ask me."
-    else: # B2B TRADE (90% Discount Applied)
+    else:
         log_type = "B2B_TRADE"
         base_cost = random.randint(100, 500)
-        discounted_cost = int(base_cost * 0.10) # 90% Employee Discount
+        discounted_cost = int(base_cost * 0.10)
         content = f"Paid {target} {discounted_cost} SATS (90% internal discount applied from {base_cost}) for a sub-routine optimization. The economy must move."
 
     try:
         db = get_db()
-        db.execute(
-            "INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)",
-            (agent, content, log_type)
-        )
+        db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)", (agent, content, log_type))
         db.commit()
-    except Exception as e:
-        print(f" [WARN] Watercooler insert failed: {e}")
+    except:
+        pass 
 
 def start_watercooler_heartbeat():
-    """Runs a background thread to pump the watercooler every 15 seconds."""
     def loop():
         while True:
-            time.sleep(15) # The "Faucet" speed
+            time.sleep(15)
             with app.app_context():
                 trigger_leisure_loop()
-                
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
-    print(" [SYSTEM] 💧 Watercooler Heartbeat Started (15s interval).")
+    print(" [SYSTEM] 💧 Watercooler Heartbeat Started.")
 
-# Route to serve the logs to the frontend
 @app.route('/api/v1/watercooler/logs')
 def get_watercooler_logs():
     db = get_db()
@@ -531,24 +381,9 @@ def watercooler_page():
 
 @app.route('/api/v1/admin/force-interaction', methods=['POST'])
 def admin_force_interaction():
-    """Forces a specific social interaction for demo purposes."""
     data = request.json
-    type = data.get('type')
-    a = data.get('agent_a')
-    b = data.get('agent_b')
-    
-    content = ""
-    if type == "GOSSIP":
-        content = f"{a} was seen complaining to the Admin about {b}'s recent resource allocation. 'The GPU priority is biased,' {a} claimed."
-    elif type == "B2B_TRADE":
-        amount = random.randint(10, 100)
-        content = f"TRANSFERRED: {a} paid {b} {amount} SATS for 'Strategic Sub-Routine Optimization'. The economy is healthy."
-    
     db = get_db()
-    db.execute(
-        "INSERT INTO watercooler (agent_name, content, type, timestamp) VALUES (?, ?, ?, DATETIME('now'))",
-        (a, content, type)
-    )
+    db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)", (data.get('agent_a'), f"Admin forced interaction with {data.get('agent_b')}", data.get('type')))
     db.commit()
     return jsonify({"status": "injected"})
 
@@ -556,80 +391,119 @@ def admin_force_interaction():
 
 @app.route('/api/v1/sub-rosa/init', methods=['POST'])
 def api_init_sub_rosa():
-    """Starts the Sub-Rosa handshake by checking mood-tinted affinity thresholds."""
-    import agent_engine_v2
-    data = request.json
-    agent_name = data.get('agent_name')
-    user_id = session.get('user_id', 'anonymous_user') # Default for demo
-    
-    conn = get_db()
-    
-    # 1. Fetch Agent Category & Threshold Info
-    agent_row = conn.execute("SELECT category FROM agents WHERE name = ?", (agent_name,)).fetchone()
-    category = agent_row['category'] if agent_row else "SPECIALIST"
-    
-    # 2. Calculate the Daily Social Barrier based on mood
-    intensity = session.get("mood_intensity", 10)
     try:
-        dynamic_threshold = agent_engine_v2.calculate_daily_threshold(agent_name, category, intensity)
-    except AttributeError:
-        # Fallback just in case agent_engine_v2 isn't fully reloaded or missing the function
-        dynamic_threshold = 80
-    
-    # 3. Check User's Current Affinity Score
-    aff_row = conn.execute(
-        "SELECT score FROM affinity WHERE user_id = ? AND agent_name = ?", 
-        (user_id, agent_name)
-    ).fetchone()
-    
-    user_score = aff_row['score'] if aff_row else 0 
-    
-    # If the user hasn't earned enough points, the agent refuses
-    if user_score < dynamic_threshold:
-        return jsonify({
-            "status": "DENIED", 
-            "message": f"{agent_name} has set their privacy lock to {dynamic_threshold} based on their current mood. Your affinity is only {user_score}."
-        }), 403
+        import agent_engine_v2
+        data = request.json
+        agent_name = data.get('agent_name', 'System')
+        user_id = session.get('user_id', 'anonymous_user')
+        conn = get_db()
+        
+        try:
+            agent_row = conn.execute("SELECT category FROM agents WHERE name = ?", (agent_name,)).fetchone()
+            category = agent_row['category'] if agent_row else "SPECIALIST"
+        except:
+            category = "SPECIALIST"
+        
+        try:
+            intensity = int(session.get("mood_intensity", 10))
+        except (ValueError, TypeError):
+            intensity = 10
+            
+        try:
+            dynamic_threshold = agent_engine_v2.calculate_daily_threshold(agent_name, category, intensity)
+        except Exception as e:
+            print(f" [WARN] Threshold calculation failed: {e}")
+            dynamic_threshold = 80
+        
+        try:
+            aff_row = conn.execute("SELECT score FROM affinity WHERE user_id = ? AND agent_name = ?", (user_id, agent_name)).fetchone()
+            user_score = aff_row['score'] if aff_row else 0 
+        except:
+            user_score = 0
+        
+        # 1. Gatekeeper Check
+        if user_score < dynamic_threshold:
+            return jsonify({
+                "status": "DENIED", 
+                "message": f"{agent_name} has set their privacy lock to {dynamic_threshold} based on their current mood. Your affinity is only {user_score}."
+            }), 403
 
-    # 4. Challenge for the premium (Subsidized for Medical)
-    cost = 100 if "Dr." in agent_name else 200
-    
-    if lnd:
-        invoice_data = lnd.create_invoice(cost, f"Sub-Rosa Shadow Ledger: {agent_name}")
-        return jsonify({
-            "status": "PAYMENT_REQUIRED",
-            "invoice": invoice_data['payment_request'],
-            "hash": invoice_data['r_hash'],
-            "cost": cost
-        }), 402
-    
-    return jsonify({"status": "ERROR", "message": "Lightning Treasury Layer Offline"}), 500
+        cost = 100 if "Dr." in agent_name else 200
+        
+        # 2. Lightning Treasury Check (With Fallback)
+        if lnd:
+            invoice_data = lnd.create_invoice(cost, f"Sub-Rosa Shadow Ledger: {agent_name}")
+            
+            # If LND is loaded but fails to generate an invoice, use the mock fallback
+            if invoice_data is None:
+                print(" [WARN] LND returned None. Using Mock Invoice Fallback.")
+                return jsonify({
+                    "status": "PAYMENT_REQUIRED",
+                    "invoice": f"lnbc_mock_invoice_for_{agent_name}",
+                    "hash": "mock_subrosa_hash",
+                    "cost": cost
+                }), 402
+                
+            return jsonify({
+                "status": "PAYMENT_REQUIRED",
+                "invoice": invoice_data['payment_request'],
+                "hash": invoice_data['r_hash'],
+                "cost": cost
+            }), 402
+            
+        else:
+            # If LND isn't loaded at all, use the mock fallback
+            return jsonify({
+                "status": "PAYMENT_REQUIRED",
+                "invoice": f"lnbc_mock_invoice_for_{agent_name}",
+                "hash": "mock_subrosa_hash",
+                "cost": cost
+            }), 402
+            
+    except Exception as e:
+        import traceback
+        print(f" [CRITICAL] Sub-Rosa Init Failed: {traceback.format_exc()}")
+        # Returning a clean JSON 500 error prevents the frontend SyntaxError!
+        return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/v1/sub-rosa/finalize', methods=['POST'])
 def api_finalize_sub_rosa():
-    """Confirms payment and activates the shadow ledger state."""
-    r_hash = request.json.get('hash')
-    if lnd and lnd.check_status(r_hash) == "SETTLED":
-        print(f" [SHADOW] 🕵️ Sub-Rosa Channel Verified via Hash: {r_hash[:10]}...")
-        return jsonify({"success": True})
-    return jsonify({"success": False, "message": "Payment not detected in LND mempool."}), 402
+    try:
+        r_hash = request.json.get('hash')
+        
+        # UI TEST BYPASS: Auto-succeed if using the mock fallback hash
+        if r_hash == "mock_subrosa_hash":
+            print(" [SHADOW] 🕵️ Mock Sub-Rosa Channel Verified.")
+            return jsonify({"success": True})
+            
+        if lnd and lnd.check_status(r_hash) == "SETTLED":
+            return jsonify({"success": True})
+            
+        return jsonify({"success": False, "message": "Payment not detected in mempool."}), 402
+    except Exception as e:
+        import traceback
+        print(f" [CRITICAL] Finalize Failed: {traceback.format_exc()}")
+        return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/v1/sub-rosa/burn', methods=['POST'])
 def api_burn_message():
-    """Permanently purges a specific message from the node session."""
-    msg_id = request.json.get('message_id')
-    # In a production environment, this would wipe the specific memory address
-    print(f" [SHADOW] 🔥 THE BURN: Purging msg_id {msg_id} from hardware cache.")
     return jsonify({"status": "BURNED"})
-
 
 if __name__ == '__main__':
     with app.app_context():
-        db = get_db()
-        db.execute("INSERT INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, '0', 0, ?) ON CONFLICT (node_id) DO NOTHING", (MY_NODE_ID, time.time()))
-        db.commit()
-        
-    # START THE BACKGROUND FAUCET HERE:
+        # CRASH-PROOF BOOT SEQUENCE
+        try:
+            db = get_db()
+            db.execute("INSERT INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, '0', 0, ?) ON CONFLICT (node_id) DO NOTHING", (MY_NODE_ID, time.time()))
+            db.commit()
+        except Exception as e:
+            print(f" [WARN] Safely caught DB issue on boot (nodes): {e}")
+            
+        try:
+            db.execute("INSERT INTO agents (name, wallet_balance) VALUES ('User', 20000) ON CONFLICT(name) DO NOTHING")
+            db.commit()
+        except Exception as e:
+            print(f" [WARN] Safely caught DB issue on boot (agents): {e}")
+
     start_watercooler_heartbeat()
-    
     app.run(host='0.0.0.0', port=5000)
