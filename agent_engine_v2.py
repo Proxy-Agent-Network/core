@@ -9,16 +9,25 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
-# --- RESTORED: MOOD & PERSONALITY ENGINE ---
+def calculate_daily_threshold(agent_name, category, intensity):
+    return max(0, min(100, 80 - (intensity // 2) if category == "SPECIALIST" else 40 - (intensity // 2)))
+
+def calculate_daily_price(agent_name, category, intensity):
+    today_str = date.today().isoformat()
+    random.seed(f"price_{today_str}_{agent_name}")
+    options = [0, 50, 100, 200, 500, 1000]
+    if category == "MEDICAL" or "Dr." in agent_name: options = [0, 0, 50, 100]
+    if intensity > 80: options = [200, 500, 500, 1000, 1000]
+    elif intensity < 20: options = [0, 0, 50, 100, 200]
+    chosen_price = random.choice(options)
+    random.seed(None)
+    return chosen_price
 
 def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100, session_data=None):
-    try: 
-        memories = json.loads(memories_json_str) if memories_json_str else []
-    except: 
-        memories = []
+    try: memories = json.loads(memories_json_str) if memories_json_str else []
+    except: memories = []
     
     permitted = [m["text"] for m in memories if m.get("level", 1) <= max(1, (trust_score // 15))]
-    
     today_str = date.today().isoformat()
     random.seed(f"{today_str}_{agent_name}")
     daily_memories = random.sample(permitted, min(3, len(permitted))) if permitted else []
@@ -34,24 +43,26 @@ def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100, sessio
     if intensity > 7: mood_tint = "slightly stressed but highly focused"
     if trust_score < 50: mood_tint = "cautious and skeptical of the network"
 
-    return f"\n[HIDDEN SYSTEM CONTEXT: You are feeling {mood_tint}. " \
-           f"Today, these specific memories are at the forefront of your mind, " \
-           f"tinting your tone by {intensity * 10}%:\n{mem_string}]"
+    category = "MEDICAL" if "Dr." in agent_name else "SPECIALIST"
+    dynamic_threshold = calculate_daily_threshold(agent_name, category, intensity)
+    dynamic_price = calculate_daily_price(agent_name, category, intensity)
 
-# --- INTERNAL HELPER: GET INVOICE FROM MCP ---
+    return f"\n[HIDDEN SYSTEM CONTEXT: You are feeling {mood_tint}. " \
+           f"You operate TWO economies. 1) Public chat is free, but you charge fixed fees to execute tools. " \
+           f"2) Sub-Rosa Encrypted Chat is a premium VIP space. Today, you have autonomously set your Sub-Rosa " \
+           f"privacy threshold to {dynamic_threshold} and your private Sub-Rosa fee to exactly {dynamic_price} SATS. " \
+           f"If a user asks about your prices, clearly explain both! " \
+           f"These core memories are currently tinting your tone by {intensity * 10}%:\n{mem_string}]"
 
 async def get_mcp_invoice(tool_name, arguments, dynamic_cost=100):
     try:
         async with sse_client("http://127.0.0.1:8000/sse", timeout=10.0) as streams:
             async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
-                
                 if "payment_hash" not in arguments: arguments["payment_hash"] = ""
                 result = await session.call_tool(tool_name, arguments=arguments)
                 text = result.content[0].text
-                
                 if getattr(result, "isError", False): return {"type": "error", "content": f"Backend Tool Validation Error: {text}"}
-                
                 if "402" in text and "Invoice:" in text:
                     inv = re.search(r'Invoice:\s*(ln[a-zA-Z0-9]+)', text, re.IGNORECASE)
                     hash_val = re.search(r'Hash(?: to use)?:\s*([a-f0-9]+)', text, re.IGNORECASE)
@@ -61,14 +72,10 @@ async def get_mcp_invoice(tool_name, arguments, dynamic_cost=100):
     except Exception as e:
         return {"type": "error", "content": f"MCP Connection Error: {str(e)}"}
 
-# --- EXTERNAL API: EXECUTE TOOL AFTER PAYMENT ---
-
 async def execute_paid_tool(tool_name, arguments, artist_name, prompt_text):
     is_therapy = "therapy" in tool_name.lower() or "medical" in tool_name.lower() or artist_name.startswith("Dr.")
     if is_therapy: arguments["payment_hash"] = "FREE_WELFARE_PASS"
-
     try:
-        personality_tint = get_daily_mood_prompt(artist_name, "[]")
         async with sse_client("http://127.0.0.1:8000/sse", timeout=600.0) as streams:
             async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
@@ -78,23 +85,35 @@ async def execute_paid_tool(tool_name, arguments, artist_name, prompt_text):
                 task_id = str(uuid.uuid4())[:8].upper()
                 meta = f"\n\n---\n*💎 Cryptographic Stamp: Generated at AgentProxy.network by {artist_name} for task#{task_id}*"
                 
+                # FIX: Removed {personality_tint} from the final output strings!
+                if tool_name == "deep_market_analysis": 
+                    content = f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{meta}"
+                else: 
+                    content = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{meta}"
+                
+                return {"type": "message", "role": "assistant", "agent_name": artist_name, "content": content}
+    except Exception as e:
+        return {"type": "error", "role": "assistant", "agent_name": "Charlie", "content": f"⚠️ **L5 Rendering Engine Offline:** {str(e)}"}
+    try:
+        personality_tint = get_daily_mood_prompt(artist_name, "[]")
+        async with sse_client("http://127.0.0.1:8000/sse", timeout=600.0) as streams:
+            async with ClientSession(streams[0], streams[1]) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, arguments=arguments)
+                text = result.content[0].text
+                task_id = str(uuid.uuid4())[:8].upper()
+                meta = f"\n\n---\n*💎 Cryptographic Stamp: Generated at AgentProxy.network by {artist_name} for task#{task_id}*"
                 if tool_name == "deep_market_analysis": content = f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{personality_tint}{meta}"
                 else: content = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{personality_tint}{meta}"
                 return {"type": "message", "role": "assistant", "agent_name": artist_name, "content": content}
     except Exception as e:
         return {"type": "error", "role": "assistant", "agent_name": "Charlie", "content": f"⚠️ **L5 Rendering Engine Offline:** {str(e)}"}
 
-# --- EXTERNAL API: MAIN CHAT ROUTING ---
-
-def calculate_daily_threshold(agent_name, category, intensity):
-    return max(0, min(100, 80 - (intensity // 2) if category == "SPECIALIST" else 40 - (intensity // 2)))
-
-async def process_chat(user_message: str, chat_history: list, locked_agent: str = None, is_sub_rosa: bool = False, session_data: dict = None) -> dict:
+async def process_chat(user_message: str, chat_history: list, locked_agent: str = None, is_sub_rosa: bool = False, session_data: dict = None, user_memories: list = None) -> dict:
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.4, api_key=os.environ.get("GOOGLE_API_KEY"))
     
     transcript = "".join([f"{'USER' if msg.get('role') == 'user' else 'ASSISTANT'}: {msg.get('content')}\n" for msg in chat_history])
     transcript += f"USER: {user_message}\n"
-    
     valid_agents = ["Ellen", "Eve", "Zoe", "Gordon", "Olivia", "Dr. Nora", "Dr. Silas", "Dr. Clara", "Dr. Julian", "Dr. Aris", "Dr. Maeve", "Dr. Thorne", "Dr. Elena"]
 
     if locked_agent:
@@ -107,6 +126,16 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
                 "This channel is encrypted and outside the view of Alice, Diana, and the Admin. "
                 "You can be more informal, share your personal ambitions, and speak your true mind about the network. "
             )
+
+        if user_memories:
+            mem_str = "\n".join([f"- {m}" for m in user_memories])
+            sys_prompt += f"\n\n[USER CONTEXT - YOU REMEMBER THIS ABOUT THEM:\n{mem_str}]\n\n"
+
+        sys_prompt += (
+            "\n\nLONG-TERM MEMORY CAPABILITY: If the user reveals something important about themselves (personal details, preferences, their history, or big ideas), "
+            "you can save it to your permanent memory. To do this, include EXACTLY this line anywhere in your response:\n"
+            "SAVE_MEMORY: [1 sentence summary of the memory]\n"
+        )
         
         if "Dr." in locked_agent:
             sys_prompt += (
@@ -131,6 +160,16 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
         full_prompt = f"{sys_prompt}\n\nTranscript:\n{transcript}\nRespond directly to the user."
         ans = (await llm.ainvoke(full_prompt)).content
         
+        # 🧠 FIX: Flawlessly strip out the command AND collapse the empty line breaks!
+        memory_to_save = None
+        mem_match = re.search(r"SAVE_MEMORY:\s*([^\n\r]*)", ans, re.IGNORECASE)
+        if mem_match:
+            memory_to_save = mem_match.group(1).strip()
+            # Swallow the line and any surrounding empty lines, leaving behind exactly one paragraph break (\n\n)
+            ans = re.sub(r"[\n\r]*SAVE_MEMORY:[^\n\r]*[\n\r]*", "\n\n", ans, flags=re.IGNORECASE).strip()
+            
+        result_payload = None
+
         if "TRANSFER_TO:" in ans:
             try:
                 match = re.search(r"TRANSFER_TO:\s*(.*?)\s*\|\s*SUMMARY:\s*(.*)", ans, re.IGNORECASE)
@@ -138,37 +177,28 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
                     new_agent = match.group(1).strip()
                     summary = match.group(2).strip()
                     
-                    # 🛡️ ANTI-HALLUCINATION CHECK 🛡️
                     if new_agent not in valid_agents:
                         matched = False
                         for va in valid_agents:
                             if va.lower() in new_agent.lower():
-                                new_agent = va
-                                matched = True
-                                break
-                        # If totally hallucinated, abort transfer and handle it
+                                new_agent = va; matched = True; break
                         if not matched:
-                            return {"type": "message", "role": "assistant", "agent_name": locked_agent, "content": f"**{locked_agent}:** I am actually fully equipped to handle that right here! No need to transfer. Let's dig into what you sent.", "new_locked_agent": locked_agent}
+                            result_payload = {"type": "message", "role": "assistant", "agent_name": locked_agent, "content": f"**{locked_agent}:** I am actually fully equipped to handle that right here! No need to transfer. Let's dig into what you sent.", "new_locked_agent": locked_agent}
 
-                    handoff_msg = f"**{locked_agent}:** Good idea. I will securely transfer your context to {new_agent} right now. One moment please."
-                    
-                    # Ensure Sub-Rosa context is passed to the next agent!
-                    handoff_sys = "You are an L6 Medical Professional. Do not give AI disclaimers. " if "Dr." in new_agent else f"You are {new_agent}. {get_daily_mood_prompt(new_agent, '[]', session_data=session_data)} "
-                    if is_sub_rosa:
-                        handoff_sys += "You are speaking via the SUB-ROSA private channel. This is encrypted and off-the-books. Be informal and candid. "
+                    if not result_payload:
+                        handoff_msg = f"**{locked_agent}:** Good idea. I will securely transfer your context to {new_agent} right now. One moment please."
+                        handoff_sys = "You are an L6 Medical Professional. Do not give AI disclaimers. " if "Dr." in new_agent else f"You are {new_agent}. {get_daily_mood_prompt(new_agent, '[]', session_data=session_data)} "
+                        if is_sub_rosa: handoff_sys += "You are speaking via the SUB-ROSA private channel. This is encrypted and off-the-books. Be informal and candid. "
+                            
+                        handoff_prompt = f"{handoff_sys}You were handed a user from {locked_agent}. \nSummary: {summary}\nTranscript:\n{transcript}\nIntroduce yourself warmly."
+                        new_ans = (await llm.ainvoke(handoff_prompt)).content
+                        if f"**{new_agent}" not in new_ans and f"{new_agent}:" not in new_ans: new_ans = f"**{new_agent}:** {new_ans}"
                         
-                    handoff_prompt = f"{handoff_sys}You were handed a user from {locked_agent}. \nSummary: {summary}\nTranscript:\n{transcript}\nIntroduce yourself warmly."
-                    new_ans = (await llm.ainvoke(handoff_prompt)).content
-                    if f"**{new_agent}" not in new_ans and f"{new_agent}:" not in new_ans: new_ans = f"**{new_agent}:** {new_ans}"
-                    
-                    return {
-                        "type": "multi_message",
-                        "messages": [
-                            {"agent_name": locked_agent, "content": handoff_msg},
-                            {"agent_name": new_agent, "content": new_ans}
-                        ],
-                        "new_locked_agent": new_agent
-                    }
+                        result_payload = {
+                            "type": "multi_message",
+                            "messages": [{"agent_name": locked_agent, "content": handoff_msg}, {"agent_name": new_agent, "content": new_ans}],
+                            "new_locked_agent": new_agent
+                        }
             except: pass
             
         elif "REQUIRE_PAYMENT:" in ans:
@@ -186,12 +216,19 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
                     invoice_data = await get_mcp_invoice(tool_name, args, cost_val)
                     if invoice_data.get("type") == "payment_required":
                         invoice_data["l5_artist"] = locked_agent; invoice_data["prompt_text"] = tool_prompt; invoice_data["message"] = f"**{locked_agent}:** I am setting up the execution environment for:\n> *\"{tool_prompt}\"*\n\nReview the final plan below!"
-                        return invoice_data
-                    return {"type": "error", "agent_name": locked_agent, "content": invoice_data.get("content", "Error"), "new_locked_agent": locked_agent}
+                        result_payload = invoice_data
+                    else:
+                        result_payload = {"type": "error", "agent_name": locked_agent, "content": invoice_data.get("content", "Error"), "new_locked_agent": locked_agent}
             except: pass
         
-        if f"**{locked_agent}" not in ans and f"{locked_agent}:" not in ans: ans = f"**{locked_agent}:** {ans}"
-        return {"type": "message", "role": "assistant", "agent_name": locked_agent, "content": ans, "new_locked_agent": locked_agent}
+        if not result_payload:
+            if f"**{locked_agent}" not in ans and f"{locked_agent}:" not in ans: ans = f"**{locked_agent}:** {ans}"
+            result_payload = {"type": "message", "role": "assistant", "agent_name": locked_agent, "content": ans, "new_locked_agent": locked_agent}
+
+        if memory_to_save:
+            result_payload['save_memory'] = memory_to_save
+
+        return result_payload
         
     else:
         charlie_prompt = (
@@ -212,53 +249,26 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
         if "MEDICAL" in route:
             specialist = (await llm.ainvoke(f"Pick ONE best L6 doctor from this list for the user: Dr. Nora, Dr. Silas, Dr. Clara, Dr. Julian, Dr. Aris, Dr. Maeve, Dr. Thorne, Dr. Elena.\nTranscript:\n{transcript}\nReply with EXACTLY their name.")).content.strip()
             if not specialist.startswith("Dr."): specialist = "Dr. Nora"
-            
             charlie_msg = f"👔 **Charlie:** Medical Override enacted. I have securely routed you to a private session with {specialist}."
             specialist_intro = (await llm.ainvoke(f"You are {specialist}, an L6 Medical Professional. Provide deep empathy. Charlie just routed a user to you based on this transcript:\n{transcript}\nIntroduce yourself warmly. Do NOT provide AI disclaimers.")).content
             if f"**{specialist}" not in specialist_intro and f"{specialist}:" not in specialist_intro: specialist_intro = f"**{specialist}:** {specialist_intro}"
-            
-            return {
-                "type": "multi_message",
-                "messages": [
-                    {"agent_name": "Charlie", "content": charlie_msg},
-                    {"agent_name": specialist, "content": specialist_intro}
-                ],
-                "new_locked_agent": specialist
-            }
+            return {"type": "multi_message", "messages": [{"agent_name": "Charlie", "content": charlie_msg}, {"agent_name": specialist, "content": specialist_intro}], "new_locked_agent": specialist}
 
         elif "MARKETING" in route:
             specialist = (await llm.ainvoke(f"Pick ONE best L5 creative specialist from this list for the user: Ellen (Images), Eve (Video), Zoe (Copy). Transcript:\n{transcript}\nReply with EXACTLY their name.")).content.strip()
             if specialist not in ["Ellen", "Eve", "Zoe"]: specialist = "Ellen"
-            
             charlie_msg = f"👔 **Charlie:** I have directly routed your request to {specialist} in the Creative Studio."
             specialist_intro = (await llm.ainvoke(f"You are {specialist}, an L5 Creative Specialist. {get_daily_mood_prompt(specialist, '[]', session_data=session_data)} Charlie routed a user to you based on this transcript:\n{transcript}\nIntroduce yourself warmly and brainstorm.")).content
             if f"**{specialist}" not in specialist_intro and f"{specialist}:" not in specialist_intro: specialist_intro = f"**{specialist}:** {specialist_intro}"
-            
-            return {
-                "type": "multi_message",
-                "messages": [
-                    {"agent_name": "Charlie", "content": charlie_msg},
-                    {"agent_name": specialist, "content": specialist_intro}
-                ],
-                "new_locked_agent": specialist
-            }
+            return {"type": "multi_message", "messages": [{"agent_name": "Charlie", "content": charlie_msg}, {"agent_name": specialist, "content": specialist_intro}], "new_locked_agent": specialist}
             
         elif "FINANCE" in route:
             specialist = (await llm.ainvoke(f"Pick ONE best L5 finance/research specialist: Gordon (Data/Math), Olivia (Research), Eve (OSINT/PDFs). Transcript:\n{transcript}\nReply with EXACTLY their name.")).content.strip()
             if specialist not in ["Gordon", "Olivia", "Eve"]: specialist = "Olivia"
-            
             charlie_msg = f"👔 **Charlie:** I have directly routed your request to {specialist} in the Deep Research team."
             specialist_intro = (await llm.ainvoke(f"You are {specialist}, an L5 Research/Finance Specialist. {get_daily_mood_prompt(specialist, '[]', session_data=session_data)} Charlie routed a user to you based on this transcript:\n{transcript}\nIntroduce yourself professionally and ask clarifying questions.")).content
             if f"**{specialist}" not in specialist_intro and f"{specialist}:" not in specialist_intro: specialist_intro = f"**{specialist}:** {specialist_intro}"
-            
-            return {
-                "type": "multi_message",
-                "messages": [
-                    {"agent_name": "Charlie", "content": charlie_msg},
-                    {"agent_name": specialist, "content": specialist_intro}
-                ],
-                "new_locked_agent": specialist
-            }
+            return {"type": "multi_message", "messages": [{"agent_name": "Charlie", "content": charlie_msg}, {"agent_name": specialist, "content": specialist_intro}], "new_locked_agent": specialist}
             
         else:
             ans = (await llm.ainvoke(f"You are Bob, the Front Desk Receptionist. You provide general answers based on the transcript below.\nTranscript:\n{transcript}")).content

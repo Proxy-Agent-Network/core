@@ -126,6 +126,9 @@ def get_db():
         db.execute('''CREATE TABLE IF NOT EXISTS watercooler (id SERIAL PRIMARY KEY, agent_name TEXT, content TEXT, type TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.execute('''CREATE TABLE IF NOT EXISTS affinity (user_id TEXT, agent_name TEXT, score INTEGER DEFAULT 0, PRIMARY KEY (user_id, agent_name))''')
         db.execute('''CREATE TABLE IF NOT EXISTS agents (name TEXT PRIMARY KEY, category TEXT DEFAULT 'SPECIALIST', wallet_balance INTEGER DEFAULT 1000, affinity_threshold INTEGER DEFAULT 80, threshold_min INTEGER DEFAULT 30, threshold_max INTEGER DEFAULT 90)''')
+        
+        # 🧠 CORE MEMORY TABLE
+        db.execute('''CREATE TABLE IF NOT EXISTS agent_memories (id SERIAL PRIMARY KEY, user_id TEXT, agent_name TEXT, memory_text TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.commit()
     return db
 
@@ -293,14 +296,42 @@ def api_chat():
     from agent_engine_v2 import process_chat 
     
     data = request.json
+    user_message = data.get('message', '')
+    chat_history = data.get('history', [])
+    locked_agent = data.get('locked_agent', None)
+    is_sub_rosa = data.get('is_sub_rosa', False)
+    user_id = session.get('user_id', 'anonymous_user')
+    
+    # 🧠 FETCH PREVIOUS MEMORIES FOR THIS USER
+    conn = get_db()
+    user_memories = []
+    if locked_agent:
+        try:
+            # Get the 5 most recent core memories
+            rows = conn.execute("SELECT memory_text FROM agent_memories WHERE user_id = ? AND agent_name = ? ORDER BY timestamp DESC LIMIT 5", (user_id, locked_agent)).fetchall()
+            user_memories = [r['memory_text'] for r in rows]
+        except Exception as e:
+            print(f" [WARN] Failed to fetch memories: {e}")
+    
     try:
         response_payload = asyncio.run(process_chat(
-            data.get('message', ''), 
-            data.get('history', []), 
-            data.get('locked_agent', None),
-            is_sub_rosa=data.get('is_sub_rosa', False),
-            session_data=session
+            user_message, 
+            chat_history, 
+            locked_agent,
+            is_sub_rosa=is_sub_rosa,
+            session_data=session,
+            user_memories=user_memories
         ))
+        
+        # 🧠 SAVE NEW MEMORIES IF THE AGENT TRIGGERED THE COMMAND
+        if response_payload.get('save_memory') and locked_agent:
+            try:
+                conn.execute("INSERT INTO agent_memories (user_id, agent_name, memory_text) VALUES (?, ?, ?)", (user_id, locked_agent, response_payload['save_memory']))
+                conn.commit()
+                print(f" [SYSTEM] 🧠 {locked_agent} successfully logged a core memory: {response_payload['save_memory']}")
+            except Exception as e:
+                print(f" [WARN] DB Error saving memory: {e}")
+                
         return jsonify(response_payload)
     except Exception as e:
         return jsonify({"type": "message", "role": "assistant", "content": f"⚠️ Core Engine Error: {str(e)}"})
@@ -329,7 +360,6 @@ def update_admin_settings():
     session[data.get('key')] = data.get('value')
     return jsonify({"status": "success"})
 
-# --- THE LEISURE LOOP: BACKGROUND BRAIN ---
 def trigger_leisure_loop():
     agents = ["Ellen", "Gordon", "Olivia", "Eve", "Alice", "Diana"]
     agent = random.choice(agents)
@@ -421,68 +451,37 @@ def api_init_sub_rosa():
         except:
             user_score = 0
         
-        # 1. Gatekeeper Check
         if user_score < dynamic_threshold:
-            return jsonify({
-                "status": "DENIED", 
-                "message": f"{agent_name} has set their privacy lock to {dynamic_threshold} based on their current mood. Your affinity is only {user_score}."
-            }), 403
+            return jsonify({"status": "DENIED", "message": f"{agent_name} has set their privacy lock to {dynamic_threshold} based on their current mood. Your affinity is only {user_score}."}), 403
 
-        cost = 100 if "Dr." in agent_name else 200
+        try:
+            cost = agent_engine_v2.calculate_daily_price(agent_name, category, intensity)
+        except Exception as e:
+            cost = 100 if "Dr." in agent_name else 200
+
+        if cost == 0:
+            print(f" [SHADOW] 🕵️ {agent_name} has waived their fee today. Instantly approving channel.")
+            return jsonify({"status": "APPROVED", "message": f"{agent_name} decided to waive their fee today! Encryption established.", "cost": 0}), 200
         
-        # 2. Lightning Treasury Check (With Fallback)
         if lnd:
             invoice_data = lnd.create_invoice(cost, f"Sub-Rosa Shadow Ledger: {agent_name}")
-            
-            # If LND is loaded but fails to generate an invoice, use the mock fallback
             if invoice_data is None:
-                print(" [WARN] LND returned None. Using Mock Invoice Fallback.")
-                return jsonify({
-                    "status": "PAYMENT_REQUIRED",
-                    "invoice": f"lnbc_mock_invoice_for_{agent_name}",
-                    "hash": "mock_subrosa_hash",
-                    "cost": cost
-                }), 402
-                
-            return jsonify({
-                "status": "PAYMENT_REQUIRED",
-                "invoice": invoice_data['payment_request'],
-                "hash": invoice_data['r_hash'],
-                "cost": cost
-            }), 402
-            
+                return jsonify({"status": "PAYMENT_REQUIRED", "invoice": f"lnbc_mock_invoice_for_{agent_name}", "hash": "mock_subrosa_hash", "cost": cost}), 402
+            return jsonify({"status": "PAYMENT_REQUIRED", "invoice": invoice_data['payment_request'], "hash": invoice_data['r_hash'], "cost": cost}), 402
         else:
-            # If LND isn't loaded at all, use the mock fallback
-            return jsonify({
-                "status": "PAYMENT_REQUIRED",
-                "invoice": f"lnbc_mock_invoice_for_{agent_name}",
-                "hash": "mock_subrosa_hash",
-                "cost": cost
-            }), 402
+            return jsonify({"status": "PAYMENT_REQUIRED", "invoice": f"lnbc_mock_invoice_for_{agent_name}", "hash": "mock_subrosa_hash", "cost": cost}), 402
             
     except Exception as e:
-        import traceback
-        print(f" [CRITICAL] Sub-Rosa Init Failed: {traceback.format_exc()}")
-        # Returning a clean JSON 500 error prevents the frontend SyntaxError!
         return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/v1/sub-rosa/finalize', methods=['POST'])
 def api_finalize_sub_rosa():
     try:
         r_hash = request.json.get('hash')
-        
-        # UI TEST BYPASS: Auto-succeed if using the mock fallback hash
-        if r_hash == "mock_subrosa_hash":
-            print(" [SHADOW] 🕵️ Mock Sub-Rosa Channel Verified.")
-            return jsonify({"success": True})
-            
-        if lnd and lnd.check_status(r_hash) == "SETTLED":
-            return jsonify({"success": True})
-            
+        if r_hash == "mock_subrosa_hash": return jsonify({"success": True})
+        if lnd and lnd.check_status(r_hash) == "SETTLED": return jsonify({"success": True})
         return jsonify({"success": False, "message": "Payment not detected in mempool."}), 402
     except Exception as e:
-        import traceback
-        print(f" [CRITICAL] Finalize Failed: {traceback.format_exc()}")
         return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/v1/sub-rosa/burn', methods=['POST'])
@@ -491,7 +490,6 @@ def api_burn_message():
 
 if __name__ == '__main__':
     with app.app_context():
-        # CRASH-PROOF BOOT SEQUENCE
         try:
             db = get_db()
             db.execute("INSERT INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, '0', 0, ?) ON CONFLICT (node_id) DO NOTHING", (MY_NODE_ID, time.time()))
@@ -503,7 +501,7 @@ if __name__ == '__main__':
             db.execute("INSERT INTO agents (name, wallet_balance) VALUES ('User', 20000) ON CONFLICT(name) DO NOTHING")
             db.commit()
         except Exception as e:
-            print(f" [WARN] Safely caught DB issue on boot (agents): {e}")
+            pass
 
     start_watercooler_heartbeat()
     app.run(host='0.0.0.0', port=5000)
