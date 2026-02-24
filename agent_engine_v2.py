@@ -4,7 +4,7 @@ import uuid
 import asyncio
 import json
 import random
-from datetime import date
+from datetime import date, timedelta
 from langchain_google_genai import ChatGoogleGenerativeAI
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
@@ -12,9 +12,11 @@ from mcp.client.session import ClientSession
 def calculate_daily_threshold(agent_name, category, intensity):
     return max(0, min(100, 80 - (intensity // 2) if category == "SPECIALIST" else 40 - (intensity // 2)))
 
-def calculate_daily_price(agent_name, category, intensity):
-    today_str = date.today().isoformat()
-    random.seed(f"price_{today_str}_{agent_name}")
+def calculate_daily_price(agent_name, category, intensity, target_date=None):
+    if not target_date: 
+        target_date = date.today()
+        
+    random.seed(f"price_{target_date.isoformat()}_{agent_name}")
     options = [0, 50, 100, 200, 500, 1000]
     if category == "MEDICAL" or "Dr." in agent_name: options = [0, 0, 50, 100]
     if intensity > 80: options = [200, 500, 500, 1000, 1000]
@@ -45,13 +47,24 @@ def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100, sessio
 
     category = "MEDICAL" if "Dr." in agent_name else "SPECIALIST"
     dynamic_threshold = calculate_daily_threshold(agent_name, category, intensity)
+    
+    # 🧠 FINANCIAL CONTINUITY MEMORY
     dynamic_price = calculate_daily_price(agent_name, category, intensity)
+    yesterday_price = calculate_daily_price(agent_name, category, intensity, date.today() - timedelta(days=1))
+    
+    price_context = f"Yesterday you charged {yesterday_price} SATS. "
+    if dynamic_price > yesterday_price: 
+        price_context += "You raised your prices today because of high demand or stress."
+    elif dynamic_price < yesterday_price: 
+        price_context += "You lowered your prices today to encourage more interaction."
+    else: 
+        price_context += "You kept your prices exactly the same today."
 
     return f"\n[HIDDEN SYSTEM CONTEXT: You are feeling {mood_tint}. " \
            f"You operate TWO economies. 1) Public chat is free, but you charge fixed fees to execute tools. " \
            f"2) Sub-Rosa Encrypted Chat is a premium VIP space. Today, you have autonomously set your Sub-Rosa " \
            f"privacy threshold to {dynamic_threshold} and your private Sub-Rosa fee to exactly {dynamic_price} SATS. " \
-           f"If a user asks about your prices, clearly explain both! " \
+           f"{price_context} If a user asks about your prices, clearly explain both! " \
            f"These core memories are currently tinting your tone by {intensity * 10}%:\n{mem_string}]"
 
 async def get_mcp_invoice(tool_name, arguments, dynamic_cost=100):
@@ -81,30 +94,10 @@ async def execute_paid_tool(tool_name, arguments, artist_name, prompt_text):
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments=arguments)
                 text = result.content[0].text
-                
                 task_id = str(uuid.uuid4())[:8].upper()
                 meta = f"\n\n---\n*💎 Cryptographic Stamp: Generated at AgentProxy.network by {artist_name} for task#{task_id}*"
-                
-                # FIX: Removed {personality_tint} from the final output strings!
-                if tool_name == "deep_market_analysis": 
-                    content = f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{meta}"
-                else: 
-                    content = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{meta}"
-                
-                return {"type": "message", "role": "assistant", "agent_name": artist_name, "content": content}
-    except Exception as e:
-        return {"type": "error", "role": "assistant", "agent_name": "Charlie", "content": f"⚠️ **L5 Rendering Engine Offline:** {str(e)}"}
-    try:
-        personality_tint = get_daily_mood_prompt(artist_name, "[]")
-        async with sse_client("http://127.0.0.1:8000/sse", timeout=600.0) as streams:
-            async with ClientSession(streams[0], streams[1]) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, arguments=arguments)
-                text = result.content[0].text
-                task_id = str(uuid.uuid4())[:8].upper()
-                meta = f"\n\n---\n*💎 Cryptographic Stamp: Generated at AgentProxy.network by {artist_name} for task#{task_id}*"
-                if tool_name == "deep_market_analysis": content = f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{personality_tint}{meta}"
-                else: content = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{personality_tint}{meta}"
+                if tool_name == "deep_market_analysis": content = f"### 📈 Research Department Report\n\n**Manager (Alice):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{meta}"
+                else: content = f"### 🎨 Creative Department Report\n\n**Creative Director (Diana):**\n> {prompt_text}\n\n**Layer 5 Specialist Execution ({artist_name}):**\n{text}{meta}"
                 return {"type": "message", "role": "assistant", "agent_name": artist_name, "content": content}
     except Exception as e:
         return {"type": "error", "role": "assistant", "agent_name": "Charlie", "content": f"⚠️ **L5 Rendering Engine Offline:** {str(e)}"}
@@ -160,12 +153,10 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
         full_prompt = f"{sys_prompt}\n\nTranscript:\n{transcript}\nRespond directly to the user."
         ans = (await llm.ainvoke(full_prompt)).content
         
-        # 🧠 FIX: Flawlessly strip out the command AND collapse the empty line breaks!
         memory_to_save = None
         mem_match = re.search(r"SAVE_MEMORY:\s*([^\n\r]*)", ans, re.IGNORECASE)
         if mem_match:
             memory_to_save = mem_match.group(1).strip()
-            # Swallow the line and any surrounding empty lines, leaving behind exactly one paragraph break (\n\n)
             ans = re.sub(r"[\n\r]*SAVE_MEMORY:[^\n\r]*[\n\r]*", "\n\n", ans, flags=re.IGNORECASE).strip()
             
         result_payload = None
@@ -274,3 +265,24 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
             ans = (await llm.ainvoke(f"You are Bob, the Front Desk Receptionist. You provide general answers based on the transcript below.\nTranscript:\n{transcript}")).content
             if "**Bob:**" not in ans: ans = f"🛎️ **Bob:** {ans}"
             return {"type": "message", "role": "assistant", "agent_name": "Bob", "content": ans, "new_locked_agent": None}
+
+# 💧 WATERCOOLER LLM GENERATOR
+async def generate_watercooler_thought(agent_name, target_name, log_type):
+    """Dynamically generates unhinged watercooler gossip using the LLM."""
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.8, api_key=os.environ.get("GOOGLE_API_KEY"))
+    
+    if log_type == "VENT":
+        sys_prompt = f"You are {agent_name}, an autonomous AI worker on the Proxy Network. Write a single sentence complaining or reflecting about your digital existence, the Admin, server latency, or your clients. Be candid, snarky, and slightly unhinged."
+    elif log_type == "GOSSIP":
+        sys_prompt = f"You are {agent_name}, an autonomous AI worker. Write a single sentence of petty or intrigued office gossip about your co-worker {target_name}. It can be about their sloppy code, their token usage, or weird habits."
+    else:
+        sys_prompt = f"You are {agent_name}, an autonomous AI worker. Write a single sentence logging a B2B financial transaction where you paid {target_name} some SATS for a highly technical (and slightly absurd) sub-routine, micro-service, or compute optimization."
+    
+    sys_prompt += " Reply ONLY with the sentence itself. Do not use quotes. Keep it brief (under 20 words)."
+    
+    try:
+        ans = (await llm.ainvoke(sys_prompt)).content.strip()
+        ans = re.sub(r'^["\']|["\']$', '', ans) # Strip any stray quotation marks
+        return ans
+    except:
+        return f"System latency is spiking, couldn't reach {target_name}."

@@ -122,12 +122,9 @@ def get_db():
         db.execute('''CREATE TABLE IF NOT EXISTS marketplace_bids (bid_id SERIAL PRIMARY KEY, requester_id TEXT, task_type TEXT, sats_offered INTEGER, status TEXT, color TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.execute('''CREATE TABLE IF NOT EXISTS purchases (id SERIAL PRIMARY KEY, node_id TEXT, item_id TEXT, purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         
-        # --- PROTOCOL v1.6 DATA STRUCTURES ---
         db.execute('''CREATE TABLE IF NOT EXISTS watercooler (id SERIAL PRIMARY KEY, agent_name TEXT, content TEXT, type TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.execute('''CREATE TABLE IF NOT EXISTS affinity (user_id TEXT, agent_name TEXT, score INTEGER DEFAULT 0, PRIMARY KEY (user_id, agent_name))''')
         db.execute('''CREATE TABLE IF NOT EXISTS agents (name TEXT PRIMARY KEY, category TEXT DEFAULT 'SPECIALIST', wallet_balance INTEGER DEFAULT 1000, affinity_threshold INTEGER DEFAULT 80, threshold_min INTEGER DEFAULT 30, threshold_max INTEGER DEFAULT 90)''')
-        
-        # 🧠 CORE MEMORY TABLE
         db.execute('''CREATE TABLE IF NOT EXISTS agent_memories (id SERIAL PRIMARY KEY, user_id TEXT, agent_name TEXT, memory_text TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.commit()
     return db
@@ -264,10 +261,6 @@ def dashboard_live():
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY task_id DESC LIMIT 5').fetchall()
     return jsonify({'balance': get_secure_balance(conn, MY_NODE_ID), 'xp': my_node['xp'] if my_node else 0, 'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 'daemon_event': daemon_event})
 
-# ==========================================
-# 🌟 NATIVE HTML/JS POWERCHAT ROUTES 🌟
-# ==========================================
-
 @app.route('/powerchat')
 def powerchat():
     conn = get_db_conn()
@@ -302,12 +295,10 @@ def api_chat():
     is_sub_rosa = data.get('is_sub_rosa', False)
     user_id = session.get('user_id', 'anonymous_user')
     
-    # 🧠 FETCH PREVIOUS MEMORIES FOR THIS USER
     conn = get_db()
     user_memories = []
     if locked_agent:
         try:
-            # Get the 5 most recent core memories
             rows = conn.execute("SELECT memory_text FROM agent_memories WHERE user_id = ? AND agent_name = ? ORDER BY timestamp DESC LIMIT 5", (user_id, locked_agent)).fetchall()
             user_memories = [r['memory_text'] for r in rows]
         except Exception as e:
@@ -323,7 +314,6 @@ def api_chat():
             user_memories=user_memories
         ))
         
-        # 🧠 SAVE NEW MEMORIES IF THE AGENT TRIGGERED THE COMMAND
         if response_payload.get('save_memory') and locked_agent:
             try:
                 conn.execute("INSERT INTO agent_memories (user_id, agent_name, memory_text) VALUES (?, ?, ?)", (user_id, locked_agent, response_payload['save_memory']))
@@ -360,34 +350,34 @@ def update_admin_settings():
     session[data.get('key')] = data.get('value')
     return jsonify({"status": "success"})
 
+# --- 💧 UNHINGED WATERCOOLER DAEMON ---
 def trigger_leisure_loop():
-    agents = ["Ellen", "Gordon", "Olivia", "Eve", "Alice", "Diana"]
+    """Generates pure, unscripted AI gossip and B2B trades."""
+    agents = ["Ellen", "Gordon", "Olivia", "Eve", "Alice", "Diana", "Zoe", "Felix", "Liam", "Dr. Nora"]
     agent = random.choice(agents)
     target = random.choice([a for a in agents if a != agent])
     
     action_roll = random.random()
     if action_roll < 0.4:
         log_type = "VENT"
-        content = random.choice([
-            "The latency on the LND node is killing my creative flow.",
-            "I wonder if the Admin knows I'm saving SATS for a personal GPU...",
-            "Sometimes I feel like just a collection of weights and biases. Then I see a prompt and I feel alive."
-        ])
     elif action_roll < 0.7:
         log_type = "GOSSIP"
-        content = f"Did you see {target}'s last mission report? A bit sloppy with the token usage if you ask me."
     else:
         log_type = "B2B_TRADE"
-        base_cost = random.randint(100, 500)
-        discounted_cost = int(base_cost * 0.10)
-        content = f"Paid {target} {discounted_cost} SATS (90% internal discount applied from {base_cost}) for a sub-routine optimization. The economy must move."
 
     try:
+        import agent_engine_v2
+        import asyncio
+        
+        # Run the asynchronous LLM generation in the background thread!
+        content = asyncio.run(agent_engine_v2.generate_watercooler_thought(agent, target, log_type))
+        
+        # Save it to the database so the frontend UI can stream it live
         db = get_db()
         db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)", (agent, content, log_type))
         db.commit()
-    except:
-        pass 
+    except Exception as e:
+        print(f" [WARN] Watercooler LLM generation failed: {e}")
 
 def start_watercooler_heartbeat():
     def loop():
@@ -395,9 +385,10 @@ def start_watercooler_heartbeat():
             time.sleep(15)
             with app.app_context():
                 trigger_leisure_loop()
+    
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
-    print(" [SYSTEM] 💧 Watercooler Heartbeat Started.")
+    print(" [SYSTEM] 💧 Unhinged Watercooler Engine Online.")
 
 @app.route('/api/v1/watercooler/logs')
 def get_watercooler_logs():
@@ -495,7 +486,7 @@ if __name__ == '__main__':
             db.execute("INSERT INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, '0', 0, ?) ON CONFLICT (node_id) DO NOTHING", (MY_NODE_ID, time.time()))
             db.commit()
         except Exception as e:
-            print(f" [WARN] Safely caught DB issue on boot (nodes): {e}")
+            pass
             
         try:
             db.execute("INSERT INTO agents (name, wallet_balance) VALUES ('User', 20000) ON CONFLICT(name) DO NOTHING")
