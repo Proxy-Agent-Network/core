@@ -4,6 +4,7 @@ import requests
 import platform
 import json
 from datetime import datetime, timezone
+from node_wallet import LightningWallet
 
 # Import our compiled Rust hardware enclave library
 try:
@@ -37,27 +38,24 @@ def main():
     print(f"   > OS:  {hw_stats['os']} {hw_stats['release']}")
     time.sleep(1)
 
-    # 2. Identity Generation (Hardware Root of Trust)
+    # 2. Identity Generation
     print("🔐 Unlocking Hardware Enclave (TPM 2.0)...")
     try:
-        # This will now reach down into the OS and talk to the physical silicon
         hardware_enclave = proxy_core.NodeHardware()
-        
-        # Mathematically bound identity
         node_id = hardware_enclave.get_fingerprint()
-        
-        # For now, the public key is a placeholder until we extract the actual EK bytes in Rust
         pub_key = "PENDING_TPM_EK_PUB_KEY" 
-        
         print("✅ Hardware Attestation Successful.")
         print(f"   > Node Identity: {node_id}")
         time.sleep(1)
         
     except Exception as e:
         print("🚨 BOOT HALTED: Hardware Security Failure.")
-        print(f"Details: {e}")
-        print("This node cannot participate in the network without a valid TPM 2.0 context.")
         sys.exit(1)
+
+    # 2.5 Initialize Economic Layer
+    print("⚡ Spinning up L402 Lightning Wallet...")
+    wallet = LightningWallet(node_id)
+    time.sleep(1)
 
     # 3. The Handshake
     print(f"📡 Attempting Handshake with Network ({MASTER_NODE_URL})...")
@@ -70,19 +68,55 @@ def main():
 
     try:
         response = requests.post(MASTER_NODE_URL, json=payload)
-        
         if response.status_code == 200:
-            resp_data = response.json()
             print("\n✅ HANDSHAKE SUCCESSFUL!")
-            print(f"   > Network Status: {resp_data.get('status', 'OK')}")
-            print(f"   > Message: {resp_data.get('message', 'Connected')}")
-            print("\n🚀 NODE IS NOW ACTIVE AND AWAITING TASKS...")
+            print("\n🚀 NODE IS NOW ACTIVE. ENTERING TASK LOOP...")
         else:
             print(f"\n❌ HANDSHAKE FAILED. Server returned: {response.status_code}")
-            print(response.text)
+            sys.exit(1)
     except requests.exceptions.ConnectionError:
         print("\n❌ HANDSHAKE FAILED. Could not connect to the Master Node.")
-        print(f"Ensure the server is running at {MASTER_NODE_URL}")
+        sys.exit(1)
+
+    # ==========================================
+    # 🔄 4. THE PROOF OF WORK LOOP
+    # ==========================================
+    while True:
+        time.sleep(3) # Poll the network every 3 seconds
+        
+        try:
+            # A. Ask the Front Desk for a task
+            req_resp = requests.post("http://127.0.0.1:5000/api/v1/task/request", json={"node_id": node_id})
+            
+            if req_resp.status_code == 200:
+                task = req_resp.json()
+                print(f"\n[NODE] 📥 Received Task: {task['task_id']} | Bounty: {task['payout_sats']} SATS")
+                print(f"       > Prompt: '{task['prompt']}'")
+                
+                # B. Simulate doing the AI inference work
+                time.sleep(2) 
+                print(f"[NODE] 🧠 Inference complete. Generating invoice...")
+                
+                # C. Generate the Lightning Invoice
+                invoice, p_hash = wallet.generate_invoice(task['payout_sats'])
+                
+                # D. Submit the answer AND the invoice
+                submit_payload = {
+                    "node_id": node_id,
+                    "task_id": task['task_id'],
+                    "result": "Clause 4.2 contains a standard arbitration agreement.",
+                    "invoice": invoice
+                }
+                pay_resp = requests.post("http://127.0.0.1:5000/api/v1/task/submit", json=submit_payload)
+                
+                # E. Settle the funds
+                if pay_resp.status_code == 200:
+                    print(f"[NODE] ✅ Cryptographic Preimage verified by Network!")
+                    wallet.receive_payment(task['payout_sats'])
+                    
+        except requests.exceptions.ConnectionError:
+            print("🚨 Connection to Master Node lost. Retrying...")
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
