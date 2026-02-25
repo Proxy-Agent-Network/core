@@ -561,11 +561,19 @@ def get_network_stats():
 @requires_permission(Permission.READ_TASK)
 def dashboard_live():
     conn = get_db()
-    simulate_rival_snatch(); run_automation_daemon(MY_NODE_ID)
+    # 🛑 SECURITY FIX: Removed simulate_rival_snatch() and run_automation_daemon()
+    # This route is now strictly READ-ONLY to prevent Database DoS.
+    
     daemon_event = session.pop('daemon_msg', None)
     my_node = conn.execute('SELECT xp FROM nodes WHERE node_id = %s', (MY_NODE_ID,)).fetchone()
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY task_id DESC LIMIT 5').fetchall()
-    return jsonify({'balance': get_secure_balance(conn, MY_NODE_ID), 'xp': my_node['xp'] if my_node else 0, 'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 'daemon_event': daemon_event})
+    
+    return jsonify({
+        'balance': get_secure_balance(conn, MY_NODE_ID), 
+        'xp': my_node['xp'] if my_node else 0, 
+        'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 
+        'daemon_event': daemon_event
+    })
 
 @app.route('/powerchat')
 @requires_permission(Permission.READ_TASK)
@@ -1018,6 +1026,34 @@ def mock_submit():
     import time
     return jsonify({"preimage": hashlib.sha256(str(time.time()).encode()).hexdigest()})
 
+# ==========================================
+# ⚙️ MARKETPLACE SIMULATION HEARTBEAT
+# ==========================================
+def start_marketplace_heartbeat():
+    def loop():
+        while True:
+            # Run simulation every 10 seconds
+            time.sleep(10)
+            try:
+                # Use a standalone connection to avoid Flask context issues
+                from backend.core.db import get_db_conn
+                db = get_db_conn()
+                try:
+                    # Logic moved from dashboard_live to this safe background thread
+                    simulate_rival_snatch()
+                    # Note: run_automation_daemon needs a node_id context
+                    run_automation_daemon(MY_NODE_ID)
+                    db.commit()
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f" [HEARTBEAT] Marketplace simulation error: {e}")
+
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+    print(" [SYSTEM] ⚙️ Marketplace Simulation Heartbeat Online (10s interval).")
+
+
 if __name__ == '__main__':
     with app.app_context():
         try:
@@ -1035,4 +1071,5 @@ if __name__ == '__main__':
             pass
 
     start_watercooler_heartbeat()
+    start_marketplace_heartbeat()
     app.run(host='0.0.0.0', port=5000)
