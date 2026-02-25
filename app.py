@@ -367,6 +367,8 @@ def close_connection(exception):
 
 # --- 🔐 USER AUTHENTICATION ROUTES ---
 @app.route('/login', methods=['GET', 'POST'])
+# 🛑 SECURITY FIX: Prevent brute-forcing of the admin dashboard
+@rate_limit(max_requests=5, window_seconds=60)
 def login():
     if request.method == 'POST':
         password = request.form.get('password')
