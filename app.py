@@ -172,9 +172,14 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         admin_token = request.headers.get("X-Admin-Token")
-        expected_token = os.environ.get("ADMIN_SECRET_TOKEN", "fallback_dev_admin_token_123")
+        expected_token = os.environ.get("ADMIN_SECRET_TOKEN")
         
-        if admin_token != expected_token:
+        # 🛑 SECURITY FIX: Fail-closed if the environment variable is missing
+        if not expected_token:
+            print(" [SECURITY] 🚨 CRITICAL: ADMIN_SECRET_TOKEN is not set in the environment!")
+            abort(500, "Server Configuration Error: Admin portal is locked down due to missing security token.")
+            
+        if not admin_token or admin_token != expected_token:
             abort(403) 
             
         return f(*args, **kwargs)
