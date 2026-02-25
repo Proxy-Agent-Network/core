@@ -275,6 +275,25 @@ def update_secure_wallet(conn, node_id, amount):
     new_balance = current_balance + amount
     
     try:
+        # 🛑 QUANTUM FIX: Force AES-256 Encryption via TPM/Rust Enclave
+        if not hasattr(hw_bridge, 'encrypt_data'):
+            raise RuntimeError("Quantum Safeguard: AES-256 Hardware Enclave Offline.")
+            
+        encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
+        
+        # Ensure the bridge returned a secure string, not plaintext
+        if not encrypted_balance.startswith("SECURE::"):
+            raise ValueError("Cryptographic Integrity Failure: AES-256 key mismatch.")
+            
+    except Exception as e:
+        print(f" [SECURITY] 🚨 CRITICAL: AES-256 Encryption failed! ({e})")
+        raise RuntimeError("Hardware cryptographic failure. Transaction aborted for quantum safety.")
+        
+    conn.execute("UPDATE nodes SET total_earned = %s WHERE node_id = %s", (encrypted_balance, node_id))
+    conn.commit()
+    return new_balance
+    
+    try:
         if not hasattr(hw_bridge, 'encrypt_data'):
             # 🛑 SECURITY FIX: Fail-closed. Refuse to store financial data in plaintext.
             raise RuntimeError("TPM hardware bridge missing. Refusing to downgrade to plaintext storage.")

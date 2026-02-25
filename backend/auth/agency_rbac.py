@@ -9,12 +9,12 @@ from dataclasses import dataclass, field
 # "One Master Key to rule them all."
 # ----------------------------------------------------
 
-class Permission(Enum):
-    CREATE_TASK = "task:create"
+class Permission(Enum):   
     READ_TASK = "task:read"
+    CREATE_TASK = "task:create"
     CANCEL_TASK = "task:cancel"
-    MANAGE_KEYS = "agency:keys"
-    VIEW_BILLING = "agency:billing"
+    VIEW_BILLING = "billing:view"
+    VIEW_MARKET = "market:view"
     ADMIN_ALL = "admin:*"
 
 @dataclass
