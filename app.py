@@ -381,7 +381,8 @@ def api_execute_search():
     try:
         with DDGS() as ddgs: results = list(ddgs.text(query, max_results=5))
         return jsonify({"status": "SUCCESS", "results": results, "hw_attestation": MY_NODE_ID})
-    except Exception as e: return jsonify({"status": "ERROR", "message": str(e)}), 500
+    except Exception as e: print(f" [ERROR] Search Exception: {str(e)}")
+        return jsonify({"status": "ERROR", "message": "Search engine encountered an internal error."}), 500
 
 @app.route('/')
 @requires_permission(Permission.READ_TASK)
@@ -586,7 +587,8 @@ def api_chat():
                 
         return jsonify(response_payload)
     except Exception as e:
-        return jsonify({"type": "message", "role": "assistant", "content": f"⚠️ Core Engine Error: {str(e)}"})
+        print(f" [ERROR] Chat Engine Exception: {str(e)}") # Log securely to the server console
+        return jsonify({"type": "message", "role": "assistant", "content": "⚠️ Core Engine Error: An unexpected internal error occurred."})
     
 @app.route('/api/v1/execute', methods=['POST'])
 @requires_permission(Permission.CREATE_TASK)
@@ -608,7 +610,8 @@ def api_execute():
         final_payload = asyncio.run(execute_paid_tool(data.get('tool_name'), arguments, data.get('l5_artist', 'Specialist'), safe_prompt))
         return jsonify(final_payload if not isinstance(final_payload, str) else {"type": "message", "content": final_payload})
     except Exception as e:
-        return jsonify({"type": "error", "content": f"Backend Execution Crashed: {str(e)}"})
+        print(f" [ERROR] Execution Engine Exception: {str(e)}")
+        return jsonify({"type": "error", "content": "Backend Execution Crashed: An internal server error occurred."})
     
 @app.route('/admin')
 def admin_portal():
@@ -796,7 +799,8 @@ def api_init_sub_rosa():
             return jsonify({"status": "PAYMENT_REQUIRED", "invoice": f"lnbc_mock_invoice_for_{agent_name}", "hash": "mock_subrosa_hash", "cost": cost}), 402
             
     except Exception as e:
-        return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
+        print(f" [ERROR] Sub-Rosa Exception: {str(e)}")
+        return jsonify({"status": "ERROR", "message": "Server Error: An unexpected internal error occurred."}), 500
 
 @app.route('/api/v1/sub-rosa/finalize', methods=['POST'])
 @requires_permission(Permission.CREATE_TASK)
@@ -807,7 +811,8 @@ def api_finalize_sub_rosa():
         if lnd and lnd.check_status(r_hash) == "SETTLED": return jsonify({"success": True})
         return jsonify({"success": False, "message": "Payment not detected in mempool."}), 402
     except Exception as e:
-        return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
+        print(f" [ERROR] Sub-Rosa Exception: {str(e)}")
+        return jsonify({"status": "ERROR", "message": "Server Error: An unexpected internal error occurred."}), 500
 
 @app.route('/api/v1/sub-rosa/burn', methods=['POST'])
 @requires_permission(Permission.CANCEL_TASK)
