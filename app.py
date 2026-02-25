@@ -158,13 +158,8 @@ def require_node_signature(f):
         except ValueError:
             return jsonify({"status": "error", "message": "Invalid timestamp format."}), 400
 
-        # 🛑 SECURITY FIX: Short-term replay protection (Nonce caching)
-        # 1. Lazily clean up expired signatures to prevent memory leaks
-        expired_keys = [k for k, v in USED_SIGNATURES.items() if now - v > 300]
-        for k in expired_keys:
-            del USED_SIGNATURES[k]
-            
-        # 2. Reject if the signature has already been consumed
+        # 🛑 SECURITY FIX: Short-term replay protection (O(1) lookup)
+        # Cleanup is handled by the background heartbeat thread.
         if signature in USED_SIGNATURES:
             print(f" [SECURITY] 🚨 Short-Term Replay Attack Blocked! Signature reused by {node_id}")
             return jsonify({"status": "error", "message": "Replay attack detected. Signature already consumed."}), 403
@@ -251,6 +246,7 @@ def requires_permission(required_scope: Permission, cost_sats: int = 0):
 
 # ⚠️ GLOBAL BROWNOUT SWITCH
 app.config['BROWNOUT_MODE'] = False
+DAEMON_MESSAGES = [] 
 
 SHOP_ITEMS = {
     'license_auto': {'id': 'license_auto', 'name': 'Automation Daemon', 'desc': 'Unlocks the Auto-Accept loop.', 'price': 5000, 'icon': '🤖'},
@@ -296,8 +292,7 @@ def get_secure_balance(conn, node_id):
         except: return 0
     return int(float(stored_val)) if stored_val.replace('.','',1).isdigit() else 0
 
-def simulate_rival_snatch():
-    conn = get_db()
+def simulate_rival_snatch(conn):
     bids = conn.execute("SELECT * FROM marketplace_bids WHERE status='PENDING'").fetchall()
     if not bids: return
     RIVALS_META = {"OMNI_CORP_09": 0.05, "VOID_RUNNER": 0.03, "KAOS_ENGINE": 0.08}
@@ -307,10 +302,8 @@ def simulate_rival_snatch():
         if random.random() < (RIVALS_META[attacker_name] * value_mult * 0.1):
             conn.execute("UPDATE marketplace_bids SET status='STOLEN' WHERE bid_id=%s", (bid['bid_id'],))
             conn.execute("INSERT INTO global_events (event_type, message) VALUES (%s, %s)", ("THREAT", f"SECURITY ALERT: {attacker_name} intercepted Bid #{bid['bid_id']}"))
-    conn.commit()
 
-def run_automation_daemon(node_id):
-    conn = get_db()
+def run_automation_daemon(conn, node_id):
     if not conn.execute("SELECT 1 FROM purchases WHERE node_id = %s AND item_id = 'license_auto'", (node_id,)).fetchone(): return None
     bid = conn.execute("SELECT * FROM marketplace_bids WHERE status = 'PENDING' ORDER BY sats_offered DESC LIMIT 1").fetchone()
     if bid:
@@ -319,14 +312,11 @@ def run_automation_daemon(node_id):
         # 🛑 SECURITY FIX: Cryptographically secure task ID
         new_id = f"AUTO-{secrets.token_hex(3).upper()}"
         
-        conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', 'AUTOMATED')", (new_id, bid['sats_offered']))
+        conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (%s, %s, 'OPEN', 'AUTOMATED')", (new_id, bid['sats_offered']))
         conn.execute("INSERT INTO global_events (event_type, message) VALUES (%s, %s)", ("AUTOMATION", f"Node {node_id} secured task {new_id}"))
-        conn.commit()
-        msg = f"Daemon secured task {new_id} (+{bid['sats_offered']} Sats)"
-        session['daemon_msg'] = msg
-        return msg
+        DAEMON_MESSAGES.append(f"Daemon secured task {new_id} (+{bid['sats_offered']} Sats)")
         
-    if random.random() < 0.20:
+    elif random.random() < 0.20:
         dust = random.randint(5, 45) # Fine to keep random for game logic (dust amounts)
         
         # 🛑 SECURITY FIX: Cryptographically secure dust ID
@@ -334,9 +324,7 @@ def run_automation_daemon(node_id):
         
         update_secure_wallet(conn, node_id, dust)
         conn.execute("INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (%s, %s, %s)", (node_id, junk_id, 10))
-        conn.commit()
-        return f"Daemon scavenged {junk_id} (+{dust} Sats)"
-    return None
+        DAEMON_MESSAGES.append(f"Daemon scavenged {junk_id} (+{dust} Sats)")
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -567,7 +555,11 @@ def dashboard_live():
     conn = get_db()
     # 🛑 SECURITY FIX: Decoupled state-changing operations into background heartbeat
     
-    daemon_event = session.pop('daemon_msg', None)
+    # Retrieval from background thread queue
+    global DAEMON_MESSAGES
+    current_msgs = list(DAEMON_MESSAGES)
+    DAEMON_MESSAGES.clear()
+    
     my_node = conn.execute('SELECT xp FROM nodes WHERE node_id = %s', (MY_NODE_ID,)).fetchone()
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY task_id DESC LIMIT 5').fetchall()
     
@@ -575,7 +567,7 @@ def dashboard_live():
         'balance': get_secure_balance(conn, MY_NODE_ID), 
         'xp': my_node['xp'] if my_node else 0, 
         'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 
-        'daemon_event': daemon_event
+        'daemon_event': current_msgs[0] if current_msgs else None
     })
 
 @app.route('/powerchat')
@@ -883,14 +875,22 @@ def start_marketplace_heartbeat():
         while True:
             # Run simulation every 10 seconds
             time.sleep(10)
+            now = time.time()
+            
+            # 🛑 SECURITY FIX: Decoupled O(N) cache cleanup from web requests
+            expired_keys = [k for k, v in USED_SIGNATURES.items() if now - v > 300]
+            for k in expired_keys:
+                del USED_SIGNATURES[k]
+
             try:
                 # Use a standalone connection to avoid Flask context issues
                 from backend.core.db import get_db_conn
                 db = get_db_conn()
                 try:
-                    # 🛑 SECURITY FIX: Decoupled marketplace logic from polling API
-                    simulate_rival_snatch()
-                    run_automation_daemon(MY_NODE_ID)
+                    # Logic moved from dashboard_live to this safe background thread
+                    simulate_rival_snatch(db)
+                    # Note: run_automation_daemon refactored to accept conn
+                    run_automation_daemon(db, MY_NODE_ID)
                     db.commit()
                 finally:
                     db.close()
@@ -1032,6 +1032,7 @@ def api_wipe_memories():
 # 🤖 AUTONOMOUS WORKER MOCK ENDPOINTS
 # ==========================================
 @app.route('/api/v1/node/register', methods=['POST'])
+@rate_limit(max_requests=10, window_seconds=60) # 🛑 SECURITY FIX: Rate Limit Worker APIs
 def mock_register():
     data = request.json
     raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED", "")
@@ -1043,11 +1044,13 @@ def mock_register():
     return jsonify({"status": "success"})
 
 @app.route('/api/v1/task/request', methods=['POST'])
+@rate_limit(max_requests=10, window_seconds=60) # 🛑 SECURITY FIX: Rate Limit Worker APIs
 @require_node_signature
 def mock_request():
     return jsonify({"task_id": f"TASK-{random.randint(1000,9999)}", "payout_sats": 500})
 
 @app.route('/api/v1/task/submit', methods=['POST'])
+@rate_limit(max_requests=10, window_seconds=60) # 🛑 SECURITY FIX: Rate Limit Worker APIs
 @require_node_signature
 def mock_submit():
     import hashlib
