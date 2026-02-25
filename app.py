@@ -319,7 +319,7 @@ def run_automation_daemon(node_id):
         # 🛑 SECURITY FIX: Cryptographically secure task ID
         new_id = f"AUTO-{secrets.token_hex(3).upper()}"
         
-        conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (%s, %s, 'OPEN', 'AUTOMATED')", (new_id, bid['sats_offered']))
+        conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', 'AUTOMATED')", (new_id, bid['sats_offered']))
         conn.execute("INSERT INTO global_events (event_type, message) VALUES (%s, %s)", ("AUTOMATION", f"Node {node_id} secured task {new_id}"))
         conn.commit()
         msg = f"Daemon secured task {new_id} (+{bid['sats_offered']} Sats)"
@@ -530,8 +530,12 @@ def shop_buy_api():
     item_id = request.json.get('item_id')
     conn = get_db()
     
-    # 🛑 SECURITY FIX: Dynamically determine buyer identity to prevent master wallet drain
-    buyer_id = request.headers.get("X-Agency-ID") or getattr(g, 'verified_node_id', MY_NODE_ID)
+    # 🛑 SECURITY FIX: Context-Aware Identity Resolution. 
+    # Do not trust the X-Agency-ID header if the user is in a verified browser session.
+    if session.get("authenticated"):
+        buyer_id = MY_NODE_ID
+    else:
+        buyer_id = request.headers.get("X-Agency-ID") or getattr(g, 'verified_node_id', MY_NODE_ID)
     
     if item_id not in SHOP_ITEMS: return jsonify({"success": False, "error": "Invalid Item ID"}), 400
     price = SHOP_ITEMS[item_id]['price']
@@ -784,11 +788,9 @@ def api_finalize_market_bid():
             conn.execute("INSERT INTO consumed_invoices (hash) VALUES (%s)", (r_hash,))
             
             # 🛑 SECURITY FIX: Fail-Closed Parameter Tampering Prevention
-            # We strictly require a verified amount from LND. No fallbacks to client data.
             try:
                 actual_sats = lnd.get_invoice_amount(r_hash)
             except Exception as e:
-                # 🛑 SECURITY FIX: Fail-Closed
                 print(f" [SECURITY] 🚨 CRITICAL: Failed to verify paid amount with LND for {r_hash}: {e}")
                 return jsonify({"status": "ERROR", "message": "Verification Failure: Unable to cryptographically confirm payment amount."}), 500
             
