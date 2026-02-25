@@ -120,6 +120,13 @@ def rate_limit(max_requests: int, window_seconds: int):
         return decorated_function
     return decorator
 
+def sanitize_for_llm(text: str) -> str:
+    """Neutralizes XML/HTML tags to prevent prompt injection breakouts."""
+    if not text:
+        return ""
+    # Converts < to &lt; and > to &gt; so the LLM reads them as literal text
+    return html.escape(text)
+
 # ==========================================
 # 🛡️ ZERO-TRUST NODE AUTHENTICATION
 # ==========================================
@@ -546,7 +553,7 @@ def api_chat():
     from agent_engine_v2 import process_chat 
     
     data = request.json
-    user_message = data.get('message', '')
+    user_message = sanitize_for_llm(data.get('message', ''))
     chat_history = data.get('history', [])
     locked_agent = data.get('locked_agent', None)
     is_sub_rosa = data.get('is_sub_rosa', False)
@@ -598,7 +605,10 @@ def api_execute():
         time.sleep(1) 
         arguments = data.get('arguments', {})
         arguments['payment_hash'] = data.get('hash', 'mock_hash')
-        final_payload = asyncio.run(execute_paid_tool(data.get('tool_name'), arguments, data.get('l5_artist', 'Specialist'), data.get('prompt_text', '')))
+        
+        safe_prompt = sanitize_for_llm(data.get('prompt_text', ''))
+        
+        final_payload = asyncio.run(execute_paid_tool(data.get('tool_name'), arguments, data.get('l5_artist', 'Specialist'), safe_prompt))
         return jsonify(final_payload if not isinstance(final_payload, str) else {"type": "message", "content": final_payload})
     except Exception as e:
         return jsonify({"type": "error", "content": f"Backend Execution Crashed: {str(e)}"})
