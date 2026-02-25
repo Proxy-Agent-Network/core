@@ -245,10 +245,11 @@ def update_secure_wallet(conn, node_id, amount):
     new_balance = current_balance + amount
     
     try:
-        if hasattr(hw_bridge, 'encrypt_data'):
-            encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
-        else:
-            encrypted_balance = str(new_balance)
+        if not hasattr(hw_bridge, 'encrypt_data'):
+            # 🛑 SECURITY FIX: Fail-closed. Refuse to store financial data in plaintext.
+            raise RuntimeError("TPM hardware bridge missing. Refusing to downgrade to plaintext storage.")
+            
+        encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
             
     except Exception as e:
         print(f" [SECURITY] 🚨 CRITICAL: TPM Encryption failed! Aborting transaction. ({e})")
