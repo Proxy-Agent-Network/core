@@ -529,11 +529,16 @@ def legal(doc_type):
 def shop_buy_api():
     item_id = request.json.get('item_id')
     conn = get_db()
+    
+    # 🛑 SECURITY FIX: Dynamically determine buyer identity to prevent master wallet drain
+    buyer_id = request.headers.get("X-Agency-ID") or getattr(g, 'verified_node_id', MY_NODE_ID)
+    
     if item_id not in SHOP_ITEMS: return jsonify({"success": False, "error": "Invalid Item ID"}), 400
     price = SHOP_ITEMS[item_id]['price']
-    if get_secure_balance(conn, MY_NODE_ID) >= price:
-        new_bal = update_secure_wallet(conn, MY_NODE_ID, -price)
-        conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (%s, %s)", (MY_NODE_ID, item_id))
+    
+    if get_secure_balance(conn, buyer_id) >= price:
+        new_bal = update_secure_wallet(conn, buyer_id, -price)
+        conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (%s, %s)", (buyer_id, item_id))
         conn.commit()
         return jsonify({"success": True, "new_balance": new_bal})
     return jsonify({"success": False, "error": "Insufficient Funds"}), 402
