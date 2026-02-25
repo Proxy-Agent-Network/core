@@ -672,8 +672,23 @@ def api_execute():
             print(f" [SECURITY] 🚨 Blocked unauthorized tool execution attempt: {tool_name}")
             return jsonify({"type": "error", "content": "Execution Denied: Unauthorized tool requested."}), 403
 
+        # 🛑 SECURITY FIX: Strictly enforce LND settlement and prevent Replay Attacks
+        r_hash = data.get('hash')
+        if lnd:
+            if lnd.check_status(r_hash) != "SETTLED":
+                return jsonify({"type": "error", "content": "Execution Denied: Payment not settled."}), 402
+                
+            conn = get_db()
+            consumed = conn.execute("SELECT 1 FROM consumed_invoices WHERE hash = %s", (r_hash,)).fetchone()
+            if consumed:
+                print(f" [SECURITY] 🚨 Blocked replay attack for execution hash: {r_hash}")
+                return jsonify({"type": "error", "content": "Execution Denied: Invoice already consumed."}), 403
+                
+            conn.execute("INSERT INTO consumed_invoices (hash) VALUES (%s)", (r_hash,))
+            conn.commit()
+
         arguments = data.get('arguments', {})
-        arguments['payment_hash'] = data.get('hash', 'mock_hash')
+        arguments['payment_hash'] = r_hash or 'mock_hash'
         
         safe_prompt = sanitize_for_llm(data.get('prompt_text', ''))
         
