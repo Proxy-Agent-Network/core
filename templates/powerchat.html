@@ -11,7 +11,10 @@
     <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
     <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+
+    <meta name="csrf-token" content="{{ csrf_token }}">
 
     <script>
         (function() {
@@ -156,6 +159,11 @@
             currentPaymentData: null
         };
 
+        // 🛑 SECURITY FIX: Helper function to get the CSRF token
+        function getCSRFToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
         function toggleSettings() { 
             document.getElementById('settingsModal').classList.toggle('active'); 
         }
@@ -218,7 +226,8 @@
             try {
                 const response = await fetch('/api/v1/sub-rosa/init', { 
                     method: 'POST', 
-                    headers: {'Content-Type': 'application/json'}, 
+                    // 🛑 SECURITY FIX: Appended X-CSRF-Token header
+                    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken()}, 
                     body: JSON.stringify({ agent_name: appState.lockedAgent }) 
                 });
                 const data = await response.json();
@@ -245,7 +254,8 @@
             if (!el) return;
             el.classList.add('burning');
             setTimeout(async () => { 
-                await fetch('/api/v1/sub-rosa/burn', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message_id: messageId }) }); 
+                // 🛑 SECURITY FIX: Appended X-CSRF-Token header
+                await fetch('/api/v1/sub-rosa/burn', { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken()}, body: JSON.stringify({ message_id: messageId }) }); 
                 el.remove(); 
             }, 1500);
         }
@@ -293,7 +303,7 @@
             bubble.className = 'message-bubble';
             if (isError) bubble.style.color = 'var(--admin-red)';
             
-            // 🛑 SECURITY FIX: Sanitize LLM output before it hits the DOM
+            // 🛑 SECURITY FIX: DOMPurify applied to prevent XSS
             bubble.innerHTML = DOMPurify.sanitize(parseMarkdown(text));
 
             if (subRosa && role !== 'system') {
@@ -310,6 +320,7 @@
             appState.currentPaymentData = data;
             const panel = document.createElement('div');
             panel.className = 'message assistant payment-panel';
+            // 🛑 SECURITY FIX: DOMPurify applied to prevent XSS
             panel.innerHTML = `
                 <div class="avatar">⚡</div>
                 <div class="message-bubble" style="border: 2px solid var(--accent);">
@@ -328,7 +339,8 @@
             const endpoint = pData.type === "SUB_ROSA" ? '/api/v1/sub-rosa/finalize' : '/api/v1/execute';
             
             try {
-                const res = await fetch(endpoint, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(pData) });
+                // 🛑 SECURITY FIX: Appended X-CSRF-Token header
+                const res = await fetch(endpoint, { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken()}, body: JSON.stringify(pData) });
                 const data = await res.json();
                 typingIndicator.style.display = 'none';
                 
@@ -364,8 +376,9 @@
             chatInput.value = ''; 
             typingIndicator.style.display = 'block';
 
+            // 🛑 SECURITY FIX: Appended X-CSRF-Token header
             const response = await fetch('/api/v1/chat', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() },
                 body: JSON.stringify({ message: finalUserMessage, history: appState.history.slice(-5), locked_agent: appState.lockedAgent, is_sub_rosa: appState.isSubRosa })
             });
             
@@ -389,6 +402,7 @@
             // 🧠 CORE MEMORY UI FLAIR
             if (data.save_memory) {
                 setTimeout(() => {
+                    // 🛑 SECURITY FIX: DOMPurify applied to prevent XSS
                     appendMessage('system', `<span style="color:var(--accent);">🧠 <i>${DOMPurify.sanitize(appState.lockedAgent)} has committed a new core memory to their ledger.</i></span>`);
                 }, 800);
             }
