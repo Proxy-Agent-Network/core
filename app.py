@@ -141,6 +141,15 @@ def require_node_signature(f):
         if not all([node_id, timestamp, signature]):
             return jsonify({"status": "error", "message": "Missing identity headers."}), 401
 
+        # 🛑 SECURITY FIX: Prevent Replay Attacks with a 5-minute sliding window
+        try:
+            request_time = float(timestamp)
+            if abs(time.time() - request_time) > 300: # 300 seconds = 5 minutes
+                print(f" [SECURITY] 🚨 Replay Attack Blocked! Expired timestamp from {node_id}")
+                return jsonify({"status": "error", "message": "Replay attack detected. Timestamp expired."}), 403
+        except ValueError:
+            return jsonify({"status": "error", "message": "Invalid timestamp format."}), 400
+
         raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED")
         if not raw_seed:
             raise ValueError("CRITICAL: HARDWARE_ATTESTATION_SEED is missing from environment!")
