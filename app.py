@@ -339,7 +339,13 @@ def close_connection(exception):
 def login():
     if request.method == 'POST':
         password = request.form.get('password')
-        expected_password = os.environ.get('DASHBOARD_PASSWORD', 'proxy123')
+        expected_password = os.environ.get('DASHBOARD_PASSWORD')
+        
+        # 🛑 SECURITY FIX: Fail securely if the environment variable is missing
+        if not expected_password:
+            print(" [SECURITY] 🚨 CRITICAL: Login attempted but DASHBOARD_PASSWORD is not set in the environment!")
+            return "Server Configuration Error: Admin password not securely configured. Login disabled.", 500
+            
         if password == expected_password:
             session['authenticated'] = True
             return redirect(url_for('dashboard'))
