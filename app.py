@@ -561,8 +561,7 @@ def get_network_stats():
 @requires_permission(Permission.READ_TASK)
 def dashboard_live():
     conn = get_db()
-    # 🛑 SECURITY FIX: Removed simulate_rival_snatch() and run_automation_daemon()
-    # This route is now strictly READ-ONLY to prevent Database DoS.
+    # 🛑 SECURITY FIX: Decoupled state-changing operations into background heartbeat
     
     daemon_event = session.pop('daemon_msg', None)
     my_node = conn.execute('SELECT xp FROM nodes WHERE node_id = %s', (MY_NODE_ID,)).fetchone()
@@ -784,13 +783,14 @@ def api_finalize_market_bid():
             # Burn the invoice
             conn.execute("INSERT INTO consumed_invoices (hash) VALUES (%s)", (r_hash,))
             
-            # 🛑 SECURITY FIX: Prevent Parameter Tampering. 
+            # 🛑 SECURITY FIX: Fail-Closed Parameter Tampering Prevention
+            # We strictly require a verified amount from LND. No fallbacks to client data.
             try:
                 actual_sats = lnd.get_invoice_amount(r_hash)
-            except (AttributeError, TypeError):
-                # Fallback for mock environments
-                actual_sats = int(data.get('sats', 0))
-                print(" [SECURITY] ⚠️ WARNING: lnd.get_invoice_amount() is missing! Client payload trusted.")
+            except Exception as e:
+                # 🛑 SECURITY FIX: Fail-Closed
+                print(f" [SECURITY] 🚨 CRITICAL: Failed to verify paid amount with LND for {r_hash}: {e}")
+                return jsonify({"status": "ERROR", "message": "Verification Failure: Unable to cryptographically confirm payment amount."}), 500
             
             # 🛑 THE RESTORED LOGIC: Actually insert the paid task into the marketplace
             requester_id = request.headers.get("X-Agency-ID") or getattr(g, 'verified_node_id', MY_NODE_ID)
@@ -872,6 +872,32 @@ def start_watercooler_heartbeat():
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
     print(" [SYSTEM] 💧 Unhinged Watercooler Engine Online (with Connection Management).")
+
+# ==========================================
+# ⚙️ MARKETPLACE SIMULATION HEARTBEAT
+# ==========================================
+def start_marketplace_heartbeat():
+    def loop():
+        while True:
+            # Run simulation every 10 seconds
+            time.sleep(10)
+            try:
+                # Use a standalone connection to avoid Flask context issues
+                from backend.core.db import get_db_conn
+                db = get_db_conn()
+                try:
+                    # 🛑 SECURITY FIX: Decoupled marketplace logic from polling API
+                    simulate_rival_snatch()
+                    run_automation_daemon(MY_NODE_ID)
+                    db.commit()
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f" [HEARTBEAT] Marketplace simulation error: {e}")
+
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+    print(" [SYSTEM] ⚙️ Marketplace Simulation Heartbeat Online (10s interval).")
 
 @app.route('/api/v1/watercooler/logs')
 @requires_permission(Permission.READ_TASK)
@@ -1025,34 +1051,6 @@ def mock_submit():
     import hashlib
     import time
     return jsonify({"preimage": hashlib.sha256(str(time.time()).encode()).hexdigest()})
-
-# ==========================================
-# ⚙️ MARKETPLACE SIMULATION HEARTBEAT
-# ==========================================
-def start_marketplace_heartbeat():
-    def loop():
-        while True:
-            # Run simulation every 10 seconds
-            time.sleep(10)
-            try:
-                # Use a standalone connection to avoid Flask context issues
-                from backend.core.db import get_db_conn
-                db = get_db_conn()
-                try:
-                    # Logic moved from dashboard_live to this safe background thread
-                    simulate_rival_snatch()
-                    # Note: run_automation_daemon needs a node_id context
-                    run_automation_daemon(MY_NODE_ID)
-                    db.commit()
-                finally:
-                    db.close()
-            except Exception as e:
-                print(f" [HEARTBEAT] Marketplace simulation error: {e}")
-
-    thread = threading.Thread(target=loop, daemon=True)
-    thread.start()
-    print(" [SYSTEM] ⚙️ Marketplace Simulation Heartbeat Online (10s interval).")
-
 
 if __name__ == '__main__':
     with app.app_context():
