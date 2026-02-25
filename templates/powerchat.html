@@ -252,6 +252,16 @@
         async function burnMessage(messageId, elementId) {
             const el = document.getElementById(elementId); 
             if (!el) return;
+            
+            // 🛑 SECURITY FIX: Prevent client-side ghosting by purging from appState
+            // Extract the text from the bubble (ignoring the button text) to find the match
+            const bubbleText = el.querySelector('.message-bubble').innerText.replace('THE BURN', '').trim();
+            
+            appState.history = appState.history.filter(msg => {
+                // Keep the message ONLY if it doesn't match the one we are burning
+                return !bubbleText.includes(msg.content.substring(0, 20).trim());
+            });
+
             el.classList.add('burning');
             setTimeout(async () => { 
                 // 🛑 SECURITY FIX: Appended X-CSRF-Token header
