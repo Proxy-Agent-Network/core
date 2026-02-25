@@ -11,6 +11,7 @@
     <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
     <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 
     <script>
         (function() {
@@ -291,7 +292,9 @@
             const bubble = document.createElement('div');
             bubble.className = 'message-bubble';
             if (isError) bubble.style.color = 'var(--admin-red)';
-            bubble.innerHTML = parseMarkdown(text);
+            
+            // 🛑 SECURITY FIX: Sanitize LLM output before it hits the DOM
+            bubble.innerHTML = DOMPurify.sanitize(parseMarkdown(text));
 
             if (subRosa && role !== 'system') {
                 bubble.innerHTML += `<br><button class="burn-btn" onclick="burnMessage('${msgId}', '${msgId}')"><i class="fas fa-fire"></i> THE BURN</button>`;
@@ -310,7 +313,7 @@
             panel.innerHTML = `
                 <div class="avatar">⚡</div>
                 <div class="message-bubble" style="border: 2px solid var(--accent);">
-                    <strong>L402 Treasury Challenge</strong><br>${data.message}<br>
+                    <strong>L402 Treasury Challenge</strong><br>${DOMPurify.sanitize(data.message)}<br>
                     <small>Cost: ${data.cost} SATS</small><br>
                     <button onclick="payAndExecute()" style="margin-top:15px; background:var(--accent); color:var(--bg); padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-family:var(--font); text-transform:uppercase; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Confirm Payment</button>
                 </div>`;
@@ -386,7 +389,7 @@
             // 🧠 CORE MEMORY UI FLAIR
             if (data.save_memory) {
                 setTimeout(() => {
-                    appendMessage('system', `<span style="color:var(--accent);">🧠 <i>${appState.lockedAgent} has committed a new core memory to their ledger.</i></span>`);
+                    appendMessage('system', `<span style="color:var(--accent);">🧠 <i>${DOMPurify.sanitize(appState.lockedAgent)} has committed a new core memory to their ledger.</i></span>`);
                 }, 800);
             }
         }
