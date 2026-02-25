@@ -7,14 +7,15 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     pkg-config \
-    libssl-dev
+    libssl-dev \
+    libtss2-dev
 
 # Install Rust toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install Maturin (The bridge compiler between Rust and Python)
-RUN pip install maturin
+RUN pip install maturin[patchelf]
 
 # Copy and compile the Rust core into a Python wheel
 WORKDIR /build

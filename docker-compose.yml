@@ -32,9 +32,9 @@ services:
       - "28332" # ZMQ Block Port
       - "28333" # ZMQ Tx Port
     volumes:
-      - bitcoin_data:/data
-    # 🌟 NEW: Prune the blockchain to 10GB to save hard drive space
+      - D:/Bitcoin:/data
     command: >
+      -datadir=/data
       -prune=10000
       -server=1
       -listen=1
@@ -103,7 +103,7 @@ services:
     ports:
       - "8501:8501"
     environment:
-      - DATABASE_URL=postgresql://proxy_admin:proxy_secure_password@db:5432/proxy_network
+      - DATABASE_URL=postgresql://proxy_admin:${POSTGRES_PASSWORD}@db:5432/proxy_network
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - LND_GRPC_HOST=lnd
       - LND_GRPC_PORT=10009

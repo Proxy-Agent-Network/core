@@ -19,6 +19,10 @@ pub struct NodeHardware {
 // ==========================================
 #[cfg(target_os = "linux")]
 use tss_esapi::{Context, TctiNameConf};
+#[cfg(target_os = "linux")]
+use tss_esapi::tcti_ldr::DeviceConfig;
+#[cfg(target_os = "linux")]
+use std::str::FromStr;
 
 #[cfg(target_os = "linux")]
 #[pymethods]
@@ -27,7 +31,10 @@ impl NodeHardware {
     pub fn new() -> PyResult<Self> {
         println!("[SYSTEM] 🔒 (LINUX) Initializing TPM 2.0 Hardware Context...");
 
-        let tcti = TctiNameConf::Device("/dev/tpmrm0".to_string());
+        // Create the strongly-typed config first, then pass it to the enum
+        let config = DeviceConfig::from_str("/dev/tpmrm0").expect("Invalid device path");
+        let tcti = TctiNameConf::Device(config);
+        
         let _context = match Context::new(tcti) {
             Ok(ctx) => ctx,
             Err(_) => {

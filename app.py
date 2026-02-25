@@ -13,6 +13,8 @@ from functools import wraps
 from backend.core.db import get_db_conn
 from duckduckgo_search import DDGS
 
+from agency_rbac import RBACEngine, Permission
+
 try:
     from backend.core.lightning_engine import lnd
     print(" [SYSTEM] ⚡ Lightning Treasury Layer Loaded.")
@@ -85,25 +87,51 @@ def admin_required(f):
     return decorated_function
 
 # ==========================================
-# 🔐 GLOBAL API AUTHENTICATION (User/Dashboard)
+# 🔐 GLOBAL API AUTHENTICATION & RBAC
 # ==========================================
-def require_user_auth(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        api_key = request.headers.get("X-API-Key")
-        expected_key = os.environ.get("DASHBOARD_API_KEY", "dev_dashboard_key_123")
-        is_logged_in = session.get("authenticated", False)
-        
-        if api_key == expected_key or is_logged_in:
+# Initialize Global RBAC Engine
+rbac = RBACEngine()
+# Pre-seed a default agency so the user can test the API immediately
+DEFAULT_AGENCY_ID = rbac.create_agency("Panopticon Prime", 10_000_000)
+DEFAULT_API_KEY = rbac.issue_sub_key(DEFAULT_AGENCY_ID, "Default Web Client", "OWNER")
+print(f" [SYSTEM] 🛡️ RBAC Online. Default Agency: {DEFAULT_AGENCY_ID}")
+
+def requires_permission(required_scope: Permission, cost_sats: int = 0):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # 1. UI Browser Sessions always have full access (treated as OWNER context)
+            is_logged_in = session.get("authenticated", False)
+            if is_logged_in:
+                return f(*args, **kwargs)
+
+            # 2. Check RBAC API Headers
+            agency_id = request.headers.get("X-Agency-ID")
+            raw_key = request.headers.get("X-API-Key")
+
+            if not agency_id or not raw_key:
+                # Check if they are using the legacy environment variable (backwards compatibility)
+                legacy_key = os.environ.get("DASHBOARD_API_KEY", "dev_dashboard_key_123")
+                if raw_key == legacy_key and raw_key is not None:
+                    return f(*args, **kwargs)
+                    
+                print(f" [RBAC] 🚨 Blocked request to {request.path} (Missing Headers)")
+                if request.is_json or request.path.startswith('/api/'):
+                    return jsonify({"status": "error", "message": "RBAC Denied: Missing X-Agency-ID or X-API-Key"}), 401
+                else:
+                    return redirect(url_for('login'))
+
+            # 3. Hash the key and verify through RBAC Engine
+            key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+
+            if not rbac.verify_access(agency_id, key_hash, required_scope, cost_sats):
+                print(f" [RBAC] 🚨 Access Denied for Agency {agency_id}. Scope required: {required_scope.value}")
+                return jsonify({"status": "error", "message": f"RBAC Denied. Required Scope: {required_scope.value}"}), 403
+
             return f(*args, **kwargs)
-            
-        print(f" [SECURITY] 🚨 Blocked unauthorized access to {request.path} from {request.remote_addr}")
-        if request.is_json or request.path.startswith('/api/'):
-            return jsonify({"status": "error", "message": "Unauthorized. Missing API Key or Session."}), 401
-        else:
-            return redirect(url_for('login'))
-            
-    return decorated_function
+        return decorated_function
+    return decorator
+
 
 # ⚠️ GLOBAL BROWNOUT SWITCH
 app.config['BROWNOUT_MODE'] = False
@@ -128,14 +156,12 @@ def update_secure_wallet(conn, node_id, amount):
     new_balance = current_balance + amount
     
     try:
-        # Check if the hardware bridge supports encryption (for dev fallback safety)
         if hasattr(hw_bridge, 'encrypt_data'):
             encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
         else:
             encrypted_balance = str(new_balance)
             
     except Exception as e:
-        # 🛑 THE FIX: Fail Closed. Never fallback to plaintext.
         print(f" [SECURITY] 🚨 CRITICAL: TPM Encryption failed! Aborting transaction. ({e})")
         raise RuntimeError("Hardware cryptographic failure. Transaction aborted to prevent data exposure.")
         
@@ -241,7 +267,7 @@ def logout():
 # --- PROTECTED UI & API ROUTES ---
 
 @app.route('/search')
-@require_user_auth
+@requires_permission(Permission.READ_TASK)
 def search_engine():
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
@@ -249,7 +275,7 @@ def search_engine():
     return render_template('search.html', balance=balance, owned=owned)
 
 @app.route('/api/v1/search/execute', methods=['POST'])
-@require_user_auth
+@requires_permission(Permission.CREATE_TASK)
 def api_execute_search():
     data = request.json
     query = data.get('query')
@@ -269,7 +295,7 @@ def api_execute_search():
     except Exception as e: return jsonify({"status": "ERROR", "message": str(e)}), 500
 
 @app.route('/')
-@require_user_auth
+@requires_permission(Permission.READ_TASK)
 def dashboard():
     conn = get_db()
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (MY_NODE_ID,)).fetchone()
@@ -281,7 +307,7 @@ def dashboard():
     return render_template('dashboard.html', node=my_node_data, tasks=tasks, hw_secured=HW_SECURED, owned=owned, balance=balance) 
 
 @app.route('/marketplace', methods=['GET', 'POST'])
-@require_user_auth
+@requires_permission(Permission.READ_TASK)
 def marketplace():
     conn = get_db()
     if request.method == 'POST':
@@ -313,7 +339,7 @@ def marketplace():
     return render_template('marketplace.html', bids=filtered_bids, unlock_auto=bool(has_auto), current_radius=max_radius, balance=balance)
 
 @app.route('/shop')
-@require_user_auth
+@requires_permission(Permission.READ_TASK)
 def shop():
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
@@ -345,7 +371,7 @@ def legal(doc_type):
     return render_template('legal.html', title=doc['title'], content=doc['content'], balance=balance, owned=owned)
 
 @app.route('/api/v1/shop/buy', methods=['POST'])
-@require_user_auth
+@requires_permission(Permission.VIEW_BILLING)
 def shop_buy_api():
     item_id = request.json.get('item_id')
     conn = get_db()
@@ -373,7 +399,7 @@ def get_network_stats():
     })
 
 @app.route('/api/v1/dashboard/live')
-@require_user_auth
+@requires_permission(Permission.READ_TASK)
 def dashboard_live():
     conn = get_db()
     simulate_rival_snatch(); run_automation_daemon(MY_NODE_ID)
@@ -383,7 +409,7 @@ def dashboard_live():
     return jsonify({'balance': get_secure_balance(conn, MY_NODE_ID), 'xp': my_node['xp'] if my_node else 0, 'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 'daemon_event': daemon_event})
 
 @app.route('/powerchat')
-@require_user_auth
+@requires_permission(Permission.READ_TASK)
 def powerchat():
     conn = get_db_conn()
     try:
@@ -395,7 +421,7 @@ def powerchat():
     return render_template('powerchat.html', balance=balance)
 
 @app.route('/team')
-@require_user_auth
+@requires_permission(Permission.READ_TASK)
 def team_roster():
     conn = get_db_conn()
     try:
@@ -407,7 +433,7 @@ def team_roster():
     return render_template('team.html', balance=balance)
 
 @app.route('/api/v1/chat', methods=['POST'])
-@require_user_auth
+@requires_permission(Permission.CREATE_TASK)
 def api_chat():
     import asyncio
     from agent_engine_v2 import process_chat 
@@ -452,7 +478,7 @@ def api_chat():
         return jsonify({"type": "message", "role": "assistant", "content": f"⚠️ Core Engine Error: {str(e)}"})
     
 @app.route('/api/v1/execute', methods=['POST'])
-@require_user_auth
+@requires_permission(Permission.CREATE_TASK)
 def api_execute():
     if app.config.get('BROWNOUT_MODE'):
         return jsonify({"type": "error", "content": "⚠️ **NETWORK BROWNOUT ACTIVE:** Heavy L5 execution tools (images, video, research) are temporarily disabled to preserve core stability. Standard chat remains active."})
@@ -506,7 +532,7 @@ def invoice_status(r_hash):
     return jsonify({"status": "SETTLED"})
 
 @app.route('/api/v1/market/finalize_bid', methods=['POST'])
-@require_user_auth
+@requires_permission(Permission.CREATE_TASK)
 def finalize_bid():
     return jsonify({"success": True})
 
@@ -565,7 +591,7 @@ def get_watercooler_logs():
     return jsonify([dict(row) for row in logs])
 
 @app.route('/watercooler')
-@require_user_auth
+@requires_permission(Permission.READ_TASK)
 def watercooler_page():
     return render_template('water_cooler.html')
 
@@ -581,7 +607,7 @@ def admin_force_interaction():
 # --- 🤫 SUB-ROSA PROTOCOL ENDPOINTS ---
 
 @app.route('/api/v1/sub-rosa/init', methods=['POST'])
-@require_user_auth
+@requires_permission(Permission.CREATE_TASK)
 def api_init_sub_rosa():
     try:
         import agent_engine_v2
@@ -637,7 +663,7 @@ def api_init_sub_rosa():
         return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/v1/sub-rosa/finalize', methods=['POST'])
-@require_user_auth
+@requires_permission(Permission.CREATE_TASK)
 def api_finalize_sub_rosa():
     try:
         r_hash = request.json.get('hash')
@@ -648,7 +674,7 @@ def api_finalize_sub_rosa():
         return jsonify({"status": "ERROR", "message": f"Server Error: {str(e)}"}), 500
 
 @app.route('/api/v1/sub-rosa/burn', methods=['POST'])
-@require_user_auth
+@requires_permission(Permission.CANCEL_TASK)
 def api_burn_message():
     return jsonify({"status": "BURNED"})
 

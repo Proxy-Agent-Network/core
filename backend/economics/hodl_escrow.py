@@ -49,7 +49,13 @@ class EscrowManager:
         """Helper to communicate with the physical LND node."""
         url = f"https://{self.lnd_host}{path}"
         headers = {"Grpc-Metadata-macaroon": self.macaroon}
-        verify = self.cert if self.cert and os.path.exists(self.cert) else False
+        
+        # 🛑 THE FIX: Strict TLS Enforcement. Fail closed if missing.
+        if not self.cert or not os.path.exists(self.cert):
+            print(f" [SECURITY] 🚨 CRITICAL: TLS Certificate missing at {self.cert}!")
+            raise RuntimeError("Aborting LND connection: Missing TLS Certificate. Unencrypted connections are strictly prohibited.")
+            
+        verify = self.cert
         
         try:
             if method == "POST":
