@@ -693,6 +693,21 @@ def market_trends():
 @require_node_signature  
 def claim_bid(bid_id):
     safe_node_id = g.verified_node_id
+    conn = get_db()
+    
+    # 1. Verify the bid actually exists and is still available
+    bid = conn.execute("SELECT * FROM marketplace_bids WHERE bid_id = ? AND status = 'PENDING'", (bid_id,)).fetchone()
+    if not bid:
+        return jsonify({"status": "error", "message": "Bid has already been claimed, stolen, or is invalid."}), 400
+        
+    # 2. Update the marketplace status to prevent ghost loops
+    conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid_id,))
+    
+    # 3. Generate the active task for the node
+    task_id = f"TASK-{secrets.token_hex(4).upper()}"
+    conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', ?)", (task_id, bid['sats_offered'], bid['task_type']))
+    conn.commit()
+
     print(f"[MARKET] 🤝 Verified Node {safe_node_id} is claiming bid {bid_id}")
     return jsonify({"status": "success", "message": f"Bid {bid_id} securely claimed by {safe_node_id}"})
 
