@@ -187,12 +187,12 @@ def requires_permission(required_scope: Permission, cost_sats: int = 0):
             raw_key = request.headers.get("X-API-Key")
 
             if not agency_id or not raw_key:
-                # Check if they are using the legacy environment variable (backwards compatibility)
-                legacy_key = os.environ.get("DASHBOARD_API_KEY", "dev_dashboard_key_123")
-                if raw_key == legacy_key and raw_key is not None:
-                    return f(*args, **kwargs)
-                    
                 print(f" [RBAC] 🚨 Blocked request to {request.path} (Missing Headers)")
+                if request.is_json or request.path.startswith('/api/'):
+                    return jsonify({"status": "error", "message": "RBAC Denied: Missing X-Agency-ID or X-API-Key"}), 401
+                else:
+                    return redirect(url_for('login'))
+                
                 if request.is_json or request.path.startswith('/api/'):
                     return jsonify({"status": "error", "message": "RBAC Denied: Missing X-Agency-ID or X-API-Key"}), 401
                 else:
