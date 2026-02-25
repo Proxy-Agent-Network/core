@@ -10,6 +10,7 @@ from datetime import date
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash, abort
 import hmac
 import hashlib
+import html
 from functools import wraps
 from backend.core.db import get_db_conn
 from duckduckgo_search import DDGS
@@ -199,11 +200,6 @@ def requires_permission(required_scope: Permission, cost_sats: int = 0):
                     return jsonify({"status": "error", "message": "RBAC Denied: Missing X-Agency-ID or X-API-Key"}), 401
                 else:
                     return redirect(url_for('login'))
-                
-                if request.is_json or request.path.startswith('/api/'):
-                    return jsonify({"status": "error", "message": "RBAC Denied: Missing X-Agency-ID or X-API-Key"}), 401
-                else:
-                    return redirect(url_for('login'))
 
             # 3. Hash the key and verify through RBAC Engine
             key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -249,12 +245,12 @@ def update_secure_wallet(conn, node_id, amount):
         print(f" [SECURITY] 🚨 CRITICAL: TPM Encryption failed! Aborting transaction. ({e})")
         raise RuntimeError("Hardware cryptographic failure. Transaction aborted to prevent data exposure.")
         
-    conn.execute("UPDATE nodes SET total_earned = ? WHERE node_id = ?", (encrypted_balance, node_id))
+    conn.execute("UPDATE nodes SET total_earned = %s WHERE node_id = %s", (encrypted_balance, node_id))
     conn.commit()
     return new_balance
 
 def get_secure_balance(conn, node_id):
-    row = conn.execute("SELECT total_earned FROM nodes WHERE node_id = ?", (node_id,)).fetchone()
+    row = conn.execute("SELECT total_earned FROM nodes WHERE node_id = %s", (node_id,)).fetchone()
     if not row: return 0
     stored_val = str(row['total_earned'])
     if stored_val.startswith("SECURE::"):
@@ -272,22 +268,22 @@ def simulate_rival_snatch():
         value_mult = 1.5 if bid['sats_offered'] > 500 else 3.0 if bid['sats_offered'] > 1000 else 1.0
         attacker_name = random.choice(list(RIVALS_META.keys()))
         if random.random() < (RIVALS_META[attacker_name] * value_mult * 0.1):
-            conn.execute("UPDATE marketplace_bids SET status='STOLEN' WHERE bid_id=?", (bid['bid_id'],))
-            conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", ("THREAT", f"SECURITY ALERT: {attacker_name} intercepted Bid #{bid['bid_id']}"))
+            conn.execute("UPDATE marketplace_bids SET status='STOLEN' WHERE bid_id=%s", (bid['bid_id'],))
+            conn.execute("INSERT INTO global_events (event_type, message) VALUES (%s, %s)", ("THREAT", f"SECURITY ALERT: {attacker_name} intercepted Bid #{bid['bid_id']}"))
     conn.commit()
 
 def run_automation_daemon(node_id):
     conn = get_db()
-    if not conn.execute("SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_auto'", (node_id,)).fetchone(): return None
+    if not conn.execute("SELECT 1 FROM purchases WHERE node_id = %s AND item_id = 'license_auto'", (node_id,)).fetchone(): return None
     bid = conn.execute("SELECT * FROM marketplace_bids WHERE status = 'PENDING' ORDER BY sats_offered DESC LIMIT 1").fetchone()
     if bid:
-        conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid['bid_id'],))
+        conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=%s", (bid['bid_id'],))
         
         # 🛑 SECURITY FIX: Cryptographically secure task ID
         new_id = f"AUTO-{secrets.token_hex(3).upper()}"
         
-        conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', 'AUTOMATED')", (new_id, bid['sats_offered']))
-        conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", ("AUTOMATION", f"Node {node_id} secured task {new_id}"))
+        conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (%s, %s, 'OPEN', 'AUTOMATED')", (new_id, bid['sats_offered']))
+        conn.execute("INSERT INTO global_events (event_type, message) VALUES (%s, %s)", ("AUTOMATION", f"Node {node_id} secured task {new_id}"))
         conn.commit()
         msg = f"Daemon secured task {new_id} (+{bid['sats_offered']} Sats)"
         session['daemon_msg'] = msg
@@ -300,7 +296,7 @@ def run_automation_daemon(node_id):
         junk_id = f"DUST-{secrets.token_hex(2).upper()}"
         
         update_secure_wallet(conn, node_id, dust)
-        conn.execute("INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?)", (node_id, junk_id, 10))
+        conn.execute("INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (%s, %s, %s)", (node_id, junk_id, 10))
         conn.commit()
         return f"Daemon scavenged {junk_id} (+{dust} Sats)"
     return None
@@ -363,7 +359,7 @@ def logout():
 def search_engine():
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
-    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
+    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=%s', (MY_NODE_ID,)).fetchall()]
     return render_template('search.html', balance=balance, owned=owned)
 
 @app.route('/api/v1/search/execute', methods=['POST'])
@@ -391,12 +387,12 @@ def api_execute_search():
 @requires_permission(Permission.READ_TASK)
 def dashboard():
     conn = get_db()
-    my_node = conn.execute('SELECT * FROM nodes WHERE node_id = ?', (MY_NODE_ID,)).fetchone()
+    my_node = conn.execute('SELECT * FROM nodes WHERE node_id = %s', (MY_NODE_ID,)).fetchone()
     balance = get_secure_balance(conn, MY_NODE_ID)
     my_node_data = {'id': my_node['node_id'], 'sats_balance': balance, 'status': 'ONLINE'} if my_node else {'id': MY_NODE_ID, 'sats_balance': 0, 'status': 'OFFLINE'}
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY task_id DESC LIMIT 5').fetchall()
     tasks = [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks]
-    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
+    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=%s', (MY_NODE_ID,)).fetchall()]
     return render_template('dashboard.html', node=my_node_data, tasks=tasks, hw_secured=HW_SECURED, owned=owned, balance=balance) 
 
 @app.route('/marketplace', methods=['GET', 'POST'])
@@ -421,7 +417,7 @@ def marketplace():
         if lnd:
             invoice = lnd.create_invoice(sats, f"Broadcast Task: {task_type}")
             if invoice:
-                invoice['duration'] = 4 if conn.execute("SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_speed'", (MY_NODE_ID,)).fetchone() else 8
+                invoice['duration'] = 4 if conn.execute("SELECT 1 FROM purchases WHERE node_id = %s AND item_id = 'license_speed'", (MY_NODE_ID,)).fetchone() else 8
                 invoice['color'] = color
                 if request.headers.get('X-Requested-With') == 'XMLHttpRequest': 
                     return jsonify({"status": "INVOICE_REQUIRED", "invoice": invoice})
@@ -429,7 +425,7 @@ def marketplace():
         # 🛑 SECURITY FIX: Cryptographically secure request ID
         req_id = f"REQ-{secrets.token_hex(4).upper()}"
         
-        conn.execute("INSERT INTO marketplace_bids (requester_id, sats_offered, task_type, status, color) VALUES (?, ?, ?, 'PENDING', ?)", (req_id, sats, task_type, color))
+        conn.execute("INSERT INTO marketplace_bids (requester_id, sats_offered, task_type, status, color) VALUES (%s, %s, %s, 'PENDING', %s)", (req_id, sats, task_type, color))
         conn.commit() 
         return redirect(url_for('marketplace'))
 
@@ -455,10 +451,10 @@ def shop():
         item_id = request.args.get('buy')
         if item_id in SHOP_ITEMS and balance >= SHOP_ITEMS[item_id]['price']:
             update_secure_wallet(conn, MY_NODE_ID, -SHOP_ITEMS[item_id]['price'])
-            conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (?, ?)", (MY_NODE_ID, item_id))
+            conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (%s, %s)", (MY_NODE_ID, item_id))
             conn.commit()
         return redirect(url_for('shop'))
-    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
+    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=%s', (MY_NODE_ID,)).fetchall()]
     return render_template('shop.html', items=SHOP_ITEMS, balance=balance, owned=owned, node_id=MY_NODE_ID)
 
 @app.route('/faq')
@@ -466,7 +462,7 @@ def faq():
     # FAQ and Legal can remain public for transparency
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
-    owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
+    owned = [row['item_id'] for row in conn.execute('SELECT item_id FROM purchases WHERE node_id=%s', (MY_NODE_ID,)).fetchall()]
     return render_template('faq.html', node_id=MY_NODE_ID, balance=balance, hw_secured=HW_SECURED, owned=owned)
 
 @app.route('/legal/<doc_type>')
@@ -476,8 +472,9 @@ def legal(doc_type):
     
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
-    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
+    owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=%s', (MY_NODE_ID,)).fetchall()]
     
+    import bleach
     allowed_tags = ['p', 'b', 'i', 'strong', 'em', 'a', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'br']
     safe_content = bleach.clean(doc['content'], tags=allowed_tags, strip=True)
     
@@ -492,7 +489,7 @@ def shop_buy_api():
     price = SHOP_ITEMS[item_id]['price']
     if get_secure_balance(conn, MY_NODE_ID) >= price:
         new_bal = update_secure_wallet(conn, MY_NODE_ID, -price)
-        conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (?, ?)", (MY_NODE_ID, item_id))
+        conn.execute("INSERT INTO purchases (node_id, item_id) VALUES (%s, %s)", (MY_NODE_ID, item_id))
         conn.commit()
         return jsonify({"success": True, "new_balance": new_bal})
     return jsonify({"success": False, "error": "Insufficient Funds"}), 402
@@ -500,7 +497,7 @@ def shop_buy_api():
 @app.route('/api/v1/network/stats')
 def get_network_stats():
     conn = get_db()
-    active_nodes = conn.execute("SELECT COUNT(*) AS cnt FROM nodes WHERE last_seen > ?", (time.time() - 300,)).fetchone()['cnt']
+    active_nodes = conn.execute("SELECT COUNT(*) AS cnt FROM nodes WHERE last_seen > %s", (time.time() - 300,)).fetchone()['cnt']
     status_str = "BROWNOUT" if app.config.get('BROWNOUT_MODE') else "STABLE"
     return jsonify({
         "total_volume": "ENCRYPTED", 
@@ -517,7 +514,7 @@ def dashboard_live():
     conn = get_db()
     simulate_rival_snatch(); run_automation_daemon(MY_NODE_ID)
     daemon_event = session.pop('daemon_msg', None)
-    my_node = conn.execute('SELECT xp FROM nodes WHERE node_id = ?', (MY_NODE_ID,)).fetchone()
+    my_node = conn.execute('SELECT xp FROM nodes WHERE node_id = %s', (MY_NODE_ID,)).fetchone()
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY task_id DESC LIMIT 5').fetchall()
     return jsonify({'balance': get_secure_balance(conn, MY_NODE_ID), 'xp': my_node['xp'] if my_node else 0, 'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 'daemon_event': daemon_event})
 
@@ -564,7 +561,7 @@ def api_chat():
     
     if locked_agent and not app.config.get('BROWNOUT_MODE'):
         try:
-            rows = conn.execute("SELECT memory_text FROM agent_memories WHERE user_id = ? AND agent_name = ? ORDER BY timestamp DESC LIMIT 5", (user_id, locked_agent)).fetchall()
+            rows = conn.execute("SELECT memory_text FROM agent_memories WHERE user_id = %s AND agent_name = %s ORDER BY timestamp DESC LIMIT 5", (user_id, locked_agent)).fetchall()
             user_memories = [r['memory_text'] for r in rows]
         except Exception as e:
             print(f" [WARN] Failed to fetch memories: {e}")
@@ -581,7 +578,7 @@ def api_chat():
         
         if response_payload.get('save_memory') and locked_agent and not app.config.get('BROWNOUT_MODE'):
             try:
-                conn.execute("INSERT INTO agent_memories (user_id, agent_name, memory_text) VALUES (?, ?, ?)", (user_id, locked_agent, response_payload['save_memory']))
+                conn.execute("INSERT INTO agent_memories (user_id, agent_name, memory_text) VALUES (%s, %s, %s)", (user_id, locked_agent, response_payload['save_memory']))
                 conn.commit()
                 print(f" [SYSTEM] 🧠 {locked_agent} successfully logged a core memory.")
             except Exception as e:
@@ -692,7 +689,7 @@ def trigger_leisure_loop():
         # 2. Open a direct, explicit DB connection (bypassing Flask's `g` object)
         db = get_db_conn()
         try:
-            db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)", (agent, content, log_type))
+            db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (%s, %s, %s)", (agent, content, log_type))
             db.commit()
         finally:
             # 🛑 SECURITY FIX: Guarantee the connection is freed back to PostgreSQL
@@ -739,7 +736,7 @@ def watercooler_page():
 def admin_force_interaction():
     data = request.json
     db = get_db()
-    db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)", (data.get('agent_a'), f"Admin forced interaction with {data.get('agent_b')}", data.get('type')))
+    db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (%s, %s, %s)", (data.get('agent_a'), f"Admin forced interaction with {data.get('agent_b')}", data.get('type')))
     db.commit()
     return jsonify({"status": "injected"})
 
@@ -756,7 +753,7 @@ def api_init_sub_rosa():
         conn = get_db()
         
         try:
-            agent_row = conn.execute("SELECT category FROM agents WHERE name = ?", (agent_name,)).fetchone()
+            agent_row = conn.execute("SELECT category FROM agents WHERE name = %s", (agent_name,)).fetchone()
             category = agent_row['category'] if agent_row else "SPECIALIST"
         except:
             category = "SPECIALIST"
@@ -773,7 +770,7 @@ def api_init_sub_rosa():
             dynamic_threshold = 80
         
         try:
-            aff_row = conn.execute("SELECT score FROM affinity WHERE user_id = ? AND agent_name = ?", (user_id, agent_name)).fetchone()
+            aff_row = conn.execute("SELECT score FROM affinity WHERE user_id = %s AND agent_name = %s", (user_id, agent_name)).fetchone()
             user_score = aff_row['score'] if aff_row else 0 
         except:
             user_score = 0
@@ -856,7 +853,7 @@ if __name__ == '__main__':
     with app.app_context():
         try:
             db = get_db()
-            db.execute("INSERT INTO nodes (node_id, total_earned, xp, last_seen) VALUES (?, '0', 0, ?) ON CONFLICT (node_id) DO NOTHING", (MY_NODE_ID, time.time()))
+            db.execute("INSERT INTO nodes (node_id, total_earned, xp, last_seen) VALUES (%s, '0', 0, %s) ON CONFLICT (node_id) DO NOTHING", (MY_NODE_ID, time.time()))
             db.commit()
         except Exception as e:
             pass

@@ -1,5 +1,4 @@
 import os
-import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -14,14 +13,11 @@ class DBWrapper:
         self.conn = psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
         
     def execute(self, query, params=None):
-        # 🛑 THE FIX #2: Smart Parameter Replacement
-        # This regex looks for either a single-quoted string OR a question mark.
-        # If it finds a question mark outside of quotes, it replaces it with %s.
-        # If it finds a quoted string (like '?id=5'), it leaves it completely untouched.
-        safe_query = re.sub(r"(('[^']*')|(\?))", lambda m: '%s' if m.group(3) else m.group(1), query)
-        
+        # 🛑 SECURITY FIX: Pure native parameterization
+        # The query already contains %s placeholders from app.py.
+        # Passing it directly to psycopg2 prevents SQL corruption from escaped strings.
         c = self.conn.cursor()
-        c.execute(safe_query, params)
+        c.execute(query, params)
         return c
         
     def commit(self):
