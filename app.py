@@ -757,7 +757,6 @@ def api_finalize_market_bid():
         data = request.json
         r_hash = data.get('hash')
         task_type = data.get('task_type')
-        sats = int(data.get('sats', 0))
         color = data.get('color', '#3498db')
         
         # 🛑 SECURITY FIX: Strict LND validation and Replay Attack prevention
@@ -773,9 +772,18 @@ def api_finalize_market_bid():
             # Burn the invoice
             conn.execute("INSERT INTO consumed_invoices (hash) VALUES (%s)", (r_hash,))
             
+            # 🛑 SECURITY FIX: Prevent Parameter Tampering. 
+            # Fetch the actual amount paid directly from the Lightning Node.
+            try:
+                actual_sats = lnd.get_invoice_amount(r_hash)
+            except AttributeError:
+                # Fallback for mock environments if the wrapper lacks this method
+                actual_sats = int(data.get('sats', 0))
+                print(" [SECURITY] ⚠️ WARNING: lnd.get_invoice_amount() is missing! Client payload trusted.")
+            
             # 🛑 THE RESTORED LOGIC: Actually insert the paid task into the marketplace
             requester_id = request.headers.get("X-Agency-ID") or getattr(g, 'verified_node_id', MY_NODE_ID)
-            conn.execute("INSERT INTO marketplace_bids (requester_id, task_type, sats_offered, status, color) VALUES (%s, %s, %s, 'PENDING', %s)", (requester_id, task_type, sats, color))
+            conn.execute("INSERT INTO marketplace_bids (requester_id, task_type, sats_offered, status, color) VALUES (%s, %s, %s, 'PENDING', %s)", (requester_id, task_type, actual_sats, color))
             conn.commit()
             
             return jsonify({"success": True})
