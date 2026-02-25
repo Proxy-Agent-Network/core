@@ -201,7 +201,8 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
             
         elif "REQUIRE_PAYMENT:" in ans:
             try:
-                match = re.search(r"REQUIRE_PAYMENT:\s*(.*?)\s*\|\s*COST:\s*(\d+).*?\|\s*PROMPT:\s*(.*?)(?:\s*\|\s*IMAGE_PATH:\s*(.*))?$", ans, re.IGNORECASE | re.DOTALL)
+                # 🛑 SECURITY FIX: ReDoS Prevention (Negated Character Classes)
+                match = re.search(r"REQUIRE_PAYMENT:\s*([^|]+?)\s*\|\s*COST:\s*(\d+)[^|]*\|\s*PROMPT:\s*(.*?)(?:\s*\|\s*IMAGE_PATH:\s*(.*))?$", ans, re.IGNORECASE | re.DOTALL)
                 if match:
                     raw_task_type = match.group(1).strip().upper()
                     llm_claimed_cost = int(match.group(2).strip())
