@@ -41,7 +41,12 @@ except Exception as e:
         MY_NODE_ID = "EMERGENCY_SOFTWARE_BOOT"
     HW_SECURED = False
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 app = Flask(__name__)
+
+# 🛑 SECURITY FIX: Safely parse client IPs behind reverse proxies/load balancers
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # 🛑 THE FIX: Strict Secret Key Enforcement
 flask_secret = os.environ.get('FLASK_SECRET_KEY')
