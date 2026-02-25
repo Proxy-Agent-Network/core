@@ -96,8 +96,8 @@ def rate_limit(max_requests: int, window_seconds: int):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            # Use X-Forwarded-For if behind a proxy, otherwise use remote_addr
-            client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            # 🛑 SECURITY FIX: Force TCP remote_addr to prevent X-Forwarded-For spoofing
+            client_ip = request.remote_addr
             now = time.time()
             
             # Initialize or clean up old requests for this IP
