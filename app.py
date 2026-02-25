@@ -136,6 +136,8 @@ def sanitize_for_llm(text: str) -> str:
 # ==========================================
 # 🛡️ ZERO-TRUST NODE AUTHENTICATION
 # ==========================================
+USED_SIGNATURES = {}
+
 def require_node_signature(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -149,11 +151,23 @@ def require_node_signature(f):
         # 🛑 SECURITY FIX: Prevent Replay Attacks with a 5-minute sliding window
         try:
             request_time = float(timestamp)
-            if abs(time.time() - request_time) > 300: # 300 seconds = 5 minutes
+            now = time.time()
+            if abs(now - request_time) > 300: # 300 seconds = 5 minutes
                 print(f" [SECURITY] 🚨 Replay Attack Blocked! Expired timestamp from {node_id}")
                 return jsonify({"status": "error", "message": "Replay attack detected. Timestamp expired."}), 403
         except ValueError:
             return jsonify({"status": "error", "message": "Invalid timestamp format."}), 400
+
+        # 🛑 SECURITY FIX: Short-term replay protection (Nonce caching)
+        # 1. Lazily clean up expired signatures to prevent memory leaks
+        expired_keys = [k for k, v in USED_SIGNATURES.items() if now - v > 300]
+        for k in expired_keys:
+            del USED_SIGNATURES[k]
+            
+        # 2. Reject if the signature has already been consumed
+        if signature in USED_SIGNATURES:
+            print(f" [SECURITY] 🚨 Short-Term Replay Attack Blocked! Signature reused by {node_id}")
+            return jsonify({"status": "error", "message": "Replay attack detected. Signature already consumed."}), 403
 
         raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED")
         if not raw_seed:
@@ -165,6 +179,9 @@ def require_node_signature(f):
 
         if not hmac.compare_digest(str(signature), expected_sig):
             return jsonify({"status": "error", "message": "Hardware attestation failed. Spoofing detected."}), 403
+
+        # 3. Mark the signature as consumed
+        USED_SIGNATURES[signature] = now
 
         g.verified_node_id = node_id
         return f(*args, **kwargs)
