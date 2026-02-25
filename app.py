@@ -350,6 +350,9 @@ def get_db():
         db.execute('''CREATE TABLE IF NOT EXISTS marketplace_bids (bid_id SERIAL PRIMARY KEY, requester_id TEXT, task_type TEXT, sats_offered INTEGER, status TEXT, color TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.execute('''CREATE TABLE IF NOT EXISTS purchases (id SERIAL PRIMARY KEY, node_id TEXT, item_id TEXT, purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         
+        # 🛑 SECURITY FIX: Table to track and burn consumed Lightning invoices
+        db.execute('''CREATE TABLE IF NOT EXISTS consumed_invoices (hash TEXT PRIMARY KEY, consumed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
         db.execute('''CREATE TABLE IF NOT EXISTS watercooler (id SERIAL PRIMARY KEY, agent_name TEXT, content TEXT, type TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         db.execute('''CREATE TABLE IF NOT EXISTS affinity (user_id TEXT, agent_name TEXT, score INTEGER DEFAULT 0, PRIMARY KEY (user_id, agent_name))''')
         db.execute('''CREATE TABLE IF NOT EXISTS agents (name TEXT PRIMARY KEY, category TEXT DEFAULT 'SPECIALIST', wallet_balance INTEGER DEFAULT 1000, affinity_threshold INTEGER DEFAULT 80, threshold_min INTEGER DEFAULT 30, threshold_max INTEGER DEFAULT 90)''')
@@ -416,16 +419,22 @@ def api_execute_search():
 
     if lnd:
         is_paid = lnd.check_status(payment_hash) == "SETTLED" if payment_hash else False
+        
+        # 🛑 SECURITY FIX: Burn the invoice to prevent Replay Attacks
+        if is_paid:
+            conn = get_db()
+            consumed = conn.execute("SELECT 1 FROM consumed_invoices WHERE hash = %s", (payment_hash,)).fetchone()
+            if consumed:
+                is_paid = False
+                print(f" [SECURITY] 🚨 Blocked replay attack for invoice hash: {payment_hash}")
+            else:
+                conn.execute("INSERT INTO consumed_invoices (hash) VALUES (%s)", (payment_hash,))
+                conn.commit()
+                
         if not is_paid:
             invoice_data = lnd.create_invoice(cost, f"Proxy Search: {query[:30]}")
             if not invoice_data: return jsonify({"status": "ERROR", "message": "Lightning Treasury Offline"}), 500
             return jsonify({"status": "PAYMENT_REQUIRED", "invoice": invoice_data['payment_request'], "hash": invoice_data['r_hash'], "cost": cost}), 402
-
-    try:
-        with DDGS() as ddgs: results = list(ddgs.text(query, max_results=5))
-        return jsonify({"status": "SUCCESS", "results": results, "hw_attestation": MY_NODE_ID})
-    except Exception as e: print(f" [ERROR] Search Exception: {str(e)}")
-        return jsonify({"status": "ERROR", "message": "Search engine encountered an internal error."}), 500
 
 @app.route('/')
 @requires_permission(Permission.READ_TASK)
@@ -884,11 +893,24 @@ def api_finalize_sub_rosa():
     try:
         r_hash = request.json.get('hash')
         
-        # 🛑 SECURITY FIX: Removed hardcoded debug bypass. Strictly enforce LND validation.
         if lnd and lnd.check_status(r_hash) == "SETTLED": 
+            conn = get_db()
+            
+            # 🛑 SECURITY FIX: Burn the invoice to prevent Replay Attacks
+            consumed = conn.execute("SELECT 1 FROM consumed_invoices WHERE hash = %s", (r_hash,)).fetchone()
+            if consumed:
+                print(f" [SECURITY] 🚨 Blocked replay attack for invoice hash: {r_hash}")
+                return jsonify({"success": False, "message": "Invoice already consumed. Replay attack detected."}), 403
+                
+            conn.execute("INSERT INTO consumed_invoices (hash) VALUES (%s)", (r_hash,))
+            conn.commit()
+            
             return jsonify({"success": True})
             
         return jsonify({"success": False, "message": "Payment not detected in mempool."}), 402
+    except Exception as e:
+        print(f" [ERROR] Sub-Rosa Exception: {str(e)}")
+        return jsonify({"status": "ERROR", "message": "Server Error: An unexpected internal error occurred."}), 500
 
 @app.route('/api/v1/sub-rosa/burn', methods=['POST'])
 @requires_permission(Permission.CANCEL_TASK)
