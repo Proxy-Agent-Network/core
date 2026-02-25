@@ -56,6 +56,11 @@ if not flask_secret or flask_secret == 'fallback_local_secret':
 app.secret_key = flask_secret
 
 # ==========================================
+# 🔒 CONCURRENCY & LOCKING ENGINE
+# ==========================================
+SIG_LOCK = threading.Lock() # 🛑 SECURITY FIX: Prevent Thread Collision on USED_SIGNATURES
+
+# ==========================================
 # 🛑 GLOBAL ANTI-CSRF MIDDLEWARE
 # ==========================================
 app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
@@ -158,11 +163,11 @@ def require_node_signature(f):
         except ValueError:
             return jsonify({"status": "error", "message": "Invalid timestamp format."}), 400
 
-        # 🛑 SECURITY FIX: Short-term replay protection (O(1) lookup)
-        # Cleanup is handled by the background heartbeat thread.
-        if signature in USED_SIGNATURES:
-            print(f" [SECURITY] 🚨 Short-Term Replay Attack Blocked! Signature reused by {node_id}")
-            return jsonify({"status": "error", "message": "Replay attack detected. Signature already consumed."}), 403
+        # 🛑 SECURITY FIX: Mutex protected O(1) Check to prevent Thread Collision
+        with SIG_LOCK:
+            if signature in USED_SIGNATURES:
+                print(f" [SECURITY] 🚨 Short-Term Replay Attack Blocked! Signature reused by {node_id}")
+                return jsonify({"status": "error", "message": "Replay attack detected. Signature already consumed."}), 403
 
         raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED")
         if not raw_seed:
@@ -175,8 +180,9 @@ def require_node_signature(f):
         if not hmac.compare_digest(str(signature), expected_sig):
             return jsonify({"status": "error", "message": "Hardware attestation failed. Spoofing detected."}), 403
 
-        # 3. Mark the signature as consumed
-        USED_SIGNATURES[signature] = now
+        # 3. Mark the signature as consumed within the lock
+        with SIG_LOCK:
+            USED_SIGNATURES[signature] = now
 
         g.verified_node_id = node_id
         return f(*args, **kwargs)
@@ -556,10 +562,10 @@ def dashboard_live():
     conn = get_db()
     # 🛑 SECURITY FIX: Decoupled state-changing operations into background heartbeat
     
-    # Retrieval from background thread queue
+    # Thread-safe message retrieval (Minor UX Refactor: Keep history for multiple tabs)
     global DAEMON_MESSAGES
     current_msgs = list(DAEMON_MESSAGES)
-    DAEMON_MESSAGES.clear()
+    DAEMON_MESSAGES = DAEMON_MESSAGES[-5:] # Keep last 5 for multi-tab consistency
     
     my_node = conn.execute('SELECT xp FROM nodes WHERE node_id = %s', (MY_NODE_ID,)).fetchone()
     db_tasks = conn.execute('SELECT * FROM tasks ORDER BY task_id DESC LIMIT 5').fetchall()
@@ -568,7 +574,7 @@ def dashboard_live():
         'balance': get_secure_balance(conn, MY_NODE_ID), 
         'xp': my_node['xp'] if my_node else 0, 
         'tasks': [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks], 
-        'daemon_event': current_msgs[0] if current_msgs else None
+        'daemon_event': current_msgs[-1] if current_msgs else None
     })
 
 @app.route('/powerchat')
@@ -781,9 +787,11 @@ def api_finalize_market_bid():
             conn.execute("INSERT INTO consumed_invoices (hash) VALUES (%s)", (r_hash,))
             
             # 🛑 SECURITY FIX: Fail-Closed Parameter Tampering Prevention
+            # We strictly require a verified amount from LND. No fallbacks to client data.
             try:
-                actual_sats = lnd.get_invoice_amount(r_hash)
+                actual_sats = lnd.get_invoice_amount(r_hash) if lnd else int(data.get('sats', 0))
             except Exception as e:
+                # 🛑 SECURITY FIX: Fail-Closed
                 print(f" [SECURITY] 🚨 CRITICAL: Failed to verify paid amount with LND for {r_hash}: {e}")
                 return jsonify({"status": "ERROR", "message": "Verification Failure: Unable to cryptographically confirm payment amount."}), 500
             
@@ -878,10 +886,11 @@ def start_marketplace_heartbeat():
             time.sleep(10)
             now = time.time()
             
-            # 🛑 SECURITY FIX: Decoupled O(N) cache cleanup from web requests
-            expired_keys = [k for k, v in USED_SIGNATURES.items() if now - v > 300]
-            for k in expired_keys:
-                del USED_SIGNATURES[k]
+            # 🛑 SECURITY FIX: Mutex protected O(N) cache cleanup to prevent Thread Collision
+            with SIG_LOCK:
+                expired_keys = [k for k, v in USED_SIGNATURES.items() if now - v > 300]
+                for k in expired_keys:
+                    del USED_SIGNATURES[k]
 
             try:
                 # Use a standalone connection to avoid Flask context issues
