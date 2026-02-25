@@ -602,12 +602,21 @@ def api_execute():
     try:
         data = request.json
         time.sleep(1) 
+        
+        # 🛑 SECURITY FIX: Strict Whitelist for Tool Execution
+        tool_name = data.get('tool_name')
+        ALLOWED_TOOLS = {"generate_image", "generate_video", "deep_market_analysis"}
+        
+        if tool_name not in ALLOWED_TOOLS:
+            print(f" [SECURITY] 🚨 Blocked unauthorized tool execution attempt: {tool_name}")
+            return jsonify({"type": "error", "content": "Execution Denied: Unauthorized tool requested."}), 403
+
         arguments = data.get('arguments', {})
         arguments['payment_hash'] = data.get('hash', 'mock_hash')
         
         safe_prompt = sanitize_for_llm(data.get('prompt_text', ''))
         
-        final_payload = asyncio.run(execute_paid_tool(data.get('tool_name'), arguments, data.get('l5_artist', 'Specialist'), safe_prompt))
+        final_payload = asyncio.run(execute_paid_tool(tool_name, arguments, data.get('l5_artist', 'Specialist'), safe_prompt))
         return jsonify(final_payload if not isinstance(final_payload, str) else {"type": "message", "content": final_payload})
     except Exception as e:
         print(f" [ERROR] Execution Engine Exception: {str(e)}")
