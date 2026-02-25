@@ -449,21 +449,21 @@ def dashboard():
     return render_template('dashboard.html', node=my_node_data, tasks=tasks, hw_secured=HW_SECURED, owned=owned, balance=balance) 
 
 @app.route('/marketplace', methods=['GET', 'POST'])
-@requires_permission(Permission.READ_TASK)
+@requires_permission(Permission.VIEW_MARKET)
 def marketplace():
     conn = get_db()
     if request.method == 'POST':
-        task_type = request.form.get('task_type')
+        # 🛑 SECURITY FIX: Route ALL traffic through the secure AJAX/LND flow. No exceptions.
+        data = request.json if request.is_json else request.form
+        task_type = data.get('task_type')
+        sats = int(data.get('sats', 0))
         
-        # 🛑 SECURITY FIX: Strict Bounds Checking for Financial Inputs
-        try:
-            sats = int(request.form.get('sats', 100))
-            if sats <= 0:
-                return jsonify({"status": "ERROR", "message": "SATS amount must be greater than zero."}), 400
-            if sats > 100_000_000: # Limit to 1 full Bitcoin
-                return jsonify({"status": "ERROR", "message": "Amount exceeds maximum network capacity."}), 400
-        except ValueError:
-            return jsonify({"status": "ERROR", "message": "SATS must be a valid integer."}), 400
+        if lnd:
+            inv = lnd.create_invoice(sats, f"Market Bid: {task_type}")
+            if not inv: return jsonify({"status": "ERROR", "message": "Lightning Treasury Offline"}), 500
+            return jsonify({"status": "PAYMENT_REQUIRED", "invoice": inv['payment_request'], "hash": inv['r_hash']})
+            
+        return jsonify({"status": "ERROR", "message": "LND node is required to post marketplace bids."}), 500
             
         color = request.form.get('color', '#2ecc71')
         
@@ -735,8 +735,38 @@ def invoice_status(r_hash):
 
 @app.route('/api/v1/market/finalize_bid', methods=['POST'])
 @requires_permission(Permission.CREATE_TASK)
-def finalize_bid():
-    return jsonify({"success": True})
+def api_finalize_market_bid():
+    try:
+        data = request.json
+        r_hash = data.get('hash')
+        task_type = data.get('task_type')
+        sats = int(data.get('sats', 0))
+        color = data.get('color', '#3498db')
+        
+        # 🛑 SECURITY FIX: Strict LND validation and Replay Attack prevention
+        if lnd and lnd.check_status(r_hash) == "SETTLED": 
+            conn = get_db()
+            
+            # Check if invoice was already consumed
+            consumed = conn.execute("SELECT 1 FROM consumed_invoices WHERE hash = %s", (r_hash,)).fetchone()
+            if consumed:
+                print(f" [SECURITY] 🚨 Blocked replay attack for market bid hash: {r_hash}")
+                return jsonify({"success": False, "message": "Invoice already consumed. Replay attack detected."}), 403
+                
+            # Burn the invoice
+            conn.execute("INSERT INTO consumed_invoices (hash) VALUES (%s)", (r_hash,))
+            
+            # 🛑 THE RESTORED LOGIC: Actually insert the paid task into the marketplace
+            requester_id = request.headers.get("X-Agency-ID") or getattr(g, 'verified_node_id', MY_NODE_ID)
+            conn.execute("INSERT INTO marketplace_bids (requester_id, task_type, sats_offered, status, color) VALUES (%s, %s, %s, 'PENDING', %s)", (requester_id, task_type, sats, color))
+            conn.commit()
+            
+            return jsonify({"success": True})
+            
+        return jsonify({"success": False, "message": "Payment not detected in mempool."}), 402
+    except Exception as e:
+        print(f" [ERROR] Market Finalize Exception: {str(e)}")
+        return jsonify({"status": "ERROR", "message": "Server Error: An unexpected internal error occurred."}), 500
 
 # --- ⚠️ NEW ADMIN ENDPOINTS ---
 
