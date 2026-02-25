@@ -24,7 +24,7 @@ services:
     image: lncm/bitcoind:v25.0
     container_name: bitcoin_core
     environment:
-      - BITCOIN_NETWORK=mainnet
+      - BITCOIN_NETWORK=regtest
       - BITCOIN_RPC_USER=proxy_btc
       - BITCOIN_RPC_PASSWORD=proxy_btc_pass
     expose:
@@ -38,6 +38,14 @@ services:
       -prune=10000
       -server=1
       -listen=1
+      -chain=regtest
+      -rpcuser=proxy_btc
+      -rpcpassword=proxy_btc_pass
+      -rpcport=8332
+      -rpcbind=0.0.0.0
+      -rpcallowip=0.0.0.0/0
+      -zmqpubrawblock=tcp://0.0.0.0:28332
+      -zmqpubrawtx=tcp://0.0.0.0:28333
 
   # --- LAYER 2: THE BANK (Lightning Network) ---
   lnd:
@@ -55,7 +63,7 @@ services:
       - lnd_data:/root/.lnd
     command: >
       --bitcoin.active
-      --bitcoin.mainnet
+      --bitcoin.regtest
       --bitcoin.node=bitcoind
       --bitcoind.rpchost=bitcoind:8332
       --bitcoind.rpcuser=proxy_btc
@@ -81,9 +89,10 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - LND_GRPC_HOST=lnd
       - LND_GRPC_PORT=10009
-      - LND_MACAROON_PATH=/home/proxyuser/.lnd/data/chain/bitcoin/mainnet/admin.macaroon
+      - LND_MACAROON_PATH=/home/proxyuser/.lnd/data/chain/bitcoin/regtest/agent.macaroon
       - LND_TLS_CERT_PATH=/home/proxyuser/.lnd/tls.cert
       - ADMIN_SECRET_TOKEN=${ADMIN_SECRET_TOKEN}
+      - HARDWARE_ATTESTATION_SEED=${HARDWARE_ATTESTATION_SEED}
     depends_on:
       db:
         condition: service_healthy
@@ -121,4 +130,4 @@ volumes:
   pgdata:
   faiss_data:
   lnd_data:
-  bitcoin_data: # Docker will automatically manage this volume
+  bitcoin_data:

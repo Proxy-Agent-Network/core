@@ -3,14 +3,19 @@ import hmac
 import hashlib
 import requests
 import random
+import os
 
 # ==========================================
 # 🛡️ HARDWARE IDENTITY (Zero-Trust)
 # ==========================================
 # In production, this seed never leaves the physical TPM 2.0 chip.
-HARDWARE_SEED = b"simulated_hardware_seed_0x99"
+raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED")
+if not raw_seed:
+    raise ValueError("CRITICAL: HARDWARE_ATTESTATION_SEED is missing from environment!")
+
+HARDWARE_SEED = raw_seed.encode("utf-8")
 MY_NODE_ID = f"TPM2-EK-DEV-BYPASS-{random.randint(1000,9999)}"
-MASTER_NODE_URL = "http://127.0.0.1:5001"
+MASTER_NODE_URL = "http://127.0.0.1:5000"
 
 def get_secure_headers() -> dict:
     """Generates time-stamped, cryptographically signed HTTP headers."""

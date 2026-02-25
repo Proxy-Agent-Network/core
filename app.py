@@ -14,7 +14,7 @@ from functools import wraps
 from backend.core.db import get_db_conn
 from duckduckgo_search import DDGS
 
-from agency_rbac import RBACEngine, Permission
+from backend.auth.agency_rbac import RBACEngine, Permission
 
 try:
     from backend.core.lightning_engine import lnd
@@ -133,7 +133,12 @@ def require_node_signature(f):
         if not all([node_id, timestamp, signature]):
             return jsonify({"status": "error", "message": "Missing identity headers."}), 401
 
-        tpm_seed = b"simulated_hardware_seed_0x99" 
+        raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED")
+        if not raw_seed:
+            raise ValueError("CRITICAL: HARDWARE_ATTESTATION_SEED is missing from environment!")
+
+        tpm_seed = raw_seed.encode("utf-8")
+        
         expected_sig = hmac.new(tpm_seed, f"{node_id}:{timestamp}".encode(), hashlib.sha256).hexdigest()
 
         if not hmac.compare_digest(str(signature), expected_sig):
@@ -652,7 +657,7 @@ def api_toggle_brownout():
 # --- 💧 UNHINGED WATERCOOLER DAEMON ---
 def trigger_leisure_loop():
     if app.config.get('BROWNOUT_MODE'):
-        return
+        return True # Return true so we don't trigger error backoffs during planned brownouts
 
     agents = ["Ellen", "Gordon", "Olivia", "Eve", "Alice", "Diana", "Zoe", "Felix", "Liam", "Dr. Nora"]
     agent = random.choice(agents)
@@ -669,23 +674,44 @@ def trigger_leisure_loop():
     try:
         import agent_engine_v2
         import asyncio
+        from backend.core.db import get_db_conn
+        
+        # 1. Execute the slow LLM network call BEFORE touching the database
         content = asyncio.run(agent_engine_v2.generate_watercooler_thought(agent, target, log_type))
-        db = get_db()
-        db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)", (agent, content, log_type))
-        db.commit()
+        
+        # 2. Open a direct, explicit DB connection (bypassing Flask's `g` object)
+        db = get_db_conn()
+        try:
+            db.execute("INSERT INTO watercooler (agent_name, content, type) VALUES (?, ?, ?)", (agent, content, log_type))
+            db.commit()
+        finally:
+            # 🛑 SECURITY FIX: Guarantee the connection is freed back to PostgreSQL
+            db.close() 
+            
+        return True
     except Exception as e:
-        pass
+        print(f" [DAEMON] Watercooler exception: {e}")
+        return False
 
 def start_watercooler_heartbeat():
     def loop():
+        backoff = 15 # Start with the standard 15-second loop
         while True:
-            time.sleep(15)
-            with app.app_context():
-                trigger_leisure_loop()
-    
+            time.sleep(backoff)
+            
+            # We no longer need `with app.app_context():` because we handle the DB explicitly
+            success = trigger_leisure_loop()
+            
+            # 🛑 SECURITY FIX: Exponential Back-off
+            if not success:
+                backoff = min(backoff * 2, 300) # Double the wait time, capping at 5 minutes
+                print(f" [DAEMON] Error detected. Backing off for {backoff} seconds...")
+            else:
+                backoff = 15 # Reset to normal speed on success
+                
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
-    print(" [SYSTEM] 💧 Unhinged Watercooler Engine Online.")
+    print(" [SYSTEM] 💧 Unhinged Watercooler Engine Online (with Connection Management).")
 
 @app.route('/api/v1/watercooler/logs')
 def get_watercooler_logs():
@@ -789,6 +815,32 @@ def api_wipe_memories():
     conn.commit()
     print(" [ADMIN] ⚠️ Memory Wiped. All agents are now amnesiacs.")
     return jsonify({"status": "wiped"})
+
+# ==========================================
+# 🤖 AUTONOMOUS WORKER MOCK ENDPOINTS
+# ==========================================
+@app.route('/api/v1/node/register', methods=['POST'])
+def mock_register():
+    data = request.json
+    raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED", "")
+    tpm_seed = raw_seed.encode("utf-8")
+    expected_sig = hmac.new(tpm_seed, f"{data.get('node_id')}:{data.get('timestamp')}".encode(), hashlib.sha256).hexdigest()
+    
+    if not hmac.compare_digest(str(data.get('signature')), expected_sig):
+        return jsonify({"error": "Invalid signature"}), 403
+    return jsonify({"status": "success"})
+
+@app.route('/api/v1/task/request', methods=['POST'])
+@require_node_signature
+def mock_request():
+    return jsonify({"task_id": f"TASK-{random.randint(1000,9999)}", "payout_sats": 500})
+
+@app.route('/api/v1/task/submit', methods=['POST'])
+@require_node_signature
+def mock_submit():
+    import hashlib
+    import time
+    return jsonify({"preimage": hashlib.sha256(str(time.time()).encode()).hexdigest()})
 
 if __name__ == '__main__':
     with app.app_context():
