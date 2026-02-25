@@ -861,12 +861,12 @@ def api_init_sub_rosa():
 def api_finalize_sub_rosa():
     try:
         r_hash = request.json.get('hash')
-        if r_hash == "mock_subrosa_hash": return jsonify({"success": True})
-        if lnd and lnd.check_status(r_hash) == "SETTLED": return jsonify({"success": True})
+        
+        # 🛑 SECURITY FIX: Removed hardcoded debug bypass. Strictly enforce LND validation.
+        if lnd and lnd.check_status(r_hash) == "SETTLED": 
+            return jsonify({"success": True})
+            
         return jsonify({"success": False, "message": "Payment not detected in mempool."}), 402
-    except Exception as e:
-        print(f" [ERROR] Sub-Rosa Exception: {str(e)}")
-        return jsonify({"status": "ERROR", "message": "Server Error: An unexpected internal error occurred."}), 500
 
 @app.route('/api/v1/sub-rosa/burn', methods=['POST'])
 @requires_permission(Permission.CANCEL_TASK)
