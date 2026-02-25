@@ -724,6 +724,7 @@ def start_watercooler_heartbeat():
     print(" [SYSTEM] 💧 Unhinged Watercooler Engine Online (with Connection Management).")
 
 @app.route('/api/v1/watercooler/logs')
+@requires_permission(Permission.READ_TASK)
 def get_watercooler_logs():
     db = get_db()
     logs = db.execute("SELECT * FROM watercooler ORDER BY timestamp DESC LIMIT 50").fetchall()
