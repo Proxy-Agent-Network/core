@@ -196,7 +196,8 @@ def admin_required(f):
             print(" [SECURITY] 🚨 CRITICAL: ADMIN_SECRET_TOKEN is not set in the environment!")
             abort(500, "Server Configuration Error: Admin portal is locked down due to missing security token.")
             
-        if not admin_token or admin_token != expected_token:
+        # 🛑 SECURITY FIX: Prevent Cryptographic Timing Attacks using compare_digest
+        if not admin_token or not secrets.compare_digest(admin_token, expected_token):
             abort(403) 
             
         return f(*args, **kwargs)
@@ -367,8 +368,8 @@ def login():
             print(" [SECURITY] 🚨 CRITICAL: Login attempted but DASHBOARD_PASSWORD is not set in the environment!")
             return "Server Configuration Error: Admin password not securely configured. Login disabled.", 500
             
-        if password == expected_password:
-            # 🛑 SECURITY FIX: Session Fixation Prevention
+        # 🛑 SECURITY FIX: Prevent Cryptographic Timing Attacks and Session Fixation
+        if password and secrets.compare_digest(password, expected_password):
             session.clear() # Wipe pre-auth token/state
             session['authenticated'] = True
             return redirect(url_for('dashboard'))
