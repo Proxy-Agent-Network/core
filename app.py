@@ -380,6 +380,8 @@ def login():
             return "Server Configuration Error: Admin password not securely configured. Login disabled.", 500
             
         if password == expected_password:
+            # 🛑 SECURITY FIX: Session Fixation Prevention
+            session.clear() # Wipe pre-auth token/state
             session['authenticated'] = True
             return redirect(url_for('dashboard'))
         return "Invalid Password. Connection Terminated.", 401
