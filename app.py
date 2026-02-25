@@ -620,6 +620,7 @@ def admin_portal():
     return render_template('admin.html', node_id=MY_NODE_ID, balance=balance)
 
 @app.route('/api/v1/admin/settings', methods=['POST'])
+@admin_required  # 🛑 SECURITY FIX: Enforce admin authentication
 def update_admin_settings():
     data = request.json
     session[data.get('key')] = data.get('value')
