@@ -5,6 +5,7 @@ import json
 import base64
 import asyncio
 import threading
+import secrets
 from datetime import date
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash, abort
 import hmac
@@ -47,6 +48,77 @@ if not flask_secret or flask_secret == 'fallback_local_secret':
     print(" [SECURITY] 🚨 CRITICAL: FLASK_SECRET_KEY is missing or insecure!")
     raise ValueError("Application halted. You must provide a secure FLASK_SECRET_KEY in the environment.")
 app.secret_key = flask_secret
+
+# ==========================================
+# 🛑 GLOBAL ANTI-CSRF MIDDLEWARE
+# ==========================================
+app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
+
+@app.before_request
+def enforce_csrf_protection():
+    # 1. Assign a mathematically secure token to every session
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(32)
+        
+    # 2. Only intercept state-changing requests (POST, PUT, DELETE)
+    if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
+        
+        # If authenticated via API headers, CSRF is impossible (CORS blocked)
+        if request.headers.get('X-Admin-Token') or request.headers.get('X-API-Key') or request.headers.get('X-Node-ID'):
+            return # Safe to proceed
+            
+        # If relying on the browser session cookie, strictly enforce the token
+        if session.get('authenticated') and request.endpoint != 'login':
+            client_token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
+            
+            if not client_token or not secrets.compare_digest(client_token, session['csrf_token']):
+                print(f" [SECURITY] 🚨 CSRF Attack Blocked! Origin: {request.remote_addr}")
+                abort(403, "CSRF Token Validation Failed. Request Blocked.")
+
+@app.after_request
+def set_csrf_cookie(response):
+    # Pass token to the frontend securely so legitimate JS can read it for fetch() calls
+    if 'csrf_token' in session:
+        response.set_cookie('csrf_token', session['csrf_token'], samesite='Strict')
+    return response
+
+@app.context_processor
+def inject_csrf_token():
+    # Expose the token to Jinja HTML templates
+    return dict(csrf_token=session.get('csrf_token', ''))
+
+# ==========================================
+# ⏱️ RATE LIMITING ENGINE (Sliding Window)
+# ==========================================
+RATE_LIMIT_DATA = {}
+
+def rate_limit(max_requests: int, window_seconds: int):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Use X-Forwarded-For if behind a proxy, otherwise use remote_addr
+            client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            now = time.time()
+            
+            # Initialize or clean up old requests for this IP
+            if client_ip not in RATE_LIMIT_DATA:
+                RATE_LIMIT_DATA[client_ip] = []
+                
+            # Filter timestamps to only keep those within the active window
+            RATE_LIMIT_DATA[client_ip] = [t for t in RATE_LIMIT_DATA[client_ip] if now - t < window_seconds]
+            
+            if len(RATE_LIMIT_DATA[client_ip]) >= max_requests:
+                print(f" [SECURITY] 🚨 Rate limit exceeded for IP: {client_ip} on {request.path}")
+                return jsonify({
+                    "type": "error", 
+                    "status": "429 Too Many Requests", 
+                    "message": f"Rate limit exceeded. Maximum {max_requests} requests per {window_seconds} seconds."
+                }), 429
+            
+            RATE_LIMIT_DATA[client_ip].append(now)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 # ==========================================
 # 🛡️ ZERO-TRUST NODE AUTHENTICATION
@@ -198,16 +270,23 @@ def run_automation_daemon(node_id):
     bid = conn.execute("SELECT * FROM marketplace_bids WHERE status = 'PENDING' ORDER BY sats_offered DESC LIMIT 1").fetchone()
     if bid:
         conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid['bid_id'],))
-        new_id = f"AUTO-{random.randint(1000, 9999)}"
+        
+        # 🛑 SECURITY FIX: Cryptographically secure task ID
+        new_id = f"AUTO-{secrets.token_hex(3).upper()}"
+        
         conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', 'AUTOMATED')", (new_id, bid['sats_offered']))
         conn.execute("INSERT INTO global_events (event_type, message) VALUES (?, ?)", ("AUTOMATION", f"Node {node_id} secured task {new_id}"))
         conn.commit()
         msg = f"Daemon secured task {new_id} (+{bid['sats_offered']} Sats)"
         session['daemon_msg'] = msg
         return msg
+        
     if random.random() < 0.20:
-        dust = random.randint(5, 45)
-        junk_id = f"DUST-{random.randint(100, 999)}"
+        dust = random.randint(5, 45) # Fine to keep random for game logic (dust amounts)
+        
+        # 🛑 SECURITY FIX: Cryptographically secure dust ID
+        junk_id = f"DUST-{secrets.token_hex(2).upper()}"
+        
         update_secure_wallet(conn, node_id, dust)
         conn.execute("INSERT INTO xp_history (node_id, task_id, base_xp) VALUES (?, ?, ?)", (node_id, junk_id, 10))
         conn.commit()
@@ -253,6 +332,7 @@ def login():
     <div style="font-family: monospace; padding: 50px; background: #000; color: #0f0; height: 100vh;">
         <h2>🔒 PANOPTICON NODE LOGIN</h2>
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="password" name="password" placeholder="Enter Master Password..." style="padding: 10px; width: 300px; background: #111; color: #0f0; border: 1px solid #0f0;">
             <button type="submit" style="padding: 10px; background: #0f0; color: #000; font-weight: bold; cursor: pointer;">AUTHENTICATE</button>
         </form>
@@ -276,6 +356,7 @@ def search_engine():
 
 @app.route('/api/v1/search/execute', methods=['POST'])
 @requires_permission(Permission.CREATE_TASK)
+@rate_limit(max_requests=5, window_seconds=60) # 🛑 Added Rate Limit
 def api_execute_search():
     data = request.json
     query = data.get('query')
@@ -312,15 +393,30 @@ def marketplace():
     conn = get_db()
     if request.method == 'POST':
         task_type = request.form.get('task_type')
-        sats = int(request.form.get('sats', 100))
+        
+        # 🛑 SECURITY FIX: Strict Bounds Checking for Financial Inputs
+        try:
+            sats = int(request.form.get('sats', 100))
+            if sats <= 0:
+                return jsonify({"status": "ERROR", "message": "SATS amount must be greater than zero."}), 400
+            if sats > 100_000_000: # Limit to 1 full Bitcoin
+                return jsonify({"status": "ERROR", "message": "Amount exceeds maximum network capacity."}), 400
+        except ValueError:
+            return jsonify({"status": "ERROR", "message": "SATS must be a valid integer."}), 400
+            
         color = request.form.get('color', '#2ecc71')
+        
         if lnd:
             invoice = lnd.create_invoice(sats, f"Broadcast Task: {task_type}")
             if invoice:
                 invoice['duration'] = 4 if conn.execute("SELECT 1 FROM purchases WHERE node_id = ? AND item_id = 'license_speed'", (MY_NODE_ID,)).fetchone() else 8
                 invoice['color'] = color
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest': return jsonify({"status": "INVOICE_REQUIRED", "invoice": invoice})
-        req_id = f"REQ-{random.randint(10000, 99999)}"
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest': 
+                    return jsonify({"status": "INVOICE_REQUIRED", "invoice": invoice})
+        
+        # 🛑 SECURITY FIX: Cryptographically secure request ID
+        req_id = f"REQ-{secrets.token_hex(4).upper()}"
+        
         conn.execute("INSERT INTO marketplace_bids (requester_id, sats_offered, task_type, status, color) VALUES (?, ?, ?, 'PENDING', ?)", (req_id, sats, task_type, color))
         conn.commit() 
         return redirect(url_for('marketplace'))
@@ -365,10 +461,15 @@ def faq():
 def legal(doc_type):
     doc = LEGAL_DOCS.get(doc_type)
     if not doc: return redirect(url_for('dashboard'))
+    
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
     owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=?', (MY_NODE_ID,)).fetchall()]
-    return render_template('legal.html', title=doc['title'], content=doc['content'], balance=balance, owned=owned)
+    
+    allowed_tags = ['p', 'b', 'i', 'strong', 'em', 'a', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'br']
+    safe_content = bleach.clean(doc['content'], tags=allowed_tags, strip=True)
+    
+    return render_template('legal.html', title=doc['title'], content=safe_content, balance=balance, owned=owned)
 
 @app.route('/api/v1/shop/buy', methods=['POST'])
 @requires_permission(Permission.VIEW_BILLING)
@@ -434,6 +535,7 @@ def team_roster():
 
 @app.route('/api/v1/chat', methods=['POST'])
 @requires_permission(Permission.CREATE_TASK)
+@rate_limit(max_requests=10, window_seconds=60) # 🛑 Added Rate Limit
 def api_chat():
     import asyncio
     from agent_engine_v2 import process_chat 
@@ -479,6 +581,7 @@ def api_chat():
     
 @app.route('/api/v1/execute', methods=['POST'])
 @requires_permission(Permission.CREATE_TASK)
+@rate_limit(max_requests=3, window_seconds=60) # 🛑 Added Rate Limit
 def api_execute():
     if app.config.get('BROWNOUT_MODE'):
         return jsonify({"type": "error", "content": "⚠️ **NETWORK BROWNOUT ACTIVE:** Heavy L5 execution tools (images, video, research) are temporarily disabled to preserve core stability. Standard chat remains active."})

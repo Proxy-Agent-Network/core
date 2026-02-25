@@ -206,10 +206,24 @@ async def process_chat(user_message: str, chat_history: list, locked_agent: str 
                     raw_task_type = match.group(1).strip().upper()
                     llm_claimed_cost = int(match.group(2).strip())
                     tool_prompt = match.group(3).strip()
-                    image_path = match.group(4).strip() if match.group(4) else "NONE"
+                    raw_image_path = match.group(4).strip() if match.group(4) else "NONE"
                     
+                    # 🛑 SECURITY FIX: File Path Sandboxing (LFI Prevention)
+                    image_path = "NONE"
+                    if raw_image_path.upper() != "NONE":
+                        # 1. Strip all directory traversals (../) and keep ONLY the filename
+                        safe_filename = os.path.basename(raw_image_path.replace("\\", "/"))
+                        
+                        # 2. Force the path to strictly resolve inside an 'uploads' sandbox
+                        sandboxed_path = os.path.join(os.getcwd(), "uploads", safe_filename)
+                        
+                        # 3. Only use the path if the file actually exists there
+                        if os.path.exists(sandboxed_path):
+                            image_path = sandboxed_path
+                        else:
+                            print(f" [SECURITY] 🚨 Blocked invalid or missing file access: {raw_image_path}")
+
                     # 🛑 SECURITY FIX: Server-Side Price Enforcement
-                    # Never trust the LLM's cost output. We force the price based on the detected task.
                     if "VIDEO" in raw_task_type:
                         task_type = "VIDEO"
                         actual_cost = 1000 if llm_claimed_cost >= 1000 else 500
