@@ -587,8 +587,9 @@ def team_roster():
     return render_template('team.html', balance=balance)
 
 @app.route('/api/v1/chat', methods=['POST'])
-@requires_permission(Permission.CREATE_TASK)
-@rate_limit(max_requests=10, window_seconds=60) # 🛑 Added Rate Limit
+# 🛑 SECURITY FIX: Enforce a base SATS cost for API chat usage
+@requires_permission(Permission.CREATE_TASK, cost_sats=10)
+@rate_limit(max_requests=10, window_seconds=60)
 def api_chat():
     import asyncio
     from agent_engine_v2 import process_chat 
@@ -634,8 +635,9 @@ def api_chat():
         return jsonify({"type": "message", "role": "assistant", "content": "⚠️ Core Engine Error: An unexpected internal error occurred."})
     
 @app.route('/api/v1/execute', methods=['POST'])
-@requires_permission(Permission.CREATE_TASK)
-@rate_limit(max_requests=3, window_seconds=60) # 🛑 Added Rate Limit
+# 🛑 SECURITY FIX: Enforce a base SATS cost for heavy API tool execution
+@requires_permission(Permission.CREATE_TASK, cost_sats=100)
+@rate_limit(max_requests=3, window_seconds=60)
 def api_execute():
     if app.config.get('BROWNOUT_MODE'):
         return jsonify({"type": "error", "content": "⚠️ **NETWORK BROWNOUT ACTIVE:** Heavy L5 execution tools (images, video, research) are temporarily disabled to preserve core stability. Standard chat remains active."})
