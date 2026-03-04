@@ -6,7 +6,7 @@ import base64
 import asyncio
 import threading
 import secrets
-from datetime import date
+from datetime import date, timedelta
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash, abort
 import hmac
 import hashlib
@@ -59,11 +59,13 @@ app.secret_key = flask_secret
 # 🔒 CONCURRENCY & LOCKING ENGINE
 # ==========================================
 SIG_LOCK = threading.Lock() # 🛑 SECURITY FIX: Prevent Thread Collision on USED_SIGNATURES
+RATE_LIMIT_LOCK = threading.Lock() # 🛑 SECURITY FIX: Prevent Thread Collision on RATE_LIMIT_DATA
 
 # ==========================================
 # 🛑 GLOBAL ANTI-CSRF MIDDLEWARE
 # ==========================================
 app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1) # 🛑 SECURITY FIX: Prevent Session Fixation/Hijacking
 
 @app.before_request
 def enforce_csrf_protection():
@@ -111,22 +113,23 @@ def rate_limit(max_requests: int, window_seconds: int):
             client_ip = request.remote_addr
             now = time.time()
             
-            # Initialize or clean up old requests for this IP
-            if client_ip not in RATE_LIMIT_DATA:
-                RATE_LIMIT_DATA[client_ip] = []
+            with RATE_LIMIT_LOCK:
+                # Initialize or clean up old requests for this IP
+                if client_ip not in RATE_LIMIT_DATA:
+                    RATE_LIMIT_DATA[client_ip] = []
+                    
+                # Filter timestamps to only keep those within the active window
+                RATE_LIMIT_DATA[client_ip] = [t for t in RATE_LIMIT_DATA[client_ip] if now - t < window_seconds]
                 
-            # Filter timestamps to only keep those within the active window
-            RATE_LIMIT_DATA[client_ip] = [t for t in RATE_LIMIT_DATA[client_ip] if now - t < window_seconds]
-            
-            if len(RATE_LIMIT_DATA[client_ip]) >= max_requests:
-                print(f" [SECURITY] 🚨 Rate limit exceeded for IP: {client_ip} on {request.path}")
-                return jsonify({
-                    "type": "error", 
-                    "status": "429 Too Many Requests", 
-                    "message": f"Rate limit exceeded. Maximum {max_requests} requests per {window_seconds} seconds."
-                }), 429
-            
-            RATE_LIMIT_DATA[client_ip].append(now)
+                if len(RATE_LIMIT_DATA[client_ip]) >= max_requests:
+                    print(f" [SECURITY] 🚨 Rate limit exceeded for IP: {client_ip} on {request.path}")
+                    return jsonify({
+                        "type": "error", 
+                        "status": "429 Too Many Requests", 
+                        "message": f"Rate limit exceeded. Maximum {max_requests} requests per {window_seconds} seconds."
+                    }), 429
+                
+                RATE_LIMIT_DATA[client_ip].append(now)
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -277,7 +280,8 @@ def update_secure_wallet(conn, node_id, amount):
     try:
         # 🛑 QUANTUM FIX: Force AES-256 Encryption via TPM/Rust Enclave
         if not hasattr(hw_bridge, 'encrypt_data'):
-            raise RuntimeError("Quantum Safeguard: AES-256 Hardware Enclave Offline.")
+            # 🛑 SECURITY FIX: Fail-closed. Refuse to store financial data in plaintext.
+            raise RuntimeError("Quantum Safeguard: TPM hardware bridge missing. Refusing to downgrade to plaintext storage.")
             
         encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
         
@@ -286,23 +290,8 @@ def update_secure_wallet(conn, node_id, amount):
             raise ValueError("Cryptographic Integrity Failure: AES-256 key mismatch.")
             
     except Exception as e:
-        print(f" [SECURITY] 🚨 CRITICAL: AES-256 Encryption failed! ({e})")
-        raise RuntimeError("Hardware cryptographic failure. Transaction aborted for quantum safety.")
-        
-    conn.execute("UPDATE nodes SET total_earned = %s WHERE node_id = %s", (encrypted_balance, node_id))
-    conn.commit()
-    return new_balance
-    
-    try:
-        if not hasattr(hw_bridge, 'encrypt_data'):
-            # 🛑 SECURITY FIX: Fail-closed. Refuse to store financial data in plaintext.
-            raise RuntimeError("TPM hardware bridge missing. Refusing to downgrade to plaintext storage.")
-            
-        encrypted_balance = hw_bridge.encrypt_data(str(new_balance))
-            
-    except Exception as e:
-        print(f" [SECURITY] 🚨 CRITICAL: TPM Encryption failed! Aborting transaction. ({e})")
-        raise RuntimeError("Hardware cryptographic failure. Transaction aborted to prevent data exposure.")
+        print(f" [SECURITY] 🚨 CRITICAL: TPM/AES-256 Encryption failed! ({e})")
+        raise RuntimeError("Hardware cryptographic failure. Transaction aborted for quantum safety to prevent data exposure.")
         
     conn.execute("UPDATE nodes SET total_earned = %s WHERE node_id = %s", (encrypted_balance, node_id))
     conn.commit()
@@ -396,6 +385,7 @@ def login():
         # 🛑 SECURITY FIX: Prevent Cryptographic Timing Attacks and Session Fixation
         if password and secrets.compare_digest(password, expected_password):
             session.clear() # Wipe pre-auth token/state
+            session.permanent = True # 🛑 SECURITY FIX: Enforce cookie expiration
             session['authenticated'] = True
             return redirect(url_for('dashboard'))
         return "Invalid Password. Connection Terminated.", 401
@@ -755,16 +745,17 @@ def claim_bid(bid_id):
     conn = get_db()
     
     # 1. Verify the bid actually exists and is still available
-    bid = conn.execute("SELECT * FROM marketplace_bids WHERE bid_id = ? AND status = 'PENDING'", (bid_id,)).fetchone()
+    # 🛑 SECURITY FIX: Use %s instead of ? for PostgreSQL parameter binding to prevent fatal crashes
+    bid = conn.execute("SELECT * FROM marketplace_bids WHERE bid_id = %s AND status = 'PENDING'", (bid_id,)).fetchone()
     if not bid:
         return jsonify({"status": "error", "message": "Bid has already been claimed, stolen, or is invalid."}), 400
         
     # 2. Update the marketplace status to prevent ghost loops
-    conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=?", (bid_id,))
+    conn.execute("UPDATE marketplace_bids SET status='CLAIMED' WHERE bid_id=%s", (bid_id,))
     
     # 3. Generate the active task for the node
     task_id = f"TASK-{secrets.token_hex(4).upper()}"
-    conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (?, ?, 'OPEN', ?)", (task_id, bid['sats_offered'], bid['task_type']))
+    conn.execute("INSERT INTO tasks (task_id, bid_sats, status, task_type) VALUES (%s, %s, 'OPEN', %s)", (task_id, bid['sats_offered'], bid['task_type']))
     conn.commit()
 
     print(f"[MARKET] 🤝 Verified Node {safe_node_id} is claiming bid {bid_id}")
@@ -910,6 +901,19 @@ def start_marketplace_heartbeat():
                 expired_keys = [k for k, v in USED_SIGNATURES.items() if now - v > 300]
                 for k in expired_keys:
                     del USED_SIGNATURES[k]
+
+            # 🛑 SECURITY FIX: Prevent Memory Leak (OOM DoS) by cleaning up inactive IPs in rate limiter
+            with RATE_LIMIT_LOCK:
+                expired_ips = []
+                for ip, timestamps in list(RATE_LIMIT_DATA.items()):
+                    # Retain only timestamps from the last hour (3600 seconds)
+                    valid_timestamps = [t for t in timestamps if now - t < 3600]
+                    if not valid_timestamps:
+                        expired_ips.append(ip)
+                    else:
+                        RATE_LIMIT_DATA[ip] = valid_timestamps
+                for ip in expired_ips:
+                    del RATE_LIMIT_DATA[ip]
 
             try:
                 # Use a standalone connection to avoid Flask context issues

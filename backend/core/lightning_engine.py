@@ -6,6 +6,8 @@ import logging
 import base64
 import urllib.parse
 import requests 
+import qrcode
+import io
 
 # 🌟 INFRASTRUCTURE FIX: Python Path Injection
 # Generated gRPC files try to directly import each other. We force Python 
@@ -42,17 +44,35 @@ class LightningEngine:
         self.logger = logging.getLogger("LND-gRPC")
 
     def _generate_qr_base64(self, data_string):
-        """Helper: Generates a QR code base64 string."""
+        """Helper: Generates a QR code base64 string locally in memory."""
+        if not data_string:
+            return ""
+            
         try:
-            safe_data = urllib.parse.quote(data_string)
-            url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={safe_data}"
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                b64_img = base64.b64encode(response.content).decode('utf-8')
-                return f"data:image/png;base64,{b64_img}"
+            # 1. Configure the QR Code matrix
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(data_string)
+            qr.make(fit=True)
+
+            # 2. Render the image
+            img = qr.make_image(fill_color="black", back_color="white")
+            
+            # 3. Save to an in-memory byte buffer (No disk I/O)
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            
+            # 4. Encode to base64 for frontend consumption
+            base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            return f"data:image/png;base64,{base64_img}"
+            
         except Exception as e:
-            self.logger.error(f"⚠️ QR Generation failed: {e}")
-        return "" 
+            self.logger.error(f"❌ Local QR Generation Error: {e}")
+            return ""
 
     def connect(self):
         """Establishes secure mTLS connection to the LND Container."""

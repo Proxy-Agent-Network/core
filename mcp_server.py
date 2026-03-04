@@ -8,6 +8,7 @@ import shutil
 import base64
 import time
 import glob 
+import html
 from duckduckgo_search import DDGS
 from mcp.server.fastmcp import FastMCP
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -47,23 +48,29 @@ def get_safe_invoice(amount, memo):
         return {"payment_request": f"lnbc1mock{uuid.uuid4().hex}", "r_hash": uuid.uuid4().hex}
 
 def safe_verify_payment(payment_hash):
+    # 🛑 SECURITY FIX: Fail-Closed Architecture enforced. 
+    # Removed the mock bypass vulnerability.
     if not payment_hash: return False
-    if "mock" in payment_hash or len(payment_hash) != 64: return True
+    
     global LND_CONNECTED, LND_FAILED
-    if LND_FAILED: return True
+    if LND_FAILED: return False # 🛑 Fail Closed
+    
     if not LND_CONNECTED:
         try:
             lnd.connect()
             LND_CONNECTED = True
         except Exception:
             LND_FAILED = True
-            return True 
+            return False # 🛑 Fail Closed
+            
     try:
+        # Prevent LND from crashing on malformed input by enforcing exactly 64 chars
+        if len(payment_hash) != 64: return False 
         return lnd.verify_payment(payment_hash)
     except Exception as e:
         logger.error(f"LND Verification Fallback Triggered: {e}")
         LND_FAILED = True
-        return True 
+        return False # 🛑 Fail Closed
 
 @mcp.tool()
 def buy_vip_pass(payment_hash: str = None) -> str:
@@ -203,11 +210,18 @@ def layer_5_specialist(task: str, context: str, specialist_name: str, historical
     raw_data = DuckDuckGoSearchRun().invoke(search_query)
     pdf_context = ""
     if specialist_name.upper() == "EVE":
-        for pdf_file in glob.glob("*.pdf"):
+        # 🛑 SECURITY FIX: Restrict file reading to an isolated sandbox to prevent LFI (Data Poisoning)
+        sandbox_dir = os.path.abspath("/app/sandbox")
+        os.makedirs(sandbox_dir, exist_ok=True)
+        for pdf_file in glob.glob(os.path.join(sandbox_dir, "*.pdf")):
             try:
                 pages = PyPDFLoader(pdf_file).load_and_split()
-                pdf_context += f"\n--- EXTRACTED FROM {pdf_file} ---\n{' '.join([p.page_content for p in pages])[:15000]}\n"
+                raw_text = ' '.join([p.page_content for p in pages])[:15000]
+                # 🛑 SECURITY FIX: Sanitize extracted text to prevent Prompt Injection tags
+                safe_text = html.escape(raw_text)
+                pdf_context += f"\n--- EXTRACTED FROM {os.path.basename(pdf_file)} ---\n{safe_text}\n"
             except Exception: pass
+            
     l5_prompt = f"You are {specialist_name}, an elite AI Specialist.\nContext: {context}\nTask: {task}\nWeb Data:\n{raw_data}\nPDF Data:\n{pdf_context}\nExecute your task professionally without hallucinating."
     return llm_l5.invoke(l5_prompt).content
 
