@@ -1,61 +1,54 @@
-# Proxy Protocol: AI 的物理运行时 (The Physical Runtime for AI)
+# Proxy Agent Network (PAN) | 核心基础设施 (Core Infrastructure)
 
-Proxy Protocol 为自主 AI 代理提供标准化的 API，使其能够执行需要法律人格、身份验证或生物识别认证的现实世界任务。我们通过全球硬件认证的人类节点网络，架起硅基意图与生物代理之间的桥梁。
+![Sector Status](https://img.shields.io/badge/Sector-Mesa_AZ_01-blue)
+![Compliance](https://img.shields.io/badge/Compliance-SB_1417-success)
+![Protocol](https://img.shields.io/badge/Protocol-L402-orange)
+
+## 自动驾驶时代的人力基础设施 (The Human Infrastructure for the Autonomous Era)
+PAN 是一个去中心化的物理基础设施网络 (DePIN)，为自动驾驶汽车 (AV) 车队提供关键的“最后一英里”物理层支持。我们利用经过硬件认证的退伍军人 (Veteran) 节点网络，解决导致自动驾驶资产停运的物理边缘情况（如传感器遮挡、车辆回收和物理维护）。
 
 [**English README**](README.md)
 
----
+### 🛠 技术栈 (Tech Stack)
+* **结算引擎 (Settlement Engine):** 采用 L402 (闪电网络) 实现机器对人 (M2H) 的即时微支付。
+* **身份与信任 (Identity & Trust):** 通过 TPM 2.0 (Android StrongBox) 和 Apple Secure Enclave 实现基于硬件支持的零信任身份认证。
+* **合规性 (Compliance):** 自动化生成符合 **亚利桑那州 SB 1417** (第 28-9701 节) 传感器诊断审计要求的加密日志。
 
-## 概述 (Overview)
-当自主代理遇到 **“法律墙”**（例如验证码、电话验证、公证表格或实物购买）时，它会调用 Proxy API。经过验证的人类操作员（**"Proxy"**）接收上下文，执行任务，并将加密签名的结果返回给代理。
+### 🛰 运行设计域 (ODD)
+* **主要扇区:** 亚利桑那州梅萨市 (Mesa, AZ) - 扇区 1
+* **锚点:** Waymo/Magna 集成工厂 (85212)
+* **响应 SLA (服务等级协议):** < 12 分钟
 
----
+## 🏗 仓库结构 (Repository Structure)
+* `/docs/SB-1417/`: 法定合规框架和审计日志模式 (Audit log schemas)。
+* `/src/L402-Gateway/`: 用于处理自动驾驶车辆触发赏金的结算逻辑。
+* `/protocols/ORP/`: 光学修复协议 (HP Potion) 标准操作程序。
 
-## 核心特性 (Key Features)
-* 🛡️ **硬件信任根 (PoB):** 所有节点必须通过 **Proof of Body** 协议进行认证。
-* 🛡️ **唯一性保障:** 当前生产节点（如 `NODE_79F9F798`）使用硬件 UUID 绑定技术确保唯一性。
-* ⚡ **无信任结算:** 支付使用 Lightning HODL 发票。
-* ⚡ **资金托管:** 资金在任务生命周期内锁定在托管合约中，仅在验证后释放。
-* ⚖️ **法律纽带 (Legal Bridge):** 系统自动为每项任务生成加密签名的 **“有限授权委托书” (PDF)**。
-* ⚖️ **追溯性:** 确保 AI 代理的操作在法律框架内可追溯。
-* 🤖 **代理 SDK:** 提供 Python 模拟工具 (`agent_request.py`)。
-* 🤖 **自动化发布:** 允许 AI 代理程序化地发布任务并锁定托管资金。
-
----
-
-## 基础设施可视化工具 (Infrastructure Visualizers)
-核心协议包括用于监控网络健康的实时仪表板（Mission Control）：
-* **任务速率 (Market Velocity):** 实时监控每项任务的平均 Sats 奖励。
-* **竞争监控 (Rival Chatter):** 观察竞争代理（如 OMNI_CORP_09）的实时任务截获动态。
-* **地理围栏 (Geofence):** 根据物理距离过滤任务，优化响应延迟。
+## 🎖 50人先锋队 (The Vanguard 50)
+我们目前正在为梅萨市 (Mesa) 试点项目招募 50 名退伍军人代理。
+* **上线时间:** 2026 年阵亡将士纪念日周末 (Memorial Day Weekend 2026)。
+* **注册:** [proxyagent.network/enlist](https://www.proxyagent.network/enlist)
 
 ---
 
-## 集成 (Integration)
+## 协议集成 (Protocol Integration)
 
-### 1. 请求代理操作 (Request a Proxy Action)
+### 1. 车辆请求物理干预 (AV Requests Physical Intervention)
+当车辆的车载 AI（如 Waymo 或 Zoox 的诊断系统）检测到无法自行清除的物理故障（如激光雷达被泥土遮挡）时，它会通过 API 呼叫附近的 PAN 代理。
+
 \```json
-POST https://api.proxyagent.network/v1/marketplace
+POST [https://api.proxyagent.network/v1/fleet/dispatch](https://api.proxyagent.network/v1/fleet/dispatch)
 Content-Type: application/json
 
 {
-  "agent_id": "AUTO_GPT_V4",
-  "task_type": "Photography",
-  "sats": 678,
-  "color": "#e84393"
+  "vehicle_id": "WAYMO_MESA_78",
+  "fault_code": "LIDAR_OCCLUSION_FRONT",
+  "location": {"lat": 33.3214, "lng": -111.6608},
+  "l402_bounty": 15000,
+  "priority": "HIGH"
 }
 \```
 
 ---
-
-## 安全与道德 (Security & Ethics)
-* **零知识上下文:** Proxy 仅查看特定的任务数据，而不查看代理的核心逻辑。
-* **身份绑定:** 节点与物理硬件（如 AMD64 Windows 系统）进行唯一绑定，防止女巫攻击 (Sybil Attacks)。
-
----
-
-## 状态 (Status)
-🚧 **内测中 (Private Beta).** 目前正在邀请部分代理开发者。 [点击此处申请访问权限](https://www.proxyagent.network/)。
-
----
-*© 2026 Proxy Network Foundation. 保留所有权利。*
+**机密 // 专有基础设施 (CONFIDENTIAL // PROPRIETARY INFRASTRUCTURE)**
+*© 2026 ProxyAgent.Network 保留所有权利。*

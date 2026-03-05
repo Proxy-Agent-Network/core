@@ -1,41 +1,48 @@
-# 贡献指南 (Contributing to Proxy Protocol)
+# 贡献指南 (Contributing to Proxy Agent Network - PAN)
 
 [**English Version**](CONTRIBUTING.md)
 
-我们欢迎来自社区的贡献，无论您是 AI 研究员、法律工程师还是密码学家。感谢您构建连接 AI 与物理世界的桥梁。
+欢迎来到 PAN 核心基础设施存储库。我们积极欢迎来自汽车工程师、DePIN 开发者和硬件安全专家的贡献，共同为自动驾驶汽车 (AV) 时代构建关键的物理恢复层 (Physical Recovery Layer)。
 
 ---
 
-## 如何贡献 (How to Contribute)
+## 如何贡献 (The Vanguard Standard)
 
-1.  **Fork 项目:** 创建您自己的存储库副本。
-2.  **创建分支 (Create a Branch):** `git checkout -b feature/AmazingFeature`
-3.  **提交更改 (Commit Changes):** `git commit -m 'Add some AmazingFeature'`
-4.  **推送到分支 (Push to Branch):** `git push origin feature/AmazingFeature`
-5.  **发起 Pull Request**
+所有对 PAN M2H (机器对人) 网关的贡献必须符合企业级可靠性标准，因为该代码直接影响高价值车队资产的物理安全以及我们退伍军人 (Veteran) 节点网络的操作安全。
 
----
-
-## 法律工程贡献 (Legal Engineering)
-
-我们积极欢迎新的司法管辖区模板（例如：欧盟/GDPR、阿联酋/迪拜 DIFC、日本）的贡献。
-
-### 新模板要求
-* **引用 (Citation):** 必须引用具体的管辖法案（例如：日本民法典第 99 条）。
-* **语言 (Language):** 必须提供英文（或英文/本地双语）。
-* **格式 (Format):** 必须遵循现有模板的 Markdown 结构（前言 -> 授权 -> 赔偿）。
-* **审查 (Review):** 法律模板在合并前需要具有法律工程经验的核心维护者批准。
+1.  **Fork 项目:** 创建您自己的独立环境。
+2.  **创建分支 (Create a Branch):** `git checkout -b feature/UWB_Homing_Optimization`
+3.  **提交更改 (Commit Changes):** `git commit -m 'Enhance Ultra-Wideband proximity logic for Sector 1'`
+4.  **推送到分支 (Push to Branch):** `git push origin feature/UWB_Homing_Optimization`
+5.  **发起 Pull Request:** 请确保您的 PR 描述明确说明了此更改如何影响梅萨市试点项目 (Mesa Pilot) 的 SLA 或 SB 1417 合规性。
 
 ---
 
-## 代码标准 (Coding Standards)
+## 工程标准 (Engineering Standards)
 
-* **Python:** 遵循 PEP 8 风格指南。
-* **API 规范:** 所有端点更改必须反映在 `specs/v1/` 中。
-* **安全性:** **切勿**提交 API 密钥或私钥。
+* **语言 (Language):** Python (遵循 PEP 8) 和 Rust (用于 Secure Enclave/TPM 2.0 绑定)。
+* **API 规范:** 所有车队网关 (Fleet Gateway) 端点的修改必须记录在 `/docs/v2026.1/` 中。
+* **零信任安全 (Zero-Trust Security):** **切勿**提交 API 密钥、L402 Macaroons (支付凭证) 或测试网闪电节点凭证。
+* **测试覆盖率:** 所有影响 `/src/L402-Gateway/` 或 `/hardware-node/` 模块的 PR 都需要至少 90% 的测试覆盖率，以模拟自动驾驶汽车诊断故障的提取。
 
 ---
 
-## 治理 (Governance)
+## 硬件与合规性贡献 (Hardware & Compliance Contributions)
 
-重大协议更改（例如：更改费用结构或托管逻辑）需要在实施前开启 **征求意见 (RFC)**。请提交一个带有 `RFC` 标签的 Issue 以开始社区讨论。
+我们积极欢迎旨在增强我们的物理安全性和法定报告能力的贡献：
+
+### 1. SB 1417 审计增强 (SB 1417 Audit Enhancements)
+* **要求 (Requirement):** 必须直接对应亚利桑那州修订法规第 28 篇，第 24 章 (自动驾驶汽车)。
+* **重点 (Focus):** 改进“光学健康报告 (Optical Health Reports)”的加密哈希和不可篡改性。
+
+### 2. 光学修复协议 (Optical Reclamation Protocol - ORP)
+* **要求 (Requirement):** 提议更改物理清洁程序（例如：新的超细纤维标准或化学溶剂限制）必须引用当前 LiDAR/摄像头 OEM 制造商（例如：Waymo, Luminar, Hesai）的规格说明。
+* **审查 (Review):** 物理协议的更改需要获得 PAN Command 的签字批准，以确保它们不会使 $500 万美元的 HNOA/E&O 责任险失效。
+
+---
+
+## 治理与协议升级 (Governance & Protocol Upgrades)
+
+重大协议更改——例如更改动态 L402 激增定价逻辑、修改 15 分钟 SLA 执行参数或扩展运行设计域 (ODD)——需要正式共识。在编写代码之前，请提交一个带有 `[RFC]` (征求意见) 标签的 Issue，以启动与车队合作伙伴 (Fleet Partners) 和 PAN Command 的讨论。
+
+感谢您为扩展 L4 级别自动驾驶构建关键的物理基础设施。

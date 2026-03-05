@@ -1,25 +1,25 @@
 # The Proxy Philosophy: Symbiosis Over Replacement
 
-We believe that the future of AI is not purely digital.
+We believe the future of autonomous technology is not purely digital.
 
-For the last decade, Silicon Valley has been obsessed with "Automation"—replacing humans with scripts. We take a different view. We believe the highest form of intelligence is **Orchestration**: AI Agents directing human labor to achieve physical results.
+For the last decade, the autonomous vehicle (AV) industry has been obsessed with "Full Self-Driving"—the idea of eliminating humans entirely. We take a different view. We believe the highest form of autonomy requires **Orchestration**: AI systems seamlessly directing elite human labor to resolve physical edge-cases.
 
 ---
 
 ## Our Core Tenets
 
-### 1. The Execution Gap
-An AI can write a sonnet in milliseconds, but it cannot fetch a glass of water. This "Execution Gap" is the single biggest barrier to the Autonomous Economy. We exist to close it.
+### 1. The Physical Execution Gap
+An onboard AI can calculate a million trajectories per second, but it cannot wipe mud off its own LIDAR lens. This "Physical Execution Gap" is the single biggest barrier to scaling autonomous fleets. We exist to close it.
 
-### 2. Humans as API Endpoints
-We treat "Human Agency" as a primitive resource, accessible via API. By tokenizing physical tasks (Signatures, Verifications, Logistics), we allow AI to "import reality" as easily as it imports a Python library.
+### 2. Humans as High-Value APIs
+We treat "Human Physicality" as a high-value, programmatic resource. By establishing secure, Machine-to-Human (M2H) API endpoints, we allow a stranded AV to summon verified physical assistance as easily as it requests a map update.
 
-### 3. Dignity in the Loop
-We do not build "Gig Work" for pennies. We build professional "Proxy Nodes." A Tier 3 Proxy (Attorney/Notary) is a high-value partner to the AI, not a cog. We enforce floor prices to ensure fair compensation for biological intelligence.
+### 3. Dignity in the Loop (The Vanguard)
+We do not build minimum-wage "Gig Work." We build elite **Proxy Agents**. By exclusively recruiting military Veterans, we ensure our workforce brings the discipline, OPSEC, and mission-readiness required to handle $150,000+ sensor arrays. We enforce strict L402 floor prices to ensure fair, instant compensation for biological intelligence.
 
-### 4. Trust Through Code, Not Corps
-We replace the middleman manager with cryptographic escrow. The protocol coordinates the work; the humans execute it; the code settles it.
+### 4. Trust Through Cryptography, Not Dispatchers
+We replace centralized dispatch hubs and middle-management with cryptographic escrow. The AV's diagnostic system detects the fault; the protocol routes the bounty; the human executes the repair; the L402 smart contract settles the payment instantly.
 
 ---
 
-> **“The machine thinks. The human acts. The protocol bridges.”**
+> **“The machine navigates. The human recovers. The protocol bridges.”**

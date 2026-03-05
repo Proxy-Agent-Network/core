@@ -1,43 +1,66 @@
-# Physical Node Reference Design (v1)
+# **Proxy Agent Network (PAN) | Vanguard Hardware Reference Design**
 
-**Status:** Alpha (Testing in Arizona/Singapore)  
-**Type:** Reference Implementation
+**Status:** Active (Mesa Pilot)
 
-The Proxy Protocol "Mailroom Node" is a standardized hardware configuration for high-volume Physical Proxies. It allows for the automated ingestion, scanning, and shredding of physical mail on behalf of AI Agents.
+**Version:** 2026.1.0
 
----
+**Target:** Vanguard Agents & Procurement Teams
 
-## 1. Hardware Bill of Materials (BOM)
+## **1\. The Cyber-Physical Node Concept**
 
-To run a verified Mailroom Node, the following hardware is required to meet the `proof_of_physicality` cryptographic standards.
+Unlike traditional blockchain networks where a "Node" is a server sitting in a data center, the Proxy Agent Network (PAN) relies on **Cyber-Physical Nodes**. A PAN Node consists of a highly secure mobile compute unit bonded to a vetted human operator (the Vanguard Agent), equipped with specialized physical tools to interact with Autonomous Vehicle (AV) hardware.
 
-| Component | Specification | Purpose |
-| :--- | :--- | :--- |
-| **Compute** | Raspberry Pi 5 (8GB RAM) | Local OCR and Encryption |
-| **Camera** | Sony IMX708 (12MP, Autofocus) | High-res document capture |
-| **Security** | Infineon OPTIGA™ TPM 2.0 | Private Key storage (Hardware Root of Trust) |
-| **Connectivity** | LoRaWAN Module (Optional) | Proof of Location (Helium/TTN) |
+To maintain our $5M HNOA/E\&O liability shield and ensure compliance with Arizona SB 1417, PAN enforces strict, uncompromising hardware whitelists.
 
----
+## **2\. Layer 1: The Mobile Compute Node (Cryptographic & Spatial)**
 
-## 2. The Workflow
+The mobile device is the Agent's sole interface with the PAN Routing Engine and the L402 Lightning Network. It is responsible for hardware attestation and precision spatial homing.
 
-1.  **Ingest:** Physical mail arrives at the Node's address.
-2.  **Scan:** The operator places the envelope under the camera.
-3.  **OCR:** The Node locally processes the image (Tesseract/OCR) to extract metadata (Sender, Date).
-4.  **Signal:** The Node broadcasts a `mail_received` event to the Agent via Lightning Network.
-5.  **Action:** The Agent replies with `OPEN`, `FORWARD`, or `SHRED`.
+### **2.1 Whitelisted Devices**
 
----
+Vanguard Agents must operate one of the following devices. No exceptions.
 
-## 3. Security Architecture
+* **Apple:** iPhone 16 Pro, iPhone 16 Pro Max, iPhone 17 Pro, iPhone 17 Pro Max.  
+* **Google:** Pixel 9 Pro, Pixel 9 Pro XL, Pixel 10 Pro.  
+* **Samsung:** Galaxy S24+, Galaxy S24 Ultra, Galaxy S25+.
 
-* **Air-Gapped Keys:** The Node's signing key never leaves the TPM module.
-* **Local Processing:** OCR happens on-device. No raw images are uploaded to the cloud unless explicitly requested by the Agent.
-* **Anti-Tamper:** The reference casing includes a chassis intrusion switch that wipes the keys if the hardware is tampered with or opened.
+### **2.2 Required Sub-Components**
 
----
+These specific models are whitelisted because they contain two non-negotiable hardware components:
 
-## 4. Certification
+1. **Hardware Root of Trust (TPM 2.0 / Secure Enclave):** Required to generate non-exportable ECDSA secp256r1 keypairs for signing the Optical Health Report.  
+2. **Ultra-Wideband (UWB) Radio:** Apple U2/U3 or NXP/Samsung UWB chips are mandatory. Used for Time-of-Flight (ToF) spatial calculations to guide the Agent to the exact centimeter of the occluded AV sensor, preventing GPS spoofing.
 
-Partners wishing to manufacture compatible nodes must submit a prototype to the **Proxy Foundation** for certification. Use the tag `[HARDWARE]` when opening a GitHub issue to begin the process.
+## **3\. Layer 2: The Physical Reclamation Kit ("HP Potion")**
+
+Vanguard Agents are strictly forbidden from using off-the-shelf cleaning supplies, which can degrade the $10,000+ anti-reflective coatings on AV LiDAR arrays and cameras.
+
+### **3.1 The ORP Standard Kit**
+
+Every Vanguard Agent is issued a standard Optical Reclamation Protocol (ORP) field kit containing:
+
+* **The Solvent:** 1L bottle of 99.9% Deionized, Ultra-Pure Water (0 PPM) formulated with a proprietary, non-abrasive optical surfactant.  
+* **The Abrasives:** Pack of 50 single-use, sealed 120gsm optical-grade microfiber cloths (edgeless/laser-cut to prevent scratching).  
+* **The Propellant:** 150 PSI moisture-free, zero-residue compressed air duster.  
+* **Sanitation:** Box of 100 powder-free black nitrile gloves (6 mil thickness).
+
+\[\!IMPORTANT\]
+
+**Cross-Contamination Rule:** Microfiber cloths are strictly single-use. Reusing a cloth across multiple AV interventions traps silica (sand) and creates micro-scratches. This is a severe slashing offense.
+
+## **4\. Layer 3: Safety & Vehicle Assets (PPE)**
+
+Vanguard Agents frequently operate in high-risk traffic environments (e.g., a stranded AV blocking a lane on US-60 or Southern Ave).
+
+### **4.1 Personal Protective Equipment (PPE)**
+
+* **High-Visibility Vest:** ANSI/ISEA 107-2020 Class 3 compliant. MUTCD High-Vis Yellow (\#E8FF00) with 2-inch silver retroreflective striping. The PAN "Hex-Shield" logo is printed in Infrastructure Slate (\#0A192F) on the rear panel.  
+* **Base Uniform:** PAN-issued tactical moisture-wicking polo (Infrastructure Slate).  
+* **Identification:** PAN physical cryptographic ID badge worn on a high-retention chest clip.
+
+### **4.2 Response Vehicle Markings**
+
+Vanguard Agents utilize personal vehicles to navigate the macro-route. Upon arriving at the stranded AV, the vehicle must be temporarily marked.
+
+* **Hazard Lighting:** SAE J845 Class 1 certified amber/white LED light bar (magnetically roof-mounted). *Red/Blue emergency lights are strictly prohibited and illegal for non-LEO use.*  
+* **Signage:** Two 24" x 12" high-reflectivity magnetic door decals displaying "PROXY AGENT NETWORK" and the Agent's unique 4-digit ID number in LiDAR Cyan (\#64FFDA).

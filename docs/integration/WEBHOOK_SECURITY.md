@@ -1,55 +1,61 @@
-# Webhook Security Standards (v1)
+# **Proxy Agent Network (PAN) | Webhook Security & Egress Standards**
 
-**Scope:** Real-Time Event Delivery  
-**Target Audience:** DevOps / Security Engineering
+**Status:** Active (Mesa Pilot)
 
-Because webhooks deliver sensitive operational data (PII, Escrow Status), securing the receiving endpoint is critical. This document outlines the mandatory security controls for production integration.
+**Version:** 2026.1.0
 
----
+**Target:** Fleet DevOps & Security Engineering
 
-## 1. The "Zero-Trust" Delivery Model
-We assume the public internet is hostile. Simply utilizing a "secret URL" (e.g., `https://api.yourapp.com/hooks/secret_123`) is insufficient.
+Because PAN outbound webhooks deliver critical operational telemetry (e.g., Vanguard Agent UWB proximity locks, L402 Escrow state changes, and SB 1417 Optical Health Reports), securing your receiving endpoint is paramount. This document outlines the mandatory security controls for production Fleet Operator integrations.
 
-**Mandatory Implementations:**
-* **Signature Verification:** Prove the sender is Proxy Protocol.
-* **Replay Protection:** Prove the message is fresh.
-* **Source Validation:** Prove the IP address is authorized.
+## **1\. The "Zero-Trust" Delivery Model**
 
----
+We assume the public internet is hostile. Simply utilizing an obfuscated URL (e.g., https://api.yourfleet.com/pan/callbacks\_123) is insufficient for cyber-physical infrastructure.
 
-## 2. IP Whitelisting (The Network Layer)
-For high-security environments (Tier 3/Legal), we recommend configuring your firewall (AWS WAF, Cloudflare, etc.) to only accept `POST` requests from our dedicated egress IPs.
+**Mandatory Implementations for Fleet Backends:**
 
-**Production Egress IPs:**
-* `35.232.11.0/24` (Primary)
-* `34.102.88.0/24` (Backup)
+* **Signature Verification:** Prove the sender is the PAN Sector Gateway using HMAC-SHA256 and constant-time comparison.  
+* **Replay Protection:** Prove the state change is fresh (sub-60 seconds).  
+* **Source Validation:** Prove the TCP connection originates from an authorized PAN egress IP.
 
-> [!NOTE]
-> These ranges are static. We provide 30 days' notice via `security@proxy.agent.network` before rotating them.
+## **2\. IP Whitelisting (The Network Layer)**
 
----
+For enterprise autonomous fleets, we strongly recommend configuring your perimeter firewalls (AWS WAF, Cloudflare, Palo Alto) to drop any requests to your PAN webhook listener that do not originate from our dedicated Sector 1 egress IPs.
 
-## 3. Secret Rotation Strategy
-Your `WEBHOOK_SECRET` (used for HMAC signatures) should be treated with the same security as a private key.
+**Mesa Sector 1 Production Egress IPs:**
 
-### Routine Rotation (Quarterly)
-We recommend rotating your secret every 90 days:
-1.  **Generate:** Create a new secret in the Proxy Dashboard.
-2.  **Dual-Verify:** Your backend should temporarily accept signatures from either the **Old** or **New** secret for a 24-hour window.
-3.  **Retire:** Revoke the Old secret once propagation is confirmed.
+* 35.232.11.42/32 (Primary Gateway)  
+* 34.102.88.105/32 (Failover Gateway)
 
-### Emergency Rotation (Compromise)
-If you suspect a leak:
-1.  Call `POST /v1/webhooks/rotate_secret` immediately.
-2.  The API will return a new secret and instantly invalidate the old one.
+\[\!NOTE\]
 
-**Warning:** This will cause a brief downtime (failed signatures) until your environment variables are updated.
+These IP addresses are static for the duration of the Mesa Pilot. PAN Command will provide 30 days' notice via the secure Signal channel before modifying or expanding routing infrastructure.
 
----
+## **3\. Fleet Secret Rotation Strategy**
 
-## 4. Replay Attack Mitigation
-To prevent an attacker from intercepting a valid payload and re-sending it later, the following checks are mandatory:
+Your Master Fleet Key (sk\_fleet\_live\_...) is used to generate the X-PAN-Signature on all outbound webhooks. It must be treated with the same security posture as a TLS private key.
 
-* **Timestamp Check:** Every request includes an `X-Proxy-Request-Timestamp` header.
-* **The Rule:** If `Now() - Timestamp > 5 minutes`, **REJECT** the request.
-* **Idempotency:** Your handler must track and process the same `event_id` only once to prevent duplicate execution.
+### **Routine Rotation (Quarterly)**
+
+We recommend rotating your Fleet Secret every 90 days to maintain compliance:
+
+1. **Generate:** Call POST /v2026.1/fleet/keys/generate to provision a secondary active key.  
+2. **Dual-Verify:** Your backend should be configured to temporarily accept HMAC signatures computed from either the **Old** or **New** secret.  
+3. **Retire:** Once you confirm your systems are cleanly processing the new signatures, call POST /v2026.1/fleet/keys/revoke targeting the old key.
+
+### **Emergency Rotation (Compromise)**
+
+If you suspect your Fleet Secret has been exposed (e.g., accidentally committed to GitHub):
+
+1. Call POST /v2026.1/fleet/keys/emergency\_rotate immediately.  
+2. The PAN API will return a new secret and **instantly invalidate** the old one.
+
+**Warning:** Emergency rotation will cause immediate, localized downtime. Outbound PAN webhooks will fail signature validation on your backend until your environment variables are updated.
+
+## **4\. Replay Attack Mitigation**
+
+To prevent a malicious actor from intercepting a valid mission.orp\_completed payload and re-sending it later to confuse your AV tracking systems, your backend MUST enforce strict temporal bounds.
+
+* **Timestamp Check:** Every outbound request includes an X-PAN-Timestamp header containing the Unix epoch of the event.  
+* **The Rule:** If Abs(Now() \- X-PAN-Timestamp) \> 60 seconds, your backend must **REJECT** the request with a 403 Forbidden. Ensure your receiving server's NTP daemon is accurately synced.  
+* **Idempotency:** Your webhook handler must extract the event\_id from the JSON payload. Store this ID in a rapid-access cache (e.g., Redis) and discard any subsequent webhooks sharing the same event\_id to prevent duplicate state execution.

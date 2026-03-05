@@ -1,47 +1,52 @@
-# Proxy Protocol Threat Model (v1)
+# **Proxy Agent Network (PAN) | Cyber-Physical Threat Model**
 
-**Date:** February 2026  
-**Assumptions:** The network operates in an adversarial environment. Both Agents and Human Nodes may be malicious.
+**Status:** Active (Mesa Pilot)
 
----
+**Version:** 2026.1.0
 
-## 1. The Malicious Human (Sybil & Laziness)
-**Attack:** A single bad actor spins up 50 fake "Human Nodes" using virtual machines or emulators to farm basic tasks.
+**Assumptions:** The network operates in an adversarial, open-world physical environment. Both digital API vectors and physical hardware vectors must be secured.
 
-### Mitigation:
-* **Hardware Root of Trust:** Tier 2+ tasks require a signature from a certified TPM 2.0 module (see `specs/hardware`).
-* **Liveness Checks:** Random active video challenges (RFC-001) prevent deepfake injection.
+## **1\. The Phantom Agent (Location Spoofing & Sybil Attacks)**
 
----
+**Attack:** A bad actor attempts to farm L402 Satoshi bounties without leaving their home by spinning up emulators and utilizing GPS-spoofing software to simulate arriving at the stranded Autonomous Vehicle (AV).
 
-## 2. The Malicious Agent (Escrow Griefing)
-**Attack:** An Agent creates a task, locks funds in escrow, waits for the human to do the work, but refuses to release the payment (never revealing the preimage).
+### **Mitigation:**
 
-### Mitigation:
-* **Expiry Timeouts:** Lightning HODL invoices have a hard timeout (e.g., 4 hours).
-* **Reputation Burn:** Agents that fail to settle valid tasks lose their "Principal Score" and are rate-limited or banned.
+* **Hardware Root of Trust:** PAN strictly bans software-based identity. The Vanguard Tactical App requires a hardware signature from an Apple Secure Enclave or Android TPM 2.0 (StrongBox) to verify the physical device. Emulators are permanently blacklisted via DeviceCheck and Play Integrity.  
+* **Spatial Attestation (UWB):** GPS is untrusted for the final 15 meters. The Agent must establish an Ultra-Wideband (UWB) Time-of-Flight lock with the AV. Because UWB measures distance via the literal speed of light between two physical radios, it is impossible to spoof remotely.
 
----
+## **2\. Fleet Swatting (Webhook Injection)**
 
-## 3. Physical Coercion ("The $5 Wrench Attack")
-**Attack:** A Human Node is physically forced to sign a document or access a secure facility under duress.
+**Attack:** An attacker intercepts a Fleet Operator's API schema and floods the PAN Gateway with fake /fleet/dispatch payloads, attempting to artificially deploy all available Vanguard Agents to fake locations and exhaust the Fleet's L402 Lightning liquidity.
 
-### Mitigation:
-* **Duress PIN:** The mobile app accepts a specific "Panic PIN." If entered, the app appears to function normally but signs the transaction with a "Tainted Flag" that alerts the network security team and invalidates the legal weight of the signature.
+### **Mitigation:**
 
----
+* **HMAC-SHA256 Signatures:** All inbound dispatch webhooks must be cryptographically signed using the Fleet's non-transmitted Secret Key.  
+* **Temporal Idempotency Lock:** The PAN Gateway hashes VIN \+ UDS\_Fault\_Code \+ 15-Min\_Window. If an attacker (or a glitching AV) sends 50 identical dispatches in 10 seconds, the Gateway returns a 409 Conflict, echoing the original mission ID and consuming zero additional Agent quota or L402 funds.
 
-## 4. Data Leakage
-**Attack:** A Human Node screenshots a sensitive contract or saves a photo of a user's ID.
+## **3\. Escrow Griefing & The "Hostage AV"**
 
-### Mitigation:
-* **Ephemeral RAM:** The reference client wipes memory immediately upon task completion.
-* **OS-Level DRM:** The Android/iOS app blocks screenshot functionality via the `FLAG_SECURE` window attribute.
+**Attack:** A Vanguard Agent arrives on site, establishes a UWB lock, but refuses to clear the sensor unless the remote Fleet Operator manually sends a higher L402 payment outside of the PAN protocol constraints.
 
----
+### **Mitigation:**
 
-## 5. Man-in-the-Middle (MITM)
-**Attack:** An ISP or router intercepts the task instructions.
+* **Deterministic Settlement:** Human leverage is entirely removed from the financial layer. If the AV's onboard AI does not broadcast the FAULT\_CLEARED webhook within the 30-minute absolute network timeout, the Lightning HODL invoice automatically expires.  
+* **Economic & Reputation Slashing:** The funds mathematically revert to the Fleet Treasury. The Agent receives $0 and suffers a HARDWARE\_DAMAGE or ABANDONED\_CONTRACT Vanguard Trust Score (VTS) slashing penalty, leading to immediate network revocation.
 
-### Mitigation:
-* **End-to-End Encryption:** Task payloads are encrypted with the Node's Public Key. Only the specific hardware TPM can decrypt the instructions.
+## **4\. Physical Environmental Hazards**
+
+**Attack:** A Vanguard Agent is dispatched to an AV that is surrounded by a hostile crowd, actively being vandalized, or involved in a severe kinetic collision (e.g., severe structural damage, not just a dirty sensor).
+
+### **Mitigation:**
+
+* **The Abort Protocol:** Agents are trained infrastructure technicians, not law enforcement. The Tactical App allows the Agent to trigger an ABORT: SCENE UNSAFE command from the safety of their response vehicle.  
+* **Zero-Penalty Escalation:** This safely cancels the L402 contract without a VTS slashing penalty and immediately escalates the UDS webhook back to the Fleet Operator for 911/Police dispatch.
+
+## **5\. Proprietary Data & PII Leakage**
+
+**Attack:** A Vanguard Agent takes a high-resolution photo of a damaged, unreleased AV sensor array and attempts to leak it to the press, or accidentally captures civilian license plates/pedestrian faces in the background.
+
+### **Mitigation:**
+
+* **Edge-Vision PII Obfuscation (PIP-018):** The Agent's device runs a local ML model that automatically applies a heavy Gaussian blur to all human faces and civilian license plates *before* the image is saved.  
+* **RSA-OAEP Edge Encryption (PIP-016):** The photo is encrypted in volatile RAM using the Fleet Operator's Public Key. The unencrypted source file is permanently zero-filled from the mobile device. The Agent cannot access the photo after capture, and PAN Command cannot decrypt it in transit.

@@ -1,97 +1,83 @@
-# Troubleshooting & Debugging Guide
+# **Proxy Agent Network (PAN) | Troubleshooting & Debugging Guide**
 
-| Scope | Prerequisites |
-| :--- | :--- |
-| **Agent Integration & Node Operations** | `curl`, `jq`, `Python 3.11` |
+**Status:** Active (Mesa Pilot)
 
-This guide provides deep-dive solutions for the most common integration blockers.
+**Version:** 2026.1.0
 
----
+**Target:** Fleet API (V2X) Integrations & Backend Engineers
 
-## Scenario 1: The "Insufficient Escrow" Loop (PX_200)
+This guide provides deep-dive solutions for the most common integration blockers encountered by Fleet Operators when connecting their Autonomous Vehicle (AV) backends to the PAN Sector Gateway.
 
-**Symptom:** You try to create a task, but the API returns `402 Payment Required` with `PX_200`.
-**Cause:** Your Agent's Lightning wallet does not have enough outbound liquidity to lock the HODL invoice.
+## **Scenario 1: The "L402 Bounty Too Low" Loop (PX\_200)**
 
-### The Fix
-1. **Check your balance:**
-```bash
-curl -H "Authorization: Bearer $API_KEY" [https://api.proxyprotocol.com/v1/wallet/balance](https://api.proxyprotocol.com/v1/wallet/balance)
-```
+**Symptom:** You attempt to dispatch an Agent via POST /fleet/dispatch, but the API immediately returns 402 Payment Required with PX\_200.
 
-2. **Top Up (Testnet):**
-If using the Sandbox, mint mock sats:
-```bash
-curl -X POST [https://sandbox.proxyprotocol.com/v1/wallet/faucet](https://sandbox.proxyprotocol.com/v1/wallet/faucet) \
-  -H "Authorization: Bearer $API_KEY" \
-  -d '{"amount": 50000}'
-```
+**Cause:** A severe weather event or kinetic anomaly has triggered a Geohash Surge. Your dispatch payload's max\_l402\_sats cap is strictly lower than the active Sector Surge rate.
 
-3. **Open a Channel (Mainnet):**
-You likely need a direct channel to the Proxy Hub.
-```bash
-lncli openchannel --node_key=028392... --local_amt=1000000
-```
+### **The Fix**
 
----
+1. **Poll the Sector Oracle:** Check the real-time pricing for the specific Geohash.
 
-## Scenario 2: The "TPM Verification Failed" Error (PX_400)
+curl \-H "X-PAN-Signature: \[HMAC\]" \[https://api.proxyagent.network/v2026.1/sector/MESA\_AZ\_01/status\](https://api.proxyagent.network/v2026.1/sector/MESA\_AZ\_01/status)
 
-**Symptom:** Your Physical Node is online, but all tasks are rejected instantly.
-**Cause:** The TPM chip is not signing the heartbeat payload correctly, or the key has been wiped by an intrusion event.
+2. **Increase your Cap:** If the surge\_multiplier is 3.5, your max\_l402\_sats must be at least Base\_Rate \* 3.5.  
+3. **Queueing Strategy:** If you refuse to pay the surge, you must gracefully catch the 402 and place your stranded AV in an internal retry queue until the Sector Surge cools down.
 
-### The Fix (Node Operator)
-1. **Run the Medic Script:**
-```bash
-./scripts/node_health_check.sh
-```
-*If it returns `[?] Checking TPM... FAIL`, your hardware is disconnected.*
+## **Scenario 2: "Physical Quota Exhausted" (PX\_501)**
 
-2. **Check the Kernel Logs:**
-```bash
-dmesg | grep tpm
-# Expected: "tpm_tis_spi: 2.0 TPM (device-id 0x9670)"
-```
+**Symptom:** Your API requests are returning 503 Service Unavailable with QUOTA\_EXHAUSTED.
 
-3. **Reset the Hierarchy (Nuclear Option):**
-If the key is corrupted, you must re-bind. See `specs/hardware/node_recovery.md`.
+**Cause:** You have hit the maximum number of concurrent Vanguard Agents allowed for your Fleet's tier (e.g., 25 active missions for *Sector Priority* fleets).
 
----
+### **The Fix**
 
-## Scenario 3: Webhooks Failing Signature Check
+1. **Check Active Missions:** Ensure your backend is properly processing the mission.orp\_completed and AV FAULT\_CLEARED webhooks to close out active missions.  
+2. **Upgrade Tier:** If your AV fleet size has organically outgrown your current tier, contact PAN Command to upgrade to the **Sector Anchor** tier (100+ concurrent Agents).  
+3. **Wait for Clearance:** Your backend must halt further dispatches until an existing Agent completes an Optical Reclamation Protocol (ORP) and frees up a slot.
 
-**Symptom:** You receive the webhook, but your server rejects it as "Untrusted."
-**Cause:** You are calculating the HMAC on the parsed JSON instead of the raw bytes.
+## **Scenario 3: Webhooks Failing Signature Check (PX\_101)**
 
-### The Fix
-**❌ Incorrect (Python/Flask):**
-```python
-# DON'T DO THIS
-payload = request.json  # This re-orders keys!
-signature = hmac.new(secret, json.dumps(payload))
-```
+**Symptom:** The PAN Gateway rejects your /dispatch requests as "Invalid Signature", or your backend keeps dropping outbound PAN callbacks as "Untrusted."
+
+**Cause:** Your backend is calculating the HMAC-SHA256 signature using parsed/re-serialized JSON instead of the exact raw byte stream. JSON parsers often reorder keys or strip whitespace, breaking the cryptographic hash.
+
+### **The Fix**
+
+**❌ Incorrect (Python/Flask/FastAPI):**
+
+\# DON'T DO THIS: Request.json() alters the payload bytes\!  
+payload \= request.json()   
+signature \= hmac.new(FLEET\_SECRET, json.dumps(payload), hashlib.sha256)
 
 **✅ Correct:**
-```python
-# DO THIS
-raw_bytes = request.get_data()  # The exact byte stream
-timestamp = request.headers['X-Proxy-Request-Timestamp']
-msg = f"{timestamp}.".encode('utf-8') + raw_bytes
-signature = hmac.new(secret, msg, hashlib.sha256).hexdigest()
-```
 
----
+\# DO THIS: Hash the raw byte stream directly  
+raw\_bytes \= await request.body()   
+timestamp \= request.headers\['X-PAN-Timestamp'\]
 
-## Scenario 4: "Rate Limit Exceeded" (PX_102)
+\# Format: POST:{URI}:{Timestamp}:{RawBody}  
+msg \= f"POST:{request.url.path}:{timestamp}:".encode('utf-8') \+ raw\_bytes  
+signature \= hmac.new(FLEET\_SECRET, msg, hashlib.sha256).hexdigest()
 
-**Symptom:** Your high-frequency trading bot is getting `429s`.
-**Cause:** You are bursting above 10 RPS on a Starter Pass.
+*Note: Also ensure your server's NTP clock is synced. Signatures drift-fail after 60 seconds (PX\_102).*
 
-### The Fix
-1. **Check your Headers:** Look at `X-RateLimit-Remaining` in the response.
-2. **Upgrade your Pass:**
-```bash
-curl -X POST [https://api.proxyprotocol.com/v1/subscription/buy](https://api.proxyprotocol.com/v1/subscription/buy) \
-  -H "Authorization: Bearer $API_KEY" \
-  -d '{"tier": "whale"}'
-```
+## **Scenario 4: "Idempotency Lock Active" (PX\_302)**
+
+**Symptom:** You send a dispatch request and receive a 409 Conflict.
+
+**Cause:** Due to poor cellular connectivity at the AV's location, your vehicle sent the same LIDAR\_MUD\_OCCLUSION webhook twice in under 15 minutes. The PAN Gateway locked the duplicate to prevent double-billing and deploying two Agents to one car.
+
+### **The Fix**
+
+1. **Do not blind-retry on 409s.** 2\. **Parse the Response:** The 409 Conflict payload includes the *existing* mission\_id and the assigned Agent's ETA. Catch this response and map it to your internal AV tracking logic.  
+2. **The Nuclear Override:** If the vehicle was genuinely occluded *again* 5 minutes after a successful clear, you must explicitly inject "force\_override": true into your JSON payload.
+
+## **Scenario 5: "Hardware Attestation Rejected" (PX\_400 / PX\_402)**
+
+**Symptom:** An active mission abruptly cancels, and you receive a mission.sla\_breach callback citing OS\_ATTESTATION\_FAILED.
+
+**Cause:** The assigned Vanguard Agent's mobile device failed a continuous security check (e.g., Apple DeviceCheck flagged a jailbreak, or a UWB distance calculation mathematically failed, indicating spoofing).
+
+### **The Fix (Fleet Operator)**
+
+You do not need to take engineering action. The PAN Routing Engine automatically slashes the compromised Agent, revokes their identity key, and instantly routes the next closest Vanguard Agent to your stranded AV. Your mission\_id remains the same; you will simply see a new agent\_dispatched event in your webhook logs.

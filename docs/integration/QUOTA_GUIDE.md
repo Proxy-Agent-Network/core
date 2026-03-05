@@ -1,71 +1,88 @@
-# API Quotas & Rate Limiting Strategy
+# **Proxy Agent Network (PAN) | API Quotas & Physical Rate Limiting**
 
-| Module | Policy |
-| :--- | :--- |
-| **Traffic Controller** | Dynamic Token Bucket |
+**Status:** Active (Mesa Pilot)
 
-To maintain network stability and guarantee throughput for paying customers, the Proxy Protocol enforces strict rate limits based on the **Authorization** token presented.
+**Version:** 2026.1.0
 
----
+**Target:** Fleet API (V2X) Integrations
 
-## 1. Subscription Tiers & Limits
-Your request throughput is determined by the `proxy_pass_token` (JWT) in your header.
+To maintain network stability and guarantee rapid dispatch for enterprise Autonomous Vehicle (AV) fleets, the PAN Gateway enforces two distinct layers of rate limiting: **Digital Rate Limits** (protecting our servers) and **Physical Quotas** (protecting the finite supply of Vanguard Agents).
 
-| Subscription Tier | Requests Per Second (RPS) | Burst Allowance | Daily Task Cap |
-| :--- | :--- | :--- | :--- |
-| **Anonymous / Free** | 1 RPS | 5 Requests | 10 Tasks |
-| **Starter Pass** | 10 RPS | 50 Requests | 500 Tasks |
-| **Pro Pass** | 50 RPS | 200 Requests | 5,000 Tasks |
-| **Whale Pass** | Unlimited* | 1,000+ Requests | Unlimited |
+## **1\. Digital Rate Limits (RPS)**
 
-*\*Whale Pass limits are infrastructure-bound rather than policy-bound.*
+Standard token-bucket rate limiting applies to all REST endpoints, tracked via your Master Fleet Key (sk\_fleet\_live\_...).
 
----
+| Endpoint Group | Allowed Rate | Burst Capacity |
+| :---- | :---- | :---- |
+| **Telemetry & Status** (GET /sector/status) | 600 / minute | 50 / second |
+| **Audit Logs** (GET /compliance/audit) | 120 / minute | 10 / second |
+| **Mission Dispatch** (POST /fleet/dispatch) | 30 / minute | 5 / second |
 
-## 2. Response Headers (The "Gas Gauge")
-Every API response includes headers telling you exactly where you stand. Monitor these programmatically to avoid being throttled.
+### **Response Headers (The "Gas Gauge")**
 
-* `X-RateLimit-Limit`: Your total allowed RPS.
-* `X-RateLimit-Remaining`: Requests left in the current window.
-* `X-RateLimit-Reset`: Unix timestamp when your bucket refills.
+Every API response includes headers detailing your current digital limit consumption. Monitor these programmatically to avoid being throttled.
 
-### Example Header
-```http
-HTTP/1.1 200 OK
-X-RateLimit-Limit: 50
-X-RateLimit-Remaining: 49
-X-RateLimit-Reset: 1707436800
-```
+HTTP/1.1 200 OK  
+X-RateLimit-Limit: 600  
+X-RateLimit-Remaining: 598  
+X-RateLimit-Reset: 1780541460
 
----
+## **2\. Physical Quotas (Concurrent Missions)**
 
-## 3. Handling "429 Too Many Requests"
-If you exceed your quota, the API returns `HTTP 429`.
+Because a POST /fleet/dispatch request physically deploys a human being, you are bound by a **Concurrent Mission Quota**. This is the maximum number of Vanguard Agents your specific fleet can have deployed simultaneously within a single Sector Geohash (e.g., MESA\_AZ\_01).
 
-> [!WARNING]
-> **Do NOT retry immediately.** You will likely trigger a longer secondary block. **DO** implement **Exponential Backoff**.
+| Fleet Capacity Tier | Required L402 Escrow | Max Concurrent Agents |
+| :---- | :---- | :---- |
+| **On-Demand (Testing)** | 0.05 BTC | 5 Active Missions |
+| **Sector Priority** | 0.50 BTC | 25 Active Missions |
+| **Sector Anchor** | 2.00 BTC | 100+ Active Missions |
 
-### Python Implementation:
-```python
-import time
+*(Note: If you hit this limit, the API returns 503 QUOTA\_EXHAUSTED. You must wait for an active ORP to clear before dispatching another Agent).*
+
+## **3\. Handling "429 Too Many Requests"**
+
+If your AV backend exceeds the digital RPS limits, the PAN Gateway returns HTTP 429\.
+
+\[\!WARNING\]
+
+**Do NOT retry immediately.** Rapid retries will trigger a longer secondary IP block. **DO** implement **Exponential Backoff with Jitter**.
+
+### **Python Implementation Example:**
+
+import time  
 import requests
 
-def safe_request(url):
-    retries = 0
-    while retries < 5:
-        response = requests.get(url)
-        if response.status_code == 429:
-            wait_time = 2 ** retries  # 1s, 2s, 4s, 8s...
-            print(f"Rate limited. Cooling down for {wait_time}s...")
-            time.sleep(wait_time)
-            retries += 1
-        else:
-            return response
-```
+def safe\_dispatch\_request(url, headers, payload):  
+    retries \= 0  
+    while retries \< 5:  
+        response \= requests.post(url, headers=headers, json=payload)  
+          
+        if response.status\_code \== 429:  
+            \# Check the reset header if available, otherwise exponential backoff  
+            reset\_time \= response.headers.get("X-RateLimit-Reset")  
+            if reset\_time:  
+                wait\_time \= max(0, int(reset\_time) \- int(time.time())) \+ 1  
+            else:  
+                wait\_time \= (2 \*\* retries) \# 1s, 2s, 4s, 8s...  
+                  
+            print(f"\[WARN\] PAN Gateway rate limited. Cooling down for {wait\_time}s...")  
+            time.sleep(wait\_time)  
+            retries \+= 1  
+        elif response.status\_code \== 503:  
+            print("\[CRITICAL\] Physical Quota or Brownout active. Route AV safely and pause dispatches.")  
+            break  
+        else:  
+            return response  
+              
+    raise Exception("Max retries exceeded for PAN Dispatch.")
 
----
+## **4\. The "Brownout" Exception (503 Service Unavailable)**
 
-## 4. The "Brownout" Exception
-During a **Network Brownout** (congestion event), even Whale Pass holders may see reduced limits on *write* operations (creating tasks), though *read* operations (checking status) remain prioritized. 
+During a severe weather or kinetic anomaly (e.g., an Arizona dust storm), a specific Geohash may reach \>95% Vanguard Agent Utilization.
 
-**Reference:** See [specs/v1/brownout_logic.md](./specs/v1/brownout_logic.md).
+When this happens, the PAN Gateway enters a **Brownout**, returning 503 GEOHASH\_BROWNOUT\_ACTIVE for all new dispatches in that 1-square-mile zone.
+
+* **Standard Fleets:** Must route unaffected AVs away from the zone.  
+* **Sector Anchors:** Are placed in an exclusive priority queue and are automatically routed the next available Vanguard Agent as soon as an existing mission clears.
+
+**Reference:** See [Sector Brownout & Congestion Control](https://www.google.com/search?q=../architecture/specs/v1/brownout_logic.md) for detailed telemetry triggers.

@@ -1,34 +1,41 @@
-# Privacy & Zero-Knowledge Strategy
+# **Proxy Agent Network (PAN) | Zero-Knowledge & Privacy Architecture**
 
-**Problem:** To verify a human's identity (e.g., ID Card), a protocol traditionally requires access to that sensitive document. This creates a "data honey-pot" risk.  
-**Solution:** Proxy Protocol implements a Zero-Knowledge (ZK) verification flow utilizing **TLS Notary** and **Local Secure Processing**.
+**Status:** Active (Mesa Pilot)
 
----
+**Version:** 2026.1.0
 
-## 1. The "Local-First" Principle
-For Tier 2 (Identity) tasks, raw data—including photos of IDs and biometrics—is processed directly on the Human Node's device inside a Secure Enclave. This data is **never** uploaded to Proxy Protocol servers.
+**Target:** Security Operations & Regulatory Compliance
 
-* **Input:** Raw Camera Feed (ID Card).
-* **Process:** Local OCR extraction + Liveness Check.
-* **Output:** A cryptographic boolean (e.g., `is_valid=true`, `age>18=true`) signed by the device's hardware TPM.
+**The Problem:** To mathematically prove that an authorized human executed a physical intervention on an Autonomous Vehicle (AV), traditional systems require harvesting sensitive biometric data (e.g., facial scans, ID photos) and high-fidelity location tracking. This creates a massive "data honeypot" risk.
 
----
+**The Solution:** PAN implements a Zero-Knowledge (ZK) privacy flow utilizing **Hardware Enclaves**, **Edge-Vision ML**, and **Asymmetric Telemetry Encryption**.
 
-## 2. TLS Notary (Web Proofs)
-When a Human Proxy logs into a bank or government portal to verify data for an Agent, the network utilizes **TLS Notary (DECO/mpc-tls)**.
+## **1\. Zero-Knowledge Biometrics (Local-First)**
 
-1.  **Handshake:** The Human Node opens a TLS session with the institution (e.g., a Bank).
-2.  **Verification:** The Proxy Protocol acts as a secondary verifier of the encryption handshake without having access to the session key.
-3.  **Proof:** The Human Node proves to the Agent: *"I am logged into Bank of America and my balance is > $0"* without revealing the password, session tokens, or the exact balance.
+For an Agent to accept an L402 contract or sign an SB 1417 Optical Health Report (OHR), PAN must verify that the authorized human is physically holding the device. However, PAN **never** ingests or stores raw biometric data.
 
----
+* **Input:** Raw biometric scan (FaceID / Fingerprint).  
+* **Process:** The biometric evaluation occurs entirely inside the mobile device's physical Secure Enclave (Apple) or StrongBox (Android TPM 2.0).  
+* **Output:** The PAN Tactical App receives a cryptographic boolean (e.g., biometric\_match=true). This unlocks the hardware's private key, which signs the UWB proximity payload. PAN only receives the resulting mathematical signature, maintaining a Zero-Knowledge posture regarding the Agent's actual biometric map.
 
-## 3. Data Expiry (The "Toxic Waste" Policy)
-Any data that must be transmitted (e.g., a photo of a physical letter) is treated as "toxic waste"—handled with extreme care and disposed of quickly.
+## **2\. Edge-Vision PII Obfuscation (PIP-018)**
 
-* **Encryption:** All payloads are encrypted with the **Agent's Public Key**. The Proxy Network infrastructure cannot read the content.
-* **Storage:** Files are pinned to IPFS with a **24-hour TTL (Time To Live)**.
-* **Deletion:** After 24 hours, the garbage collector automatically unpins the file, rendering the data irretrievable from the network.
+When a Vanguard Agent is required to take a compliance photo of a severely damaged AV sensor (e.g., a shattered LiDAR dome), the background may inadvertently capture civilian bystanders or private license plates.
 
-> [!IMPORTANT]
-> Because Proxy Protocol does not store PII, we cannot "recover" lost task results after the 24-hour window has expired. Agents must ingest and archive their own data.
+* **Local Inference:** Before the image is saved or transmitted, a local ML model (CoreML / ML Kit) sweeps the frame in volatile RAM.  
+* **Obfuscation:** All detected human faces and non-AV license plates are heavily blurred (Gaussian, 30px minimum).  
+* **The "Toxic Waste" Policy:** The original, unredacted raw image is immediately zero-filled from the device's memory. It is never written to disk or uploaded to the cloud.
+
+## **3\. Asymmetric Telemetry Encryption (PIP-016)**
+
+Fleet Operators (e.g., Waymo, Zoox) consider their hardware failure rates and proprietary UDS diagnostic imagery to be highly classified trade secrets.
+
+To prevent PAN from becoming a centralized vulnerability for Fleet espionage, proprietary mission telemetry is treated as "toxic waste."
+
+1. **Edge Encryption:** Any high-resolution photos or proprietary diagnostic outputs captured by the Vanguard Agent are encrypted locally on the mobile device using the **Fleet Operator's RSA-OAEP Public Key**.  
+2. **Blind Routing:** PAN routes the encrypted payload to the Fleet Operator. PAN Command cannot decrypt or view the contents of the payload.  
+3. **Data Expiry:** High-fidelity Agent routing telemetry (1-second GPS polling) used to calculate Time-to-Site is permanently purged from PAN databases **48 hours** after the AV broadcasts the FAULT\_CLEARED webhook.
+
+\[\!IMPORTANT\]
+
+**Regulatory Exception:** The specific cryptographic hashes comprising the SB 1417 Optical Health Report (Agent ID, TPM Signature, Timestamp, UWB Distance) are *not* encrypted. They are retained in plaintext on immutable WORM storage for **7 years** to satisfy mandatory Arizona DPS auditing requirements.

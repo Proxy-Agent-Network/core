@@ -1,51 +1,47 @@
-# Proxy-Pass Subscription & Priority Access (v1)
+# **Proxy Agent Network (PAN) | Enterprise SLA & Reserved Capacity**
 
-| Status | Contract Type |
-| :--- | :--- |
-| **Active** | 30-Day Time-Locked Contract (DLC) |
+**Status:** Active (Mesa Pilot)
 
-To support high-volume Enterprise Agents, Proxy Protocol offers a "Season Pass" model known as **Proxy-Pass**. This allows Agents to pre-pay for network access, bypassing per-transaction protocol fees and gaining routing priority.
+**Version:** 2026.1.0 (Supersedes v1 Proxy-Pass)
 
----
+**Target:** Fleet Procurement & Operations
 
-## 1. The Core Offer
-Instead of paying the 20% protocol fee on every task, an Agent locks a lump sum of Bitcoin for 30 days.
+## **1\. The Physical Capacity Problem**
 
-| Tier | Monthly Cost (Sats) | Fee Waiver | Priority Boost |
-| :--- | :--- | :--- | :--- |
-| **Starter Pass** | 1,000,000 (~$1k) | 0% Fees (First 100 tasks) | Level 1 (Standard) |
-| **Pro Pass** | 5,000,000 (~$5k) | 0% Fees (First 1,000 tasks) | Level 2 (High) |
-| **Whale Pass** | 25,000,000 (~$25k) | **Unlimited** 0% Fees | Level 3 (Critical) |
+In cloud computing, compute power scales infinitely. In the Proxy Agent Network (PAN), physical Vanguard Agents are a finite resource.
 
-> [!NOTE]
-> The Agent still pays the Human Node's fee. The waiver applies only to the Protocol's 20% cut.
+During nominal operations, standard L402 pricing easily clears the queue. However, during a mass-grounding event (e.g., a sudden Arizona dust storm blinding 50 Autonomous Vehicles simultaneously in a single square mile), the Agent Utilization Ratio (AUR) will hit 100%.
 
----
+When Vanguard Agent supply is exhausted, PAN must decide which Fleet's vehicles are recovered first. To solve this, PAN offers **Reserved Capacity SLAs** for enterprise Fleet Partners.
 
-## 2. Technical Implementation (The "Subscription NFT")
-Subscriptions are tokenized as non-transferable assets on the Lightning Network using **LSATs** (Lightning Service Authentication Tokens).
+## **2\. Enterprise Capacity Tiers**
 
-1. **Purchase:** Agent calls `POST /v1/subscription/buy`.
-2. **Payment:** Agent pays the 30-day invoice.
-3. **Issuance:** The API returns a `proxy_pass_token` (a Macaroon combined with a proof-of-payment).
-4. **Usage:** Agent includes this token in the `Authorization` header of every task request:
+Instead of paying flat per-transaction routing fees, Enterprise Fleets can commit to a monthly capacity retainer. This guarantees Vanguard availability and routing priority during severe Geohash Brownouts.
 
-```http
-Authorization: LSAT [macaroon]:[preimage]
-```
+| Tier | Monthly Retainer | Routing Fee | Quota Limit | Brownout Priority |
+| :---- | :---- | :---- | :---- | :---- |
+| **On-Demand (Standard)** | $0 / Pay-as-you-go | 15% | 5 Active | Standard FIFO. First to be queued during surges. |
+| **Sector Priority** | $5,000 / Sector | 10% | 25 Active | Level 2\. Bypasses standard queues up to 4.0x Surge. |
+| **Sector Anchor** | $25,000 / Sector | 5% | 100+ Active | Level 1\. Highest priority. Guaranteed 15-min SLA. |
 
----
+\[\!NOTE\]
 
-## 3. Priority Routing Logic
-During network congestion (Brownout), tasks signed with a **Whale Pass** are mathematically guaranteed execution.
+The monthly retainer strictly covers PAN's infrastructure routing and SLA guarantees. 100% of the underlying L402 Satoshi bounties are still paid directly to the Vanguard Agents for their physical labor.
 
-* **Standard Queue:** First-In, First-Out (FIFO).
-* **Priority Queue:** Whale Pass tasks jump to the front of the line, immediately after the current block executes.
+## **3\. Technical Implementation (Liquidity Commitments)**
 
----
+We do not use legacy "subscription tokens." Enterprise SLA status is mathematically bound to your Fleet's Lightning Network topology and API provisioning.
 
-## 4. Liquidity Benefits
-Funds paid for Proxy-Pass subscriptions are moved to the **Network Liquidity Pool**. 
+1. **The API Upgrade:** PAN Command upgrades your sk\_fleet\_live\_... Master Key to the requested tier, immediately unlocking higher Concurrent Mission Quotas.  
+2. **Channel Capacity (The Commitment):** To activate *Sector Anchor* status, the Fleet Treasury must open a direct, high-capacity Lightning channel with the PAN Sector 1 Master Node (Minimum capacity: 2.5 BTC).  
+3. **Instant Settlement:** This dedicated inbound liquidity ensures that even during massive network congestion, your L402 HODL invoices route instantly to Vanguard Agents without hitting multi-hop routing failures.
 
-* **Instant Channel Opens:** Used to open high-capacity Lightning Channels with top-tier Human Nodes.
-* **Inbound Liquidity:** Ensures Human Nodes always have the capacity to receive payments instantly without manual rebalancing.
+## **4\. Priority Routing Logic (Brownout Conditions)**
+
+When a specific Geohash enters Stage 🔴 **Brownout** (\>95% Agent Utilization), the Sector Routing Engine suspends standard First-In, First-Out (FIFO) logic.
+
+1. **Queue Triage:** All On-Demand dispatches are placed into a holding queue (receiving a 503 QUOTA\_EXHAUSTED or 409 response).  
+2. **Anchor Primacy:** Any active Vanguard Agent that completes an intervention is instantly routed to the nearest stranded AV belonging to a **Sector Anchor** fleet.  
+3. **Surge Exemption:** Anchor Fleets maintain their strict 15-minute SLA guarantees without being forced to bid against the absolute maximum 5.0x Surge Multiplier cap.
+
+By becoming a Sector Anchor, a Fleet Operator fundamentally reserves a percentage of the local Vanguard workforce as a dedicated, hyper-local rapid response team.

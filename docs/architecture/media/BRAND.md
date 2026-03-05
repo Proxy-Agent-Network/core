@@ -1,30 +1,49 @@
-# Proxy Protocol Brand Assets
+# **Proxy Agent Network (PAN) | Brand Guidelines**
 
-Thank you for your interest in covering Proxy Protocol. These guidelines help ensure our brand is presented consistently across the ecosystem.
+**Status:** Active (Mesa Pilot)
 
----
+**Version:** 2026.1.0
 
-### 1. The Name
-* **Correct:** Proxy Protocol, Proxy Network, Proxy Agent Network.
-* **Incorrect:** The Proxy, ProxyAI, Proxy Coin.
+Thank you for your interest in covering the Proxy Agent Network (PAN). Because our Vanguard Agents operate in physical traffic environments interacting with $150,000 autonomous assets, our brand must project **authority, technical precision, and safety**.
 
-### 2. Color Palette
-Our aesthetic is **"Industrial Terminal."** We use high-contrast terminal greens against void blacks.
+These guidelines ensure our brand is presented consistently across digital integrations, fleet dashboards, and physical deployments.
+
+### **1\. The Name**
+
+We are a physical infrastructure network, not a consumer software application.
+
+* **Correct:** Proxy Agent Network, PAN, the PAN Protocol.  
+* **Incorrect:** Proxy Protocol, ProxyAI, The Proxy, Proxy Coin.
+
+### **2\. Color Palette**
+
+Our aesthetic is **"Tactical Infrastructure."** We use a high-contrast, dual-purpose palette that bridges our digital routing engine with the physical, arid environment of the Mesa Operations Sector.
 
 | Color | Hex Code | Usage |
-| :--- | :--- | :--- |
-| **Terminal Green** | `#00FF41` | Primary Actions, Success States, Matrix Code |
-| **Void Black** | `#0D0D0D` | Backgrounds, Hardware Aesthetics |
-| **Signal Red** | `#FF3333` | Error States, "Captcha Stuck" Warnings |
-| **Console Grey** | `#A9A9A9` | Secondary Text, Borders |
+| :---- | :---- | :---- |
+| **Infrastructure Slate** | \#0A192F | Primary Backgrounds, Uniform Polos, Enterprise Trust |
+| **Arizona Copper** | \#B87333 | Primary Accent, Sector 1 (Mesa) Hardware Motif |
+| **LiDAR Cyan** | \#64FFDA | Digital Success States, UWB Locks, Tactical HUDs |
+| **MUTCD High-Vis Yellow** | \#E8FF00 | **Physical Only:** Agent Class 3 Vests, Vehicle Hazard Decals |
 
-### 3. Typography
-* **Headers:** Monospace fonts (Courier New, Roboto Mono, Fira Code).
-* **Body:** Clean Sans-Serif (Inter, Roboto, Helvetica Neue).
+### **3\. Typography**
 
-### 4. Logo Usage
-* **The "Identity Bridge":** Use the Green Fingerprint icon for avatars and app icons.
-* **The Wordmark:** "PROXY PROTOCOL" should always be displayed in uppercase monospace font.
+Our typography must remain highly legible on mobile devices under harsh Arizona sunlight and inside dark remote-operator dashboards.
 
-### 5. Media Inquiries
-For press interviews or official comments, please contact `media@proxy.agent.network`.
+* **Primary Font (Headings & UI):** Urbanist (Clean, modern sans-serif).  
+* **Secondary Font (Data & Telemetry):** JetBrains Mono (Monospace for GPS coordinates, L402 Satoshi balances, and UDS Fault Codes).
+
+### **4\. Logo Usage**
+
+* **The "Hex-Shield":** Our primary mark. A geometric hexagon containing a stylized routing node and copper wiring motif. It represents our physical liability shield and infrastructure focus.  
+* **The Wordmark:** "PROXY AGENT NETWORK" set in Urbanist Bold, with "NETWORK" offset in Arizona Copper.  
+* **Dark Mode Preferred:** PAN logos should default to dark mode backgrounds (\#0A192F or \#020617) whenever possible to align with our digital Tactical HUD aesthetic.
+
+### **5\. Physical Asset Markings (Vanguard Agents)**
+
+When Vanguard Agents are deployed on an active L402 contract, their vehicles and persons must clearly display the PAN wordmark alongside their unique 4-digit Vanguard ID to ensure rapid identification by Fleet Operators and local law enforcement.
+
+### **6\. Media & Fleet Inquiries**
+
+* **Press & Media:** For official comments regarding the Mesa Pilot, contact press@proxyagent.network.  
+* **Fleet Integrations:** For Waymo, Zoox, or Cruise engineering teams looking for API access, please contact integrations@proxyagent.network.

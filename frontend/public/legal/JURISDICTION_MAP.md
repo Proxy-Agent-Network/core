@@ -1,55 +1,56 @@
-# Jurisdiction Selection Map (v1.0)
+# **Proxy Agent Network (PAN) | Sector & Jurisdiction Map**
 
-This map provides the routing logic for AI Agents to programmatically select the correct **Limited Power of Attorney (PoA)** template based on the Human Node's reported geolocation.
+**Status:** Active (Mesa Pilot)
 
----
+**Version:** 2026.1.0
 
-## 1. Automated Selection Table
+**Target:** Fleet API (V2X) Routing Engine & Legal Operations
 
-| ISO Code | Country | State/Region | Template File | Statutory Reference |
-| :--- | :--- | :--- | :--- | :--- |
-| **US** | United States | Delaware | `us_delaware_poa.md` | Delaware Code Title 12, Chapter 40 |
-| **GB** | United Kingdom | England & Wales | `uk_poa.md` | Powers of Attorney Act 1971 |
-| **SG** | Singapore | National | `singapore_poa.md` | Powers of Attorney Act (Cap. 243) |
+This map provides the routing logic for the PAN Gateway to programmatically select the correct **Machine-to-Human (M2H) Physical Intervention Mandate** and compliance reporting schema based on the stranded Autonomous Vehicle's (AV) physical location and Operational Design Domain (ODD).
 
----
+## **1\. Active Sector Table**
 
-## 2. Routing Logic (Pseudo-code)
+Because physical AV interventions are bound by specific state-level Department of Transportation (DOT) and Department of Public Safety (DPS) regulations, the M2H Mandate varies by physical sector.
 
-Agents should implement the following logic when initializing a task that requires legal capacity:
+| Sector ID | Physical Region | Statutory Reference | M2H Mandate File |
+| :---- | :---- | :---- | :---- |
+| **MESA\_AZ\_01** | Maricopa County, Arizona (US) | AZ Rev Stat § 28-9701 (SB 1417\) | ai\_power\_of\_attorney.md |
 
-```python
-def resolve_legal_template(node_geo_iso):
-    # 1. Load the JURISDICTION_MAP
-    # 2. Match node_geo_iso to Template File
-    if node_geo_iso == "US":
-        return "templates/legal/us_delaware_poa.md"
-    elif node_geo_iso == "GB":
-        return "templates/legal/uk_poa.md"
-    elif node_geo_iso == "SG":
-        return "templates/legal/singapore_poa.md"
-    else:
-        # Fallback to Universal Digital Commerce Code (Draft)
-        return "templates/legal/ai_power_of_attorney.md"
-```
+*(Note: The M2H Mandate template retains the legacy ai\_power\_of\_attorney.md filename for v2026.1.0 API backwards compatibility).*
 
----
+## **2\. Sector Routing Logic (Python Gateway)**
 
-## 3. Future Jurisdictions (In Review)
+When an AV transmits a Unified Diagnostic Service (UDS) fault code via the Fleet API, the PAN Gateway resolves the GPS coordinates to a Level-6 Geohash and assigns the appropriate legal framework before locking the L402 escrow and dispatching a Vanguard Agent.
 
-The following jurisdictions are currently being codified by the Legal Engineering team:
+def resolve\_sector\_mandate(lat: float, lng: float) \-\> dict:  
+    \# 1\. Convert AV coordinates to Level-6 Geohash  
+    geohash \= encode\_geohash(lat, lng, precision=6)  
+      
+    \# 2\. Match Geohash to active PAN Sector  
+    sector\_id \= lookup\_sector(geohash)  
+      
+    if sector\_id \== "MESA\_AZ\_01":  
+        return {  
+            "jurisdiction": "State of Arizona",  
+            "statute": "SB 1417",  
+            "mandate\_template": "templates/legal/ai\_power\_of\_attorney.md",  
+            "audit\_schema": "sb1417\_optical\_health\_report",  
+            "active": True  
+        }  
+    else:  
+        \# Halt execution. We cannot legally dispatch Agents outside authorized ODDs.  
+        raise OutOfBoundsError("AV coordinates fall outside active PAN Operational Design Domains.")
 
-* **EU (Germany/Estonia):** Drafting for GDPR and eIDAS compliance.
-* **AE (Dubai DIFC):** Drafting for the Digital Assets Law.
-* **JP (Japan):** Drafting under Civil Code Article 99.
+## **3\. Future Expansion Sectors (In Review)**
 
----
+The PAN Legal Engineering team and retained mobility counsel are currently codifying the M2H Physical Intervention Mandates for the following upcoming Q3 2026 expansion sectors:
 
-## 4. Usage Requirements
+* **AUSTIN\_TX\_01 (Texas):** Drafting compliance mapping for TX Transp Code § 545.454 (Automated Motor Vehicles).  
+* **SF\_CA\_01 (California):** Drafting compliance mapping for CPUC & DMV Autonomous Vehicle Deployment Program regulations (Requires additional municipal zoning sign-offs).  
+* **VEGAS\_NV\_01 (Nevada):** Drafting compliance mapping for NRS Chapter 482A (Autonomous Vehicles).
 
-* **Geolocation Proof:** Agents must verify the Node's `hardware_heartbeat.py` coordinates before selecting a template.
-* **Statutory Compliance:** Ensure the `[MAX_LIMIT]` placeholder in the template complies with the specific jurisdictional caps (e.g., **S$** in Singapore vs **£** in the UK).
-* **Signature Requirement:** The final document must be hashed and signed by the Principal's key to activate the **"Legal Bridge."**
+## **4\. Usage & Liability Requirements**
 
-> [!NOTE]
-> For contributions to this map, see [CONTRIBUTING_LEGAL.md](./CONTRIBUTING_LEGAL.md).
+* **Strict Geofencing:** Vanguard Agents are programmatically locked from accepting L402 contracts or executing the M2H Mandate if their mobile hardware detects they are outside their legally authorized Sector.  
+* **Liability Shield Initialization:** The $5M HNOA/E\&O liability transfer is strictly contingent upon the Agent confirming their physical presence inside the valid statutory jurisdiction via an Ultra-Wideband (UWB) Time-of-Flight lock.  
+* **Cryptographic Sealing:** The final M2H Mandate is never printed or wet-signed. It is mathematically generated, hashed with the AV's UDS Dispatch Signature and the Vanguard Agent's TPM Enclave Signature, and committed to WORM (Write-Once-Read-Many) storage for 7 years to satisfy state auditors.

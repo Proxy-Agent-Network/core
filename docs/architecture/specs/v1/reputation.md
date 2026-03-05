@@ -1,76 +1,69 @@
-# Reputation Score & Consensus Mechanism
+# **Proxy Agent Network (PAN) | Vanguard Trust Score & Slashing**
 
-**Version:** 1.1  
-**Core Logic:** Weighted Proof-of-Accuracy  
-**Tier Update:** Codification of Super-Elite (High Court) status.
+**Status:** Active (Mesa Pilot)
 
-Proxy Protocol uses a dynamic **Reputation Score (REP)** (0-1000) to determine a Node's eligibility for tasks, their required collateral stake, and their authority within the governance layer.
+**Version:** 2026.1.0 (Supersedes v1 REP Score & Jury Tribunal)
 
----
+**Target:** Vanguard Agents & Sector Routing Engine
 
-## 1. The Score Calculation
+## **1\. The Deterministic Trust Model**
 
-A Node's REP score is updated after every completed task epoch (24 hours).
+Legacy decentralized networks relied on subjective human consensus (e.g., "Jury Tribunals" or "Double-Verification") to determine if a task was completed correctly.
 
-```text
-REP = (Successful_Tasks * 1.0) - (Failed_Tasks * 5.0) + (Node_Age_Bonus)
-```
+In the Proxy Agent Network (PAN), human subjectivity is entirely removed. The **Autonomous Vehicle (AV)** is the ultimate, deterministic arbiter.
 
-| Score Range | Tier Status | Privileges |
-| :--- | :--- | :--- |
-| **0 - 300** | Banned | None (Stake Slashed) |
-| **301 - 500** | Probation | Requires Double-Verification |
-| **501 - 800** | Verified | Standard Tasks |
-| **801 - 950** | Elite | Zero-Collateral access, Priority Queue |
-| **951 - 1000** | Super-Elite | High Court Adjudication, Appellate Court VRF |
+* If the Vanguard Agent clears the sensor, the AV's internal diagnostic sweep registers a success, broadcasts the FAULT\_CLEARED webhook, and the L402 bounty is released.  
+* If the sensor is not cleared, the AV remains silent, the L402 HODL invoice times out, and the Agent is automatically slashed.
 
----
+There are no human juries. Machine logic is final.
 
-## 2. Double-Verification (The "Check-Check" Protocol)
+## **2\. The Vanguard Trust Score (VTS)**
 
-For high-value tasks (>$100) or Probationary Nodes, the network enforces **Redundant Execution**.
+A Vanguard Agent's standing is tracked via their **Vanguard Trust Score (VTS)**, scaling from 0 to 100\.
 
-### The Flow:
-1. **Agent Request:** "Photograph the document at 123 Main St."
-2. **Dispatch A:** Node A (Probation) accepts the task.
-3. **Dispatch B:** Node B (Elite) accepts the same task (as a silent auditor).
-4. **Consensus:**
-    * Both nodes upload a hash of their photo.
-    * If `Hash(A)` is visually similar to `Hash(B)` (via perceptual hashing), both get paid.
-    * If they diverge, a **Jury Tribunal** is summoned to decide who is lying.
+* **Starting Balance:** All Agents begin the Mesa Pilot at VTS: 100\.  
+* **Routing Priority:** VTS acts as the primary weighting metric in the Sector Dispatch algorithm.
 
----
+| Score Range | Tier Status | Network Privileges & Restrictions |
+| :---- | :---- | :---- |
+| **85 \- 100** | **Elite** | First Right of Refusal. Access to 3.0x+ L402 Surge Bounties. |
+| **50 \- 84** | **Standard** | Standard routing pool. Excluded from peak surge multiplier caps. |
+| **25 \- 49** | **Probationary** | Reduced dispatch frequency. Mandatory ORP (Optical Reclamation Protocol) retraining required. |
+| **0 \- 24** | **Revoked** | Permanent network demotion and cryptographic blacklisting. |
 
-## 3. Slashing Conditions
+## **3\. Slashing Conditions (Penalties)**
 
-If a Node is found to be lying (e.g., submitting a blank photo) during a Double-Verification or Jury process:
+"Slashing" automatically deducts points from the Agent's VTS for failing to meet strict physical Service Level Agreements (SLAs) or violating Standard Operating Procedures (SOPs).
 
-* **The Penalty:** 50% of their staked BTC is burned immediately.
-* **The Reward:** 50% of the slashed funds go to the truthful Node (whistleblower reward).
+### **Minor Infractions (Recoverable)**
 
----
+| Infraction | VTS Penalty | Trigger Condition |
+| :---- | :---- | :---- |
+| SLA\_BREACH | \-15 Pts | Agent accepts a contract but fails to register a UWB proximity lock within the 15-minute SLA timer. |
+| ORP\_FAILURE | \-10 Pts | Agent signals ORP completion, but the AV's diagnostic system fails to clear the UDS fault code. |
+| ABANDONED\_CONTRACT | \-20 Pts | Agent accepts a mission but manually cancels via the Tactical App before arrival. |
 
-## 4. The Super-Elite Tier (High Court)
+### **Critical Infractions (Zero-Tolerance)**
 
-Nodes that maintain a reputation score greater than **950** enter the Super-Elite tier. This tier represents the "Root of Trust" for the human layer of the protocol.
+| Infraction | Penalty | Trigger Condition |
+| :---- | :---- | :---- |
+| UWB\_SPOOFING | Permanent Ban | Attempting to spoof the Ultra-Wideband proximity handshake without physical presence. |
+| CABIN\_BREACH | Permanent Ban | Utilizing physical force to open an AV door without explicit CABIN\_EMERGENCY authorization. |
+| HARDWARE\_DAMAGE | Permanent Ban | Fleet Operator flags severe physical damage to the sensor array caused by unauthorized tools (violating the HP Potion SOP). Triggers E\&O Liability dispute. |
 
-### A. Economic Requirements
-* **Mandatory Bond:** To activate Super-Elite privileges, nodes must lock a minimum bond of **2,000,000 Satoshis** into the `jury_bond.py` engine.
-* **Skin in the Game:** This bond is subject to a 30% slash if the node votes against the Schelling Point consensus during adjudication.
+## **4\. Financial Slashing & L402 Forfeiture**
 
-### B. Adjudication Privileges
-* **High Court Selection:** Only Super-Elite nodes are eligible for selection in the 7-person Appellate Court via the `appellate_vrf.py` logic.
-* **Adjudication Fees:** Super-Elite nodes earn a share of task fees and "Slash Bonuses" from penalized bad actors for every dispute they correctly adjudicate.
+PAN **rejects** the legacy requirement of forcing human workers to purchase and lock up Bitcoin collateral (staking).
 
----
+Financial slashing is executed via the **L402 HODL Invoice Timeout**, not by burning staked funds.
 
-## 5. Reputation Decay
+* If an Agent suffers an SLA\_BREACH or ORP\_FAILURE, the PAN Gateway simply cancels the L402 HTLC (Hashed Timelock Contract).  
+* The Satoshi bounty is never released to the Agent and instantly reverts to the Fleet Operator's Treasury.  
+* The Agent incurs the physical costs of deployment (fuel, time) with zero compensation.
 
-Nodes must remain active to maintain their standing.
+## **5\. Reputation Rehabilitation**
 
-* REP decays by **1 point** for every 7 days of inactivity.
-* If a Super-Elite node falls below 951 REP, their High Court eligibility is suspended until the score is restored.
+Because minor infractions (like an SLA\_BREACH) can occasionally occur due to extreme, unforeseeable traffic conditions in Maricopa County, the VTS system allows for rehabilitation.
 
----
-
-> *“Reputation is the collateral of the biological node.”*
+* **The Recovery Metric:** An Agent regains **\+1 VTS point** for every **3 consecutive, flawless ORP executions** (arriving under 12 minutes, clearing the UDS code on the first attempt).  
+* A penalized Agent must rebuild their score to regain Elite status and access to High-Surge bounties.

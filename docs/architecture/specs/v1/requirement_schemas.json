@@ -1,55 +1,125 @@
 {
-"$schema": "http://json-schema.org/draft-07/schema#",
-"title": "Proxy Protocol Task Requirements",
-"description": "JSON Schemas for validating agent-submitted task requirements.",
-"definitions": {
-"sms_verification": {
-"type": "object",
-"properties": {
-"service": { "type": "string", "description": "The platform name (e.g., 'OpenAI', 'Twitter')" },
-"country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 2-letter country code" },
-"sender_id_filter": { "type": "string" },
-"instructions": { "type": "string" },
-"timeout_seconds": { "type": "integer", "default": 14400 }
-},
-"required": ["service", "country"]
-},
-"kyc_video": {
-"type": "object",
-"properties": {
-"platform_url": { "type": "string", "format": "uri" },
-"id_document_types": {
-"type": "array",
-"items": { "enum": ["passport", "drivers_license", "national_id"] }
-},
-"liveness_check": { "type": "boolean" },
-"instructions": { "type": "string" },
-"timeout_seconds": { "type": "integer", "default": 14400 }
-},
-"required": ["platform_url", "id_document_types", "liveness_check"]
-},
-"legal_notary": {
-"type": "object",
-"properties": {
-"jurisdiction": { "enum": ["US_DE", "UK", "SG"] },
-"document_url": { "type": "string", "format": "uri" },
-"signature_capacity": { "enum": ["witness", "attorney_in_fact", "notary"] },
-"notary_seal_required": { "type": "boolean" },
-"instructions": { "type": "string" },
-"timeout_seconds": { "type": "integer", "default": 14400 }
-},
-"required": ["jurisdiction", "document_url", "signature_capacity", "notary_seal_required"]
-},
-"physical_mail": {
-"type": "object",
-"properties": {
-"recipient_name": { "type": "string" },
-"scanning_instructions": { "enum": ["scan_envelope", "scan_contents", "forward_physical"] },
-"shred_after_scan": { "type": "boolean" },
-"instructions": { "type": "string" },
-"timeout_seconds": { "type": "integer", "default": 86400 }
-},
-"required": ["recipient_name", "scanning_instructions", "shred_after_scan"]
-}
-}
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PAN Mission Requirement Schemas",
+  "description": "JSON Schemas for validating AV Fleet-submitted UDS dispatch requirements.",
+  "definitions": {
+    "optical_reclamation": {
+      "type": "object",
+      "properties": {
+        "uds_fault_code": {
+          "type": "string",
+          "enum": [
+            "LIDAR_MUD_OCCLUSION",
+            "OPTICAL_LENS_OBSTRUCTED",
+            "RADAR_FASCIA_BLOCKED"
+          ]
+        },
+        "target_sensor_location": {
+          "type": "string",
+          "description": "Physical location on the AV (e.g., 'FRONT_LEFT_DOME')"
+        },
+        "requires_hp_potion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Indicates if the Agent must use the proprietary 4-Phase ORP solvent kit."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "default": 900,
+          "description": "15-minute standard SLA"
+        }
+      },
+      "required": [
+        "uds_fault_code",
+        "target_sensor_location"
+      ]
+    },
+    "cabin_secure": {
+      "type": "object",
+      "properties": {
+        "uds_fault_code": {
+          "type": "string",
+          "enum": [
+            "CABIN_DOOR_AJAR",
+            "TRUNK_NOT_LATCHED",
+            "FRUNK_UNSECURED"
+          ]
+        },
+        "target_closure": {
+          "type": "string",
+          "description": "Specific door or latch to inspect (e.g., 'PASSENGER_REAR')"
+        },
+        "cabin_emergency_override": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, Agent is authorized to break cabin prohibition rules to assist a passenger."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "default": 900
+        }
+      },
+      "required": [
+        "uds_fault_code",
+        "target_closure"
+      ]
+    },
+    "perimeter_clear": {
+      "type": "object",
+      "properties": {
+        "uds_fault_code": {
+          "type": "string",
+          "enum": [
+            "PERIMETER_VANDALISM",
+            "PATH_OBSTRUCTED_DEBRIS"
+          ]
+        },
+        "obstacle_description": {
+          "type": "string",
+          "description": "Context injection from Fleet API describing the object"
+        },
+        "estimated_weight_kg": {
+          "type": "number",
+          "maximum": 25,
+          "description": "Agents are not authorized to lift hazardous items exceeding 25kg. Escalate to tow if heavier."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "default": 900
+        }
+      },
+      "required": [
+        "uds_fault_code"
+      ]
+    },
+    "scene_secure": {
+      "type": "object",
+      "properties": {
+        "uds_fault_code": {
+          "type": "string",
+          "enum": [
+            "KINETIC_COLLISION",
+            "CRITICAL_HARDWARE_FAILURE",
+            "FLAT_TIRE"
+          ]
+        },
+        "tow_dispatched": {
+          "type": "boolean",
+          "description": "Confirms the Fleet has initiated a heavy-duty tow retrieval."
+        },
+        "hazard_lights_active": {
+          "type": "boolean"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "default": 7200,
+          "description": "Extended timeout (2 hours) for prolonged Tow Truck wait times."
+        }
+      },
+      "required": [
+        "uds_fault_code",
+        "tow_dispatched"
+      ]
+    }
+  }
 }

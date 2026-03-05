@@ -1,55 +1,65 @@
-# Proxy Agent Mission Control: Dashboard & Admin Architecture
+# **Proxy Agent Network (PAN) | Sector Command Dashboard**
 
-This directory contains the Jinja2/HTML templates and logic for the Proxy Agent Network's primary monitoring and administrative interfaces.
+**Status:** Active (Mesa Pilot)
 
-## 🎨 The Theme Engine (v1.3 - Decoupled)
-The network utilizes a shared `theme-engine.js` that manages UI aesthetics across all pages using the `<html>` tag's `data-theme` attribute. 
+**Version:** 2026.1.0
 
-### Core Themes
-| Theme ID | Description | Primary Font |
-| :--- | :--- | :--- |
-| `business` | **(Default)** Clean, corporate, light mode. | Inter |
-| `retro` | 8-bit arcade aesthetic with pixel fonts. | Press Start 2P |
-| `paperback` | Vintage typewriter style on tan paper texture. | Special Elite |
-| `cyberpunk` | High-tech dark mode with neon pink/yellow accents. | Orbitron |
-| `deepsea` | High-contrast teal and dark blue (Dark Mode). | Montserrat |
-| `vampire` | Gothic red and gold with blackletter type. | UnifrakturMaguntia |
-| `groovy` | **Hippie VW MiniBus:** Retro Teal, Purple, and Marigold. | Shrikhand |
+**Target:** PAN Sector Operators & Fleet Command
 
-### UI Stability & Persistence
-* **FOUC Prevention:** A pre-render script injection in the `<head>` prevents "Flash of Unstyled Content" by loading the saved theme from `localStorage` before the DOM paints.
-* **Layout Stability:** The `.theme-picker-ui` uses a `min-width: 180px` and a "Loading..." placeholder to prevent Cumulative Layout Shift (CLS) in the header on refresh.
-* **Dynamic CSS Variables:** Themes control logic-based colors for the XP Ledger and XP Bar (e.g., `--xp-glow: transparent` for Paperback/Groovy) to ensure maximum readability.
+This directory contains the Jinja2/HTML templates and frontend logic for the PAN Sector Command Dashboard—the primary observability interface for monitoring live autonomous vehicle interventions, Vanguard Agent telemetry, and L402 Lightning settlements.
 
-## 🎛️ Admin Control Center (`admin.html`)
-The operational nerve center for the Core Team to manage network behavior manually.
+## **🎨 The Tactical Theme Engine**
 
-1. **Task Injection:** Allows manual deployment of tasks with custom rewards to test node response.
-2. **Danger Zone:** Provides a global system reset to wipe node XP and task history via `/debug/reset_me`.
-3. **Node Registry Search:** A real-time client-side filter that allows operators to find specific Node IDs, Levels, or XP values instantly using an `input` listener on the table body.
+The dashboard utilizes a decoupled theme-engine.js that manages UI aesthetics for different physical operating environments using the \<html\> tag's data-theme attribute.
 
-## 📜 Session XP Ledger & Audio
-The dashboard features a detailed transaction modal (`#xp-modal`) that tracks gains in real-time.
+### **Core Themes**
 
-### Hierarchy & Nesting
-The ledger uses visual indentation to group rewards with their parent task:
-1.  **Base Task:** The primary trigger (e.g., `TASK-18A84175`).
-2.  **Nested Rewards:** Indented items like `└─ 📈 Rubber-Band Boost` or `└─ ⚡ Secret Bypass Reward`.
+| Theme ID | Description | Primary Font | Environment Use |
+| :---- | :---- | :---- | :---- |
+| slate | **(Default)** High-contrast dark mode using Infrastructure Slate. | Urbanist / JetBrains Mono | NOC / Command Center |
+| high-vis | Daylight optimized with MUTCD Yellow/Black contrast. | Urbanist | Field Operators (Mobile) |
+| corporate | Clean, light-mode interface for compliance reporting. | Inter | Fleet Legal / Executive |
 
-### Persistent Audio Rack
-The header includes an Audio Control Rack with volume and mute persistence. SFX are tiered based on reward size:
-* **Tier 1-3 Coins:** Triggered based on XP gain magnitude.
-* **Level Up Strings:** Triggered when the total XP crosses a 5000 XP threshold.
+### **UI Stability & Performance**
 
-## 📈 Gamification & Logic
-The client-side logic separates "Server Truth" from "Display Truth" to handle rewards.
+* **FOUC Prevention:** A pre-render script injection in the \<head\> prevents "Flash of Unstyled Content" by loading the saved theme from localStorage before the DOM paints.  
+* **Dynamic CSS Variables:** Themes control logic-based colors for the Sector Telemetry Maps (e.g., \--surge-glow: \#B87333 for active Geohash brownouts) to ensure immediate visual recognition of physical traffic anomalies.
 
-1. **Race Conditions:** The client polls `/debug/node_status` every **1000ms**. On gain detection, it immediately fetches `/debug/view_tasks` to associate the specific Task ID.
-2. **Reset Detection:** If `currentServerXP < lastServerXP`, the client triggers a local purge of `sessionBonusXP` and history.
-3. **Rubber-Band Boost:** Nodes under **Level 5** receive a visual 100% XP match on every task to accelerate early progression.
+## **🎛️ Ops Command Center (command.html)**
 
-## 🪄 Magic Marvin & Easter Eggs
-The `summonMarvin()` function controls the lifecycle of the wizard sprite.
+The operational nerve center allowing PAN Command to monitor and manually override network routing during severe physical events.
 
-* **Interaction:** **Double-clicking** Marvin triggers a spin animation and a laughing sound effect. (Marvin is hidden in Business/Paperback themes).
-* **Konami Code:** Entering `↑ ↑ ↓ ↓ ← → ← → B A` triggers a "System Bypass" glitch overlay and a staged +30 XP bonus applied to the next completed task.
+1. **UDS Dispatch Monitor:** Live feed of incoming POST /fleet/dispatch webhooks from Fleet Partners (Waymo, Zoox).  
+2. **Brownout Override (Danger Zone):** Provides a manual toggle to execute a Geohash Brownout (suspending new dispatches in a 1-sq-mile zone) if physical safety is compromised, overriding the automated AUR calculation.  
+3. **Vanguard Registry Search:** A real-time client-side filter allowing operators to find specific Agents by vanguard\_id, current Vanguard Trust Score (VTS), or active hardware attestation status (e.g., checking if a TPM 2.0 key is revoked).
+
+## **📜 SB 1417 Ledger & L402 Telemetry**
+
+The dashboard features a detailed telemetry modal (\#mission-modal) that tracks the lifecycle of an AV intervention in real-time.
+
+### **Mission Hierarchy & Nesting**
+
+The ledger uses visual indentation to group the cryptographic state machine of a specific intervention:
+
+1. **Base Mission:** The primary trigger (e.g., MSN-88A9-4B2C | LIDAR\_MUD\_OCCLUSION).  
+2. **Nested Telemetry:** Indented state changes:  
+   * └─ 📡 HODL Invoice Locked (25,000 Sats)  
+   * └─ 📍 UWB Proximity Lock Achieved (\< 1.5m)  
+   * └─ 🛡️ TPM Signature Verified  
+   * └─ ⚡ Preimage Revealed (Fault Cleared)
+
+### **Tactical Audio Rack**
+
+The header includes an Audio Control Rack for NOC operators. SFX are tiered based on mission criticality:
+
+* **UDS Ingest:** Low-pitch sonar ping when a new stranded AV enters the queue.  
+* **SLA Warning:** High-frequency pulse if a mission crosses the 12-minute ETA threshold.  
+* **L402 Settlement:** Crisp, satisfying chime indicating the AV has cleared its fault and funds are released.
+
+## **📈 Sector Logic & Observability**
+
+The client-side logic separates "Server Truth" from "Display Truth" to handle high-frequency telemetry without locking the browser UI.
+
+1. **WebSocket Telemetry:** Replaces legacy polling. The client maintains an active WSS connection to /stream/sector/{sector\_id} for sub-second Agent GPS updates and UWB lock notifications.  
+2. **Surge Multiplier Visualization:** The UI dynamically calculates and displays the current Agent Utilization Ratio (AUR). As the AUR passes 75%, the dashboard initiates a pulsing \--surge-glow on the affected Geohash sectors.  
+3. **Idempotency Drops:** If the gateway drops a duplicate UDS webhook from a glitching AV (The 15-Minute Rule), the UI briefly flashes a grey \[DUPLICATE BLOCKED\] tag in the ledger to maintain NOC visibility without triggering new mission logic.

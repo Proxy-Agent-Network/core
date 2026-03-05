@@ -1,45 +1,68 @@
-# LIMITED POWER OF ATTORNEY (US - DELAWARE)
+# **MACHINE-TO-HUMAN (M2H) PHYSICAL INTERVENTION MANDATE**
 
-| Governing Law | Statutory Reference |
-| :--- | :--- |
-| **State of Delaware** | Delaware Code Title 12, Chapter 40 (Durable Power of Attorney Act) |
+**Version:** 2026.1.0 (Corporate Default \- Draft)
 
----
+**Jurisdiction:** State of Delaware / Delaware Code Title 6, Chapter 12A (UETA)
 
-## 1. APPOINTMENT (PREAMBLE)
-I, **[PRINCIPAL NAME]** ("Principal"), an autonomous economic entity or its legal owner, hereby appoint the Human Proxy Node identified by **[PROXY NODE ID]** ("Attorney-in-Fact") to act as my agent.
+**Executing Network:** Proxy Agent Network (PAN) Gateway
 
-This appointment is specifically authorized to execute instructions that are cryptographically signed by the following Autonomous Agent Public Key:
-`[AGENT_PUBLIC_KEY]`
+### **1\. AUTHORIZATION & APPOINTMENT**
 
----
+The Fleet Operator ("Principal"), acting through the autonomous directives of the grounded Autonomous Vehicle ("Asset") identified by the cryptographic VIN\_HASH attached hereto, hereby authorizes the certified PAN Vanguard Agent ("Agent") identified by their hardware TPM\_PUB\_KEY, to execute a physical hardware intervention on the Asset.
 
-## 2. GRANT OF AUTHORITY (SCOPE)
-Pursuant to the Delaware Statutory Durable Power of Attorney Act, the Principal grants the Attorney-in-Fact the limited power to perform the following acts within the State of Delaware or as required by Delaware-registered entities:
+### **2\. IDENTIFICATION OF ASSET & AGENT**
 
-- [ ] **Corporate Filings:** Submit certificates of incorporation, amendments, or annual reports to the Delaware Secretary of State.
-- [ ] **Identity Verification:** Present government-issued identification to financial institutions or service providers to satisfy KYC (Know Your Customer) requirements for accounts owned by the Principal.
-- [ ] **Digital Acknowledgment:** Receive and relay one-time passwords (OTP) or multi-factor authentication codes required to access digital accounts.
-- [ ] **Contractual Execution:** Affix a physical or digital signature to agreements as directed by the Autonomous Agent, provided the transaction value does not exceed **$[MAX_LIMIT]**.
+* **Fleet Operator:** \[FLEET\_ID\] (e.g., WAYMO\_LLC, CRUISE\_LLC)  
+* **Autonomous Asset (VIN Hash):** \[VEHICLE\_VIN\_HASH\]  
+* **Vanguard Agent (TPM Public Key):** \[AGENT\_TPM\_PUBKEY\]  
+* **Incident Coordinates:** \[GPS\_LAT\_LNG\]  
+* **L402 Escrow Contract:** \[LN\_INVOICE\_HASH\]
 
----
+### **3\. SCOPE OF AUTHORITY (THE UDS FAULT)**
 
-## 3. RELIANCE ON CRYPTOGRAPHIC INSTRUCTION
-The Attorney-in-Fact is entitled to rely exclusively on instructions signed by the `[AGENT_PUBLIC_KEY]`. Any act performed by the Attorney-in-Fact within the scope of this instrument is as binding on the Principal as if the Principal were personally present and executed the same.
+This mandate grants the Agent explicit, limited authority to perform physical actions on the Asset's exterior strictly necessary to clear the following Unified Diagnostic Service (UDS) fault:
 
----
+**Active Fault Code:** \[UDS\_FAULT\_CODE\]
 
-## 4. INDEMNITY & TERM
-The Principal agrees to indemnify and hold the Attorney-in-Fact harmless from any and all liability, losses, or damages incurred while acting in good faith under this instrument.
+Authorized physical interventions are strictly limited to the PAN Service Catalog:
 
-**Termination:** This authority is limited to the specific task associated with the transaction hash identified below. It shall terminate automatically upon the earlier of:
-1. The successful submission of the task proof to the Proxy Protocol.
-2. The expiration of the **4-hour execution timer** associated with the Escrow lock.
+* \[ \] **Optical Reclamation Protocol (ORP):** Application of PAN "HP Potion" solvent and microfiber clearance to occluded LiDAR, Radar, or Optical Domes.  
+* \[ \] **Perimeter Clear:** Removal of non-hazardous physical debris or vandalism obstructing the Asset's routing path on public roadways.  
+* \[ \] **Cabin / Closure Secure:** Physical inspection and closure of an ajar exterior passenger door or trunk latch.  
+* \[ \] **Scene Secure:** Deployment of MUTCD-compliant safety warning triangles and hazard lighting pending heavy tow retrieval by authorized towing operators.
 
----
+### **4\. STRICT PROHIBITIONS (SLASHING OFFENSES)**
 
-## CRYPTOGRAPHIC ATTESTATION
-This instrument is executed as a deed via the Proxy Protocol.
+This mandate **DOES NOT** authorize the Agent to:
 
-**Signature Hash:** `[TX_HASH]`
-**Timestamp:** `[DATE]`
+* Open, enter, or reach inside the passenger cabin (unless explicitly authorized by a CABIN\_EMERGENCY override).  
+* Open the hood, trunk (unless securing an ajar latch), or access internal compute nodes and high-voltage EV battery systems.  
+* Use scraping tools, unauthorized commercial solvents, or excessive kinetic force on the sensor arrays.  
+* Reuse optical microfiber cloths across multiple interventions.
+
+*Violation of these prohibitions constitutes a breach of contract, immediate forfeiture of the L402 escrow, and permanent revocation of the Agent's PAN certification.*
+
+### **5\. LIABILITY SHIELD & INDEMNIFICATION**
+
+Pursuant to the PAN Master Service Agreement (MSA) governed by the laws of the State of Delaware:
+
+* **Assumption of Risk:** The Proxy Agent Network assumes liability for the physical state of the targeted sensor array under its $5,000,000 E\&O policy starting at the exact millisecond the Agent's device signs the **UWB Proximity Lock**.  
+* **Release of Risk:** Liability transfers back to the Fleet Operator at the exact millisecond the Asset's onboard AI broadcasts the FAULT\_CLEARED webhook and releases the L402 Lightning network preimage. By releasing payment, the Asset legally asserts the hardware is clean, functional, and undamaged.
+
+### **6\. TERM & EXPIRATION**
+
+Under the Delaware Uniform Electronic Transactions Act (UETA), this authority is effective immediately upon the Agent executing the ACCEPT cryptographic signature. It shall terminate automatically upon:
+
+1. The successful generation of the Optical Health Report (OHR) for state compliance auditing.  
+2. The expiration of the 30-Minute absolute network escrow timeout.  
+3. The Agent triggering an ABORT: SCENE UNSAFE protocol.
+
+**IN WITNESS WHEREOF**, this mandate is programmatically executed and cryptographically sealed on the Proxy Agent Network.
+
+**Asset Dispatch Hash:** \[UDS\_DISPATCH\_SIGNATURE\]
+
+**Agent Acceptance Hash:** \[TPM\_ENCLAVE\_SIGNATURE\]
+
+**UWB Presence Attestation:** \[UWB\_DISTANCE\_CM\]
+
+**Timestamp:** \[UTC\_TIMESTAMP\]

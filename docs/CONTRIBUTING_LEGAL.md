@@ -1,59 +1,55 @@
-# Contributing to Legal Engineering
+# Contributing to PAN Compliance & Legal Operations
 
-Welcome to the **Proxy Protocol Legal Engineering** track. While much of this repository focuses on hardware and cryptography, our mission—bridging digital intent to physical reality—is impossible without a robust, global legal framework.
+Welcome to the **Proxy Agent Network (PAN) Compliance & Legal** track. While much of this repository focuses on hardware attestation and L402 cryptography, our mission—providing the physical recovery layer for autonomous vehicle (AV) fleets—is impossible without a bulletproof statutory and liability framework.
 
-We need "Legal Engineers" to help us draft and standardize **Limited Power of Attorney (PoA)** and **Delegation Instruments** that allow AI Agents to operate across every major jurisdiction.
+We need legal engineers, automotive compliance experts, and risk modelers to help us standardize the **Optical Health Reports** and **Liability Delegation Instruments** that allow Vanguard Agents to operate safely within regulated Operational Design Domains (ODDs).
 
 ---
 
-## 1. Our Legal Philosophy
-The Proxy Protocol treats legal authority as an **"importable library."** When an Agent needs to perform a task in a specific country, it should be able to pull a verified, locally-compliant template that a Human Node can execute.
+## 1. Our Compliance Philosophy
+PAN treats regulatory compliance as programmatic code. When an Agent physically intervenes with a grounded AV (e.g., clearing a LiDAR sensor), the protocol must generate a cryptographically verifiable, legally binding audit log that satisfies both fleet insurance carriers and state Departments of Transportation (e.g., Arizona DPS/DMV).
 
 **We prioritize:**
-* **Narrow Scope:** Authority should be the minimum required for the task.
-* **Cryptographic Linking:** Every legal act must reference a specific transaction hash.
-* **Clarity:** Templates must be understandable by both human judges and AI parsers.
+* **Strict Statutory Alignment:** Logs must map directly to state mandates (e.g., Arizona SB 1417).
+* **Cryptographic Chain of Custody:** Every legal/audit log must reference a specific Unified Diagnostic Service (UDS) fault code and the Agent's hardware TPM signature.
+* **Liability Shielding:** Clear delineation of liability between the Fleet Operator's AI, the PAN Gateway, and the biological Agent.
 
 ---
 
 ## 2. Where to Contribute
-All legal templates are located in the `templates/legal/` directory. Each jurisdiction should have its own Markdown file (e.g., `france_poa.md`).
+All statutory templates, audit schemas, and liability frameworks are located in the `/docs/compliance/` directory.
 
 ---
 
-## 3. Template Structure
-To maintain consistency for our AI parsing engine, all templates must follow this three-part structure:
+## 3. Audit Template Structure
+To maintain consistency for the Fleet API and state regulators, all SB 1417 Audit templates must follow this strict structure:
 
 | Section | Focus | Placeholders |
 | :--- | :--- | :--- |
-| **A. The Preamble** | Identification of Principal & Node | `[PRINCIPAL NAME]`, `[PROXY NODE ID]` |
-| **B. Grant of Authority** | Definition of task scope | `[AGENT_PUBLIC_KEY]`, `[SCOPE]` |
-| **C. Indemnity & Term** | Liability & Termination triggers | `[DATE]`, `[ESCROW_TIMER]` |
+| **A. Asset Identification** | Identification of the Fleet Operator & AV | `[FLEET_ID]`, `[VIN_HASH]` |
+| **B. Intervention Scope** | Definition of the physical task authorized | `[UDS_FAULT_CODE]`, `[ORP_PROTOCOL_ID]` |
+| **C. Attestation & Timestamp** | Hardware proof of presence and completion | `[AGENT_TPM_PUBKEY]`, `[L402_SETTLEMENT_TX]` |
 
 ---
 
 ## 4. Technical Requirements
-You do not need to be a coder to contribute, but your documents must follow these rules:
+You do not need to be a Rust or Python developer to contribute to this track, but your documents must follow these rules:
 
-* **Markdown Format:** Use standard Markdown (`.md`).
-* **Placeholders:** Use square brackets for variable data (e.g., `[DATE]`, `[TX_HASH]`).
-* **Citations:** Every template must cite governing legislation at the top (e.g., *UK Powers of Attorney Act 1971*).
-* **No Legalese:** We prefer "Plain English" to ensure AI agents can correctly interpret their own authorities.
+* **Format:** Use standard Markdown (`.md`) or JSON Schema (`.json`) for audit payloads.
+* **Variables:** Use square brackets for programmatic data (e.g., `[TIMESTAMP]`, `[UDS_CODE]`).
+* **Citations:** Every compliance template MUST cite the governing state legislation at the top (e.g., *Arizona Revised Statutes Title 28-9701*).
 
 ---
 
 ## 5. The Submission Process
 1. **Fork the Repo:** Create your own copy of the repository.
-2. **Draft your Template:** Create a new file in `templates/legal/`.
+2. **Draft your Schema:** Create or edit a file in `/docs/compliance/`.
 3. **Submit a Pull Request (PR):**
-   * Title your PR starting with `[LEGAL]`.
-   * Explain why this jurisdiction is important (e.g., "High demand for AI incorporation in Estonia").
-4. **Review:** A core maintainer will review your template for compliance and logic.
+   * Title your PR starting with `[COMPLIANCE]`.
+   * Explicitly explain why this update is required (e.g., "Updating liability waiver to cover new Waymo Zeekr cabin entry procedures").
+4. **Review:** A PAN Command maintainer with automotive risk/legal experience will review the PR to ensure it does not void our $5M HNOA/E&O policy.
 
 ---
 
-## 6. Proposing New Task Types
-If you believe the protocol needs a new type of legal task (e.g., "Real Estate Title Transfer"), please open a **Discussion** in the repository rather than a PR. We must first debate the economic and security implications.
-
-> [!NOTE]
-> By contributing a template, you agree to license it under the **MIT License**, allowing the community to use and modify it freely.
+## 6. Proposing New Intervention Types
+If you believe the protocol needs to support a new type of physical task (e.g., "Biohazard Cabin Removal" or "Manual Intersection Takeover"), please open a **Discussion** in the repository rather than a PR. We must first debate the severe physical safety and insurance implications with our Fleet Partners before writing code.

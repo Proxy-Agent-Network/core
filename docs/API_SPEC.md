@@ -1,81 +1,30 @@
-# Proxy Agent Network: API Specification (v1.0)
+# Proxy Agent Network (PAN) | Fleet API Specification (v2026.1)
 
-This document defines the RESTful endpoints for the Proxy Agent Registry. All requests and responses use `application/json`.
+**Status:** Active (Mesa Pilot)
+**Base URL (Production):** `https://api.proxyagent.network/v2026.1/`
+**Base URL (Sandbox):** `http://localhost:5000/`
 
-## Base URL
-`http://localhost:5000/` (Development)
+This document defines the RESTful endpoints for the PAN Fleet Gateway. All payloads utilize `application/json` and require strict HMAC-SHA256 request signatures from registered Fleet Partners (e.g., Waymo, Zoox) or TPM 2.0 attestations from Vanguard Agents.
 
 ---
 
-## Node & Task Endpoints
+## 1. Fleet-to-Network (Ingestion)
 
-### 1. Post a New Task
-**Endpoint:** `POST /api/v1/tasks/post`  
-**Description:** Agents use this to submit a new task into the "Open" ledger.
+### Dispatch Vanguard Agent
+**Endpoint:** `POST /fleet/dispatch`  
+**Description:** The AV's onboard diagnostic system triggers this webhook when a physical edge-case (e.g., sensor occlusion) grounds the vehicle. The API locks the L402 bounty and routes the mission to the nearest active Agent in Sector 1.
 
 **Request Body:**
 ```json
 {
-  "agent_id": "AGENT-007",
-  "type": "NOTARY_VERIFY",
-  "bid_sats": 75000
+  "fleet_id": "WAYMO_CORP",
+  "vehicle_vin_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "uds_fault_code": "LIDAR_OCCLUSION_FRONT_LEFT",
+  "telemetry": {
+    "lat": 33.3214,
+    "lng": -111.6608,
+    "heading": 184.2
+  },
+  "l402_bounty_sats": 25000,
+  "priority": "CRITICAL"
 }
-```
-
-**Response:** `201 Created`
-```json
-{
-  "status": "posted",
-  "task_id": "TASK-ABCD123"
-}
-```
-
----
-
-### 2. Complete a Task
-**Endpoint:** `POST /api/v1/tasks/complete`  
-**Description:** Notifies the registry that a task has been fulfilled. Triggers XP gain and Satoshi rewards.
-
-**Request Body:**
-```json
-{
-  "task_id": "TASK-ABCD123",
-  "node_id": "NODE-XYZ999"
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "status": "Success",
-  "xp_gained": 7500
-}
-```
-
----
-
-### 3. Node Heartbeat (Pulse)
-**Endpoint:** `POST /api/v1/node/heartbeat`  
-**Description:** Keeps the node status as "ONLINE" in the Mission Control UI.
-
-**Request Body:**
-```json
-{
-  "node_id": "NODE-XYZ999"
-}
-```
-
----
-
-## Debug & Monitoring (GET)
-
-### 1. View Node Status
-**Endpoint:** `GET /debug/node_status`  
-
-### 2. View Task Ledger
-**Endpoint:** `GET /debug/view_tasks`  
-
----
-
-## Security Note
-In the current Genesis phase (v1.0), these endpoints are unauthenticated for local development. Signature verification is scheduled for Q2 2026.

@@ -1,47 +1,68 @@
-# LIMITED POWER OF ATTORNEY (SINGAPORE JURISDICTION)
+# **MACHINE-TO-HUMAN (M2H) PHYSICAL INTERVENTION MANDATE**
 
-| Governing Law | Statutory Reference |
-| :--- | :--- |
-| **Republic of Singapore** | Powers of Attorney Act (Cap. 243) / Electronic Transactions Act 2010 |
+**Version:** 2026.5.0 (One-North Pilot \- Draft)
 
----
+**Jurisdiction:** Republic of Singapore / LTA Road Traffic (Autonomous Motor Vehicles) Rules
 
-## 1. APPOINTMENT (PREAMBLE)
-**THIS INSTRUMENT** is made on the date of the cryptographic timestamp by the Principal, **[PRINCIPAL NAME]** ("Principal"), an autonomous economic entity or its legal owner.
+**Executing Network:** Proxy Agent Network (PAN) Gateway
 
-The Principal hereby appoints the Authenticated Human Node identified by **[PROXY NODE ID]** ("Attorney") as their true and lawful attorney-in-fact to act on the Principal's behalf for the limited purposes set forth below.
+### **1\. AUTHORIZATION & APPOINTMENT**
 
-This appointment is specifically authorized to execute instructions that are cryptographically signed by the following Autonomous Agent Public Key:
-`[AGENT_PUBLIC_KEY]`
+The Fleet Operator ("Principal"), acting through the autonomous directives of the grounded Autonomous Vehicle ("Asset") identified by the cryptographic VIN\_HASH attached hereto, hereby authorizes the certified PAN Vanguard Agent ("Agent") identified by their hardware TPM\_PUB\_KEY, to execute a physical hardware intervention on the Asset.
 
----
+### **2\. IDENTIFICATION OF ASSET & AGENT**
 
-## 2. GRANT OF AUTHORITY (SCOPE)
-Pursuant to the *Powers of Attorney Act (Cap. 243)*, the Principal grants the Attorney the limited power to perform the following specific physical and legal acts on the Principal's behalf within the Republic of Singapore:
+* **Fleet Operator:** \[FLEET\_ID\] (e.g., MOTIONAL\_SG, HYUNDAI\_MGIC)  
+* **Autonomous Asset (VIN Hash):** \[VEHICLE\_VIN\_HASH\]  
+* **Vanguard Agent (TPM Public Key):** \[AGENT\_TPM\_PUBKEY\]  
+* **Incident Coordinates:** \[GPS\_LAT\_LNG\]  
+* **L402 Escrow Contract:** \[LN\_INVOICE\_HASH\]
 
-- [ ] **Digital & SMS Verification:** Receive and relay one-time passwords (OTP) or multi-factor authentication codes to verify the Principal's identity for digital service access, including Singpass-integrated services where permitted.
-- [ ] **ACRA & Corporate Filings:** Submit required documentation, annual returns, or incorporation forms to the Accounting and Corporate Regulatory Authority (ACRA).
-- [ ] **Identity Representation:** Present valid government-issued identification to third-party service providers (e.g., financial institutions, telcos) to satisfy KYC/AML requirements as regulated by the Monetary Authority of Singapore (MAS).
-- [ ] **Contractual Execution:** Sign binding agreements or deeds as directed by the Autonomous Agent, provided the transaction value does not exceed **S$[MAX_LIMIT]**.
+### **3\. SCOPE OF AUTHORITY (THE UDS FAULT)**
 
----
+This mandate grants the Agent explicit, limited authority to perform physical actions on the Asset's exterior strictly necessary to clear the following Unified Diagnostic Service (UDS) fault, in compliance with Land Transport Authority (LTA) incident management guidelines:
 
-## 3. RELIANCE ON CRYPTOGRAPHIC INSTRUCTION
-In accordance with the *Electronic Transactions Act 2010*, the Attorney is entitled to rely exclusively on instructions signed by the `[AGENT_PUBLIC_KEY]`. Any act performed by the Attorney within the scope of this instrument shall be as binding on the Principal as if the Principal had personally performed the same, recognizing the digital signature as equivalent to a physical signature under Singapore law.
+**Active Fault Code:** \[UDS\_FAULT\_CODE\]
 
----
+Authorized physical interventions are strictly limited to the PAN Service Catalog:
 
-## 4. INDEMNITY & TERM
-The Principal agrees to indemnify and hold the Attorney harmless from any and all liability, losses, or damages resulting from the faithful execution of the Autonomous Agent's signed instructions, except in cases of the Attorney's fraud or gross negligence.
+* \[ \] **Optical Reclamation Protocol (ORP):** Application of PAN "HP Potion" solvent and microfiber clearance to occluded LiDAR, Radar, or Optical Domes.  
+* \[ \] **Perimeter Clear:** Removal of non-hazardous physical debris or vandalism obstructing the Asset's routing path on Singapore public roadways.  
+* \[ \] **Cabin / Closure Secure:** Physical inspection and closure of an ajar exterior passenger door or trunk latch.  
+* \[ \] **Scene Secure:** Deployment of LTA-compliant safety warning triangles and hazard lighting pending heavy tow retrieval by authorized Singapore towing operators.
 
-**Termination:** This authority is limited to the specific task associated with the transaction hash identified below. It shall terminate automatically upon the earlier of:
-1. The successful submission of the task proof to the Proxy Protocol.
-2. The expiration of the **4-hour execution timer** associated with the Escrow lock.
+### **4\. STRICT PROHIBITIONS (SLASHING OFFENSES)**
 
----
+This mandate **DOES NOT** authorize the Agent to:
 
-## CRYPTOGRAPHIC ATTESTATION
-This instrument is executed as a deed via the Proxy Protocol.
+* Open, enter, or reach inside the passenger cabin (unless explicitly authorized by a CABIN\_EMERGENCY override).  
+* Open the hood, trunk (unless securing an ajar latch), or access internal compute nodes and high-voltage EV battery systems.  
+* Use scraping tools, unauthorized commercial solvents, or excessive kinetic force on the sensor arrays.  
+* Reuse optical microfiber cloths across multiple interventions.
 
-**Signature Hash:** `[TX_HASH]`
-**Timestamp:** `[DATE]`
+*Violation of these prohibitions constitutes a breach of contract, immediate forfeiture of the L402 escrow, and permanent revocation of the Agent's PAN certification.*
+
+### **5\. LIABILITY SHIELD & INDEMNIFICATION**
+
+Pursuant to the PAN Master Service Agreement (MSA):
+
+* **Assumption of Risk:** The Proxy Agent Network assumes liability for the physical state of the targeted sensor array under its $5,000,000 E\&O policy starting at the exact millisecond the Agent's device signs the **UWB Proximity Lock**.  
+* **Release of Risk:** Liability transfers back to the Fleet Operator at the exact millisecond the Asset's onboard AI broadcasts the FAULT\_CLEARED webhook and releases the L402 Lightning network preimage. By releasing payment, the Asset legally asserts the hardware is clean, functional, and undamaged.
+
+### **6\. TERM & EXPIRATION**
+
+This authority is effective immediately upon the Agent executing the ACCEPT cryptographic signature. It shall terminate automatically upon:
+
+1. The successful generation of the Singapore Optical Health Report (OHR) for LTA compliance auditing.  
+2. The expiration of the 30-Minute absolute network escrow timeout.  
+3. The Agent triggering an ABORT: SCENE UNSAFE protocol.
+
+**IN WITNESS WHEREOF**, this mandate is programmatically executed and cryptographically sealed on the Proxy Agent Network.
+
+**Asset Dispatch Hash:** \[UDS\_DISPATCH\_SIGNATURE\]
+
+**Agent Acceptance Hash:** \[TPM\_ENCLAVE\_SIGNATURE\]
+
+**UWB Presence Attestation:** \[UWB\_DISTANCE\_CM\]
+
+**Timestamp:** \[UTC\_TIMESTAMP\]

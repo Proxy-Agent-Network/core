@@ -1,55 +1,54 @@
-# Node Recovery & Re-Certification Protocol
+# **Proxy Agent Network (PAN) | Mobile Node Recovery & Hardware Re-Provisioning**
+
+**Status:** Active (Mesa Pilot)
+
+**Version:** 2026.1.0
+
+**Target:** Vanguard Agents & Mesa Hub Operations
 
 | Applicability | Incident Type |
-| :--- | :--- |
-| **Tier 2 & Tier 3 Physical Nodes** | Accidental Tamper Trip / Chassis Intrusion / TPM Corruption |
+| :---- | :---- |
+| **Vanguard Mobile Nodes** | Device Loss / Hardware Destruction / OS Compromise (Root/Jailbreak) |
 
----
+## **1\. The "Zero-Recovery" Principle**
 
-## 1. The "Zero-Recovery" Principle
-To maintain the integrity of the Hardware Root of Trust, private keys wiped by the TPM during a tamper event are **mathematically unrecoverable**. There is no "backup seed" or "admin override." This is a feature, not a bug.
+The Proxy Agent Network (PAN) relies on a Hardware Root of Trust to mathematically guarantee the physical presence of a Vanguard Agent during an autonomous vehicle intervention.
 
-> [!CAUTION]
-> If your Node has been "bricked" due to accidental intrusion or TPM failure (`PX_400`), you must treat it as a factory-fresh device.
+To maintain this integrity, the ECDSA private keys generated during an Agent's onboarding are fused to the silicon of the mobile device's Apple Secure Enclave or Android TPM 2.0 (StrongBox). **They are mathematically unrecoverable and non-exportable.** There is no "backup seed phrase" or "cloud sync."
 
----
+\[\!CAUTION\]
 
-## 2. The Re-Certification Workflow
+If your authorized mobile device is physically destroyed, lost, or subjected to a factory reset, your current cryptographic identity is permanently "bricked." You must provision a factory-fresh device.
 
-### Step A: Physical Inspection
-Before attempting to reconnect, verify the physical integrity of the chassis.
-* **GPIO Reset:** Ensure the GPIO plunger switch is physically reset.
-* **Security Seal:** Verify the case is sealed with new tamper-evident holographic tape (Rule 4.2).
+## **2\. The Hardware Revocation Protocol (Slashing)**
 
-### Step B: TPM Factory Reset
-You must clear the "Owner Hierarchy" of the TPM to allow new key generation. This requires root access on the Raspberry Pi.
+If a device is lost or stolen, it represents a critical security risk to the Fleet Operators, even if the device is protected by biometrics. The Vanguard Agent must immediately sever the hardware's access to the PAN routing engine.
 
-```bash
-# On the Raspberry Pi terminal
-sudo systemctl stop proxy-node
-sudo tpm2_clear
-sudo systemctl start proxy-node
-```
+1. **Immediate Reporting:** The Agent must contact PAN Command via the secure emergency line or the Mesa Hub terminal.  
+2. **Cryptographic Severance:** The PAN Identity Registry immediately revokes the lost device's Public Key.  
+3. **Network Rejection:** Any subsequent attempts by the lost device to sign a UWB proximity lock or accept an L402 bounty will be rejected with a 401 Unauthorized (Invalid Signature) error by the Sector Gateway.
 
-**Note:** The daemon will detect the empty TPM and automatically trigger the **Key Generation Ceremony** on startup.
+## **3\. The Re-Provisioning Ceremony**
 
-### Step C: The "Lost Node" Claim
-Since your old Node ID (Public Key A) is dead, you must inform the network to transfer your stake (if eligible) to your new Node ID (Public Key B).
+Because PAN binds a digital identity to a physical human, losing a device does *not* erase the Agent's hard-earned Vanguard Trust Score (VTS) or pending L402 payouts. However, associating a new hardware node to the existing human profile requires a physical verification step.
 
-1. **Generate New Keys:** The Node will automatically generate Public Key B.
-2. **Submit Claim:** Log into the Partner Dashboard and select "Report Broken Node."
-3. **Link Identities:** Sign a message with your Human Identity Key (from your mobile app) linking Key A (Dead) to Key B (New).
+### **Step A: Physical Verification (Mesa Hub)**
 
----
+The Vanguard Agent must physically present themselves at the Mesa Operations Hub (85212). Remote hardware provisioning is strictly forbidden to prevent SIM-swapping and social engineering attacks.
 
-## 3. Probation Period
-Re-certified nodes are placed on a **7-day Probation** to ensure stability.
+* The Agent must present their physical PAN ID Badge and state-issued identification.  
+* The Agent's new mobile device must meet the strict hardware whitelist (iPhone 16 Pro+ or Pixel 9 Pro+).
 
-* **Traffic:** Capped at 10% of normal volume.
-* **Monitoring:** All tasks require **double-verification** (a second node checks your work).
-* **Reputation:** Your previous reputation score is restored at 90% (10% penalty for operational instability).
+### **Step B: The Binding Sequence**
 
----
+1. The Agent logs into the PAN Tactical App on the new device while connected to the secure Mesa Hub localized network.  
+2. The PAN App instructs the new device's Secure Enclave/TPM to generate a new ECDSA secp256r1 keypair.  
+3. PAN Command physically countersigns the authorization, linking the new Public Key to the Agent's verified human profile in the Identity Registry.
 
-## 4. Hardware Replacement
-If the TPM module itself was damaged (e.g., voltage spike), the Infineon module or the entire compute unit must be replaced. The old unit should be e-cycled securely to ensure no residual data remains.
+## **4\. Hardware Probation Period**
+
+While the Agent retains their VTS and Elite routing status, the newly provisioned Mobile Node is placed on a **7-Day Hardware Probation** to ensure OS stability and prevent emulator spoofing.
+
+* **Aggressive Attestation:** During ACTIVE\_PATROL, the PAN Tactical App will poll Apple DeviceCheck or Android Play Integrity API every 60 seconds (up from the standard 5 minutes) to ensure the OS kernel has not been tampered with post-provisioning.  
+* **UWB Calibration:** The first 3 Optical Reclamation Protocols (ORPs) executed with the new device will require a prolonged UWB handshake (an additional 5 seconds) to calibrate the new Time-of-Flight radio against the AV fleet's beacons.  
+* **L402 Escrow Limits:** During the 7-day probation, the Agent is ineligible for single bounties exceeding a 3.0x Surge Multiplier to mitigate financial risk in the event of a compromised provisioning sequence.
