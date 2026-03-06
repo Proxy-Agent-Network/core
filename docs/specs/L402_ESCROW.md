@@ -45,4 +45,4 @@ Because the system is deterministic, human dispute resolution is entirely remove
 
 The L402 protocol allows for sub-second, dynamic repricing. If Sector 1 (Mesa) experiences a severe weather event (e.g., a dust storm) causing a massive spike in grounded AVs, the Fleet Gateway automatically increases the Satoshi bounty attached to the HODL invoices to pull dormant Vanguard Agents into active patrol status.
 
-*(For detailed surge pricing algorithms, see specs/v2026/surge\_bounties.md)*
+*(For detailed surge pricing algorithms, see specs/v2026/surge_bounties.md)*
