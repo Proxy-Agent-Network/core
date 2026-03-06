@@ -1,23 +1,24 @@
 /**
- * 🎨 THEME ENGINE v1.2
- * Decoupled logic for cross-page theme management
+ * 🎨 PAN TACTICAL THEME ENGINE v2026.1.0
+ * Decoupled logic for Sector Command cross-page theme management
  */
 
 const ThemeEngine = {
-    // Current available themes
+    // Current available PAN Command themes
     themes: [
-        { id: 'business', label: '👔 Business' },
-        { id: 'cyberpunk', label: '🦾 Cyberpunk' },
-        { id: 'retro', label: '👾 Retro Arcade' },
-        { id: 'deepsea', label: '🌊 Deep Sea' },
-        { id: 'vampire', label: '🧛 Vampire' },
-        { id: 'paperback', label: '📜 Paperback' },
-        { id: 'groovy', label: '🕺 Groovy' }
+        { id: 'slate', label: '🌑 Slate (NOC Default)' },
+        { id: 'high-vis', label: '🦺 High-Vis (Field Ops)' },
+        { id: 'corporate', label: '📄 Corporate (Compliance)' }
     ],
 
     // Initialize the engine
     init: function(selectorId) {
-        const savedTheme = localStorage.getItem('theme') || 'business';
+        // Fallback to 'slate' if a legacy theme (e.g., 'business', 'cyberpunk') is still cached
+        let savedTheme = localStorage.getItem('theme') || 'slate';
+        if (!this.themes.find(t => t.id === savedTheme)) {
+            savedTheme = 'slate';
+        }
+        
         this.apply(savedTheme);
 
         const selector = document.getElementById(selectorId);
@@ -31,12 +32,6 @@ const ThemeEngine = {
     apply: function(themeId) {
         document.documentElement.setAttribute('data-theme', themeId);
         localStorage.setItem('theme', themeId);
-        
-        // Custom logic for Magic Marvin visibility
-        const marvin = document.getElementById('magic-marvin');
-        if (marvin) {
-            marvin.style.display = (themeId === 'business' || themeId === 'paperback') ? 'none' : 'block';
-        }
     },
 
     // Dynamically fill any <select> element with theme options
@@ -47,8 +42,13 @@ const ThemeEngine = {
     }
 };
 
-// Auto-run pre-render injection
+// Auto-run pre-render injection to prevent FOUC (Flash of Unstyled Content)
 (function() {
-    const savedTheme = localStorage.getItem('theme') || 'business';
+    let savedTheme = localStorage.getItem('theme') || 'slate';
+    // Ensure we don't accidentally load a deprecated v1 theme on the first paint
+    const validThemes = ['slate', 'high-vis', 'corporate'];
+    if (!validThemes.includes(savedTheme)) {
+        savedTheme = 'slate';
+    }
     document.documentElement.setAttribute('data-theme', savedTheme);
 })();
