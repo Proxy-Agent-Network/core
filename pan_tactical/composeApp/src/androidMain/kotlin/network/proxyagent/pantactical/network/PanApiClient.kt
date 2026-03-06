@@ -16,9 +16,10 @@ import kotlinx.serialization.json.Json
 import network.proxyagent.pantactical.security.StrongBoxManager
 import android.util.Base64
 import android.content.Context
+import java.net.URL
+import com.google.android.gms.maps.model.LatLng
 
 // --- DATA MODELS ---
-// These classes define the exact JSON structure the PAN Gateway expects.
 @Serializable
 data class StatusUpdateRequest(
     val agentId: String,
@@ -27,12 +28,11 @@ data class StatusUpdateRequest(
     val longitude: Double,
     val radius: Double,
     val loadout: List<String>,
-    val signature: String // The TPM hardware signature
+    val signature: String
 )
 
 class PanApiClient {
 
-    // Initialize the Ktor HTTP Client with JSON serialization
     private val client = HttpClient(OkHttp) {
         install(ContentNegotiation) {
             json(Json {
@@ -43,45 +43,39 @@ class PanApiClient {
         install(WebSockets)
     }
 
-    // In production, this will point to our live Mesa load balancers.
-    // For now, we use a standard development URL.
-    private val BASE_URL = "http://192.168.0.108:8000/v1"
+    // --- NGROK PUBLIC TUNNEL URL ---
+    // Make sure the /v1 remains at the end!
+    private val BASE_URL = "https://collectible-kanisha-altruistically.ngrok-free.dev/v1"
     private val strongBox = StrongBoxManager()
 
-    /**
-     * Broadcasts the Agent's tactical status to the PAN Gateway.
-     * This is a suspend function, meaning it safely runs on a background thread.
-     */
     suspend fun updateAgentStatus(context: Context, isOnline: Boolean, lat: Double, lon: Double, radius: Double, loadout: List<String>): Boolean {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val statusString = if (isOnline) "ONLINE" else "OFFLINE"
                 val payloadToSign = "${statusString}_${lat}_${lon}_${radius}"
 
-                // 2. Convert our payload into a URL-safe Base64 "Nonce"
-                // Google requires the nonce to be formatted exactly like this.
                 val nonce = android.util.Base64.encodeToString(
                     payloadToSign.toByteArray(),
                     android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
                 )
 
-                // 3. SECURE HARDWARE PING: Ask Google Play to attest this payload
                 println("🛡️ Requesting Google Play Integrity Attestation...")
                 val engine = network.proxyagent.pantactical.security.AttestationEngine()
                 val hardwareToken = engine.generateHardwareToken(context, nonce)
 
-                // 4. Build the JSON request using the real hardware token
                 val requestBody = StatusUpdateRequest(
                     agentId = "VANGUARD-01",
                     status = statusString,
                     latitude = lat,
                     longitude = lon,
                     radius = radius,
-                    loadout = loadout, // <-- INJECT THE LIST HERE
+                    loadout = loadout,
                     signature = hardwareToken
                 )
 
                 val response: HttpResponse = client.post("$BASE_URL/agent/status") {
+                    // --- NEW: BYPASS NGROK SECURITY WARNING ---
+                    header("ngrok-skip-browser-warning", "69420")
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
                 }
@@ -94,17 +88,22 @@ class PanApiClient {
             }
         }
     }
-    /**
-     * Opens a live, two-way WebSocket connection with the PAN Gateway.
-     */
+
     suspend fun openLiveDispatchLine(
         agentId: String,
         onMissionReceived: (lat: Double, lon: Double, errorCode: String, bounty: String, intersection: String) -> Unit
     ) {
-        val wsUrl = BASE_URL.replace("http://", "ws://").replace("/v1", "/ws/v1/dispatch/$agentId")
+        // --- NEW: UPGRADED HTTPS -> WSS CONVERSION ---
+        val wsUrl = BASE_URL
+            .replace("https://", "wss://")
+            .replace("http://", "ws://")
+            .replace("/v1", "/ws/v1/dispatch/$agentId")
 
         try {
             client.webSocket(wsUrl) {
+                // --- NEW: BYPASS NGROK SECURITY WARNING FOR WEBSOCKETS ---
+                request { header("ngrok-skip-browser-warning", "69420") }
+
                 println("🟢 DISPATCH LINE OPEN: Listening for missions...")
 
                 for (frame in incoming) {
@@ -117,12 +116,10 @@ class PanApiClient {
                         if (json.getString("type") == "MISSION") {
                             val lat = json.getDouble("lat")
                             val lon = json.getDouble("lon")
-                            // Safely extract the new variables (with fallbacks just in case)
                             val errorCode = json.optString("errorCode", "UNKNOWN ERROR")
                             val bounty = json.optString("bounty", "$0.00")
                             val intersection = json.optString("intersection", "Unknown Coordinates")
 
-                            // Fire the rich payload back to the UI!
                             onMissionReceived(lat, lon, errorCode, bounty, intersection)
                         }
                     } catch (e: Exception) {
@@ -132,6 +129,86 @@ class PanApiClient {
             }
         } catch (e: Exception) {
             println("🔴 DISPATCH LINE CLOSED: ${e.localizedMessage}")
+        }
+    }
+
+    suspend fun acceptMission(agentId: String = "VANGUARD-01"): Boolean {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val jsonPayload = """{"agentId": "$agentId"}"""
+                val response: HttpResponse = client.post("$BASE_URL/mission/accept") {
+                    // --- NEW: BYPASS NGROK SECURITY WARNING ---
+                    header("ngrok-skip-browser-warning", "69420")
+                    contentType(ContentType.Application.Json)
+                    setBody(jsonPayload)
+                }
+                response.status.value in 200..299
+            } catch (e: Exception) {
+                println("API ERROR: Failed to accept mission - ${e.message}")
+                false
+            }
+        }
+    }
+
+    suspend fun getTacticalRoute(startLat: Double, startLon: Double, endLat: Double, endLon: Double): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val urlString = "https://router.project-osrm.org/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
+
+                val response: HttpResponse = client.get(urlString)
+                val jsonString = response.bodyAsText()
+                val json = org.json.JSONObject(jsonString)
+                val routes = json.optJSONArray("routes")
+
+                if (routes != null && routes.length() > 0) {
+                    val routeObj = routes.getJSONObject(0)
+
+                    val geometry = routeObj.getJSONObject("geometry")
+                    val coordinates = geometry.getJSONArray("coordinates")
+                    val path = mutableListOf<LatLng>()
+                    for (i in 0 until coordinates.length()) {
+                        val point = coordinates.getJSONArray(i)
+                        path.add(LatLng(point.getDouble(1), point.getDouble(0)))
+                    }
+
+                    val stepsList = mutableListOf<Triple<String, Double, Double>>()
+                    val legs = routeObj.optJSONArray("legs")
+                    if (legs != null && legs.length() > 0) {
+                        val steps = legs.getJSONObject(0).optJSONArray("steps")
+                        if (steps != null) {
+                            for (j in 0 until steps.length()) {
+                                val step = steps.getJSONObject(j)
+                                val maneuver = step.optJSONObject("maneuver")
+                                val distanceMiles = step.optDouble("distance", 0.0) / 1609.34
+
+                                val location = maneuver?.optJSONArray("location")
+                                val stepLon = location?.optDouble(0) ?: 0.0
+                                val stepLat = location?.optDouble(1) ?: 0.0
+
+                                val type = maneuver?.optString("type", "") ?: ""
+                                val modifier = maneuver?.optString("modifier", "") ?: ""
+                                var name = step.optString("name", "")
+                                if (name.isEmpty()) name = "unnamed road"
+
+                                val action = if (modifier.isNotEmpty() && modifier != "straight") "$type $modifier" else type
+                                val formattedAction = action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                val distStr = String.format("%.1f", distanceMiles)
+
+                                if (type == "arrive") {
+                                    stepsList.add(Triple("Arrive at Destination", stepLat, stepLon))
+                                } else if (distanceMiles > 0.0) {
+                                    stepsList.add(Triple("$formattedAction onto $name", stepLat, stepLon))
+                                }
+                            }
+                        }
+                    }
+                    return@withContext Pair(path, stepsList)
+                }
+                Pair(emptyList(), emptyList())
+            } catch (e: Exception) {
+                println("🗺️ ROUTING ERROR: ${e.message}")
+                Pair(emptyList(), emptyList())
+            }
         }
     }
 }
