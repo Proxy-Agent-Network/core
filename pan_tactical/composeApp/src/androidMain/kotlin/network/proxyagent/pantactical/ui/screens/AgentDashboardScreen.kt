@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.net.Uri
@@ -14,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,7 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
@@ -197,6 +201,30 @@ fun MainDashboardContent() {
     var agentLocation by remember { mutableStateOf(LatLng(33.3061, -111.6601)) }
     var locationPermissionGranted by remember { mutableStateOf(false) }
 
+    // --- CAMERA PERMISSIONS & STATE ---
+    var hasCameraPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+    var capturedProofImage by remember { mutableStateOf<Bitmap?>(null) }
+    var isUploadingProof by remember { mutableStateOf(false) }
+    var isSanitizing by remember { mutableStateOf(false) }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        hasCameraPermission = isGranted
+    }
+
+    val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null) {
+            isSanitizing = true
+            isUploadingProof = true
+
+            // Pass the image through our local ML filter before displaying or uploading
+            coroutineScope.launch {
+                val safeImage = network.proxyagent.pantactical.security.PrivacyFilter.sanitizeImage(bitmap)
+                capturedProofImage = safeImage
+                isSanitizing = false
+            }
+        }
+    }
+
     val countdownProgress = remember { Animatable(1f) }
     var isFlashing by remember { mutableStateOf(false) }
     val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
@@ -259,8 +287,16 @@ fun MainDashboardContent() {
     }
 
     LaunchedEffect(Unit) {
-        val fineLocation = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (fineLocation) locationPermissionGranted = true else permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        val permissionsToRequest = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        permissionLauncher.launch(permissionsToRequest.toTypedArray())
+
+        hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     }
 
     LaunchedEffect(locationPermissionGranted) {
@@ -477,6 +513,64 @@ fun MainDashboardContent() {
                         }
                     }
                 }
+
+                // CAMERA CAPTURE OVERLAY
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    AnimatedVisibility(
+                        visible = capturedProofImage != null && isUploadingProof,
+                        enter = fadeIn(), exit = fadeOut(),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize().background(Color(0xEE000000)).padding(24.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+                                Box(modifier = Modifier.size(300.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
+                                    capturedProofImage?.let { bmp ->
+                                        Image(bitmap = bmp.asImageBitmap(), contentDescription = "Proof", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                    }
+                                    Column(modifier = Modifier.align(Alignment.BottomStart).background(Color(0x80000000)).padding(8.dp)) {
+                                        Text("GPS: ${agentLocation.latitude}, ${agentLocation.longitude}", color = Color(0xFF00FF00), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        Text("TIMESTAMP: ${System.currentTimeMillis()}", color = Color(0xFF00FF00), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(24.dp))
+                                CircularProgressIndicator(color = Color(0xFF00BCD4))
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                if (isSanitizing) {
+                                    Text("SANITIZING PII...", color = Color.Red, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                    Text("REDACTING FACES & LICENSE PLATES", color = Color.Gray, fontSize = 12.sp)
+                                } else {
+                                    Text("CRYPTOGRAPHIC WATERMARKING...", color = Color(0xFF00BCD4), fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                    Text("UPLOADING SECURE PROOF OF WORK", color = Color.Gray, fontSize = 12.sp)
+                                }
+
+                                LaunchedEffect(capturedProofImage) {
+                                    delay(2000)
+                                    val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
+                                    val finalPayout = (rawBounty * 0.90f).toDouble()
+
+                                    if (apiClient.claimEscrowFunds(netPayout = finalPayout)) {
+                                        android.widget.Toast.makeText(context, String.format("Proof Accepted. +$%.2f", finalPayout), android.widget.Toast.LENGTH_LONG).show()
+                                        if (queuedMission != null) {
+                                            activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
+                                        } else { missionState = "IDLE"; activeMission = null }
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Network Error: Upload Failed.", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+
+                                    isUploadingProof = false
+                                    capturedProofImage = null
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // --- BOTTOM CONTROL PANEL ---
@@ -562,33 +656,23 @@ fun MainDashboardContent() {
                                 modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)
                             ) { if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White) else Text("RE-RUN AV DIAGNOSTICS", color = Color.White, fontWeight = FontWeight.Black) }
                         } else {
-                            var isClaiming by remember { mutableStateOf(false) }
+
                             Button(
-                                enabled = !isClaiming,
                                 onClick = {
-                                    isClaiming = true
-                                    coroutineScope.launch {
-                                        // Dynamic payout math restored
-                                        val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
-                                        val finalPayout = (rawBounty * 0.90f).toDouble()
-
-                                        // Payout variable passed correctly!
-                                        if (apiClient.claimEscrowFunds(netPayout = finalPayout)) {
-                                            android.widget.Toast.makeText(context, String.format("Escrow Released! +$%.2f", finalPayout), android.widget.Toast.LENGTH_LONG).show()
-
-                                            if (queuedMission != null) {
-                                                activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
-                                                android.widget.Toast.makeText(context, "Routing to next queued mission.", android.widget.Toast.LENGTH_LONG).show()
-                                            } else { missionState = "IDLE"; activeMission = null }
-                                        } else {
-                                            android.widget.Toast.makeText(context, "Ledger Error: Escrow claim failed.", android.widget.Toast.LENGTH_LONG).show()
-                                        }
-                                        isClaiming = false
+                                    if (hasCameraPermission) {
+                                        takePictureLauncher.launch(null)
+                                    } else {
+                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), disabledContainerColor = Color(0xFF555555)),
                                 modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)
-                            ) { if (isClaiming) CircularProgressIndicator(color = Color.White) else Text("CLAIM FUNDS", color = Color.White, fontWeight = FontWeight.Black) }
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("📷", fontSize = 18.sp)
+                                    Text("CAPTURE PROOF OF WORK", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                                }
+                            }
                         }
                     }
                 }
@@ -628,7 +712,17 @@ fun MainDashboardContent() {
                     if (isOnline) {
                         SwipeActionSlider(text = "SWIPE TO GO OFFLINE >>", trackColor = Color(0xFF333333), thumbColor = Color(0xFFF44336)) {
                             isProcessing = true
-                            coroutineScope.launch { apiClient.updateAgentStatus(context, false, agentLocation.latitude, agentLocation.longitude, serviceRadiusMiles.toDouble(), emptyMap()); isOnline = false; missionState = "IDLE"; isProcessing = false }
+                            coroutineScope.launch {
+                                apiClient.updateAgentStatus(context, false, agentLocation.latitude, agentLocation.longitude, serviceRadiusMiles.toDouble(), emptyMap())
+
+                                // --- THIS KILLS THE BACKGROUND GPS TRACKER ---
+                                val serviceIntent = Intent(context, network.proxyagent.pantactical.services.PanLocationService::class.java)
+                                context.stopService(serviceIntent)
+
+                                isOnline = false
+                                missionState = "IDLE"
+                                isProcessing = false
+                            }
                         }
                     } else {
                         Button(
@@ -638,6 +732,11 @@ fun MainDashboardContent() {
                                 coroutineScope.launch {
                                     val activeLoadout = agentCapabilities.filter { it.isQualified && it.isEnabled }.associate { it.id to it.currentBid }
                                     if (apiClient.updateAgentStatus(context, true, agentLocation.latitude, agentLocation.longitude, serviceRadiusMiles.toDouble(), activeLoadout)) {
+
+                                        // --- THIS STARTS THE BACKGROUND GPS TRACKER ---
+                                        val serviceIntent = Intent(context, network.proxyagent.pantactical.services.PanLocationService::class.java)
+                                        ContextCompat.startForegroundService(context, serviceIntent)
+
                                         isOnline = true
                                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                             apiClient.openLiveDispatchLine("VANGUARD-01") { lat, lon, err, bounty, inter -> activeMission = MissionData(lat, lon, err, bounty, inter); missionState = "PENDING" }

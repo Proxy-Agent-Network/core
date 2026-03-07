@@ -63,6 +63,11 @@ kotlin {
 
             // THE NEW LIVE LINE:
             implementation("io.ktor:ktor-client-websockets:2.3.8")
+
+            // Add these to your Android dependencies
+            implementation("com.google.mlkit:face-detection:16.1.5")
+            implementation("com.google.mlkit:text-recognition:16.0.0")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
         }
         commonMain.dependencies {
             // Default UI dependencies
