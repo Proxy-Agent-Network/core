@@ -45,11 +45,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 import network.proxyagent.pantactical.network.PanApiClient
+import network.proxyagent.pantactical.models.AgentCapability
+import network.proxyagent.pantactical.models.MissionData
+import network.proxyagent.pantactical.ui.components.CapabilityCard
+
 import java.util.Locale
 import kotlin.math.log2
 import kotlin.math.roundToInt
@@ -59,27 +62,6 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.*
-
-data class MissionData(
-    val lat: Double,
-    val lon: Double,
-    val errorCode: String,
-    val bounty: String,
-    val intersection: String
-)
-
-@Serializable
-data class AgentCapability(
-    val id: String,
-    val title: String,
-    val description: String?,
-    val isQualified: Boolean,
-    var isEnabled: Boolean,
-    val minPrice: Float,
-    val maxPrice: Float,
-    val step: Float,
-    var currentBid: Float
-)
 
 @Composable
 fun AgentDashboardScreen() {
@@ -98,6 +80,9 @@ fun MainDashboardContent() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val apiClient = remember { PanApiClient() }
+
+    // --- MOVE SHARED PREFS UP SO TTS CAN READ IT ON BOOT ---
+    val sharedPrefs = remember { context.getSharedPreferences("PanAgentSettings", Context.MODE_PRIVATE) }
 
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var availableVoices by remember { mutableStateOf<List<Voice>>(emptyList()) }
@@ -118,14 +103,25 @@ fun MainDashboardContent() {
 
                     availableVoices = voices
                     if (voices.isNotEmpty()) {
-                        selectedVoice = voices.first()
-                        ttsInstance?.voice = voices.first()
+                        // Read saved voice from memory, or fallback to default
+                        val savedVoiceName = sharedPrefs.getString("voice_pref", null)
+                        val matchedVoice = voices.find { it.name == savedVoiceName } ?: voices.first()
+
+                        selectedVoice = matchedVoice
+                        ttsInstance?.voice = matchedVoice
                     }
                 } catch (e: Exception) { }
             }
         }
         tts = ttsInstance
         onDispose { ttsInstance?.shutdown() }
+    }
+
+    // Ensure the TTS engine updates immediately if the agent changes it in the Wallet screen
+    LaunchedEffect(selectedVoice) {
+        if (selectedVoice != null) {
+            tts?.voice = selectedVoice
+        }
     }
 
     var currentScreen by remember { mutableStateOf("DASHBOARD") }
@@ -135,19 +131,22 @@ fun MainDashboardContent() {
 
     var agentCapabilities by remember {
         mutableStateOf(listOf(
-            AgentCapability("accident", "Accident Reporting", null, true, false, 50f, 100f, 5f, 50f),
-            AgentCapability("doors", "Close Doors", null, true, true, 8f, 20f, 1f, 8f),
-            AgentCapability("drive", "Drive Takeover", null, false, false, 20f, 50f, 5f, 20f),
-            AgentCapability("jump", "EV Charge / Jump Start", null, true, true, 20f, 50f, 5f, 20f),
-            AgentCapability("clean", "Interior Cleaning (Trash)", null, true, true, 8f, 20f, 1f, 8f),
-            AgentCapability("clean_hazmat", "Interior Cleaning (Hazardous)", null, true, false, 50f, 100f, 5f, 50f),
-            AgentCapability("air", "Tire Pressure", null, true, true, 20f, 50f, 5f, 20f),
-            AgentCapability("tire_repair", "Tire Repair", null, true, false, 50f, 100f, 5f, 50f)
+            AgentCapability("close_doors", "Close Doors", "Park behind the AV with your hazard lights on. Make sure all door and trunk latches close securely with nothing blocking them. Once all doors and trunks are completely shut, stand at least 10 feet back and re-run diagnostics if the car does not automatically do so on its own.", null, 1, true, true, 8f, 20f, 1f, 8f),
+            AgentCapability("clean_trash", "Interior Cleaning (Trash)", "A passenger left behind trash in the AV that needs to be removed and disposed. After checking the floors, seats and pockets for trash close all the doors and re-run diagnostics (if needed).", null, 1, true, true, 8f, 20f, 1f, 8f),
+            AgentCapability("search", "Item Search", "A passenger reported a missing item left behind in the AV. Inspect the AV (under seats, in pockets, etc) for the missing items and return them to either the passenger or to the AV facility at the end of your shift.", null, 1, true, true, 8f, 20f, 1f, 8f),
+            AgentCapability("accident", "Accident Reporting", "Go to the scene and park in a safe area not blocking traffic. Take pictures of the damage to all cars or property effected by the accident, talk to witnesses and officers on the scene, fill out the required paperwork, stay on the scene until the AV has left or a representative takes over.", null, 1, true, false, 50f, 100f, 5f, 50f),
+            AgentCapability("jump", "EV Charge / Jump Start", "Requires training with the AV company and a portable jump start device. More details will be coming soon.", "Requires training with AV Company and an approved portable jump starter.", 2, true, false, 20f, 50f, 5f, 20f),
+            AgentCapability("clean_spill", "Interior Cleaning (Spill)", "*Requires interior cleaning supplies. Doing a quick spot cleaning for a spilled drink or food item to get the AV back in service.", "Requires cleaning supplies and training.", 2, true, false, 20f, 50f, 5f, 20f),
+            AgentCapability("air", "Tire Pressure", "(Requires Portable Air Compressor) Inflate the tire to 35 PSI and re-run diagnostics from 10 feet away after complete.", "Requires a portable air compressor and knowing how to set it to 35 PSI.", 2, true, false, 20f, 50f, 5f, 20f),
+            AgentCapability("escort", "Passenger Escort", "If the passenger is in an AV that stopped and is waiting for another AV to show up to take over the ride then you can stay on the scene with the passenger to make sure they are safe until the next AV shows up. Act Professional and help when needed.", "Training with AV Company.", 2, true, false, 8f, 20f, 1f, 8f),
+            AgentCapability("sensor_clean", "Sensor Cleaning", "If there is a sensor fault and you are trained to clean that type of sensor then you would use your cleaning kit to wipe the sensor with the fault and re-run diagnostics when complete.", "Requires HP Potion kit with Distilled water, 70/30 Solution, Microfiber cloths, and Training.", 3, false, false, 20f, 50f, 1f, 20f),
+            AgentCapability("sensor_cal", "Sensor Calibration", "If there is a sensor fault and you are trained to clean that type of sensor then you would use your cleaning kit to wipe the sensor with the fault and re-run diagnostics when complete.", "Training with AV Company per vehicle.", 3, false, false, 20f, 50f, 1f, 20f),
+            AgentCapability("tire_repair", "Tire Repair", "(Requires plug/patch kit and training from the AV company)", "Requires a plug or Patch kit and training.", 3, false, false, 50f, 100f, 5f, 50f),
+            AgentCapability("drive", "Drive Takeover", "Requires basic training with the AV company. More details will be coming soon.", "Special training directly with the AV company.", 3, false, false, 20f, 50f, 5f, 20f)
         ))
     }
 
     var isDataLoaded by remember { mutableStateOf(false) }
-    val sharedPrefs = context.getSharedPreferences("PanAgentSettings", Context.MODE_PRIVATE)
 
     LaunchedEffect(Unit) {
         serviceRadiusMiles = sharedPrefs.getFloat("radius", 5f)
@@ -159,12 +158,14 @@ fun MainDashboardContent() {
         isDataLoaded = true
     }
 
-    LaunchedEffect(serviceRadiusMiles, navPreference, agentCapabilities) {
+    // --- UPGRADED SAVE ROUTINE: NOW WATCHES THE VOICE SETTING TOO ---
+    LaunchedEffect(serviceRadiusMiles, navPreference, agentCapabilities, selectedVoice) {
         if (isDataLoaded) {
             sharedPrefs.edit().apply {
                 putFloat("radius", serviceRadiusMiles)
                 putString("nav_pref", navPreference)
                 putString("capabilities", Json.encodeToString(agentCapabilities))
+                selectedVoice?.name?.let { putString("voice_pref", it) } // Saves the new voice ID
                 apply()
             }
         }
@@ -201,7 +202,6 @@ fun MainDashboardContent() {
     var agentLocation by remember { mutableStateOf(LatLng(33.3061, -111.6601)) }
     var locationPermissionGranted by remember { mutableStateOf(false) }
 
-    // --- CAMERA PERMISSIONS & STATE ---
     var hasCameraPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var capturedProofImage by remember { mutableStateOf<Bitmap?>(null) }
     var isUploadingProof by remember { mutableStateOf(false) }
@@ -215,8 +215,6 @@ fun MainDashboardContent() {
         if (bitmap != null) {
             isSanitizing = true
             isUploadingProof = true
-
-            // Pass the image through our local ML filter before displaying or uploading
             coroutineScope.launch {
                 val safeImage = network.proxyagent.pantactical.security.PrivacyFilter.sanitizeImage(bitmap)
                 capturedProofImage = safeImage
@@ -228,13 +226,6 @@ fun MainDashboardContent() {
     val countdownProgress = remember { Animatable(1f) }
     var isFlashing by remember { mutableStateOf(false) }
     val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
-
-    val diagnosticProtocols = mapOf(
-        "ERR-702: Sensor Occlusion" to "Wipe down roof-mounted LIDAR and side camera housings with approved microfiber cloth. Ensure no streaks remain.",
-        "ERR-TIRE: Low Pressure" to "Inflate affected tire to 36 PSI using on-board air compressor. Perform visual inspection for punctures or debris.",
-        "ERR-BATT: 12V Depleted" to "Remove front access panel. Connect portable jump starter to the 12V auxiliary terminals until relay clicks.",
-        "ERR-CABIN: Biohazard" to "Equip Level 1 PPE. Utilize solvent and absorbent pads to clear passenger cabin debris. Deposit in hazmat bag."
-    )
 
     var hasInitializedAudio by remember { mutableStateOf(false) }
     LaunchedEffect(isOnline) {
@@ -295,7 +286,6 @@ fun MainDashboardContent() {
             permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         permissionLauncher.launch(permissionsToRequest.toTypedArray())
-
         hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     }
 
@@ -420,35 +410,16 @@ fun MainDashboardContent() {
             AnimatedVisibility(visible = missionState == "ACTIVE" && tacticalSteps.isNotEmpty()) {
                 var directionsExpanded by remember { mutableStateOf(false) }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF2A2A2A))
-                        .clickable { directionsExpanded = !directionsExpanded }
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF2A2A2A)).clickable { directionsExpanded = !directionsExpanded }) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("📍 FULL ROUTE MANIFEST", color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.sp)
                         Text(if (directionsExpanded) "HIDE ▲" else "SHOW ▼", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
-
                     if (directionsExpanded) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 250.dp)
-                                .background(Color(0xFF1E1E1E))
-                                .padding(12.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
+                        Column(modifier = Modifier.fillMaxWidth().heightIn(max = 250.dp).background(Color(0xFF1E1E1E)).padding(12.dp).verticalScroll(rememberScrollState())) {
                             tacticalSteps.forEachIndexed { index, step ->
                                 val isCurrent = index == currentStepIndex
-                                val color = if (isCurrent) Color(0xFF00BCD4) else Color.LightGray
-                                val weight = if (isCurrent) FontWeight.Black else FontWeight.Normal
-
-                                Text("${index + 1}. ${step.first}", color = color, fontSize = 14.sp, fontWeight = weight, modifier = Modifier.padding(vertical = 6.dp))
+                                Text("${index + 1}. ${step.first}", color = if (isCurrent) Color(0xFF00BCD4) else Color.LightGray, fontSize = 14.sp, fontWeight = if (isCurrent) FontWeight.Black else FontWeight.Normal, modifier = Modifier.padding(vertical = 6.dp))
                                 HorizontalDivider(color = Color(0xFF333333), thickness = 1.dp)
                             }
                         }
@@ -468,16 +439,10 @@ fun MainDashboardContent() {
                     }
                 }
 
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     AnimatedVisibility(
                         visible = missionState == "PENDING" && activeMission != null,
-                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                        modifier = Modifier.fillMaxSize()
+                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(), modifier = Modifier.fillMaxSize()
                     ) {
                         Box(modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp), contentAlignment = Alignment.Center) {
                             Box(modifier = Modifier.fillMaxSize().background(Color(0xFF4CAF50).copy(alpha = flashAlpha)))
@@ -515,29 +480,20 @@ fun MainDashboardContent() {
                 }
 
                 // CAMERA CAPTURE OVERLAY
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     AnimatedVisibility(
                         visible = capturedProofImage != null && isUploadingProof,
-                        enter = fadeIn(), exit = fadeOut(),
-                        modifier = Modifier.fillMaxSize()
+                        enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()
                     ) {
                         Box(modifier = Modifier.fillMaxSize().background(Color(0xEE000000)).padding(24.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-
                                 Box(modifier = Modifier.size(300.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
-                                    capturedProofImage?.let { bmp ->
-                                        Image(bitmap = bmp.asImageBitmap(), contentDescription = "Proof", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                    }
+                                    capturedProofImage?.let { bmp -> Image(bitmap = bmp.asImageBitmap(), contentDescription = "Proof", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                                     Column(modifier = Modifier.align(Alignment.BottomStart).background(Color(0x80000000)).padding(8.dp)) {
                                         Text("GPS: ${agentLocation.latitude}, ${agentLocation.longitude}", color = Color(0xFF00FF00), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                                         Text("TIMESTAMP: ${System.currentTimeMillis()}", color = Color(0xFF00FF00), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                                     }
                                 }
-
                                 Spacer(modifier = Modifier.height(24.dp))
                                 CircularProgressIndicator(color = Color(0xFF00BCD4))
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -554,18 +510,13 @@ fun MainDashboardContent() {
                                     delay(2000)
                                     val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
                                     val finalPayout = (rawBounty * 0.90f).toDouble()
-
                                     if (apiClient.claimEscrowFunds(netPayout = finalPayout)) {
                                         android.widget.Toast.makeText(context, String.format("Proof Accepted. +$%.2f", finalPayout), android.widget.Toast.LENGTH_LONG).show()
-                                        if (queuedMission != null) {
-                                            activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
-                                        } else { missionState = "IDLE"; activeMission = null }
+                                        if (queuedMission != null) { activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE" } else { missionState = "IDLE"; activeMission = null }
                                     } else {
                                         android.widget.Toast.makeText(context, "Network Error: Upload Failed.", android.widget.Toast.LENGTH_LONG).show()
                                     }
-
-                                    isUploadingProof = false
-                                    capturedProofImage = null
+                                    isUploadingProof = false; capturedProofImage = null
                                 }
                             }
                         }
@@ -584,41 +535,17 @@ fun MainDashboardContent() {
                         Text("Diagnostic: ${activeMission?.errorCode}", color = Color.LightGray, fontSize = 14.sp)
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            if (queuedMission == null) {
-                                Button(onClick = { queuedMission = MissionData(33.31, -111.65, "ERR-CLEAN: Interior Debris", "$15.00", "Main St & 1st Ave") }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF555555))) { Text("DEV: Inject Queue", fontSize = 10.sp) }
-                            } else {
-                                Button(onClick = { queuedMission = null }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))) { Text("DEV: Sim Queue Stolen", fontSize = 10.sp) }
-                            }
-                        }
-
                         val isAtScene = distanceMiles <= 0.1
                         Button(
-                            enabled = isAtScene,
-                            onClick = { missionState = "ON_SCENE" },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4), disabledContainerColor = Color(0xFF333333)),
+                            enabled = isAtScene, onClick = { missionState = "ON_SCENE" }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4), disabledContainerColor = Color(0xFF333333)),
                             shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(64.dp)
                         ) {
                             if (isAtScene) Text("ARRIVED AT SCENE", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                             else Text("APPROACHING SCENE (${String.format("%.1f", distanceMiles)} MI)", color = Color.Gray, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         }
 
-                        AnimatedVisibility(visible = queuedMission != null) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp).background(Color(0xFF2A2A2A), RoundedCornerShape(8.dp)).border(1.dp, Color(0xFF4CAF50), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("🔒 NEXT IN QUEUE (LEVEL 3)", color = Color(0xFF4CAF50), fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                                    Spacer(modifier = Modifier.weight(1f))
-                                    Text(queuedMission?.bounty ?: "", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(queuedMission?.errorCode ?: "", color = Color.LightGray, fontSize = 14.sp)
-                            }
-                        }
-
                         Spacer(modifier = Modifier.height(16.dp))
-                        key(abortSliderResetKey) {
-                            SwipeActionSlider(text = "SWIPE TO ABORT >>", trackColor = Color(0xFF2C2C2C), thumbColor = Color(0xFFD32F2F)) { showAbortDialog = true }
-                        }
+                        key(abortSliderResetKey) { SwipeActionSlider(text = "SWIPE TO ABORT >>", trackColor = Color(0xFF2C2C2C), thumbColor = Color(0xFFD32F2F)) { showAbortDialog = true } }
                     }
                 }
 
@@ -626,53 +553,27 @@ fun MainDashboardContent() {
                     var terminalLogs by remember { mutableStateOf(listOf("Establishing local UWB connection to AV...", "Connection secured.", "Awaiting physical repair and diagnostic re-run...")) }
                     var isResolving by remember { mutableStateOf(false) }
                     var isResolved by remember { mutableStateOf(false) }
-                    val activeCode = activeMission?.errorCode ?: "UNKNOWN"
 
                     LaunchedEffect(activeMission) { terminalLogs = listOf("Connection secured.", "Awaiting repair..."); isResolving = false; isResolved = false }
 
                     Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF0D1117)).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("📟 AV DIAGNOSTIC TERMINAL", color = Color(0xFF00FF00), fontSize = 16.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                         Spacer(modifier = Modifier.height(12.dp))
-
                         Box(modifier = Modifier.fillMaxWidth().height(140.dp).background(Color.Black, RoundedCornerShape(8.dp)).border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                                terminalLogs.forEach { log -> Text("> $log", color = Color(0xFF00FF00), fontFamily = FontFamily.Monospace, fontSize = 12.sp); Spacer(modifier = Modifier.height(4.dp)) }
-                            }
+                            Column(modifier = Modifier.verticalScroll(rememberScrollState())) { terminalLogs.forEach { log -> Text("> $log", color = Color(0xFF00FF00), fontFamily = FontFamily.Monospace, fontSize = 12.sp); Spacer(modifier = Modifier.height(4.dp)) } }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
 
                         if (!isResolved) {
                             Button(
-                                enabled = !isResolving,
-                                onClick = {
-                                    isResolving = true
-                                    coroutineScope.launch {
-                                        terminalLogs = terminalLogs + "Pinging AV CAN bus..."; delay(1000)
-                                        terminalLogs = terminalLogs + "Diagnostic Trouble Codes (DTC) cleared."; delay(800)
-                                        isResolving = false; isResolved = true
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), disabledContainerColor = Color(0xFF555555)),
-                                modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)
+                                enabled = !isResolving, onClick = { isResolving = true; coroutineScope.launch { terminalLogs = terminalLogs + "Pinging AV CAN bus..."; delay(1000); terminalLogs = terminalLogs + "Diagnostic Trouble Codes (DTC) cleared."; delay(800); isResolving = false; isResolved = true } },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), disabledContainerColor = Color(0xFF555555)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)
                             ) { if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White) else Text("RE-RUN AV DIAGNOSTICS", color = Color.White, fontWeight = FontWeight.Black) }
                         } else {
-
                             Button(
-                                onClick = {
-                                    if (hasCameraPermission) {
-                                        takePictureLauncher.launch(null)
-                                    } else {
-                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), disabledContainerColor = Color(0xFF555555)),
-                                modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("📷", fontSize = 18.sp)
-                                    Text("CAPTURE PROOF OF WORK", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
-                                }
-                            }
+                                onClick = { if (hasCameraPermission) takePictureLauncher.launch(null) else cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), disabledContainerColor = Color(0xFF555555)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)
+                            ) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("📷", fontSize = 18.sp); Text("CAPTURE PROOF OF WORK", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black) } }
                         }
                     }
                 }
@@ -691,19 +592,36 @@ fun MainDashboardContent() {
                             Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
                                 Text("SERVICE RADIUS: ${serviceRadiusMiles.toInt()} MILES", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = serviceRadiusMiles, onValueChange = { serviceRadiusMiles = it }, valueRange = 1f..8f, steps = 6, colors = SliderDefaults.colors(thumbColor = Color(0xFFF44336), activeTrackColor = Color(0xFFF44336)), modifier = Modifier.padding(bottom = 12.dp))
-                                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    agentCapabilities.forEachIndexed { index, cap ->
-                                        Column(modifier = Modifier.fillMaxWidth().background(if (!cap.isQualified) Color(0xFF121212) else if (cap.isEnabled) Color(0xFF4CAF50).copy(alpha = 0.1f) else Color(0xFF2A2A2A), RoundedCornerShape(8.dp)).border(1.dp, if (!cap.isQualified) Color(0xFF2A2A2A) else if (cap.isEnabled) Color(0xFF4CAF50) else Color(0xFF444444), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                                Text(if (!cap.isQualified) "🔒 ${cap.title}" else cap.title, color = if (!cap.isQualified) Color.DarkGray else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                                if (cap.isQualified) Switch(checked = cap.isEnabled, onCheckedChange = { val n = agentCapabilities.toMutableList(); n[index] = cap.copy(isEnabled = it); agentCapabilities = n }, colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF4CAF50)))
-                                            }
-                                        }
+
+                                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(rememberScrollState()).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                                    val pinned = agentCapabilities.filter { it.isPinned }
+                                    val tier1 = agentCapabilities.filter { it.tier == 1 && !it.isPinned }
+                                    val tier2 = agentCapabilities.filter { it.tier == 2 && !it.isPinned }
+                                    val tier3 = agentCapabilities.filter { it.tier == 3 && !it.isPinned }
+
+                                    if (pinned.isNotEmpty()) {
+                                        Text("📌 PINNED TASKS", color = Color(0xFFFF9800), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                                        pinned.forEach { cap -> CapabilityCard(cap, agentCapabilities) { agentCapabilities = it } }
+                                    }
+
+                                    if (tier1.isNotEmpty()) {
+                                        Text("TIER 1 - BASIC RESPONDER", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                                        tier1.forEach { cap -> CapabilityCard(cap, agentCapabilities) { agentCapabilities = it } }
+                                    }
+
+                                    if (tier2.isNotEmpty()) {
+                                        Text("TIER 2 - EQUIPMENT REQUIRED", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                                        tier2.forEach { cap -> CapabilityCard(cap, agentCapabilities) { agentCapabilities = it } }
+                                    }
+
+                                    if (tier3.isNotEmpty()) {
+                                        Text("TIER 3 - SPECIALIZED TRAINING", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                                        tier3.forEach { cap -> CapabilityCard(cap, agentCapabilities) { agentCapabilities = it } }
                                     }
                                 }
                             }
                         }
-
                         Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
@@ -714,14 +632,9 @@ fun MainDashboardContent() {
                             isProcessing = true
                             coroutineScope.launch {
                                 apiClient.updateAgentStatus(context, false, agentLocation.latitude, agentLocation.longitude, serviceRadiusMiles.toDouble(), emptyMap())
-
-                                // --- THIS KILLS THE BACKGROUND GPS TRACKER ---
                                 val serviceIntent = Intent(context, network.proxyagent.pantactical.services.PanLocationService::class.java)
                                 context.stopService(serviceIntent)
-
-                                isOnline = false
-                                missionState = "IDLE"
-                                isProcessing = false
+                                isOnline = false; missionState = "IDLE"; isProcessing = false
                             }
                         }
                     } else {
@@ -732,11 +645,8 @@ fun MainDashboardContent() {
                                 coroutineScope.launch {
                                     val activeLoadout = agentCapabilities.filter { it.isQualified && it.isEnabled }.associate { it.id to it.currentBid }
                                     if (apiClient.updateAgentStatus(context, true, agentLocation.latitude, agentLocation.longitude, serviceRadiusMiles.toDouble(), activeLoadout)) {
-
-                                        // --- THIS STARTS THE BACKGROUND GPS TRACKER ---
                                         val serviceIntent = Intent(context, network.proxyagent.pantactical.services.PanLocationService::class.java)
                                         ContextCompat.startForegroundService(context, serviceIntent)
-
                                         isOnline = true
                                         coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                             apiClient.openLiveDispatchLine("VANGUARD-01") { lat, lon, err, bounty, inter -> activeMission = MissionData(lat, lon, err, bounty, inter); missionState = "PENDING" }
