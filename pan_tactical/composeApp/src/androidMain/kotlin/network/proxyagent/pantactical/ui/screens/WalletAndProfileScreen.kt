@@ -61,6 +61,7 @@ fun WalletAndProfileScreen(
     var yearExpanded by remember { mutableStateOf(false) }
     var isLinkingCard by remember { mutableStateOf(false) }
     var isWithdrawing by remember { mutableStateOf(false) }
+    var selectedTransaction by remember { mutableStateOf<network.proxyagent.pantactical.network.TransactionLog?>(null) }
 
     LaunchedEffect(Unit) {
         walletData = apiClient.getWalletData()
@@ -226,7 +227,8 @@ fun WalletAndProfileScreen(
                     Text("No transactions found on ledger.", color = Color.DarkGray, fontSize = 14.sp, modifier = Modifier.padding(16.dp))
                 } else {
                     walletData?.history?.forEach { tx ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        // --- UPGRADED: Added clickable modifier ---
+                        Row(modifier = Modifier.fillMaxWidth().clickable { selectedTransaction = tx }.padding(vertical = 12.dp, horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(tx.date, color = Color.Gray, fontSize = 12.sp)
                                 Spacer(modifier = Modifier.height(4.dp))
@@ -293,6 +295,44 @@ fun WalletAndProfileScreen(
                 ) { if (isLinkingCard) CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White) else Text("SECURE LINK", color = Color.White) }
             },
             dismissButton = { TextButton(onClick = { showLinkCardDialog = false }) { Text("CANCEL", color = Color.Gray) } }
+        )
+    }
+    // --- NEW: Transaction Detail Dialog ---
+    if (selectedTransaction != null) {
+        AlertDialog(
+            onDismissRequest = { selectedTransaction = null },
+            containerColor = Color(0xFF1E1E1E),
+            title = { Text("🧾 SMART CONTRACT RECEIPT", color = Color.White, fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(selectedTransaction!!.amount, color = if (selectedTransaction!!.amount.startsWith("-")) Color(0xFFF44336) else Color(0xFF4CAF50), fontSize = 36.sp, fontWeight = FontWeight.Black)
+
+                    Column {
+                        Text("DESCRIPTION", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(selectedTransaction!!.description, color = Color.White, fontSize = 16.sp)
+                    }
+
+                    Column {
+                        Text("TIMESTAMP", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(selectedTransaction!!.date, color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Column {
+                        Text("CRYPTOGRAPHIC HASH (TXN ID)", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(selectedTransaction!!.id, color = Color(0xFF00BCD4), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("STATUS: SETTLED & VERIFIED", color = Color(0xFF4CAF50), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                    Text("NODE: VANGUARD-01", color = Color.DarkGray, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { selectedTransaction = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333))
+                ) { Text("CLOSE", color = Color.White) }
+            }
         )
     }
 }

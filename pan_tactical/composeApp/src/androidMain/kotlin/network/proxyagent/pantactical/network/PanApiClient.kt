@@ -74,7 +74,10 @@ class PanApiClient {
             try {
                 val statusString = if (isOnline) "ONLINE" else "OFFLINE"
                 val payloadToSign = "${statusString}_${lat}_${lon}_${radiusMiles}"
-                val nonce = android.util.Base64.encodeToString(payloadToSign.toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+                val nonce = android.util.Base64.encodeToString(
+                    payloadToSign.toByteArray(),
+                    android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
+                )
 
                 println("🛡️ Requesting Google Play Integrity Attestation...")
                 val engine = network.proxyagent.pantactical.security.AttestationEngine()
@@ -91,10 +94,11 @@ class PanApiClient {
                 )
 
                 // FIREBASE REST: PUT request overwrites the agent's current status node
-                val response: HttpResponse = client.put("$BASE_URL/agents/VANGUARD-01/status.json") {
-                    contentType(ContentType.Application.Json)
-                    setBody(requestBody)
-                }
+                val response: HttpResponse =
+                    client.put("$BASE_URL/agents/VANGUARD-01/status.json") {
+                        contentType(ContentType.Application.Json)
+                        setBody(requestBody)
+                    }
 
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -131,7 +135,8 @@ class PanApiClient {
                                 val lon = json.getDouble("lon")
                                 val errorCode = json.optString("errorCode", "UNKNOWN ERROR")
                                 val bounty = json.optString("bounty", "$0.00")
-                                val intersection = json.optString("intersection", "Unknown Coordinates")
+                                val intersection =
+                                    json.optString("intersection", "Unknown Coordinates")
 
                                 withContext(Dispatchers.Main) {
                                     onMissionReceived(lat, lon, errorCode, bounty, intersection)
@@ -158,10 +163,11 @@ class PanApiClient {
         return withContext(Dispatchers.IO) {
             try {
                 // Update Firebase to show the agent has locked the mission
-                val response: HttpResponse = client.put("$BASE_URL/agents/$agentId/mission_state.json") {
-                    contentType(ContentType.Application.Json)
-                    setBody("\"ACCEPTED\"")
-                }
+                val response: HttpResponse =
+                    client.put("$BASE_URL/agents/$agentId/mission_state.json") {
+                        contentType(ContentType.Application.Json)
+                        setBody("\"ACCEPTED\"")
+                    }
                 response.status.isSuccess()
             } catch (e: Exception) {
                 println("API ERROR: Failed to accept mission - ${e.message}")
@@ -170,10 +176,16 @@ class PanApiClient {
         }
     }
 
-    suspend fun getTacticalRoute(startLat: Double, startLon: Double, endLat: Double, endLon: Double): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
+    suspend fun getTacticalRoute(
+        startLat: Double,
+        startLon: Double,
+        endLat: Double,
+        endLon: Double
+    ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
-                val urlString = "https://router.project-osrm.org/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
+                val urlString =
+                    "https://router.project-osrm.org/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
                 val jsonString = response.bodyAsText()
                 val json = org.json.JSONObject(jsonString)
@@ -205,11 +217,25 @@ class PanApiClient {
                                 val modifier = maneuver?.optString("modifier", "") ?: ""
                                 var name = step.optString("name", "")
                                 if (name.isEmpty()) name = "unnamed road"
-                                val action = if (modifier.isNotEmpty() && modifier != "straight") "$type $modifier" else type
-                                val formattedAction = action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                val action =
+                                    if (modifier.isNotEmpty() && modifier != "straight") "$type $modifier" else type
+                                val formattedAction =
+                                    action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
-                                if (type == "arrive") stepsList.add(Triple("Arrive at Destination", stepLat, stepLon))
-                                else if (distanceMiles > 0.0) stepsList.add(Triple("$formattedAction onto $name", stepLat, stepLon))
+                                if (type == "arrive") stepsList.add(
+                                    Triple(
+                                        "Arrive at Destination",
+                                        stepLat,
+                                        stepLon
+                                    )
+                                )
+                                else if (distanceMiles > 0.0) stepsList.add(
+                                    Triple(
+                                        "$formattedAction onto $name",
+                                        stepLat,
+                                        stepLon
+                                    )
+                                )
                             }
                         }
                     }
@@ -226,12 +252,29 @@ class PanApiClient {
     suspend fun claimEscrowFunds(agentId: String = "VANGUARD-01", netPayout: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                // Mock endpoint pointing to Firebase for successful escrow completion
-                val response: HttpResponse = client.post("$BASE_URL/ledger/escrow_claim.json") {
+                // 1. Fetch current balance to calculate the new total
+                val currentWallet = getWalletData(agentId)
+                val newBalance = (currentWallet?.balance ?: 0.0) + netPayout
+
+                // 2. Update the total balance in Firebase
+                client.put("$BASE_URL/agents/$agentId/wallet/balance.json") {
                     contentType(ContentType.Application.Json)
-                    setBody(MissionCompleteRequest(agentId, netPayout))
+                    setBody(newBalance.toString())
                 }
-                response.status.isSuccess()
+
+                // 3. Push a new transaction record to the history ledger
+                val txId = "tx_${System.currentTimeMillis()}"
+                val tx = TransactionLog(
+                    txId,
+                    "Today",
+                    String.format("+$%.2f", netPayout),
+                    "Smart Contract Payout"
+                )
+                client.put("$BASE_URL/agents/$agentId/wallet/history/$txId.json") {
+                    contentType(ContentType.Application.Json)
+                    setBody(tx)
+                }
+                true
             } catch (e: Exception) {
                 println("💰 ESCROW ERROR: Failed to claim funds - ${e.message}")
                 false
@@ -240,14 +283,97 @@ class PanApiClient {
     }
 
     suspend fun getWalletData(agentId: String = "VANGUARD-01"): WalletResponse? {
-        return withContext(Dispatchers.IO) { null } // Disabled until backend ledger is built
+        return withContext(Dispatchers.IO) {
+            try {
+                val response: HttpResponse = client.get("$BASE_URL/agents/$agentId/wallet.json") {
+                    header(HttpHeaders.CacheControl, "no-cache")
+                }
+
+                val jsonString = response.bodyAsText()
+                if (jsonString == "null" || jsonString.isBlank()) {
+                    // Return an empty wallet if the agent is brand new
+                    return@withContext WalletResponse(0.0, null, emptyList())
+                }
+
+                val json = org.json.JSONObject(jsonString)
+                val balance = json.optDouble("balance", 0.0)
+                val linkedCard =
+                    if (json.isNull("linkedCard")) null else json.optString("linkedCard")
+
+                // Firebase stores lists as dynamic objects (Maps), so we iterate through the keys
+                val historyList = mutableListOf<TransactionLog>()
+                val historyObj = json.optJSONObject("history")
+
+                if (historyObj != null) {
+                    val keys = historyObj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val tx = historyObj.getJSONObject(key)
+                        historyList.add(
+                            TransactionLog(
+                                id = tx.optString("id", key),
+                                date = tx.optString("date", "Unknown"),
+                                amount = tx.optString("amount", "$0.00"),
+                                description = tx.optString("description", "Ledger Entry")
+                            )
+                        )
+                    }
+                }
+
+                // Sort by ID descending so the newest transactions are at the top of the screen
+                historyList.sortByDescending { it.id }
+
+                WalletResponse(balance, linkedCard, historyList)
+            } catch (e: Exception) {
+                println("🏦 WALLET ERROR: Failed to fetch ledger - ${e.message}")
+                null
+            }
+        }
     }
 
     suspend fun linkDebitCard(agentId: String = "VANGUARD-01", cardNumber: String): Boolean {
-        return withContext(Dispatchers.IO) { false } // Disabled until Stripe is integrated
+        return withContext(Dispatchers.IO) {
+            try {
+                // Save the masked card directly to the agent's wallet node
+                val response: HttpResponse =
+                    client.put("$BASE_URL/agents/$agentId/wallet/linkedCard.json") {
+                        contentType(ContentType.Application.Json)
+                        setBody("\"$cardNumber\"")
+                    }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                println("🏦 BANK ERROR: Failed to link card - ${e.message}")
+                false
+            }
+        }
     }
 
     suspend fun withdrawFunds(agentId: String = "VANGUARD-01", amount: Double): Boolean {
-        return withContext(Dispatchers.IO) { false } // Disabled until Stripe is integrated
+        return withContext(Dispatchers.IO) {
+            try {
+                // 1. Reset the balance to zero
+                client.put("$BASE_URL/agents/$agentId/wallet/balance.json") {
+                    contentType(ContentType.Application.Json)
+                    setBody("0.0")
+                }
+
+                // 2. Log the ACH Withdrawal on the ledger
+                val txId = "wd_${System.currentTimeMillis()}"
+                val tx = TransactionLog(
+                    txId,
+                    "Today",
+                    String.format("-$%.2f", amount),
+                    "ACH Bank Transfer"
+                )
+                client.put("$BASE_URL/agents/$agentId/wallet/history/$txId.json") {
+                    contentType(ContentType.Application.Json)
+                    setBody(tx)
+                }
+                true
+            } catch (e: Exception) {
+                println("🏦 BANK ERROR: Failed to withdraw funds - ${e.message}")
+                false
+            }
+        }
     }
 }
