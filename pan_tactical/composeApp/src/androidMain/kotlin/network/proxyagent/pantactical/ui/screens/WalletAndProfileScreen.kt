@@ -58,7 +58,6 @@ fun WalletAndProfileScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // --- FIX 6: EncryptedSharedPreferences for PII ---
     val sharedPrefs = remember {
         try {
             val masterKey = MasterKey.Builder(context)
@@ -73,7 +72,6 @@ fun WalletAndProfileScreen(
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            // Fallback for older devices/preview mode
             context.getSharedPreferences("PanAgentSettings", Context.MODE_PRIVATE)
         }
     }
@@ -94,8 +92,6 @@ fun WalletAndProfileScreen(
     var isLinkingCard by remember { mutableStateOf(false) }
     var isWithdrawing by remember { mutableStateOf(false) }
     var selectedTransaction by remember { mutableStateOf<network.proxyagent.pantactical.network.TransactionLog?>(null) }
-
-    // --- NEW: Lightbox State ---
     var enlargedImageUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -103,195 +99,211 @@ fun WalletAndProfileScreen(
         isFetchingWallet = false
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF121212)).systemBarsPadding().verticalScroll(rememberScrollState())) {
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF121212))) {
 
-        Row(
-            modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)).padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(70.dp)
+                .background(Color(0xFF000000))
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
         ) {
-            Box(
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(20.dp)).clickable { onBack() },
-                contentAlignment = Alignment.Center
-            ) { Text("◀", color = Color.White, fontSize = 20.sp) }
-            Spacer(modifier = Modifier.width(16.dp))
-            Text("AGENT LEDGER & PROFILE", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        }
 
-        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("AVAILABLE ESCROW BALANCE", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth().background(Color(0xFF1A1A1A)).padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(Color(0xFF333333), RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) { Text("◀", color = Color.White, fontSize = 18.sp) }
 
-            if (isFetchingWallet) {
-                CircularProgressIndicator(color = Color(0xFF4CAF50), modifier = Modifier.padding(16.dp))
-            } else {
-                Text(text = String.format("$%.2f", walletData?.balance ?: 0.0), color = Color(0xFF4CAF50), fontSize = 64.sp, fontWeight = FontWeight.Black)
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("AGENT LEDGER & PROFILE", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            }
+
+            Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("AVAILABLE ESCROW BALANCE", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+
+                if (isFetchingWallet) {
+                    CircularProgressIndicator(color = Color(0xFF4CAF50), modifier = Modifier.padding(16.dp))
+                } else {
+                    Text(text = String.format("$%.2f", walletData?.balance ?: 0.0), color = Color(0xFF4CAF50), fontSize = 64.sp, fontWeight = FontWeight.Black)
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    if (walletData?.linkedCard == null) {
+                        Button(
+                            onClick = { showLinkCardDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
+                            modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(8.dp)
+                        ) { Text("LINK BANK DEBIT CARD", color = Color.White, fontWeight = FontWeight.Black, fontSize = 14.sp) }
+                    } else {
+                        Button(
+                            onClick = {
+                                val balanceToWithdraw = walletData?.balance ?: 0.0
+                                if (balanceToWithdraw > 0) {
+                                    isWithdrawing = true
+                                    coroutineScope.launch {
+                                        val success = apiClient.withdrawFunds(amount = balanceToWithdraw)
+                                        if (success) {
+                                            android.widget.Toast.makeText(context, String.format("ACH Transfer Initiated: $%.2f", balanceToWithdraw), android.widget.Toast.LENGTH_LONG).show()
+                                            walletData = apiClient.getWalletData()
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Withdrawal Failed.", android.widget.Toast.LENGTH_LONG).show()
+                                        }
+                                        isWithdrawing = false
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                            modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(8.dp), enabled = !isWithdrawing
+                        ) {
+                            if (isWithdrawing) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                            else Text("WITHDRAW TO ${walletData!!.linkedCard?.uppercase()}", color = Color.White, fontWeight = FontWeight.Black)
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TextButton(onClick = { showLinkCardDialog = true }) { Text("UPDATE LINKED CARD", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
+
+            Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1A1A1A)).padding(vertical = 16.dp)) {
+                Text("MISSION PREFERENCES", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(
+                        onClick = { onNavPrefChange("GOOGLE") },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (navPreference == "GOOGLE") Color(0xFF1976D2) else Color(0xFF333333)),
+                        modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(8.dp)
+                    ) { Text("GOOGLE MAPS", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+
+                    Button(
+                        onClick = { onNavPrefChange("TACTICAL") },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (navPreference == "TACTICAL") Color(0xFF00BCD4) else Color(0xFF333333)),
+                        modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(8.dp)
+                    ) { Text("PAN TACTICAL", color = if (navPreference == "TACTICAL") Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                }
+
                 Spacer(modifier = Modifier.height(24.dp))
 
-                if (walletData?.linkedCard == null) {
-                    Button(
-                        onClick = { showLinkCardDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
-                        modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(8.dp)
-                    ) { Text("LINK BANK DEBIT CARD", color = Color.White, fontWeight = FontWeight.Black, fontSize = 14.sp) }
-                } else {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                    Text("AGENT IDENTITY ALIAS", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
+
+                    OutlinedTextField(
+                        value = firstName,
+                        onValueChange = {
+                            firstName = it
+                            sharedPrefs.edit().putString("agent_first_name", it).apply()
+                        },
+                        label = { Text("LEGAL FIRST NAME", color = Color.Gray, fontSize = 10.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF00BCD4),
+                            unfocusedBorderColor = Color(0xFF333333),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            cursorColor = Color(0xFF00BCD4)
+                        ),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = callsign,
+                        onValueChange = {
+                            callsign = it
+                            sharedPrefs.edit().putString("agent_callsign", it).apply()
+                        },
+                        label = { Text("TACTICAL CALLSIGN (OVERRIDES NAME)", color = Color.Gray, fontSize = 10.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF00BCD4),
+                            unfocusedBorderColor = Color(0xFF333333),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            cursorColor = Color(0xFF00BCD4)
+                        ),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        singleLine = true
+                    )
+
                     Button(
                         onClick = {
-                            val balanceToWithdraw = walletData?.balance ?: 0.0
-                            if (balanceToWithdraw > 0) {
-                                isWithdrawing = true
-                                coroutineScope.launch {
-                                    val success = apiClient.withdrawFunds(amount = balanceToWithdraw)
-                                    if (success) {
-                                        android.widget.Toast.makeText(context, String.format("ACH Transfer Initiated: $%.2f", balanceToWithdraw), android.widget.Toast.LENGTH_LONG).show()
-                                        walletData = apiClient.getWalletData()
-                                    } else {
-                                        android.widget.Toast.makeText(context, "Withdrawal Failed.", android.widget.Toast.LENGTH_LONG).show()
+                            val identity = when {
+                                callsign.isNotBlank() -> callsign
+                                firstName.isNotBlank() -> firstName
+                                else -> "Proxy Agent"
+                            }
+                            val ttsParams = android.os.Bundle().apply {
+                                putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume)
+                            }
+                            tts?.speak("The command is now yours, $identity.", TextToSpeech.QUEUE_FLUSH, ttsParams, "TestAudio")
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("🔊 TEST AUDIO ALIAS", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text("TACTICAL AUDIO MIXER", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
+
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("J.A.R.V.I.S. Dispatch Voice", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Text("${(voiceVolume * 100).toInt()}%", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = voiceVolume,
+                        onValueChange = {
+                            onVoiceVolumeChange(it)
+                            val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, it) }
+                            tts?.speak("Level set.", TextToSpeech.QUEUE_FLUSH, ttsParams, null)
+                        },
+                        valueRange = 0f..1f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF00BCD4), activeTrackColor = Color(0xFF00BCD4))
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Emergency Alarms & Beeps", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Text("${alertVolume}%", color = Color(0xFFF44336), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = alertVolume.toFloat(),
+                        onValueChange = { onAlertVolumeChange(it.toInt()) },
+                        onValueChangeFinished = {
+                            try {
+                                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                                if (audioManager.ringerMode == AudioManager.RINGER_MODE_NORMAL) {
+                                    val toneGen = android.media.ToneGenerator(AudioManager.STREAM_ALARM, alertVolume)
+                                    toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150)
+                                    coroutineScope.launch {
+                                        kotlinx.coroutines.delay(200)
+                                        toneGen.release()
                                     }
-                                    isWithdrawing = false
                                 }
+                            } catch (e: Exception) {
+                                println("AUDIO ERROR: Failed to play preview beep - ${e.message}")
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                        modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(8.dp), enabled = !isWithdrawing
-                    ) {
-                        if (isWithdrawing) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
-                        else Text("WITHDRAW TO ${walletData!!.linkedCard?.uppercase()}", color = Color.White, fontWeight = FontWeight.Black)
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    TextButton(onClick = { showLinkCardDialog = true }) { Text("UPDATE LINKED CARD", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        valueRange = 0f..100f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFFF44336), activeTrackColor = Color(0xFFF44336))
+                    )
                 }
-            }
-        }
 
-        Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1A1A1A)).padding(vertical = 16.dp)) {
-            Text("MISSION PREFERENCES", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(
-                    onClick = { onNavPrefChange("GOOGLE") },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (navPreference == "GOOGLE") Color(0xFF1976D2) else Color(0xFF333333)),
-                    modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(8.dp)
-                ) { Text("GOOGLE MAPS", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-
-                Button(
-                    onClick = { onNavPrefChange("TACTICAL") },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (navPreference == "TACTICAL") Color(0xFF00BCD4) else Color(0xFF333333)),
-                    modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(8.dp)
-                ) { Text("PAN TACTICAL", color = if (navPreference == "TACTICAL") Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // --- AGENT IDENTITY ALIAS ---
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                Text("AGENT IDENTITY ALIAS", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
-
-                OutlinedTextField(
-                    value = firstName,
-                    onValueChange = {
-                        firstName = it
-                        sharedPrefs.edit().putString("agent_first_name", it).apply()
-                    },
-                    label = { Text("LEGAL FIRST NAME", color = Color.Gray, fontSize = 10.sp) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF00BCD4),
-                        unfocusedBorderColor = Color(0xFF333333),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        cursorColor = Color(0xFF00BCD4)
-                    ),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = callsign,
-                    onValueChange = {
-                        callsign = it
-                        sharedPrefs.edit().putString("agent_callsign", it).apply()
-                    },
-                    label = { Text("TACTICAL CALLSIGN (OVERRIDES NAME)", color = Color.Gray, fontSize = 10.sp) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF00BCD4),
-                        unfocusedBorderColor = Color(0xFF333333),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        cursorColor = Color(0xFF00BCD4)
-                    ),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    singleLine = true
-                )
-
-                // TEST AUDIO BUTTON
-                Button(
-                    onClick = {
-                        val identity = when {
-                            callsign.isNotBlank() -> callsign
-                            firstName.isNotBlank() -> firstName
-                            else -> "Proxy Agent"
-                        }
-                        val ttsParams = android.os.Bundle().apply {
-                            putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume)
-                        }
-                        tts?.speak("The command is now yours, $identity.", TextToSpeech.QUEUE_FLUSH, ttsParams, "TestAudio")
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("🔊 TEST AUDIO ALIAS", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text("TACTICAL AUDIO MIXER", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
-
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("J.A.R.V.I.S. Dispatch Voice", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    Text("${(voiceVolume * 100).toInt()}%", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-                Slider(
-                    value = voiceVolume,
-                    onValueChange = {
-                        onVoiceVolumeChange(it)
-                        val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, it) }
-                        tts?.speak("Level set.", TextToSpeech.QUEUE_FLUSH, ttsParams, null)
-                    },
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFF00BCD4), activeTrackColor = Color(0xFF00BCD4))
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Emergency Alarms & Beeps", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    Text("${alertVolume}%", color = Color(0xFFF44336), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-                Slider(
-                    value = alertVolume.toFloat(),
-                    onValueChange = { onAlertVolumeChange(it.toInt()) },
-                    onValueChangeFinished = {
-                        // --- FIX 12: Hardware Audio Focus & Stream Safety Check ---
-                        try {
-                            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                            if (audioManager.ringerMode == AudioManager.RINGER_MODE_NORMAL) {
-                                val toneGen = android.media.ToneGenerator(AudioManager.STREAM_ALARM, alertVolume)
-                                toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150)
-                                coroutineScope.launch {
-                                    kotlinx.coroutines.delay(200)
-                                    toneGen.release()
-                                }
-                            }
-                        } catch (e: Exception) {
-                            println("AUDIO ERROR: Failed to play preview beep - ${e.message}")
-                        }
-                    },
-                    valueRange = 0f..100f,
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFFF44336), activeTrackColor = Color(0xFFF44336))
-                )
-            }
-
-            AnimatedVisibility(visible = navPreference == "TACTICAL") {
+                // --- FIX 1: ALWAYS SHOW VOICE PROFILE ---
                 Column(modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
                     Text("TACTICAL VOICE PROFILE", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                     Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -313,32 +325,32 @@ fun WalletAndProfileScreen(
                     }
                 }
             }
-        }
 
-        Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)).padding(top = 16.dp)) {
-            Text("CRYPTOGRAPHIC TRANSACTION LEDGER", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                if (walletData?.history?.isEmpty() == true) {
-                    Text("No transactions found on ledger.", color = Color.DarkGray, fontSize = 14.sp, modifier = Modifier.padding(16.dp))
-                } else {
-                    walletData?.history?.forEach { tx ->
-                        Row(modifier = Modifier.fillMaxWidth().clickable { selectedTransaction = tx }.padding(vertical = 12.dp, horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(tx.date, color = Color.Gray, fontSize = 12.sp)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(tx.description, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                Text("TXN ID: ${tx.id}", color = Color.DarkGray, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)).padding(top = 16.dp)) {
+                Text("CRYPTOGRAPHIC TRANSACTION LEDGER", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    if (walletData?.history?.isEmpty() == true) {
+                        Text("No transactions found on ledger.", color = Color.DarkGray, fontSize = 14.sp, modifier = Modifier.padding(16.dp))
+                    } else {
+                        walletData?.history?.forEach { tx ->
+                            Row(modifier = Modifier.fillMaxWidth().clickable { selectedTransaction = tx }.padding(vertical = 12.dp, horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(tx.date, color = Color.Gray, fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(tx.description, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("TXN ID: ${tx.id}", color = Color.DarkGray, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                }
+                                Text(tx.amount, color = if (tx.amount.startsWith("-")) Color(0xFFF44336) else Color(0xFF4CAF50), fontSize = 18.sp, fontWeight = FontWeight.Black)
                             }
-                            Text(tx.amount, color = if (tx.amount.startsWith("-")) Color(0xFFF44336) else Color(0xFF4CAF50), fontSize = 18.sp, fontWeight = FontWeight.Black)
+                            HorizontalDivider(color = Color(0xFF333333), thickness = 1.dp)
                         }
-                        HorizontalDivider(color = Color(0xFF333333), thickness = 1.dp)
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
-
-    // --- DIALOGS & OVERLAYS ---
 
     if (showLinkCardDialog) {
         AlertDialog(
@@ -434,7 +446,6 @@ fun WalletAndProfileScreen(
                                             .size(80.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                             .border(1.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp))
-                                            // --- FIX 17: SSRF Image Validation / UI Spoofing Defense ---
                                             .clickable {
                                                 val safeUrl = url.lowercase()
                                                 if ((safeUrl.startsWith("https://i.ibb.co/") || safeUrl.startsWith("https://imgbb.com/")) &&
@@ -465,17 +476,15 @@ fun WalletAndProfileScreen(
         )
     }
 
-    // --- NEW: Full-Screen Evidence Lightbox Overlay ---
     if (enlargedImageUrl != null) {
         Dialog(
             onDismissRequest = { enlargedImageUrl = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false) // Allows edge-to-edge viewing
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xEE000000)) // Heavy dark scrim
-                    // This invisible click layer catches taps outside the image and dismisses the overlay
+                    .background(Color(0xEE000000))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -494,7 +503,6 @@ fun WalletAndProfileScreen(
                     contentScale = ContentScale.FillWidth
                 )
 
-                // Instructional dismiss badge
                 Text(
                     "✖ TAP ANYWHERE TO CLOSE",
                     color = Color.White,
