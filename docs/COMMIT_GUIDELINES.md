@@ -1,6 +1,6 @@
 # Proxy Agent Network (PAN) | Commit Guidelines
 
-To maintain an enterprise-grade audit trail for our Fleet Partners (Waymo, Zoox) and state regulators (Arizona DPS), all PAN contributors must adhere to strict commit standards. We use the **Conventional Commits** specification, supplemented with mission-critical physical and compliance metadata.
+To maintain an enterprise-grade audit trail for our Fleet Partners (Waymo, Zoox) while keeping developer velocity high, all PAN contributors must adhere to our streamlined commit standards. We use the **Conventional Commits** specification.
 
 ---
 
@@ -12,25 +12,18 @@ Your commit message should follow this structural pattern:
 
 [Optional Body]
 
-[Security & Protocol Context]
-Severity: <SEV-LEVEL>
-Protocol Version: <VERSION>
-Hardware Impact: <DESCRIPTION>
-Compliance Impact: <DESCRIPTION>
-
-[Breaking Changes]
-[Ref]
+[Optional Security & Compliance Context]
 
 ### Type
 Must be one of the following:
 
-* **feat**: A new feature for the Fleet Gateway or Agent SDK.
+* **feat**: A new feature for the Fleet Gateway, Dashboard, or App.
 * **fix**: A bug fix.
-* **docs**: Documentation changes only (e.g., SLA, ORP manuals).
+* **docs**: Documentation changes only.
 * **style**: Code formatting changes (white-space, etc.).
 * **refactor**: A code change that neither fixes a bug nor adds a feature.
-* **perf**: A change that improves API routing or UWB homing latency.
-* **test**: Adding or correcting tests (especially for M2H webhook ingestion).
+* **perf**: A change that improves performance or latency.
+* **test**: Adding or correcting tests.
 * **build**: Changes to our CI/CD pipelines.
 * **chore**: Maintenance tasks.
 * **revert**: Reverts a previous commit.
@@ -38,45 +31,34 @@ Must be one of the following:
 ### Scope
 The scope must specify the architectural component affected:
 
-* **core**: L402 settlement, Lightning Network logic, and M2H state machines.
-* **gateway**: The Fleet API, UDS fault ingestion, and webhook routing.
-* **compliance**: SB 1417 Audit Engine and cryptographic hashing of Optical Health Reports.
-* **hardware**: TPM 2.0 / Secure Enclave attestation, GPS/UWB geofencing.
-* **ops-hub**: The Tactical Mission Control Dashboard and telemetry UI.
+* **core**: Core logic, offline sync engines, and data models.
+* **gateway**: The Python FastAPI backend, database routing, and webhooks.
+* **ops-hub**: The Tactical Mission Control Dashboard and fleet sandbox.
+* **app**: Android/iOS mobile application logic, permissions, and background services.
+* **ui**: Jetpack Compose layouts, animations, and visual components.
 
 ---
 
-## 2. Security & Compliance Context (Mandatory)
+## 2. Writing the Content
 
-Because the PAN codebase triggers real-world physical actions on $150k+ autonomous vehicles, you must include the following metadata in your commit body or footer:
-
-* **Severity**: `SEV-1` (Physical asset risk/Enclave spoofing), `SEV-2` (SLA/API outage), `SEV-3` (Minor UI bugs), or `NONE`.
-* **Protocol Version**: Target version (e.g., `v2026.1`).
-* **Hardware Impact**: Specify if the change affects Vanguard Agent hardware key generation or UWB beaconing.
-* **Compliance Impact**: Specify if the change modifies the SB 1417 audit log schema or ORP (Optical Reclamation Protocol) liability limits.
-
----
-
-## 3. Writing the Content
-
-### Subject Line
-* Use the imperative, present tense: "change" not "changed" nor "changes".
+### Subject Line (Required)
+* Use the imperative, present tense: "add" not "added" nor "adds".
 * Limit to 50 characters.
 * Do not capitalize the first letter.
 * No period (`.`) at the end.
 
-### Body
-* Describe **Why** the change is being made and **How** it impacts AV fleet operations.
+### Body (Optional)
+* Describe **Why** the change is being made and **How** it impacts the platform.
 * Wrap lines at 72 characters.
 
-### Breaking Changes
-All breaking changes must be documented in the footer starting with `BREAKING CHANGE:` followed by a description of the change and the migration path for integrated Fleet API endpoints.
+### Security & Compliance Context (Optional)
+While no longer strictly enforced by the pre-commit hook to maintain developer velocity, critical backend PRs should still note their severity or impact on state regulations (e.g., SB 1417 audit trails) in the footer.
 
 ---
 
-## 4. Automated Validation (Pre-commit Hook)
+## 3. Automated Validation (Pre-commit Hook)
 
-To prevent invalid commits from reaching the Mesa Pilot repository, install the following validation script. It enforces the new AV infrastructure scopes and mandatory compliance metadata.
+To ensure the repository stays clean, install the following validation script. It enforces the PAN scopes and formatting while stripping out Windows line-ending bugs.
 
 ### Installation
 1. Create a file at `.git/hooks/commit-msg`.
@@ -84,40 +66,25 @@ To prevent invalid commits from reaching the Mesa Pilot repository, install the 
 3. Make it executable: `chmod +x .git/hooks/commit-msg`.
 
 ### Validation Script
+```bash
 #!/bin/bash
 
 # Proxy Agent Network (PAN) Commit Validator
 MSG_FILE=$1
-COMMIT_MSG=$(cat "$MSG_FILE")
 
-# 1. Regex for Conventional Commits: type(scope): subject
-REGEX="^(feat|fix|docs|style|refactor|perf|test|build|chore|revert)\((core|gateway|compliance|hardware|ops-hub)\): .+"
+# 1. Safely extract the first line and strip Windows carriage returns (\r)
+FIRST_LINE=$(head -n 1 "$MSG_FILE" | tr -d '\r')
 
-if [[ ! $COMMIT_MSG =~ $REGEX ]]; then
-    echo "❌ ERROR: Invalid commit message format."
-    echo "Expected: <type>(<scope>): <subject>"
-    echo "Types: feat, fix, docs, style, refactor, perf, test, build, chore, revert"
-    echo "Scopes: core, gateway, compliance, hardware, ops-hub"
+# 2. Check for Conventional Format: type(scope): subject
+REGEX="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)\((core|gateway|ops-hub|app|ui)\): .+"
+
+if [[ ! $FIRST_LINE =~ $REGEX ]]; then
+    echo "❌ ERROR: Invalid commit format."
+    echo "   Use: <type>(<scope>): <subject>"
+    echo "   Allowed Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+    echo "   Allowed Scopes: core, gateway, ops-hub, app, ui"
     exit 1
 fi
 
-# 2. Check for Mandatory Metadata
-METADATA_FIELDS=("Severity:" "Protocol Version:" "Hardware Impact:" "Compliance Impact:")
-MISSING_FIELDS=()
-
-for field in "${METADATA_FIELDS[@]}"; do
-    if ! echo "$COMMIT_MSG" | grep -q "$field"; then
-        MISSING_FIELDS+=("$field")
-    fi
-done
-
-if [ ${#MISSING_FIELDS[@]} -ne 0 ]; then
-    echo "❌ ERROR: Missing mandatory Security & Compliance Context."
-    for missing in "${MISSING_FIELDS[@]}"; do
-        echo "   - Missing field: $missing"
-    done
-    exit 1
-fi
-
-echo "✅ PAN Commit message validated."
+echo "✅ PAN Commit validated."
 exit 0
