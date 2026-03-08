@@ -401,15 +401,6 @@ fun MainDashboardContent() {
         }
     }
 
-    LaunchedEffect(activeMission, hasGpsLock) {
-        if (activeMission != null && hasGpsLock) {
-            val routeData = apiClient.getTacticalRoute(agentLocation.latitude, agentLocation.longitude, activeMission!!.lat, activeMission!!.lon)
-            tacticalRoute = routeData.first
-        } else if (activeMission == null) {
-            tacticalRoute = emptyList()
-        }
-    }
-
     val distanceMiles = remember(agentLocation, activeMission) {
         if (activeMission == null) return@remember 0.0
         val results = FloatArray(1)
@@ -459,7 +450,7 @@ fun MainDashboardContent() {
                         activeMission?.let { mission ->
                             val targetLocation = LatLng(mission.lat, mission.lon)
                             Marker(state = MarkerState(position = targetLocation), title = "🚨 STRANDED AV")
-                            if (tacticalRoute.isNotEmpty()) Polyline(points = tacticalRoute, color = Color(0xFFFF9800), width = 14f, geodesic = true)
+                            if (tacticalRoute.isNotEmpty()) Polyline(points = tacticalRoute, color = Color(0xFF00BCD4), width = 14f, geodesic = true)
                             else Polyline(points = listOf(agentLocation, targetLocation), color = Color(0xFFF44336).copy(alpha = 0.5f), width = 8f, geodesic = true)
                         }
                     }
@@ -479,7 +470,40 @@ fun MainDashboardContent() {
                                 Text(activeMission?.errorCode ?: "Unknown Error", color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
                                     Button(onClick = { missionState = "IDLE"; activeMission = null }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(12.dp)) { Text("DECLINE", color = Color.White) }
-                                    Button(onClick = { coroutineScope.launch { if (apiClient.acceptMission()) { missionState = "ACTIVE"; if (navPreference == "GOOGLE") { val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${activeMission!!.lat},${activeMission!!.lon}&mode=d")); mapIntent.setPackage("com.google.android.apps.maps"); try { context.startActivity(mapIntent) } catch (e: Exception) { } } } } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)), modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(12.dp)) { Text("ACCEPT", color = Color.White, fontWeight = FontWeight.Black) }
+                                    Button(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                // 1. Tell Firebase we own this mission
+                                                if (apiClient.acceptMission()) {
+                                                    missionState = "ACTIVE"
+
+                                                    // 2. NEW: Manually trigger the OSRM Routing Engine immediately upon acceptance
+                                                    if (hasGpsLock && activeMission != null) {
+                                                        val routeData = apiClient.getTacticalRoute(
+                                                            agentLocation.latitude,
+                                                            agentLocation.longitude,
+                                                            activeMission!!.lat,
+                                                            activeMission!!.lon
+                                                        )
+                                                        // 3. Stamp the coordinates to the state so the Polyline renders instantly
+                                                        tacticalRoute = routeData.first
+                                                    }
+
+                                                    // 4. Launch external maps if preference is set
+                                                    if (navPreference == "GOOGLE") {
+                                                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${activeMission!!.lat},${activeMission!!.lon}&mode=d"))
+                                                        mapIntent.setPackage("com.google.android.apps.maps")
+                                                        try { context.startActivity(mapIntent) } catch (e: Exception) { }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                        modifier = Modifier.weight(1f).height(64.dp),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("ACCEPT", color = Color.White, fontWeight = FontWeight.Black)
+                                    }
                                 }
                             }
                         }
