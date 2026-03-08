@@ -25,7 +25,7 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
-    
+
     listOf(
         iosArm64(),
         iosSimulatorArm64()
@@ -80,6 +80,11 @@ kotlin {
             // Firebase
             implementation(project.dependencies.platform("com.google.firebase:firebase-bom:32.8.0"))
             implementation("com.google.firebase:firebase-messaging")
+
+            // Google ML Kit for On-Device Privacy Redaction
+            implementation("com.google.mlkit:face-detection:16.1.6")
+            implementation("com.google.mlkit:text-recognition:16.0.0")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3") // For async Task.await()
         }
         commonMain.dependencies {
             // Default UI dependencies
@@ -111,6 +116,11 @@ android {
     namespace = "network.proxyagent.pantactical"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
+    // --- NEW: Enable BuildConfig generation ---
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "network.proxyagent.pantactical"
         minSdk = libs.versions.android.minSdk.get().toInt()
@@ -124,9 +134,14 @@ android {
         if (localPropertiesFile.exists()) {
             localProperties.load(FileInputStream(localPropertiesFile))
         }
-        val mapsApiKey = localProperties.getProperty("MAPS_API_KEY") ?: ""
 
+        // Maps Key
+        val mapsApiKey = localProperties.getProperty("MAPS_API_KEY") ?: ""
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+
+        // ImgBB Key
+        val imgbbApiKey = localProperties.getProperty("IMGBB_API_KEY") ?: ""
+        buildConfigField("String", "IMGBB_API_KEY", "\"$imgbbApiKey\"")
     }
     packaging {
         resources {
@@ -146,6 +161,8 @@ android {
 
 dependencies {
     debugImplementation(libs.compose.uiTooling)
+    // Coil for asynchronous loading of Firebase Storage URLs
+    implementation("io.coil-kt:coil-compose:2.5.0")
 }
 configurations.all {
     exclude(group = "com.google.android.gms", module = "play-services-maps")

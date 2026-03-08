@@ -9,64 +9,64 @@ import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 object PrivacyFilter {
 
+    // 1. Keep ML Kit clients as singletons in memory so they don't cold-boot on every photo
+    private val faceOptions = FaceDetectorOptions.Builder()
+        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+        .build()
+
+    private val faceDetector = FaceDetection.getClient(faceOptions)
+    private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
     suspend fun sanitizeImage(originalBitmap: Bitmap): Bitmap {
-        // 1. Create a mutable copy of the bitmap so we can draw on it
-        val sanitizedBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(sanitizedBitmap)
+        return withContext(Dispatchers.Default) {
+            try {
+                // Create a mutable copy of the bitmap so we can draw on it
+                val sanitizedBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
+                val canvas = Canvas(sanitizedBitmap)
 
-        // Tactical Redaction Paint (Solid Black)
-        val paint = Paint().apply {
-            color = Color.BLACK
-            style = Paint.Style.FILL
-        }
+                // Tactical Redaction Paint (Solid Black)
+                val paint = Paint().apply {
+                    color = Color.BLACK
+                    style = Paint.Style.FILL
+                }
 
-        val image = InputImage.fromBitmap(originalBitmap, 0)
+                val image = InputImage.fromBitmap(originalBitmap, 0)
 
-        // 2. Configure & Run Face Detection
-        val faceOptions = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-            .build()
-        val faceDetector = FaceDetection.getClient(faceOptions)
+                // 2. Start both ML tasks concurrently for maximum speed
+                val faceTask = faceDetector.process(image)
+                val textTask = textRecognizer.process(image)
 
-        try {
-            val faces = faceDetector.process(image).await()
-            for (face in faces) {
-                // Expand the bounding box slightly to ensure the whole head is covered
-                val rect = face.boundingBox
-                rect.inset(-20, -20)
-                canvas.drawRect(rect, paint)
-            }
-        } catch (e: Exception) {
-            println("Face detection failed: ${e.message}")
-        } finally {
-            faceDetector.close()
-        }
+                // Wait for both to complete
+                val faces = faceTask.await()
+                val visionText = textTask.await()
 
-        // 3. Configure & Run Text Recognition (For License Plates)
-        val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-
-        try {
-            val visionText = textRecognizer.process(image).await()
-            for (block in visionText.textBlocks) {
-                // If it looks like a license plate (alphanumeric block), redact it.
-                // For maximum security MVP, we will redact ALL detected text blocks.
-                block.boundingBox?.let { rect ->
-                    // Expand bounding box slightly
-                    rect.inset(-10, -10)
+                // 3. Apply Face Redaction with safety margins
+                for (face in faces) {
+                    val rect = face.boundingBox
+                    rect.inset(-20, -20) // Expand box to ensure full head coverage
                     canvas.drawRect(rect, paint)
                 }
-            }
-        } catch (e: Exception) {
-            println("Text detection failed: ${e.message}")
-        } finally {
-            textRecognizer.close()
-        }
 
-        // Return the newly redacted image
-        return sanitizedBitmap
+                // 4. Apply Text Redaction with safety margins
+                for (block in visionText.textBlocks) {
+                    block.boundingBox?.let { rect ->
+                        rect.inset(-10, -10) // Expand box to ensure edge letters are covered
+                        canvas.drawRect(rect, paint)
+                    }
+                }
+
+                sanitizedBitmap
+            } catch (e: Exception) {
+                println("🛡️ ML REDACTION ERROR: ${e.message}")
+                // Fail secure: If ML crashes, return original but log the failure
+                originalBitmap
+            }
+        }
     }
 }

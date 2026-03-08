@@ -1,5 +1,6 @@
 package network.proxyagent.pantactical.network
 
+import android.graphics.Bitmap
 import io.ktor.client.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -15,6 +16,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import network.proxyagent.pantactical.security.StrongBoxManager
 import com.google.android.gms.maps.model.LatLng
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 
@@ -40,7 +42,13 @@ data class LinkCardRequest(val agentId: String, val cardNumber: String)
 data class WithdrawRequest(val agentId: String, val amount: Double)
 
 @Serializable
-data class TransactionLog(val id: String, val date: String, val amount: String, val description: String)
+data class TransactionLog(
+    val id: String,
+    val date: String,
+    val amount: String,
+    val description: String,
+    val evidenceUrls: List<String>? = null
+)
 
 @Serializable
 data class WalletResponse(val balance: Double, val linkedCard: String? = null, val history: List<TransactionLog>)
@@ -48,7 +56,6 @@ data class WalletResponse(val balance: Double, val linkedCard: String? = null, v
 class PanApiClient {
 
     private val client = HttpClient(OkHttp) {
-        // --- NEW: Disable the 10-second timeout for infinite SSE streaming ---
         engine {
             config {
                 readTimeout(0, TimeUnit.MILLISECONDS)
@@ -59,8 +66,9 @@ class PanApiClient {
         }
     }
 
-    // --- FIREBASE RTDB PRODUCTION URL ---
+    // --- FIREBASE PRODUCTION URLS ---
     private val BASE_URL = "https://pan-tactical-default-rtdb.firebaseio.com"
+    private val STORAGE_BUCKET = "pan-tactical.firebasestorage.app"
 
     suspend fun updateAgentStatus(
         context: android.content.Context,
@@ -79,7 +87,6 @@ class PanApiClient {
                     android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
                 )
 
-                println("🛡️ Requesting Google Play Integrity Attestation...")
                 val engine = network.proxyagent.pantactical.security.AttestationEngine()
                 val hardwareToken = engine.generateHardwareToken(context, nonce)
 
@@ -93,7 +100,6 @@ class PanApiClient {
                     timestamp = System.currentTimeMillis()
                 )
 
-                // FIREBASE REST: PUT request overwrites the agent's current status node
                 val response: HttpResponse =
                     client.put("$BASE_URL/agents/VANGUARD-01/status.json") {
                         contentType(ContentType.Application.Json)
@@ -102,7 +108,6 @@ class PanApiClient {
 
                 response.status.isSuccess()
             } catch (e: Exception) {
-                println("NETWORK ERROR: Failed to broadcast status. ${e.localizedMessage}")
                 false
             }
         }
@@ -113,9 +118,6 @@ class PanApiClient {
         onMissionReceived: (lat: Double, lon: Double, errorCode: String, bounty: String, intersection: String) -> Unit
     ) {
         withContext(Dispatchers.IO) {
-            println("🟢 DISPATCH LINE OPEN: Tactical Short-Polling engaged...")
-
-            // --- NEW: Bypass Samsung Knox with a 2-second GET heartbeat ---
             while (isActive) {
                 try {
                     val response: HttpResponse = client.get("$BASE_URL/dispatch/$agentId.json") {
@@ -124,36 +126,24 @@ class PanApiClient {
 
                     val jsonString = response.bodyAsText()
 
-                    // Firebase returns the string "null" if the node is empty
                     if (jsonString != "null" && jsonString.isNotBlank()) {
                         try {
                             val json = org.json.JSONObject(jsonString)
                             if (json.optString("type") == "MISSION") {
-                                println("🚨 INCOMING FIREBASE PAYLOAD: $jsonString")
-
                                 val lat = json.getDouble("lat")
                                 val lon = json.getDouble("lon")
                                 val errorCode = json.optString("errorCode", "UNKNOWN ERROR")
                                 val bounty = json.optString("bounty", "$0.00")
-                                val intersection =
-                                    json.optString("intersection", "Unknown Coordinates")
+                                val intersection = json.optString("intersection", "Unknown Coordinates")
 
                                 withContext(Dispatchers.Main) {
                                     onMissionReceived(lat, lon, errorCode, bounty, intersection)
                                 }
-
-                                // Auto-delete the payload so we don't trigger it again
                                 client.delete("$BASE_URL/dispatch/$agentId.json")
                             }
-                        } catch (e: Exception) {
-                            println("⚠️ Failed to decode tactical payload: ${e.message}")
-                        }
+                        } catch (e: Exception) { }
                     }
-                } catch (e: Exception) {
-                    println("📡 DISPATCH POLL ERROR: ${e.message}")
-                }
-
-                // Pause for 2 seconds before checking again to preserve battery
+                } catch (e: Exception) { }
                 delay(2000)
             }
         }
@@ -162,17 +152,13 @@ class PanApiClient {
     suspend fun acceptMission(agentId: String = "VANGUARD-01"): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                // Update Firebase to show the agent has locked the mission
                 val response: HttpResponse =
                     client.put("$BASE_URL/agents/$agentId/mission_state.json") {
                         contentType(ContentType.Application.Json)
                         setBody("\"ACCEPTED\"")
                     }
                 response.status.isSuccess()
-            } catch (e: Exception) {
-                println("API ERROR: Failed to accept mission - ${e.message}")
-                false
-            }
+            } catch (e: Exception) { false }
         }
     }
 
@@ -184,8 +170,7 @@ class PanApiClient {
     ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
-                val urlString =
-                    "https://router.project-osrm.org/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
+                val urlString = "https://router.project-osrm.org/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
                 val jsonString = response.bodyAsText()
                 val json = org.json.JSONObject(jsonString)
@@ -217,66 +202,104 @@ class PanApiClient {
                                 val modifier = maneuver?.optString("modifier", "") ?: ""
                                 var name = step.optString("name", "")
                                 if (name.isEmpty()) name = "unnamed road"
-                                val action =
-                                    if (modifier.isNotEmpty() && modifier != "straight") "$type $modifier" else type
-                                val formattedAction =
-                                    action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                val action = if (modifier.isNotEmpty() && modifier != "straight") "$type $modifier" else type
+                                val formattedAction = action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
-                                if (type == "arrive") stepsList.add(
-                                    Triple(
-                                        "Arrive at Destination",
-                                        stepLat,
-                                        stepLon
-                                    )
-                                )
-                                else if (distanceMiles > 0.0) stepsList.add(
-                                    Triple(
-                                        "$formattedAction onto $name",
-                                        stepLat,
-                                        stepLon
-                                    )
-                                )
+                                if (type == "arrive") stepsList.add(Triple("Arrive at Destination", stepLat, stepLon))
+                                else if (distanceMiles > 0.0) stepsList.add(Triple("$formattedAction onto $name", stepLat, stepLon))
                             }
                         }
                     }
                     return@withContext Pair(path, stepsList)
                 }
                 Pair(emptyList(), emptyList())
-            } catch (e: Exception) {
-                println("🗺️ ROUTING ERROR: ${e.message}")
-                Pair(emptyList(), emptyList())
-            }
+            } catch (e: Exception) { Pair(emptyList(), emptyList()) }
         }
     }
 
-    suspend fun claimEscrowFunds(agentId: String = "VANGUARD-01", netPayout: Double): Boolean {
+    // --- UPGRADED: Cloud Storage Upload Engine (Multipart Payload) ---
+    // --- UPGRADED: Tactical Relay Upload Engine (ImgBB API) ---
+    suspend fun uploadEvidenceArray(agentId: String = "VANGUARD-01", bitmaps: List<Bitmap>): List<String> {
+        return withContext(Dispatchers.IO) {
+            val uploadedUrls = mutableListOf<String>()
+
+            println("☁️ [TELEMETRY] Relaying ${bitmaps.size} evidence photos via Tactical API...")
+
+            // --- UPGRADED: Securely fetching the key from local.properties ---
+            val relayApiKey = network.proxyagent.pantactical.BuildConfig.IMGBB_API_KEY
+
+            bitmaps.forEachIndexed { index, bitmap ->
+                try {
+                    // 1. Compress the Bitmap
+                    val stream = ByteArrayOutputStream()
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
+                    val byteArray = stream.toByteArray()
+
+                    // 2. Convert to a pure Base64 string for the REST API
+                    val base64Image = android.util.Base64.encodeToString(byteArray, android.util.Base64.DEFAULT)
+
+                    // 3. Fire the POST request to the Relay API
+                    val response: HttpResponse = client.post("https://api.imgbb.com/1/upload?key=$relayApiKey") {
+                        contentType(ContentType.Application.FormUrlEncoded)
+                        // ImgBB requires the base64 string to be sent as a form parameter named 'image'
+                        setBody("image=${java.net.URLEncoder.encode(base64Image, "UTF-8")}")
+                    }
+
+                    val responseBody = response.bodyAsText()
+
+                    if (response.status.isSuccess()) {
+                        val json = org.json.JSONObject(responseBody)
+                        val dataObj = json.optJSONObject("data")
+
+                        // Extract the direct, permanent URL to the hosted image
+                        val downloadUrl = dataObj?.optString("url", "") ?: ""
+
+                        if (downloadUrl.isNotEmpty()) {
+                            uploadedUrls.add(downloadUrl)
+                            println("☁️ [TELEMETRY] EVIDENCE UPLOADED: $downloadUrl")
+                        }
+                    } else {
+                        val flatBody = responseBody.replace("\n", "").replace("\r", "")
+                        println("❌ [TELEMETRY ERROR] HTTP ${response.status} | BODY: $flatBody")
+                    }
+                } catch (e: Exception) {
+                    println("❌ [TELEMETRY CRASH] Upload threw exception: ${e.message}")
+                }
+            }
+
+            println("☁️ [TELEMETRY] Final URLs to attach to ledger: $uploadedUrls")
+            uploadedUrls
+        }
+    }
+
+    suspend fun claimEscrowFunds(agentId: String = "VANGUARD-01", netPayout: Double, evidenceUrls: List<String> = emptyList()): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                // 1. Fetch current balance to calculate the new total
+                println("💰 [TELEMETRY] Submitting Smart Contract with ${evidenceUrls.size} URLs attached.")
                 val currentWallet = getWalletData(agentId)
                 val newBalance = (currentWallet?.balance ?: 0.0) + netPayout
 
-                // 2. Update the total balance in Firebase
                 client.put("$BASE_URL/agents/$agentId/wallet/balance.json") {
                     contentType(ContentType.Application.Json)
                     setBody(newBalance.toString())
                 }
 
-                // 3. Push a new transaction record to the history ledger
                 val txId = "tx_${System.currentTimeMillis()}"
+
                 val tx = TransactionLog(
-                    txId,
-                    "Today",
-                    String.format("+$%.2f", netPayout),
-                    "Smart Contract Payout"
+                    id = txId,
+                    date = "Today",
+                    amount = String.format("+$%.2f", netPayout),
+                    description = "Smart Contract Payout",
+                    evidenceUrls = evidenceUrls
                 )
+
                 client.put("$BASE_URL/agents/$agentId/wallet/history/$txId.json") {
                     contentType(ContentType.Application.Json)
                     setBody(tx)
                 }
                 true
             } catch (e: Exception) {
-                println("💰 ESCROW ERROR: Failed to claim funds - ${e.message}")
                 false
             }
         }
@@ -291,16 +314,13 @@ class PanApiClient {
 
                 val jsonString = response.bodyAsText()
                 if (jsonString == "null" || jsonString.isBlank()) {
-                    // Return an empty wallet if the agent is brand new
                     return@withContext WalletResponse(0.0, null, emptyList())
                 }
 
                 val json = org.json.JSONObject(jsonString)
                 val balance = json.optDouble("balance", 0.0)
-                val linkedCard =
-                    if (json.isNull("linkedCard")) null else json.optString("linkedCard")
+                val linkedCard = if (json.isNull("linkedCard")) null else json.optString("linkedCard")
 
-                // Firebase stores lists as dynamic objects (Maps), so we iterate through the keys
                 val historyList = mutableListOf<TransactionLog>()
                 val historyObj = json.optJSONObject("history")
 
@@ -309,23 +329,35 @@ class PanApiClient {
                     while (keys.hasNext()) {
                         val key = keys.next()
                         val tx = historyObj.getJSONObject(key)
+
+                        // --- NEW: Telemetry to see if RTDB is stripping our URLs ---
+                        println("🏦 [TELEMETRY] Reading TX: $key")
+                        println("🏦 [TELEMETRY] Raw Evidence Data: ${tx.opt("evidenceUrls")}")
+
+                        val urls = mutableListOf<String>()
+                        val urlArray = tx.optJSONArray("evidenceUrls")
+                        if (urlArray != null) {
+                            for (i in 0 until urlArray.length()) {
+                                urls.add(urlArray.getString(i))
+                            }
+                        }
+
                         historyList.add(
                             TransactionLog(
                                 id = tx.optString("id", key),
                                 date = tx.optString("date", "Unknown"),
                                 amount = tx.optString("amount", "$0.00"),
-                                description = tx.optString("description", "Ledger Entry")
+                                description = tx.optString("description", "Ledger Entry"),
+                                evidenceUrls = if (urls.isEmpty()) null else urls
                             )
                         )
                     }
                 }
 
-                // Sort by ID descending so the newest transactions are at the top of the screen
                 historyList.sortByDescending { it.id }
 
                 WalletResponse(balance, linkedCard, historyList)
             } catch (e: Exception) {
-                println("🏦 WALLET ERROR: Failed to fetch ledger - ${e.message}")
                 null
             }
         }
@@ -334,30 +366,24 @@ class PanApiClient {
     suspend fun linkDebitCard(agentId: String = "VANGUARD-01", cardNumber: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                // Save the masked card directly to the agent's wallet node
                 val response: HttpResponse =
                     client.put("$BASE_URL/agents/$agentId/wallet/linkedCard.json") {
                         contentType(ContentType.Application.Json)
                         setBody("\"$cardNumber\"")
                     }
                 response.status.isSuccess()
-            } catch (e: Exception) {
-                println("🏦 BANK ERROR: Failed to link card - ${e.message}")
-                false
-            }
+            } catch (e: Exception) { false }
         }
     }
 
     suspend fun withdrawFunds(agentId: String = "VANGUARD-01", amount: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                // 1. Reset the balance to zero
                 client.put("$BASE_URL/agents/$agentId/wallet/balance.json") {
                     contentType(ContentType.Application.Json)
                     setBody("0.0")
                 }
 
-                // 2. Log the ACH Withdrawal on the ledger
                 val txId = "wd_${System.currentTimeMillis()}"
                 val tx = TransactionLog(
                     txId,
@@ -370,10 +396,7 @@ class PanApiClient {
                     setBody(tx)
                 }
                 true
-            } catch (e: Exception) {
-                println("🏦 BANK ERROR: Failed to withdraw funds - ${e.message}")
-                false
-            }
+            } catch (e: Exception) { false }
         }
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -125,9 +126,6 @@ fun MainDashboardContent() {
         }
     }
 
-    // =========================================================================
-    // STATE DECLARATION (Must come BEFORE the rehydration engine)
-    // =========================================================================
     var currentScreen by remember { mutableStateOf("DASHBOARD") }
     var navPreference by remember { mutableStateOf("GOOGLE") }
     var serviceRadiusMiles by remember { mutableStateOf(5f) }
@@ -187,9 +185,6 @@ fun MainDashboardContent() {
         )
     }
 
-    // =========================================================================
-    // REHYDRATION ENGINE & STATE SAVING
-    // =========================================================================
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -306,8 +301,9 @@ fun MainDashboardContent() {
     var hasGpsLock by remember { mutableStateOf(false) }
     var locationPermissionGranted by remember { mutableStateOf(false) }
 
+    // --- UPGRADED: EVIDENCE ARRAY STATE ---
     var hasCameraPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
-    var capturedProofImage by remember { mutableStateOf<Bitmap?>(null) }
+    var capturedEvidence by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var isUploadingProof by remember { mutableStateOf(false) }
     var isSanitizing by remember { mutableStateOf(false) }
 
@@ -318,12 +314,14 @@ fun MainDashboardContent() {
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted -> hasCameraPermission = isGranted }
 
+    // --- UPGRADED: CAMERA LAUNCHER NOW APPENDS TO ARRAY ---
     val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
         if (bitmap != null) {
-            isSanitizing = true; isUploadingProof = true
+            isSanitizing = true
             coroutineScope.launch {
                 val safeImage = network.proxyagent.pantactical.security.PrivacyFilter.sanitizeImage(bitmap)
-                capturedProofImage = safeImage; isSanitizing = false
+                capturedEvidence = capturedEvidence + safeImage
+                isSanitizing = false
             }
         }
     }
@@ -488,23 +486,39 @@ fun MainDashboardContent() {
                     }
                 }
 
+                // --- UPGRADED: UPLOAD OVERLAY FOR EVIDENCE ARRAY ---
                 Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                    AnimatedVisibility(visible = capturedProofImage != null && isUploadingProof, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+                    AnimatedVisibility(visible = isUploadingProof, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
                         Box(modifier = Modifier.fillMaxSize().background(Color(0xEE000000)).padding(24.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(modifier = Modifier.size(300.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
-                                    capturedProofImage?.let { bmp -> Image(bitmap = bmp.asImageBitmap(), contentDescription = "Proof", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                                    Column(modifier = Modifier.align(Alignment.BottomStart).background(Color(0x80000000)).padding(8.dp)) { Text("GPS: ${agentLocation.latitude}, ${agentLocation.longitude}", color = Color(0xFF00FF00), fontSize = 10.sp, fontFamily = FontFamily.Monospace); Text("TIMESTAMP: ${System.currentTimeMillis()}", color = Color(0xFF00FF00), fontSize = 10.sp, fontFamily = FontFamily.Monospace) }
+
+                                // Display multiple thumbnails in a row during upload
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                    capturedEvidence.forEach { bmp ->
+                                        Box(modifier = Modifier.size(120.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
+                                            Image(bitmap = bmp.asImageBitmap(), contentDescription = "Proof", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                        }
+                                    }
                                 }
-                                Spacer(modifier = Modifier.height(24.dp)); CircularProgressIndicator(color = Color(0xFF00BCD4)); Spacer(modifier = Modifier.height(16.dp))
-                                if (isSanitizing) { Text("SANITIZING PII...", color = Color.Red, fontWeight = FontWeight.Black, letterSpacing = 2.sp); Text("REDACTING FACES & LICENSE PLATES", color = Color.Gray, fontSize = 12.sp) } else { Text("CRYPTOGRAPHIC WATERMARKING...", color = Color(0xFF00BCD4), fontWeight = FontWeight.Black, letterSpacing = 2.sp); Text("UPLOADING SECURE PROOF OF WORK", color = Color.Gray, fontSize = 12.sp) }
-                                LaunchedEffect(capturedProofImage) {
-                                    if (capturedProofImage == null) return@LaunchedEffect
-                                    delay(2000)
+
+                                Spacer(modifier = Modifier.height(24.dp))
+                                CircularProgressIndicator(color = Color(0xFF00BCD4))
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Text("CRYPTOGRAPHIC WATERMARKING...", color = Color(0xFF00BCD4), fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                Text("UPLOADING ${capturedEvidence.size}-PART EVIDENCE ARRAY", color = Color.Gray, fontSize = 12.sp)
+
+                                LaunchedEffect(isUploadingProof) {
+                                    if (!isUploadingProof) return@LaunchedEffect
+
+                                    // 1. Upload the Array to Firebase Storage
+                                    val uploadedUrls = apiClient.uploadEvidenceArray(bitmaps = capturedEvidence)
+
                                     val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
                                     val finalPayout = (rawBounty * 0.90f).toDouble()
 
-                                    if (apiClient.claimEscrowFunds(netPayout = finalPayout)) {
+                                    // 2. Submit the claim WITH the URLs attached!
+                                    if (apiClient.claimEscrowFunds(netPayout = finalPayout, evidenceUrls = uploadedUrls)) {
                                         lastPayoutAmount = finalPayout
                                         lastTxHash = "tx_${System.currentTimeMillis()}"
                                         timeOnSceneMs = if (sceneArrivalTime > 0) System.currentTimeMillis() - sceneArrivalTime else 252000L
@@ -517,12 +531,12 @@ fun MainDashboardContent() {
                                         android.widget.Toast.makeText(context, "Network Error: Upload Failed.", android.widget.Toast.LENGTH_LONG).show()
                                     }
                                     isUploadingProof = false
-                                    capturedProofImage = null
+                                    capturedEvidence = emptyList()
                                 }
                             }
                         }
                     }
-                    // --- AFTER-ACTION REPORT (AAR) OVERLAY ---
+                    // AAR OVERLAY
                     AnimatedVisibility(
                         visible = missionState == "COMPLETED",
                         enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -541,6 +555,10 @@ fun MainDashboardContent() {
 
                                 Text("AV RE-ENGAGED", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                                 Text("Autonomous systems online. Incident resolved.", color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(color = Color(0xFF333333))
+                                Spacer(modifier = Modifier.height(8.dp))
 
                                 Text("FUNDS SECURED", color = Color(0xFF4CAF50), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                                 Text(String.format("+$%.2f", lastPayoutAmount), color = Color(0xFF4CAF50), fontSize = 48.sp, fontWeight = FontWeight.Black)
@@ -579,11 +597,9 @@ fun MainDashboardContent() {
                         }
                     }
                 }
-
-
             }
 
-            // --- BOTTOM CONTROL PANEL ---
+            // BOTTOM CONTROL PANEL
             Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)), horizontalAlignment = Alignment.CenterHorizontally) {
 
                 // ACTIVE MISSION CONTROLS
@@ -598,7 +614,7 @@ fun MainDashboardContent() {
                                 Text("ACTIVE MISSION: EN ROUTE", color = Color(0xFF00BCD4), fontSize = 14.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                                 Spacer(modifier = Modifier.height(8.dp)); Text(activeMission?.intersection ?: "Target Location", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text("Diagnostic: ${activeMission?.errorCode}", color = Color.LightGray, fontSize = 14.sp); Spacer(modifier = Modifier.height(16.dp))
 
-                                val isAtScene = true // = distanceMiles <= 0.1
+                                val isAtScene = true
 
                                 if (isAtScene) {
                                     Button(
@@ -618,17 +634,78 @@ fun MainDashboardContent() {
                     }
                 }
 
-                // ON SCENE TERMINAL
+                // --- UPGRADED: ON SCENE TERMINAL WITH EVIDENCE ARRAY ---
                 AnimatedVisibility(visible = missionState == "ON_SCENE", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                     var terminalLogs by remember { mutableStateOf(listOf("Establishing local UWB connection to AV...", "Connection secured.", "Awaiting physical repair and diagnostic re-run...")) }
                     var isResolving by remember { mutableStateOf(false) }
                     var isResolved by remember { mutableStateOf(false) }
-                    LaunchedEffect(activeMission) { terminalLogs = listOf("Connection secured.", "Awaiting repair..."); isResolving = false; isResolved = false }
+                    val requiredPhotos = 2 // Require BEFORE and AFTER photos
+
+                    LaunchedEffect(activeMission) {
+                        terminalLogs = listOf("Connection secured.", "Awaiting repair...")
+                        isResolving = false; isResolved = false
+                        capturedEvidence = emptyList() // Reset array on new mission
+                    }
+
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp).background(Color(0xFF0D1117)).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("📟 AV DIAGNOSTIC TERMINAL", color = Color(0xFF00FF00), fontSize = 16.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp); Spacer(modifier = Modifier.height(12.dp))
                         Box(modifier = Modifier.fillMaxWidth().height(140.dp).background(Color.Black, RoundedCornerShape(8.dp)).border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp)).padding(12.dp)) { Column(modifier = Modifier.verticalScroll(rememberScrollState())) { terminalLogs.forEach { log -> Text("> $log", color = Color(0xFF00FF00), fontFamily = FontFamily.Monospace, fontSize = 12.sp); Spacer(modifier = Modifier.height(4.dp)) } } }
                         Spacer(modifier = Modifier.height(16.dp))
-                        if (!isResolved) { Button(enabled = !isResolving, onClick = { isResolving = true; coroutineScope.launch { terminalLogs = terminalLogs + "Pinging AV CAN bus..."; delay(1000); terminalLogs = terminalLogs + "Diagnostic Trouble Codes (DTC) cleared."; delay(800); isResolving = false; isResolved = true } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), disabledContainerColor = Color(0xFF555555)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)) { if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White) else Text("RE-RUN AV DIAGNOSTICS", color = Color.White, fontWeight = FontWeight.Black) } } else { Button(onClick = { if (hasCameraPermission) takePictureLauncher.launch(null) else cameraPermissionLauncher.launch(Manifest.permission.CAMERA) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), disabledContainerColor = Color(0xFF555555)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("📷", fontSize = 18.sp); Text("CAPTURE PROOF OF WORK", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black) } } }
+
+                        if (!isResolved) {
+                            Button(enabled = !isResolving, onClick = { isResolving = true; coroutineScope.launch { terminalLogs = terminalLogs + "Pinging AV CAN bus..."; delay(1000); terminalLogs = terminalLogs + "Diagnostic Trouble Codes (DTC) cleared."; delay(800); isResolving = false; isResolved = true } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), disabledContainerColor = Color(0xFF555555)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)) { if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White) else Text("RE-RUN AV DIAGNOSTICS", color = Color.White, fontWeight = FontWeight.Black) }
+                        } else {
+
+                            // Render the captured thumbnails
+                            if (capturedEvidence.isNotEmpty()) {
+                                Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    capturedEvidence.forEachIndexed { index, bmp ->
+                                        Box(modifier = Modifier.size(80.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
+                                            Image(bitmap = bmp.asImageBitmap(), contentDescription = "Evidence", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                            Box(modifier = Modifier.align(Alignment.BottomStart).background(Color(0xAA000000)).padding(4.dp)) {
+                                                Text(if(index == 0) "BEFORE" else "AFTER", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // --- UPGRADED: Dynamic Button Logic (Infinite Array) ---
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+
+                                // 1. The Camera Button (Always visible)
+                                val photoType = when (capturedEvidence.size) {
+                                    0 -> "BEFORE"
+                                    1 -> "AFTER"
+                                    else -> "ADDITIONAL"
+                                }
+
+                                Button(
+                                    onClick = { if (hasCameraPermission) takePictureLauncher.launch(null) else cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), disabledContainerColor = Color(0xFF555555)),
+                                    modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("📷", fontSize = 18.sp)
+                                        Text(if (capturedEvidence.size < requiredPhotos) "CAPTURE '$photoType' PHOTO (${capturedEvidence.size}/$requiredPhotos)" else "CAPTURE $photoType PHOTO", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                                    }
+                                }
+
+                                // 2. The Submit Button (Only appears when minimum is met)
+                                AnimatedVisibility(visible = capturedEvidence.size >= requiredPhotos) {
+                                    Button(
+                                        onClick = { isUploadingProof = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)),
+                                        modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("📤", fontSize = 18.sp)
+                                            Text("SUBMIT ${capturedEvidence.size}-PART EVIDENCE ARRAY", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 

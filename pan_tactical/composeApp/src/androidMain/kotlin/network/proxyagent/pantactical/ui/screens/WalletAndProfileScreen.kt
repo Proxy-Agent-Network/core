@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,8 +26,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.border
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import network.proxyagent.pantactical.network.PanApiClient
 
@@ -40,7 +46,6 @@ fun WalletAndProfileScreen(
     availableVoices: List<Voice>,
     selectedVoice: Voice?,
     onVoiceSelect: (Voice) -> Unit,
-    // --- NEW: Audio Mix Parameters ---
     voiceVolume: Float,
     onVoiceVolumeChange: (Float) -> Unit,
     alertVolume: Int,
@@ -62,6 +67,9 @@ fun WalletAndProfileScreen(
     var isLinkingCard by remember { mutableStateOf(false) }
     var isWithdrawing by remember { mutableStateOf(false) }
     var selectedTransaction by remember { mutableStateOf<network.proxyagent.pantactical.network.TransactionLog?>(null) }
+
+    // --- NEW: Lightbox State ---
+    var enlargedImageUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         walletData = apiClient.getWalletData()
@@ -143,7 +151,6 @@ fun WalletAndProfileScreen(
                 ) { Text("PAN TACTICAL", color = if (navPreference == "TACTICAL") Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
 
-            // --- NEW: TACTICAL AUDIO LEVELS ---
             Spacer(modifier = Modifier.height(24.dp))
             Text("TACTICAL AUDIO MIXER", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
 
@@ -156,7 +163,6 @@ fun WalletAndProfileScreen(
                     value = voiceVolume,
                     onValueChange = {
                         onVoiceVolumeChange(it)
-                        // Play a tiny preview beep on the TTS channel so they know the level
                         val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, it) }
                         tts?.speak("Level set.", TextToSpeech.QUEUE_FLUSH, ttsParams, null)
                     },
@@ -172,21 +178,12 @@ fun WalletAndProfileScreen(
                 }
                 Slider(
                     value = alertVolume.toFloat(),
-                    onValueChange = {
-                        onAlertVolumeChange(it.toInt())
-                    },
+                    onValueChange = { onAlertVolumeChange(it.toInt()) },
                     onValueChangeFinished = {
-                        // --- NEW: Play a short tactical preview beep when they release the slider ---
                         try {
                             val toneGen = android.media.ToneGenerator(android.media.AudioManager.STREAM_ALARM, alertVolume)
-                            // TONE_PROP_BEEP is a clean, short confirmation chirp
                             toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150)
-
-                            // Automatically release the memory after the beep finishes
-                            coroutineScope.launch {
-                                kotlinx.coroutines.delay(200)
-                                toneGen.release()
-                            }
+                            coroutineScope.launch { kotlinx.coroutines.delay(200); toneGen.release() }
                         } catch (e: Exception) {
                             println("AUDIO ERROR: Failed to play preview beep - ${e.message}")
                         }
@@ -227,7 +224,6 @@ fun WalletAndProfileScreen(
                     Text("No transactions found on ledger.", color = Color.DarkGray, fontSize = 14.sp, modifier = Modifier.padding(16.dp))
                 } else {
                     walletData?.history?.forEach { tx ->
-                        // --- UPGRADED: Added clickable modifier ---
                         Row(modifier = Modifier.fillMaxWidth().clickable { selectedTransaction = tx }.padding(vertical = 12.dp, horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(tx.date, color = Color.Gray, fontSize = 12.sp)
@@ -297,7 +293,7 @@ fun WalletAndProfileScreen(
             dismissButton = { TextButton(onClick = { showLinkCardDialog = false }) { Text("CANCEL", color = Color.Gray) } }
         )
     }
-    // --- NEW: Transaction Detail Dialog ---
+
     if (selectedTransaction != null) {
         AlertDialog(
             onDismissRequest = { selectedTransaction = null },
@@ -322,6 +318,31 @@ fun WalletAndProfileScreen(
                         Text(selectedTransaction!!.id, color = Color(0xFF00BCD4), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                     }
 
+                    if (!selectedTransaction!!.evidenceUrls.isNullOrEmpty()) {
+                        Column {
+                            Text("ATTACHED PROOF OF WORK", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                selectedTransaction!!.evidenceUrls!!.forEach { url ->
+                                    AsyncImage(
+                                        model = url,
+                                        contentDescription = "Redacted Evidence",
+                                        modifier = Modifier
+                                            .size(80.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .border(1.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp))
+                                            // --- UPGRADED: Click to enlarge ---
+                                            .clickable { enlargedImageUrl = url },
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("STATUS: SETTLED & VERIFIED", color = Color(0xFF4CAF50), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                     Text("NODE: VANGUARD-01", color = Color.DarkGray, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
@@ -334,6 +355,52 @@ fun WalletAndProfileScreen(
                 ) { Text("CLOSE", color = Color.White) }
             }
         )
+    }
+
+    // --- NEW: Full-Screen Evidence Lightbox Overlay ---
+    if (enlargedImageUrl != null) {
+        Dialog(
+            onDismissRequest = { enlargedImageUrl = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false) // Allows edge-to-edge viewing
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xEE000000)) // Heavy dark scrim
+                    // This invisible click layer catches taps outside the image and dismisses the overlay
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { enlargedImageUrl = null }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = enlargedImageUrl,
+                    contentDescription = "Enlarged Evidence",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.FillWidth
+                )
+
+                // Instructional dismiss badge
+                Text(
+                    "✖ TAP ANYWHERE TO CLOSE",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 32.dp)
+                        .background(Color(0x80000000), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        }
     }
 }
 
