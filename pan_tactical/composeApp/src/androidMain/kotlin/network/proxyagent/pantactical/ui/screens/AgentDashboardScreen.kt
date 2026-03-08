@@ -132,6 +132,7 @@ fun MainDashboardContent() {
 
     var currentScreen by remember { mutableStateOf("DASHBOARD") }
     var navPreference by remember { mutableStateOf("GOOGLE") }
+    var patrolMode by remember { mutableStateOf("VEHICLE") }
     var serviceRadiusMiles by remember { mutableStateOf(5f) }
     var isLoadoutExpanded by remember { mutableStateOf(false) }
     var isDataLoaded by remember { mutableStateOf(false) }
@@ -205,6 +206,7 @@ fun MainDashboardContent() {
     LaunchedEffect(Unit) {
         serviceRadiusMiles = sharedPrefs.getFloat("radius", 5f)
         navPreference = sharedPrefs.getString("nav_pref", "GOOGLE") ?: "GOOGLE"
+        patrolMode = sharedPrefs.getString("patrol_mode", "VEHICLE") ?: "VEHICLE" // NEW
 
         voiceVolume = sharedPrefs.getFloat("voice_volume", 1f)
         alertVolume = sharedPrefs.getInt("alert_volume", 100)
@@ -260,6 +262,7 @@ fun MainDashboardContent() {
             sharedPrefs.edit().apply {
                 putFloat("radius", serviceRadiusMiles)
                 putString("nav_pref", navPreference)
+                putString("patrol_mode", patrolMode)
                 putFloat("voice_volume", voiceVolume)
                 putInt("alert_volume", alertVolume)
                 putString("capabilities", Json.encodeToString(agentCapabilities))
@@ -491,21 +494,23 @@ fun MainDashboardContent() {
                                                 if (apiClient.acceptMission()) {
                                                     missionState = "ACTIVE"
 
-                                                    // 2. NEW: Manually trigger the OSRM Routing Engine immediately upon acceptance
+                                                    // 2. Trigger OSRM Routing Engine
                                                     if (hasGpsLock && activeMission != null) {
+                                                        val routeMode = if (patrolMode == "FOOT") "foot" else "driving"
                                                         val routeData = apiClient.getTacticalRoute(
                                                             agentLocation.latitude,
                                                             agentLocation.longitude,
                                                             activeMission!!.lat,
-                                                            activeMission!!.lon
+                                                            activeMission!!.lon,
+                                                            routeMode // Passed into API!
                                                         )
-                                                        // 3. Stamp the coordinates to the state so the Polyline renders instantly
                                                         tacticalRoute = routeData.first
                                                     }
 
                                                     // 4. Launch external maps if preference is set
                                                     if (navPreference == "GOOGLE") {
-                                                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${activeMission!!.lat},${activeMission!!.lon}&mode=d"))
+                                                        val navMode = if (patrolMode == "FOOT") "w" else "d"
+                                                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${activeMission!!.lat},${activeMission!!.lon}&mode=$navMode"))
                                                         mapIntent.setPackage("com.google.android.apps.maps")
                                                         try { context.startActivity(mapIntent) } catch (e: Exception) { }
                                                     }
@@ -761,25 +766,201 @@ fun MainDashboardContent() {
                 // OFFLINE LOADOUT MENU
                 AnimatedVisibility(visible = !isOnline && missionState != "ACTIVE" && missionState != "ON_SCENE") {
                     Column(modifier = Modifier.padding(16.dp).animateContentSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF2A2A2A), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).clickable { isLoadoutExpanded = !isLoadoutExpanded }.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("🛠 MARKET BIDS & LOADOUT", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp); Text(if (isLoadoutExpanded) "HIDE ▲" else "EXPAND ▼", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(Color(0xFF2A2A2A), RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { isLoadoutExpanded = !isLoadoutExpanded }
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "🛠 MARKET BIDS & LOADOUT",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            ); Text(
+                            if (isLoadoutExpanded) "HIDE ▲" else "EXPAND ▼",
+                            color = Color(0xFF00BCD4),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        }
 
                         if (isLoadoutExpanded) {
                             Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-                                Text("SERVICE RADIUS: ${serviceRadiusMiles.toInt()} MILES", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Slider(value = serviceRadiusMiles, onValueChange = { serviceRadiusMiles = it }, valueRange = 1f..8f, steps = 6, colors = SliderDefaults.colors(thumbColor = Color(0xFFF44336), activeTrackColor = Color(0xFFF44336)), modifier = Modifier.padding(bottom = 12.dp))
-                                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(rememberScrollState()).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                                // --- NEW: Patrol Mode Toggle ---
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            patrolMode = "VEHICLE"
+                                            if (serviceRadiusMiles < 1f) serviceRadiusMiles =
+                                                5f // Snap back to standard driving radius
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (patrolMode == "VEHICLE") Color(
+                                                0xFF1976D2
+                                            ) else Color(0xFF333333)
+                                        ),
+                                        modifier = Modifier.weight(1f).height(48.dp),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            "VEHICLE",
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            patrolMode = "FOOT"
+                                            if (serviceRadiusMiles > 1f) serviceRadiusMiles =
+                                                0.5f // Default to half-mile walking
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (patrolMode == "FOOT") Color(
+                                                0xFF00BCD4
+                                            ) else Color(0xFF333333)
+                                        ),
+                                        modifier = Modifier.weight(1f).height(48.dp),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            "FOOT PATROL",
+                                            color = if (patrolMode == "FOOT") Color.Black else Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                // --- UPGRADED: Dynamic Slider ---
+                                val isFoot = patrolMode == "FOOT"
+                                val displayRadius = if (isFoot) String.format(
+                                    "%.3f",
+                                    serviceRadiusMiles
+                                ) else serviceRadiusMiles.toInt().toString()
+                                Text(
+                                    "SERVICE RADIUS: $displayRadius MILES",
+                                    color = Color.LightGray,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Slider(
+                                    value = serviceRadiusMiles,
+                                    onValueChange = { serviceRadiusMiles = it },
+                                    // Vehicle: 1 to 8 miles. Foot: 1/8 (0.125) to 1 mile. Both use exactly 6 slider stops.
+                                    valueRange = if (isFoot) 0.125f..1f else 1f..8f,
+                                    steps = 6,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFFF44336),
+                                        activeTrackColor = Color(0xFFF44336)
+                                    ),
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                )
+
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp)
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(bottom = 16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     val pinned = agentCapabilities.filter { it.isPinned }
-                                    val tier1 = agentCapabilities.filter { it.tier == 1 && !it.isPinned }
-                                    val tier2 = agentCapabilities.filter { it.tier == 2 && !it.isPinned }
-                                    val tier3 = agentCapabilities.filter { it.tier == 3 && !it.isPinned }
-                                    if (pinned.isNotEmpty()) { Text("📌 PINNED TASKS", color = Color(0xFFFF9800), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)); pinned.forEach { cap -> CapabilityCard(cap, agentCapabilities) { agentCapabilities = it } } }
-                                    if (tier1.isNotEmpty()) { Text("TIER 1 - BASIC RESPONDER", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)); tier1.forEach { cap -> CapabilityCard(cap, agentCapabilities) { agentCapabilities = it } } }
-                                    if (tier2.isNotEmpty()) { Text("TIER 2 - EQUIPMENT REQUIRED", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)); tier2.forEach { cap -> CapabilityCard(cap, agentCapabilities) { agentCapabilities = it } } }
-                                    if (tier3.isNotEmpty()) { Text("TIER 3 - SPECIALIZED TRAINING", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)); tier3.forEach { cap -> CapabilityCard(cap, agentCapabilities) { agentCapabilities = it } } }
+                                    val tier1 =
+                                        agentCapabilities.filter { it.tier == 1 && !it.isPinned }
+                                    val tier2 =
+                                        agentCapabilities.filter { it.tier == 2 && !it.isPinned }
+                                    val tier3 =
+                                        agentCapabilities.filter { it.tier == 3 && !it.isPinned }
+
+                                    if (pinned.isNotEmpty()) {
+                                        Text(
+                                            "📌 PINNED TASKS",
+                                            color = Color(0xFFFF9800),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Black,
+                                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                        ); pinned.forEach { cap ->
+                                            CapabilityCard(
+                                                cap,
+                                                agentCapabilities
+                                            ) { agentCapabilities = it }
+                                        }
+                                    }
+                                    if (tier1.isNotEmpty()) {
+                                        Text(
+                                            "TIER 1 - BASIC RESPONDER",
+                                            color = Color(0xFF00BCD4),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Black,
+                                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                        ); tier1.forEach { cap ->
+                                            CapabilityCard(
+                                                cap,
+                                                agentCapabilities
+                                            ) { agentCapabilities = it }
+                                        }
+                                    }
+
+                                    // --- UPGRADED: Hardware Constraints ---
+                                    if (patrolMode == "VEHICLE") {
+                                        if (tier2.isNotEmpty()) {
+                                            Text(
+                                                "TIER 2 - EQUIPMENT REQUIRED",
+                                                color = Color(0xFF00BCD4),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Black,
+                                                modifier = Modifier.padding(
+                                                    top = 8.dp,
+                                                    bottom = 4.dp
+                                                )
+                                            ); tier2.forEach { cap ->
+                                                CapabilityCard(
+                                                    cap,
+                                                    agentCapabilities
+                                                ) { agentCapabilities = it }
+                                            }
+                                        }
+                                        if (tier3.isNotEmpty()) {
+                                            Text(
+                                                "TIER 3 - SPECIALIZED TRAINING",
+                                                color = Color(0xFF00BCD4),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Black,
+                                                modifier = Modifier.padding(
+                                                    top = 8.dp,
+                                                    bottom = 4.dp
+                                                )
+                                            ); tier3.forEach { cap ->
+                                                CapabilityCard(
+                                                    cap,
+                                                    agentCapabilities
+                                                ) { agentCapabilities = it }
+                                            }
+                                        }
+                                    } else {
+                                        Text(
+                                            "🚫 TIER 2 & 3 TASKS DISABLED ON FOOT PATROL",
+                                            color = Color(0xFFF44336),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+                                                .fillMaxWidth(),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
                                 }
                             }
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
 
@@ -812,7 +993,9 @@ fun MainDashboardContent() {
                                 onClick = {
                                     isProcessing = true
                                     coroutineScope.launch {
-                                        val activeLoadout = agentCapabilities.filter { it.isQualified && it.isEnabled }.associate { it.id to it.currentBid }
+                                        val activeLoadout = agentCapabilities.filter {
+                                            it.isQualified && it.isEnabled && (patrolMode == "VEHICLE" || it.tier == 1)
+                                        }.associate { it.id to it.currentBid }
                                         // FORCE EXPLICIT TYPES AND NAMED ARGUMENTS
                                         if (apiClient.updateAgentStatus(
                                                 context = context,

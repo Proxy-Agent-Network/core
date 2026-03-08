@@ -195,11 +195,13 @@ class PanApiClient {
         startLat: Double,
         startLon: Double,
         endLat: Double,
-        endLon: Double
+        endLon: Double,
+        mode: String = "driving" // NEW: Defaults to driving, but accepts "foot"
     ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
-                val urlString = "https://router.project-osrm.org/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
+                // NEW: Inject the dynamic routing mode into the OSRM URL
+                val urlString = "https://router.project-osrm.org/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
                 val jsonString = response.bodyAsText()
                 val json = org.json.JSONObject(jsonString)
