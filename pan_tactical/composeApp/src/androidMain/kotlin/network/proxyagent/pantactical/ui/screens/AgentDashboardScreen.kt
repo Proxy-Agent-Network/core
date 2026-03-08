@@ -56,6 +56,7 @@ import kotlinx.serialization.json.Json
 import network.proxyagent.pantactical.network.PanApiClient
 import network.proxyagent.pantactical.models.AgentCapability
 import network.proxyagent.pantactical.models.MissionData
+import network.proxyagent.pantactical.sync.OfflineSyncEngine
 import network.proxyagent.pantactical.ui.components.CapabilityCard
 import network.proxyagent.pantactical.ui.components.TacticalNavEngine
 
@@ -86,6 +87,8 @@ fun MainDashboardContent() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val apiClient = remember { PanApiClient() }
+
+    val syncEngine = remember { OfflineSyncEngine(context, apiClient) }
 
     val sharedPrefs = remember { context.getSharedPreferences("PanAgentSettings", Context.MODE_PRIVATE) }
 
@@ -336,10 +339,20 @@ fun MainDashboardContent() {
         if (!hasInitializedAudio) { hasInitializedAudio = true; return@LaunchedEffect }
         val statusToneGen = ToneGenerator(AudioManager.STREAM_ALARM, alertVolume)
         try {
-            if (isOnline) { statusToneGen.startTone(ToneGenerator.TONE_PROP_ACK, 100); delay(150); statusToneGen.startTone(ToneGenerator.TONE_PROP_ACK, 100) }
-            else { statusToneGen.startTone(ToneGenerator.TONE_PROP_NACK, 250) }
+            if (isOnline) {
+                statusToneGen.startTone(ToneGenerator.TONE_PROP_ACK, 100); delay(150); statusToneGen.startTone(ToneGenerator.TONE_PROP_ACK, 100)
+            } else {
+                statusToneGen.startTone(ToneGenerator.TONE_PROP_NACK, 250)
+            }
             delay(300)
         } finally { statusToneGen.release() }
+
+        // --- NEW: The Silent Sync Loop ---
+        // While the agent is online, quietly check the queue every 30 seconds and upload anything pending
+        while(isOnline && isActive) {
+            syncEngine.processQueue()
+            delay(30000L)
+        }
     }
 
     LaunchedEffect(missionState) {
@@ -536,25 +549,36 @@ fun MainDashboardContent() {
                                 LaunchedEffect(isUploadingProof) {
                                     if (!isUploadingProof) return@LaunchedEffect
 
-                                    // 1. Upload the Array to Firebase Storage
-                                    val uploadedUrls = apiClient.uploadEvidenceArray(bitmaps = capturedEvidence)
-
                                     val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
                                     val finalPayout = (rawBounty * 0.90f).toDouble()
 
-                                    // 2. Submit the claim WITH the URLs attached!
-                                    if (apiClient.claimEscrowFunds(netPayout = finalPayout, evidenceUrls = uploadedUrls)) {
-                                        lastPayoutAmount = finalPayout
+                                    try {
+                                        // 1. Attempt direct live upload
+                                        val uploadedUrls = apiClient.uploadEvidenceArray(bitmaps = capturedEvidence)
+                                        if (uploadedUrls.isEmpty() || !apiClient.claimEscrowFunds(netPayout = finalPayout, evidenceUrls = uploadedUrls)) {
+                                            throw Exception("Network Failure")
+                                        }
+
+                                        // Live upload succeeded
                                         lastTxHash = "tx_${System.currentTimeMillis()}"
-                                        timeOnSceneMs = if (sceneArrivalTime > 0) System.currentTimeMillis() - sceneArrivalTime else 252000L
 
-                                        missionState = "COMPLETED"
+                                    } catch (e: Exception) {
+                                        // 2. Offline/Failed! Fail gracefully to local storage
+                                        println("⚠️ [NETWORK] Upload failed. Falling back to local offline storage.")
+                                        syncEngine.enqueueClaim(finalPayout, capturedEvidence)
 
-                                        val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume) }
-                                        tts?.speak("Mission accomplished. Escrow funds secured.", TextToSpeech.QUEUE_FLUSH, ttsParams, null)
-                                    } else {
-                                        android.widget.Toast.makeText(context, "Network Error: Upload Failed.", android.widget.Toast.LENGTH_LONG).show()
+                                        android.widget.Toast.makeText(context, "Offline Mode: Evidence saved locally. Will sync when 5G is restored.", android.widget.Toast.LENGTH_LONG).show()
+                                        lastTxHash = "PENDING_OFFLINE_SYNC"
                                     }
+
+                                    // 3. Always let the agent finish the mission, regardless of network state
+                                    lastPayoutAmount = finalPayout
+                                    timeOnSceneMs = if (sceneArrivalTime > 0) System.currentTimeMillis() - sceneArrivalTime else 252000L
+                                    missionState = "COMPLETED"
+
+                                    val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume) }
+                                    tts?.speak("Mission accomplished. Escrow funds secured.", TextToSpeech.QUEUE_FLUSH, ttsParams, null)
+
                                     isUploadingProof = false
                                     capturedEvidence = emptyList()
                                 }
