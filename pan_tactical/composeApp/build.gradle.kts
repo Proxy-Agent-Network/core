@@ -10,6 +10,13 @@ plugins {
     alias(libs.plugins.composeCompiler)
 
     alias(libs.plugins.kotlinxSerialization)
+
+    id("com.google.gms.google-services")
+}
+
+repositories {
+    google()
+    mavenCentral()
 }
 
 kotlin {
@@ -49,6 +56,7 @@ kotlin {
             // Tactical Mapping Engine
             implementation("com.google.maps.android:maps-compose:4.3.3")
             implementation("com.google.android.gms:play-services-maps:18.2.0")
+            implementation("com.google.android.libraries.navigation:navigation:5.5.0")
 
             // Google Play Services: Live Telemetry
             implementation("com.google.android.gms:play-services-location:21.2.0")
@@ -68,6 +76,10 @@ kotlin {
             implementation("com.google.mlkit:face-detection:16.1.5")
             implementation("com.google.mlkit:text-recognition:16.0.0")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+
+            // Firebase
+            implementation(project.dependencies.platform("com.google.firebase:firebase-bom:32.8.0"))
+            implementation("com.google.firebase:firebase-messaging")
         }
         commonMain.dependencies {
             // Default UI dependencies
@@ -135,4 +147,6 @@ android {
 dependencies {
     debugImplementation(libs.compose.uiTooling)
 }
-
+configurations.all {
+    exclude(group = "com.google.android.gms", module = "play-services-maps")
+}
