@@ -39,12 +39,16 @@ fun WalletAndProfileScreen(
     tts: TextToSpeech?,
     availableVoices: List<Voice>,
     selectedVoice: Voice?,
-    onVoiceSelect: (Voice) -> Unit
+    onVoiceSelect: (Voice) -> Unit,
+    // --- NEW: Audio Mix Parameters ---
+    voiceVolume: Float,
+    onVoiceVolumeChange: (Float) -> Unit,
+    alertVolume: Int,
+    onAlertVolumeChange: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Local State strictly for the Wallet Screen
     var walletData by remember { mutableStateOf<network.proxyagent.pantactical.network.WalletResponse?>(null) }
     var isFetchingWallet by remember { mutableStateOf(true) }
     var showLinkCardDialog by remember { mutableStateOf(false) }
@@ -58,7 +62,6 @@ fun WalletAndProfileScreen(
     var isLinkingCard by remember { mutableStateOf(false) }
     var isWithdrawing by remember { mutableStateOf(false) }
 
-    // Fetch the ledger exactly when this screen opens
     LaunchedEffect(Unit) {
         walletData = apiClient.getWalletData()
         isFetchingWallet = false
@@ -139,6 +142,59 @@ fun WalletAndProfileScreen(
                 ) { Text("PAN TACTICAL", color = if (navPreference == "TACTICAL") Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
 
+            // --- NEW: TACTICAL AUDIO LEVELS ---
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("TACTICAL AUDIO MIXER", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
+
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("J.A.R.V.I.S. Dispatch Voice", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text("${(voiceVolume * 100).toInt()}%", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = voiceVolume,
+                    onValueChange = {
+                        onVoiceVolumeChange(it)
+                        // Play a tiny preview beep on the TTS channel so they know the level
+                        val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, it) }
+                        tts?.speak("Level set.", TextToSpeech.QUEUE_FLUSH, ttsParams, null)
+                    },
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFF00BCD4), activeTrackColor = Color(0xFF00BCD4))
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Emergency Alarms & Beeps", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text("${alertVolume}%", color = Color(0xFFF44336), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = alertVolume.toFloat(),
+                    onValueChange = {
+                        onAlertVolumeChange(it.toInt())
+                    },
+                    onValueChangeFinished = {
+                        // --- NEW: Play a short tactical preview beep when they release the slider ---
+                        try {
+                            val toneGen = android.media.ToneGenerator(android.media.AudioManager.STREAM_ALARM, alertVolume)
+                            // TONE_PROP_BEEP is a clean, short confirmation chirp
+                            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150)
+
+                            // Automatically release the memory after the beep finishes
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(200)
+                                toneGen.release()
+                            }
+                        } catch (e: Exception) {
+                            println("AUDIO ERROR: Failed to play preview beep - ${e.message}")
+                        }
+                    },
+                    valueRange = 0f..100f,
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFFF44336), activeTrackColor = Color(0xFFF44336))
+                )
+            }
+
             AnimatedVisibility(visible = navPreference == "TACTICAL") {
                 Column(modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
                     Text("TACTICAL VOICE PROFILE", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
@@ -153,7 +209,8 @@ fun WalletAndProfileScreen(
                                 modifier = Modifier.clickable {
                                     onVoiceSelect(voice)
                                     tts?.voice = voice
-                                    tts?.speak("Voice profile $label engaged.", TextToSpeech.QUEUE_FLUSH, null, null)
+                                    val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume) }
+                                    tts?.speak("Voice profile $label engaged.", TextToSpeech.QUEUE_FLUSH, ttsParams, null)
                                 }
                             ) { Text(text = label, color = if(isSelected) Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) }
                         }

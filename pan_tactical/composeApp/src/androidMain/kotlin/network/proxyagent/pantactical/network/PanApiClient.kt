@@ -1,7 +1,5 @@
 package network.proxyagent.pantactical.network
 
-import io.ktor.client.plugins.websocket.*
-import io.ktor.websocket.*
 import io.ktor.client.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -9,26 +7,27 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import network.proxyagent.pantactical.security.StrongBoxManager
-import android.util.Base64
-import android.content.Context
-import java.net.URL
 import com.google.android.gms.maps.model.LatLng
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 
 // --- DATA MODELS ---
 @Serializable
 data class StatusUpdateRequest(
-    val agentId: String,
     val status: String,
     val latitude: Double,
     val longitude: Double,
     val radius: Double,
     val loadout: Map<String, Float>,
-    val signature: String
+    val signature: String,
+    val timestamp: Long
 )
 
 @Serializable
@@ -41,76 +40,63 @@ data class LinkCardRequest(val agentId: String, val cardNumber: String)
 data class WithdrawRequest(val agentId: String, val amount: Double)
 
 @Serializable
-data class TransactionLog(
-    val id: String,
-    val date: String,
-    val amount: String,
-    val description: String
-)
+data class TransactionLog(val id: String, val date: String, val amount: String, val description: String)
 
 @Serializable
-data class WalletResponse(
-    val balance: Double,
-    val linkedCard: String? = null,
-    val history: List<TransactionLog>
-)
+data class WalletResponse(val balance: Double, val linkedCard: String? = null, val history: List<TransactionLog>)
 
 class PanApiClient {
 
     private val client = HttpClient(OkHttp) {
-        install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                prettyPrint = true
-            })
+        // --- NEW: Disable the 10-second timeout for infinite SSE streaming ---
+        engine {
+            config {
+                readTimeout(0, TimeUnit.MILLISECONDS)
+            }
         }
-        install(WebSockets)
+        install(ContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true; prettyPrint = true })
+        }
     }
 
-    private val BASE_URL = "https://collectible-kanisha-altruistically.ngrok-free.dev/v1"
-    private val strongBox = StrongBoxManager()
+    // --- FIREBASE RTDB PRODUCTION URL ---
+    private val BASE_URL = "https://pan-tactical-default-rtdb.firebaseio.com"
 
     suspend fun updateAgentStatus(
         context: android.content.Context,
         isOnline: Boolean,
         lat: Double,
         lon: Double,
-        radiusMiles: Double, // The parameter is called radiusMiles
+        radiusMiles: Double,
         loadout: Map<String, Float>
     ): Boolean {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
                 val statusString = if (isOnline) "ONLINE" else "OFFLINE"
-                // --- FIXED: Reference the correct variable name (radiusMiles) ---
                 val payloadToSign = "${statusString}_${lat}_${lon}_${radiusMiles}"
-
-                val nonce = android.util.Base64.encodeToString(
-                    payloadToSign.toByteArray(),
-                    android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
-                )
+                val nonce = android.util.Base64.encodeToString(payloadToSign.toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
 
                 println("🛡️ Requesting Google Play Integrity Attestation...")
                 val engine = network.proxyagent.pantactical.security.AttestationEngine()
                 val hardwareToken = engine.generateHardwareToken(context, nonce)
 
                 val requestBody = StatusUpdateRequest(
-                    agentId = "VANGUARD-01",
                     status = statusString,
                     latitude = lat,
                     longitude = lon,
-                    radius = radiusMiles, // --- FIXED: Pass radiusMiles into the data class ---
+                    radius = radiusMiles,
                     loadout = loadout,
-                    signature = hardwareToken
+                    signature = hardwareToken,
+                    timestamp = System.currentTimeMillis()
                 )
 
-                val response: HttpResponse = client.post("$BASE_URL/agent/status") {
-                    header("ngrok-skip-browser-warning", "69420")
+                // FIREBASE REST: PUT request overwrites the agent's current status node
+                val response: HttpResponse = client.put("$BASE_URL/agents/VANGUARD-01/status.json") {
                     contentType(ContentType.Application.Json)
                     setBody(requestBody)
                 }
 
                 response.status.isSuccess()
-
             } catch (e: Exception) {
                 println("NETWORK ERROR: Failed to broadcast status. ${e.localizedMessage}")
                 false
@@ -122,53 +108,61 @@ class PanApiClient {
         agentId: String,
         onMissionReceived: (lat: Double, lon: Double, errorCode: String, bounty: String, intersection: String) -> Unit
     ) {
-        val wsUrl = BASE_URL
-            .replace("https://", "wss://")
-            .replace("http://", "ws://")
-            .replace("/v1", "/ws/v1/dispatch/$agentId")
+        withContext(Dispatchers.IO) {
+            println("🟢 DISPATCH LINE OPEN: Tactical Short-Polling engaged...")
 
-        try {
-            client.webSocket(wsUrl) {
-                request { header("ngrok-skip-browser-warning", "69420") }
-
-                println("🟢 DISPATCH LINE OPEN: Listening for missions...")
-
-                for (frame in incoming) {
-                    frame as? Frame.Text ?: continue
-                    val text = frame.readText()
-                    println("🚨 INCOMING UDS PAYLOAD: $text")
-
-                    try {
-                        val json = org.json.JSONObject(text)
-                        if (json.getString("type") == "MISSION") {
-                            val lat = json.getDouble("lat")
-                            val lon = json.getDouble("lon")
-                            val errorCode = json.optString("errorCode", "UNKNOWN ERROR")
-                            val bounty = json.optString("bounty", "$0.00")
-                            val intersection = json.optString("intersection", "Unknown Coordinates")
-
-                            onMissionReceived(lat, lon, errorCode, bounty, intersection)
-                        }
-                    } catch (e: Exception) {
-                        println("⚠️ Failed to decode tactical payload: ${e.message}")
+            // --- NEW: Bypass Samsung Knox with a 2-second GET heartbeat ---
+            while (isActive) {
+                try {
+                    val response: HttpResponse = client.get("$BASE_URL/dispatch/$agentId.json") {
+                        header(HttpHeaders.CacheControl, "no-cache")
                     }
+
+                    val jsonString = response.bodyAsText()
+
+                    // Firebase returns the string "null" if the node is empty
+                    if (jsonString != "null" && jsonString.isNotBlank()) {
+                        try {
+                            val json = org.json.JSONObject(jsonString)
+                            if (json.optString("type") == "MISSION") {
+                                println("🚨 INCOMING FIREBASE PAYLOAD: $jsonString")
+
+                                val lat = json.getDouble("lat")
+                                val lon = json.getDouble("lon")
+                                val errorCode = json.optString("errorCode", "UNKNOWN ERROR")
+                                val bounty = json.optString("bounty", "$0.00")
+                                val intersection = json.optString("intersection", "Unknown Coordinates")
+
+                                withContext(Dispatchers.Main) {
+                                    onMissionReceived(lat, lon, errorCode, bounty, intersection)
+                                }
+
+                                // Auto-delete the payload so we don't trigger it again
+                                client.delete("$BASE_URL/dispatch/$agentId.json")
+                            }
+                        } catch (e: Exception) {
+                            println("⚠️ Failed to decode tactical payload: ${e.message}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    println("📡 DISPATCH POLL ERROR: ${e.message}")
                 }
+
+                // Pause for 2 seconds before checking again to preserve battery
+                delay(2000)
             }
-        } catch (e: Exception) {
-            println("🔴 DISPATCH LINE CLOSED: ${e.localizedMessage}")
         }
     }
 
     suspend fun acceptMission(agentId: String = "VANGUARD-01"): Boolean {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
-                val jsonPayload = """{"agentId": "$agentId"}"""
-                val response: HttpResponse = client.post("$BASE_URL/mission/accept") {
-                    header("ngrok-skip-browser-warning", "69420")
+                // Update Firebase to show the agent has locked the mission
+                val response: HttpResponse = client.put("$BASE_URL/agents/$agentId/mission_state.json") {
                     contentType(ContentType.Application.Json)
-                    setBody(jsonPayload)
+                    setBody("\"ACCEPTED\"")
                 }
-                response.status.value in 200..299
+                response.status.isSuccess()
             } catch (e: Exception) {
                 println("API ERROR: Failed to accept mission - ${e.message}")
                 false
@@ -177,10 +171,9 @@ class PanApiClient {
     }
 
     suspend fun getTacticalRoute(startLat: Double, startLon: Double, endLat: Double, endLon: Double): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
                 val urlString = "https://router.project-osrm.org/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
-
                 val response: HttpResponse = client.get(urlString)
                 val jsonString = response.bodyAsText()
                 val json = org.json.JSONObject(jsonString)
@@ -188,7 +181,6 @@ class PanApiClient {
 
                 if (routes != null && routes.length() > 0) {
                     val routeObj = routes.getJSONObject(0)
-
                     val geometry = routeObj.getJSONObject("geometry")
                     val coordinates = geometry.getJSONArray("coordinates")
                     val path = mutableListOf<LatLng>()
@@ -206,24 +198,18 @@ class PanApiClient {
                                 val step = steps.getJSONObject(j)
                                 val maneuver = step.optJSONObject("maneuver")
                                 val distanceMiles = step.optDouble("distance", 0.0) / 1609.34
-
                                 val location = maneuver?.optJSONArray("location")
                                 val stepLon = location?.optDouble(0) ?: 0.0
                                 val stepLat = location?.optDouble(1) ?: 0.0
-
                                 val type = maneuver?.optString("type", "") ?: ""
                                 val modifier = maneuver?.optString("modifier", "") ?: ""
                                 var name = step.optString("name", "")
                                 if (name.isEmpty()) name = "unnamed road"
-
                                 val action = if (modifier.isNotEmpty() && modifier != "straight") "$type $modifier" else type
                                 val formattedAction = action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
-                                if (type == "arrive") {
-                                    stepsList.add(Triple("Arrive at Destination", stepLat, stepLon))
-                                } else if (distanceMiles > 0.0) {
-                                    stepsList.add(Triple("$formattedAction onto $name", stepLat, stepLon))
-                                }
+                                if (type == "arrive") stepsList.add(Triple("Arrive at Destination", stepLat, stepLon))
+                                else if (distanceMiles > 0.0) stepsList.add(Triple("$formattedAction onto $name", stepLat, stepLon))
                             }
                         }
                     }
@@ -238,13 +224,12 @@ class PanApiClient {
     }
 
     suspend fun claimEscrowFunds(agentId: String = "VANGUARD-01", netPayout: Double): Boolean {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
-                val requestBody = MissionCompleteRequest(agentId, netPayout)
-                val response: HttpResponse = client.post("$BASE_URL/mission/complete") {
-                    header("ngrok-skip-browser-warning", "69420")
+                // Mock endpoint pointing to Firebase for successful escrow completion
+                val response: HttpResponse = client.post("$BASE_URL/ledger/escrow_claim.json") {
                     contentType(ContentType.Application.Json)
-                    setBody(requestBody)
+                    setBody(MissionCompleteRequest(agentId, netPayout))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -255,53 +240,14 @@ class PanApiClient {
     }
 
     suspend fun getWalletData(agentId: String = "VANGUARD-01"): WalletResponse? {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val response: HttpResponse = client.get("$BASE_URL/agent/$agentId/wallet") {
-                    header("ngrok-skip-browser-warning", "69420")
-                }
-                if (response.status.isSuccess()) {
-                    val jsonString = response.bodyAsText()
-                    Json { ignoreUnknownKeys = true }.decodeFromString<WalletResponse>(jsonString)
-                } else null
-            } catch (e: Exception) {
-                println("🏦 WALLET ERROR: Failed to fetch ledger - ${e.message}")
-                null
-            }
-        }
+        return withContext(Dispatchers.IO) { null } // Disabled until backend ledger is built
     }
 
     suspend fun linkDebitCard(agentId: String = "VANGUARD-01", cardNumber: String): Boolean {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val requestBody = LinkCardRequest(agentId, cardNumber)
-                val response: HttpResponse = client.post("$BASE_URL/wallet/link_card") {
-                    header("ngrok-skip-browser-warning", "69420")
-                    contentType(ContentType.Application.Json)
-                    setBody(requestBody)
-                }
-                response.status.isSuccess()
-            } catch (e: Exception) {
-                println("🏦 BANK ERROR: Failed to link card - ${e.message}")
-                false
-            }
-        }
+        return withContext(Dispatchers.IO) { false } // Disabled until Stripe is integrated
     }
 
     suspend fun withdrawFunds(agentId: String = "VANGUARD-01", amount: Double): Boolean {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val requestBody = WithdrawRequest(agentId, amount)
-                val response: HttpResponse = client.post("$BASE_URL/wallet/withdraw") {
-                    header("ngrok-skip-browser-warning", "69420")
-                    contentType(ContentType.Application.Json)
-                    setBody(requestBody)
-                }
-                response.status.isSuccess()
-            } catch (e: Exception) {
-                println("🏦 BANK ERROR: Failed to withdraw funds - ${e.message}")
-                false
-            }
-        }
+        return withContext(Dispatchers.IO) { false } // Disabled until Stripe is integrated
     }
 }

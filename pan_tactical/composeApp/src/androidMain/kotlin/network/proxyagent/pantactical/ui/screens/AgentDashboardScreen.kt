@@ -133,6 +133,8 @@ fun MainDashboardContent() {
     var serviceRadiusMiles by remember { mutableStateOf(5f) }
     var isLoadoutExpanded by remember { mutableStateOf(false) }
     var isDataLoaded by remember { mutableStateOf(false) }
+    var voiceVolume by remember { mutableFloatStateOf(1f) }
+    var alertVolume by remember { mutableIntStateOf(100) }
 
     // --- UPGRADED: TACTICAL VOICE GREETING ---
     var hasSpokenWelcome by remember { mutableStateOf(false) }
@@ -152,7 +154,8 @@ fun MainDashboardContent() {
             }
 
             delay(500) // Wait for the visual crossfade to finish
-            tts?.speak("The command is now yours, $identity.", TextToSpeech.QUEUE_FLUSH, null, "WelcomeAudio")
+            val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume) }
+            tts?.speak("The command is now yours, $identity.", TextToSpeech.QUEUE_FLUSH, ttsParams, "WelcomeAudio")
             hasSpokenWelcome = true
         }
     }
@@ -207,6 +210,10 @@ fun MainDashboardContent() {
     LaunchedEffect(Unit) {
         serviceRadiusMiles = sharedPrefs.getFloat("radius", 5f)
         navPreference = sharedPrefs.getString("nav_pref", "GOOGLE") ?: "GOOGLE"
+
+        // --- NEW: Load Volume Preferences ---
+        voiceVolume = sharedPrefs.getFloat("voice_volume", 1f)
+        alertVolume = sharedPrefs.getInt("alert_volume", 100)
         val savedCapsJson = sharedPrefs.getString("capabilities", null)
         if (savedCapsJson != null) {
             try { agentCapabilities = Json.decodeFromString(savedCapsJson) } catch (e: Exception) { }
@@ -254,11 +261,13 @@ fun MainDashboardContent() {
         isDataLoaded = true
     }
 
-    LaunchedEffect(serviceRadiusMiles, navPreference, agentCapabilities, selectedVoice) {
+    LaunchedEffect(serviceRadiusMiles, navPreference, agentCapabilities, selectedVoice, voiceVolume, alertVolume) {
         if (isDataLoaded) {
             sharedPrefs.edit().apply {
                 putFloat("radius", serviceRadiusMiles)
                 putString("nav_pref", navPreference)
+                putFloat("voice_volume", voiceVolume)
+                putInt("alert_volume", alertVolume)
                 putString("capabilities", Json.encodeToString(agentCapabilities))
                 selectedVoice?.name?.let { putString("voice_pref", it) }
                 apply()
@@ -287,7 +296,7 @@ fun MainDashboardContent() {
 
     LaunchedEffect(queuedMission) {
         if (previousQueuedMission != null && queuedMission == null && missionState == "ACTIVE") {
-            val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, 100)
+            val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, alertVolume)
             try {
                 toneGen.startTone(ToneGenerator.TONE_CDMA_ABBR_INTERCEPT, 400)
                 android.widget.Toast.makeText(context, "Queued Mission Cancelled by Command.", android.widget.Toast.LENGTH_LONG).show()
@@ -326,7 +335,7 @@ fun MainDashboardContent() {
     var hasInitializedAudio by remember { mutableStateOf(false) }
     LaunchedEffect(isOnline) {
         if (!hasInitializedAudio) { hasInitializedAudio = true; return@LaunchedEffect }
-        val statusToneGen = ToneGenerator(AudioManager.STREAM_ALARM, 100)
+        val statusToneGen = ToneGenerator(AudioManager.STREAM_ALARM, alertVolume)
         try {
             if (isOnline) { statusToneGen.startTone(ToneGenerator.TONE_PROP_ACK, 100); delay(150); statusToneGen.startTone(ToneGenerator.TONE_PROP_ACK, 100) }
             else { statusToneGen.startTone(ToneGenerator.TONE_PROP_NACK, 250) }
@@ -335,7 +344,13 @@ fun MainDashboardContent() {
     }
 
     LaunchedEffect(missionState) {
-        if (missionState == "PENDING") {
+        if (missionState == "PENDING" && activeMission != null) {
+
+            // --- NEW: TACTICAL VOICE DISPATCH ANNOUNCEMENT ---
+            val speechText = "Priority Dispatch. ${activeMission?.intersection}. Diagnostic: ${activeMission?.errorCode}. Guaranteed payout: ${activeMission?.bounty}."
+            val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume) }
+            tts?.speak(speechText, TextToSpeech.QUEUE_ADD, ttsParams, "MissionAlert")
+
             launch {
                 countdownProgress.snapTo(1f)
                 val durationMs = 10000L
@@ -350,7 +365,7 @@ fun MainDashboardContent() {
                 if (missionState == "PENDING") { missionState = "IDLE"; activeMission = null }
             }
             launch {
-                val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, 100)
+                val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, alertVolume)
                 try {
                     while (isActive && countdownProgress.value > 0f && missionState == "PENDING") {
                         isFlashing = true; toneGen.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 150); delay(150); isFlashing = false; delay(1850)
@@ -580,7 +595,21 @@ fun MainDashboardContent() {
         }
 
         AnimatedVisibility(visible = currentScreen == "WALLET", enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(), exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(), modifier = Modifier.fillMaxSize().zIndex(10f)) {
-            WalletAndProfileScreen(apiClient = apiClient, onBack = { currentScreen = "DASHBOARD" }, navPreference = navPreference, onNavPrefChange = { navPreference = it }, tts = tts, availableVoices = availableVoices, selectedVoice = selectedVoice, onVoiceSelect = { selectedVoice = it })
+            WalletAndProfileScreen(
+                apiClient = apiClient,
+                onBack = { currentScreen = "DASHBOARD" },
+                navPreference = navPreference,
+                onNavPrefChange = { navPreference = it },
+                tts = tts,
+                availableVoices = availableVoices,
+                selectedVoice = selectedVoice,
+                onVoiceSelect = { selectedVoice = it },
+                // --- NEW PASS-THROUGHS ---
+                voiceVolume = voiceVolume,
+                onVoiceVolumeChange = { voiceVolume = it },
+                alertVolume = alertVolume,
+                onAlertVolumeChange = { alertVolume = it }
+            )
         }
 
         if (showDevMenu) {
