@@ -136,24 +136,20 @@ fun MainDashboardContent() {
     var voiceVolume by remember { mutableFloatStateOf(1f) }
     var alertVolume by remember { mutableIntStateOf(100) }
 
-    // --- UPGRADED: TACTICAL VOICE GREETING ---
     var hasSpokenWelcome by remember { mutableStateOf(false) }
 
     LaunchedEffect(tts, isDataLoaded) {
         if (tts != null && isDataLoaded && !hasSpokenWelcome) {
-
-            // 1. Pull the identity variables from local storage
             val callsign = sharedPrefs.getString("agent_callsign", "")?.trim() ?: ""
             val firstName = sharedPrefs.getString("agent_first_name", "")?.trim() ?: ""
 
-            // 2. Waterfall logic to determine the correct greeting name
             val identity = when {
                 callsign.isNotEmpty() -> callsign
                 firstName.isNotEmpty() -> firstName
                 else -> "Proxy Agent"
             }
 
-            delay(500) // Wait for the visual crossfade to finish
+            delay(500)
             val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume) }
             tts?.speak("The command is now yours, $identity.", TextToSpeech.QUEUE_FLUSH, ttsParams, "WelcomeAudio")
             hasSpokenWelcome = true
@@ -211,7 +207,6 @@ fun MainDashboardContent() {
         serviceRadiusMiles = sharedPrefs.getFloat("radius", 5f)
         navPreference = sharedPrefs.getString("nav_pref", "GOOGLE") ?: "GOOGLE"
 
-        // --- NEW: Load Volume Preferences ---
         voiceVolume = sharedPrefs.getFloat("voice_volume", 1f)
         alertVolume = sharedPrefs.getInt("alert_volume", 100)
         val savedCapsJson = sharedPrefs.getString("capabilities", null)
@@ -316,6 +311,11 @@ fun MainDashboardContent() {
     var isUploadingProof by remember { mutableStateOf(false) }
     var isSanitizing by remember { mutableStateOf(false) }
 
+    var lastPayoutAmount by remember { mutableDoubleStateOf(0.0) }
+    var lastTxHash by remember { mutableStateOf("") }
+    var timeOnSceneMs by remember { mutableLongStateOf(0L) }
+    var sceneArrivalTime by remember { mutableLongStateOf(0L) }
+
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted -> hasCameraPermission = isGranted }
 
     val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
@@ -345,8 +345,6 @@ fun MainDashboardContent() {
 
     LaunchedEffect(missionState) {
         if (missionState == "PENDING" && activeMission != null) {
-
-            // --- NEW: TACTICAL VOICE DISPATCH ANNOUNCEMENT ---
             val speechText = "Priority Dispatch. ${activeMission?.intersection}. Diagnostic: ${activeMission?.errorCode}. Guaranteed payout: ${activeMission?.bounty}."
             val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume) }
             tts?.speak(speechText, TextToSpeech.QUEUE_ADD, ttsParams, "MissionAlert")
@@ -381,7 +379,7 @@ fun MainDashboardContent() {
             override fun onLocationResult(locationResult: LocationResult) {
                 for (location in locationResult.locations) {
                     agentLocation = LatLng(location.latitude, location.longitude)
-                    hasGpsLock = true // <--- NEW: We officially have a real satellite ping!
+                    hasGpsLock = true
                 }
             }
         }
@@ -405,7 +403,6 @@ fun MainDashboardContent() {
         }
     }
 
-    // --- UPDATED: Wait for GPS Lock before drawing the route ---
     LaunchedEffect(activeMission, hasGpsLock) {
         if (activeMission != null && hasGpsLock) {
             val routeData = apiClient.getTacticalRoute(agentLocation.latitude, agentLocation.longitude, activeMission!!.lat, activeMission!!.lon)
@@ -502,34 +499,126 @@ fun MainDashboardContent() {
                                 Spacer(modifier = Modifier.height(24.dp)); CircularProgressIndicator(color = Color(0xFF00BCD4)); Spacer(modifier = Modifier.height(16.dp))
                                 if (isSanitizing) { Text("SANITIZING PII...", color = Color.Red, fontWeight = FontWeight.Black, letterSpacing = 2.sp); Text("REDACTING FACES & LICENSE PLATES", color = Color.Gray, fontSize = 12.sp) } else { Text("CRYPTOGRAPHIC WATERMARKING...", color = Color(0xFF00BCD4), fontWeight = FontWeight.Black, letterSpacing = 2.sp); Text("UPLOADING SECURE PROOF OF WORK", color = Color.Gray, fontSize = 12.sp) }
                                 LaunchedEffect(capturedProofImage) {
+                                    if (capturedProofImage == null) return@LaunchedEffect
                                     delay(2000)
                                     val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
                                     val finalPayout = (rawBounty * 0.90f).toDouble()
-                                    if (apiClient.claimEscrowFunds(netPayout = finalPayout)) { android.widget.Toast.makeText(context, String.format("Proof Accepted. +$%.2f", finalPayout), android.widget.Toast.LENGTH_LONG).show(); if (queuedMission != null) { activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE" } else { missionState = "IDLE"; activeMission = null } } else { android.widget.Toast.makeText(context, "Network Error: Upload Failed.", android.widget.Toast.LENGTH_LONG).show() }
-                                    isUploadingProof = false; capturedProofImage = null
+
+                                    if (apiClient.claimEscrowFunds(netPayout = finalPayout)) {
+                                        lastPayoutAmount = finalPayout
+                                        lastTxHash = "tx_${System.currentTimeMillis()}"
+                                        timeOnSceneMs = if (sceneArrivalTime > 0) System.currentTimeMillis() - sceneArrivalTime else 252000L
+
+                                        missionState = "COMPLETED"
+
+                                        val ttsParams = android.os.Bundle().apply { putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume) }
+                                        tts?.speak("Mission accomplished. Escrow funds secured.", TextToSpeech.QUEUE_FLUSH, ttsParams, null)
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Network Error: Upload Failed.", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                    isUploadingProof = false
+                                    capturedProofImage = null
+                                }
+                            }
+                        }
+                    }
+                    // --- AFTER-ACTION REPORT (AAR) OVERLAY ---
+                    AnimatedVisibility(
+                        visible = missionState == "COMPLETED",
+                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp), contentAlignment = Alignment.Center) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E), RoundedCornerShape(12.dp)).border(2.dp, Color(0xFF4CAF50), RoundedCornerShape(12.dp)).padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Box(modifier = Modifier.size(64.dp).background(Color(0xFF4CAF50).copy(alpha = 0.2f), RoundedCornerShape(32.dp)), contentAlignment = Alignment.Center) {
+                                    Text("✔", color = Color(0xFF4CAF50), fontSize = 32.sp, fontWeight = FontWeight.Black)
+                                }
+
+                                Text("AV RE-ENGAGED", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                Text("Autonomous systems online. Incident resolved.", color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
+
+                                Text("FUNDS SECURED", color = Color(0xFF4CAF50), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                                Text(String.format("+$%.2f", lastPayoutAmount), color = Color(0xFF4CAF50), fontSize = 48.sp, fontWeight = FontWeight.Black)
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("TIME ON SCENE", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    val minutes = (timeOnSceneMs / 1000) / 60
+                                    val seconds = (timeOnSceneMs / 1000) % 60
+                                    Text(String.format("%02dm %02ds", minutes, seconds), color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+                                }
+
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("CRYPTOGRAPHIC HASH", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(lastTxHash, color = Color(0xFF00BCD4), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Button(
+                                    onClick = {
+                                        if (queuedMission != null) {
+                                            activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
+                                        } else {
+                                            missionState = "IDLE"; activeMission = null
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("RETURN TO PATROL", color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                                 }
                             }
                         }
                     }
                 }
+
+
             }
 
+            // --- BOTTOM CONTROL PANEL ---
             Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)), horizontalAlignment = Alignment.CenterHorizontally) {
+
+                // ACTIVE MISSION CONTROLS
                 AnimatedVisibility(visible = missionState == "ACTIVE", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(modifier = Modifier.fillMaxWidth().clickable { isMissionControlsExpanded = !isMissionControlsExpanded }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) { Text(if (isMissionControlsExpanded) "▼ HIDE MISSION CONTROLS ▼" else "▲ SHOW MISSION CONTROLS ▲", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp) }
-                        AnimatedVisibility(visible = isMissionControlsExpanded) {
+                    Column(modifier = Modifier.fillMaxWidth().animateContentSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(modifier = Modifier.fillMaxWidth().clickable { isMissionControlsExpanded = !isMissionControlsExpanded }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                            Text(if (isMissionControlsExpanded) "▼ HIDE MISSION CONTROLS ▼" else "▲ SHOW MISSION CONTROLS ▲", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        }
+
+                        if (isMissionControlsExpanded) {
                             Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("ACTIVE MISSION: EN ROUTE", color = Color(0xFF00BCD4), fontSize = 14.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                                 Spacer(modifier = Modifier.height(8.dp)); Text(activeMission?.intersection ?: "Target Location", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text("Diagnostic: ${activeMission?.errorCode}", color = Color.LightGray, fontSize = 14.sp); Spacer(modifier = Modifier.height(16.dp))
-                                val isAtScene=true // = distanceMiles <= 0.1
-                                AnimatedVisibility(visible = isAtScene) { Button(onClick = { missionState = "ON_SCENE" }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(64.dp).padding(bottom = 16.dp)) { Text("ARRIVED AT SCENE", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp) } }
+
+                                val isAtScene = true // = distanceMiles <= 0.1
+
+                                if (isAtScene) {
+                                    Button(
+                                        onClick = {
+                                            missionState = "ON_SCENE"
+                                            sceneArrivalTime = System.currentTimeMillis()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(64.dp).padding(bottom = 16.dp)
+                                    ) {
+                                        Text("ARRIVED AT SCENE", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                    }
+                                }
+
                                 key(abortSliderResetKey) { SwipeActionSlider(text = "SWIPE TO ABORT >>", trackColor = Color(0xFF2C2C2C), thumbColor = Color(0xFFD32F2F)) { showAbortDialog = true } }
                             }
                         }
                     }
                 }
 
+                // ON SCENE TERMINAL
                 AnimatedVisibility(visible = missionState == "ON_SCENE", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                     var terminalLogs by remember { mutableStateOf(listOf("Establishing local UWB connection to AV...", "Connection secured.", "Awaiting physical repair and diagnostic re-run...")) }
                     var isResolving by remember { mutableStateOf(false) }
@@ -543,10 +632,12 @@ fun MainDashboardContent() {
                     }
                 }
 
+                // OFFLINE LOADOUT MENU
                 AnimatedVisibility(visible = !isOnline && missionState != "ACTIVE" && missionState != "ON_SCENE") {
-                    Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(modifier = Modifier.padding(16.dp).animateContentSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                         Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF2A2A2A), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).clickable { isLoadoutExpanded = !isLoadoutExpanded }.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("🛠 MARKET BIDS & LOADOUT", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp); Text(if (isLoadoutExpanded) "HIDE ▲" else "EXPAND ▼", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                        AnimatedVisibility(visible = isLoadoutExpanded) {
+
+                        if (isLoadoutExpanded) {
                             Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
                                 Text("SERVICE RADIUS: ${serviceRadiusMiles.toInt()} MILES", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 Slider(value = serviceRadiusMiles, onValueChange = { serviceRadiusMiles = it }, valueRange = 1f..8f, steps = 6, colors = SliderDefaults.colors(thumbColor = Color(0xFFF44336), activeTrackColor = Color(0xFFF44336)), modifier = Modifier.padding(bottom = 12.dp))
@@ -566,6 +657,7 @@ fun MainDashboardContent() {
                     }
                 }
 
+                // ONLINE/OFFLINE SWIPE
                 AnimatedVisibility(visible = missionState != "ACTIVE" && missionState != "ON_SCENE") {
                     Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
                         if (isOnline) {
@@ -604,7 +696,6 @@ fun MainDashboardContent() {
                 availableVoices = availableVoices,
                 selectedVoice = selectedVoice,
                 onVoiceSelect = { selectedVoice = it },
-                // --- NEW PASS-THROUGHS ---
                 voiceVolume = voiceVolume,
                 onVoiceVolumeChange = { voiceVolume = it },
                 alertVolume = alertVolume,
