@@ -610,10 +610,6 @@ fun MainDashboardContent() {
                                 Text("AV RE-ENGAGED", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                                 Text("Autonomous systems online. Incident resolved.", color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
 
-                                Spacer(modifier = Modifier.height(8.dp))
-                                HorizontalDivider(color = Color(0xFF333333))
-                                Spacer(modifier = Modifier.height(8.dp))
-
                                 Text("FUNDS SECURED", color = Color(0xFF4CAF50), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                                 Text(String.format("+$%.2f", lastPayoutAmount), color = Color(0xFF4CAF50), fontSize = 48.sp, fontWeight = FontWeight.Black)
 

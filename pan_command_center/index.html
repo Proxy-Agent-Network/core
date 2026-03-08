@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    
     <title>PAN Command Center</title>
     <style>
         body {
@@ -81,14 +85,31 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        // SECURITY FIX: Import Firebase Auth to establish a verifiable session
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         // Pull the config from the secure local window.ENV object
         const app = initializeApp(window.ENV.FIREBASE_CONFIG);
         const db = getDatabase(app);
+        const auth = getAuth(app);
 
         let map;
         let agentMarkers = {};
-        let agentCircles = {}; // NEW: Tracks the radius circles
+        let agentCircles = {}; 
+
+        // SECURITY FIX: HTML Sanitizer to prevent DOM-based XSS attacks from poisoned database nodes
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag])
+            );
+        }
 
         window.sendDispatch = function() {
             const uid = document.getElementById('disp-uid').value;
@@ -97,18 +118,23 @@
 
             const center = map.getCenter();
             
+            // SECURITY FIX: Strict type casting prevents JSON object injection
             const payload = {
                 type: "MISSION",
-                lat: center.lat(),
-                lon: center.lng(),
-                errorCode: document.getElementById('disp-error').value,
-                bounty: document.getElementById('disp-bounty').value,
-                intersection: document.getElementById('disp-loc').value,
+                lat: Number(center.lat()),
+                lon: Number(center.lng()),
+                errorCode: String(document.getElementById('disp-error').value),
+                bounty: String(document.getElementById('disp-bounty').value),
+                intersection: String(document.getElementById('disp-loc').value),
                 timestamp: Date.now()
             };
 
-            set(ref(db, 'dispatch/' + uid), payload).then(() => {
-                alert("MISSION DEPLOYED TO " + uid.substring(0,8) + "...");
+            // Push to Firebase RTDB
+            set(ref(db, 'dispatch/' + escapeHTML(uid)), payload).then(() => {
+                alert("MISSION DEPLOYED TO " + escapeHTML(uid).substring(0,8) + "...");
+            }).catch(error => {
+                console.error("Dispatch Failed: ", error);
+                alert("SECURITY BLOCK: Dispatch failed. Check database permissions.");
             });
         };
 
@@ -131,7 +157,14 @@
                 zoomControl: true
             });
 
-            startTelemetryLink();
+            // Authenticate session before attaching database listeners
+            signInAnonymously(auth).then(() => {
+                console.log("🔒 Command Center Session Authenticated.");
+                startTelemetryLink();
+            }).catch((error) => {
+                console.warn("Auth not configured or failed. Attempting read-only fallback...", error);
+                startTelemetryLink(); // Fallback for dev environments without Auth enforced
+            });
         };
 
         function startTelemetryLink() {
@@ -152,13 +185,12 @@
                     const lat = agent.status.latitude;
                     const lon = agent.status.longitude;
                     const radiusMiles = agent.status.radius || 0;
-                    const radiusMeters = radiusMiles * 1609.34; // Convert miles to meters
+                    const radiusMeters = radiusMiles * 1609.34; 
                     const lastPing = new Date(agent.status.timestamp || Date.now()).toLocaleTimeString();
 
                     if (lat && lon) {
                         const position = { lat: lat, lng: lon };
                         
-                        // 1. Handle the Marker
                         if (agentMarkers[uid]) {
                             agentMarkers[uid].setPosition(position);
                             agentMarkers[uid].setIcon(getMarkerIcon(isOnline));
@@ -166,12 +198,11 @@
                             agentMarkers[uid] = new google.maps.Marker({
                                 position: position,
                                 map: map,
-                                title: "Agent: " + uid,
+                                title: "Agent: " + escapeHTML(uid),
                                 icon: getMarkerIcon(isOnline)
                             });
                         }
 
-                        // 2. Handle the Radius Circle
                         if (isOnline) {
                             if (agentCircles[uid]) {
                                 agentCircles[uid].setCenter(position);
@@ -182,15 +213,14 @@
                                     strokeOpacity: 0.5,
                                     strokeWeight: 2,
                                     fillColor: "#F44336",
-                                    fillOpacity: 0.1, // 90% Transparent
+                                    fillOpacity: 0.1, 
                                     map: map,
                                     center: position,
                                     radius: radiusMeters,
-                                    clickable: false // Prevents the circle from blocking map clicks
+                                    clickable: false 
                                 });
                             }
                         } else {
-                            // If they go offline, destroy the circle
                             if (agentCircles[uid]) {
                                 agentCircles[uid].setMap(null);
                                 delete agentCircles[uid];
@@ -198,22 +228,22 @@
                         }
                     }
 
-                    // Build Sidebar Card
+                    // Build Sidebar Card with escaped properties to prevent injection
                     const card = document.createElement('div');
                     card.className = `agent-card ${isOnline ? '' : 'offline'}`;
                     card.onclick = () => {
-                        document.getElementById('disp-uid').value = uid;
+                        document.getElementById('disp-uid').value = escapeHTML(uid);
                         if(lat && lon) map.panTo({lat: lat, lng: lon});
                     };
 
                     card.innerHTML = `
-                        <div class="agent-id">UID: ${uid}</div>
+                        <div class="agent-id">UID: ${escapeHTML(uid)}</div>
                         <div class="agent-status ${isOnline ? 'status-online' : 'status-offline'}">
                             ${isOnline ? '🟢 ONLINE' : '🔴 OFFLINE'}
                         </div>
                         <div class="agent-meta">
-                            Radius: ${radiusMiles} miles<br>
-                            Last Ping: ${lastPing}
+                            Radius: ${escapeHTML(radiusMiles)} miles<br>
+                            Last Ping: ${escapeHTML(lastPing)}
                         </div>
                     `;
                     listDiv.appendChild(card);

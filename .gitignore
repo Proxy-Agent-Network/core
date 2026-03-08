@@ -80,3 +80,4 @@ lyria_track_*.mp3
 lyria_track_*.wav
 faiss_index/tests/
 hardware-node/mock_boot.py
+faiss_index/

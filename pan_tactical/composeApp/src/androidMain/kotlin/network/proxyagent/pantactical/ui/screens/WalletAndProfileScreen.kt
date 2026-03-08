@@ -1,5 +1,7 @@
 package network.proxyagent.pantactical.ui.screens
 
+import android.content.Context
+import android.media.AudioManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.Voice
 import androidx.compose.animation.AnimatedVisibility
@@ -32,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import network.proxyagent.pantactical.network.PanApiClient
@@ -53,6 +57,29 @@ fun WalletAndProfileScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // --- FIX 6: EncryptedSharedPreferences for PII ---
+    val sharedPrefs = remember {
+        try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+
+            EncryptedSharedPreferences.create(
+                context,
+                "PanAgentSecureSettings",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            // Fallback for older devices/preview mode
+            context.getSharedPreferences("PanAgentSettings", Context.MODE_PRIVATE)
+        }
+    }
+
+    var firstName by remember { mutableStateOf(sharedPrefs.getString("agent_first_name", "") ?: "") }
+    var callsign by remember { mutableStateOf(sharedPrefs.getString("agent_callsign", "") ?: "") }
 
     var walletData by remember { mutableStateOf<network.proxyagent.pantactical.network.WalletResponse?>(null) }
     var isFetchingWallet by remember { mutableStateOf(true) }
@@ -152,6 +179,70 @@ fun WalletAndProfileScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            // --- AGENT IDENTITY ALIAS ---
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                Text("AGENT IDENTITY ALIAS", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
+
+                OutlinedTextField(
+                    value = firstName,
+                    onValueChange = {
+                        firstName = it
+                        sharedPrefs.edit().putString("agent_first_name", it).apply()
+                    },
+                    label = { Text("LEGAL FIRST NAME", color = Color.Gray, fontSize = 10.sp) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF00BCD4),
+                        unfocusedBorderColor = Color(0xFF333333),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color(0xFF00BCD4)
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
+                    value = callsign,
+                    onValueChange = {
+                        callsign = it
+                        sharedPrefs.edit().putString("agent_callsign", it).apply()
+                    },
+                    label = { Text("TACTICAL CALLSIGN (OVERRIDES NAME)", color = Color.Gray, fontSize = 10.sp) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF00BCD4),
+                        unfocusedBorderColor = Color(0xFF333333),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color(0xFF00BCD4)
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    singleLine = true
+                )
+
+                // TEST AUDIO BUTTON
+                Button(
+                    onClick = {
+                        val identity = when {
+                            callsign.isNotBlank() -> callsign
+                            firstName.isNotBlank() -> firstName
+                            else -> "Proxy Agent"
+                        }
+                        val ttsParams = android.os.Bundle().apply {
+                            putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume)
+                        }
+                        tts?.speak("The command is now yours, $identity.", TextToSpeech.QUEUE_FLUSH, ttsParams, "TestAudio")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("🔊 TEST AUDIO ALIAS", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text("TACTICAL AUDIO MIXER", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
 
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
@@ -180,10 +271,17 @@ fun WalletAndProfileScreen(
                     value = alertVolume.toFloat(),
                     onValueChange = { onAlertVolumeChange(it.toInt()) },
                     onValueChangeFinished = {
+                        // --- FIX 12: Hardware Audio Focus & Stream Safety Check ---
                         try {
-                            val toneGen = android.media.ToneGenerator(android.media.AudioManager.STREAM_ALARM, alertVolume)
-                            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150)
-                            coroutineScope.launch { kotlinx.coroutines.delay(200); toneGen.release() }
+                            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                            if (audioManager.ringerMode == AudioManager.RINGER_MODE_NORMAL) {
+                                val toneGen = android.media.ToneGenerator(AudioManager.STREAM_ALARM, alertVolume)
+                                toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150)
+                                coroutineScope.launch {
+                                    kotlinx.coroutines.delay(200)
+                                    toneGen.release()
+                                }
+                            }
                         } catch (e: Exception) {
                             println("AUDIO ERROR: Failed to play preview beep - ${e.message}")
                         }
@@ -239,6 +337,8 @@ fun WalletAndProfileScreen(
             }
         }
     }
+
+    // --- DIALOGS & OVERLAYS ---
 
     if (showLinkCardDialog) {
         AlertDialog(
@@ -334,8 +434,16 @@ fun WalletAndProfileScreen(
                                             .size(80.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                             .border(1.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp))
-                                            // --- UPGRADED: Click to enlarge ---
-                                            .clickable { enlargedImageUrl = url },
+                                            // --- FIX 17: SSRF Image Validation / UI Spoofing Defense ---
+                                            .clickable {
+                                                val safeUrl = url.lowercase()
+                                                if ((safeUrl.startsWith("https://i.ibb.co/") || safeUrl.startsWith("https://imgbb.com/")) &&
+                                                    (safeUrl.endsWith(".jpg") || safeUrl.endsWith(".png") || safeUrl.endsWith(".jpeg"))) {
+                                                    enlargedImageUrl = url
+                                                } else {
+                                                    android.widget.Toast.makeText(context, "SECURITY BLOCK: Untrusted evidence source.", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
                                         contentScale = ContentScale.Crop
                                     )
                                 }
