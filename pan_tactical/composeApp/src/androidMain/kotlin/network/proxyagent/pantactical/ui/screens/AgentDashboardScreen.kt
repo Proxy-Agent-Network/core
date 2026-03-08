@@ -55,6 +55,7 @@ import network.proxyagent.pantactical.models.MissionData
 import network.proxyagent.pantactical.network.PanApiClient
 import network.proxyagent.pantactical.sync.OfflineSyncEngine
 import network.proxyagent.pantactical.ui.components.TacticalNavEngine
+import network.proxyagent.pantactical.ui.components.SwipeActionSlider
 import network.proxyagent.pantactical.ui.screens.components.MissionAlertOverlay
 import network.proxyagent.pantactical.ui.screens.components.OfflineLoadoutMenu
 import network.proxyagent.pantactical.ui.screens.components.OnSceneTerminal
@@ -214,7 +215,6 @@ fun MainDashboardContent() {
     var previousQueuedMission by remember { mutableStateOf<MissionData?>(null) }
     var isMissionControlsExpanded by remember { mutableStateOf(false) }
 
-    // --- FIX: Telemetry state persisted from SharedPreferences ---
     var lastPayoutAmount by remember { mutableDoubleStateOf(sharedPrefs.getFloat("last_payout", 0f).toDouble()) }
     var lastTxHash by remember { mutableStateOf(sharedPrefs.getString("last_tx_hash", "") ?: "") }
     var timeOnSceneMs by remember { mutableLongStateOf(sharedPrefs.getLong("time_on_scene", 0L)) }
@@ -291,10 +291,28 @@ fun MainDashboardContent() {
         }
     }
 
-    LaunchedEffect(serviceRadiusMiles, navPreference, agentCapabilities, selectedVoice, voiceVolume, alertVolume) {
+    // --- FIX: Dynamic Loadout Syncing ---
+    var agentLocation by remember { mutableStateOf(LatLng(33.3061, -111.6601)) } // Hoisted for access
+
+    LaunchedEffect(serviceRadiusMiles, navPreference, agentCapabilities, selectedVoice, voiceVolume, alertVolume, patrolMode) {
         if (isDataLoaded) {
             sharedPrefs.edit().apply {
                 putFloat("radius", serviceRadiusMiles); putString("nav_pref", navPreference); putString("patrol_mode", patrolMode); putFloat("voice_volume", voiceVolume); putInt("alert_volume", alertVolume); putString("capabilities", Json.encodeToString(agentCapabilities)); selectedVoice?.name?.let { putString("voice_pref", it) }; apply()
+            }
+
+            // If the user changes their bids or radius while ONLINE, instantly sync to the database
+            if (isOnline) {
+                launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val activeLoadout = agentCapabilities.filter { it.isQualified && it.isEnabled && (patrolMode == "VEHICLE" || it.tier == 1) }.associate { it.id to it.currentBid }
+                    apiClient.updateAgentStatus(
+                        context = context,
+                        isOnline = true,
+                        lat = agentLocation.latitude,
+                        lon = agentLocation.longitude,
+                        radiusMiles = serviceRadiusMiles.toDouble(),
+                        loadout = activeLoadout
+                    )
+                }
             }
         }
     }
@@ -311,7 +329,6 @@ fun MainDashboardContent() {
     }
 
     var tacticalRoute by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-    var agentLocation by remember { mutableStateOf(LatLng(33.3061, -111.6601)) }
     var hasGpsLock by remember { mutableStateOf(false) }
     var locationPermissionGranted by remember { mutableStateOf(false) }
     var hasCameraPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
@@ -341,7 +358,6 @@ fun MainDashboardContent() {
             lastTxHash = "PENDING_OFFLINE_SYNC"
         }
 
-        // --- FIX: Calculating Final Telemetry and Securing to Storage ---
         lastPayoutAmount = finalPayout
         timeOnSceneMs = if (sceneArrivalTime > 0) System.currentTimeMillis() - sceneArrivalTime else 252000L
         totalResponseTimeMs = if (missionAcceptTime > 0) System.currentTimeMillis() - missionAcceptTime else timeOnSceneMs + 300000L
@@ -470,7 +486,6 @@ fun MainDashboardContent() {
                         onAccept = {
                             coroutineScope.launch {
                                 if (apiClient.acceptMission()) {
-                                    // --- FIX: Stamping the exact T1 Accept Time ---
                                     missionState = "ACTIVE"
                                     missionAcceptTime = System.currentTimeMillis()
                                     sharedPrefs.edit().putLong("mission_accept_time", missionAcceptTime).apply()
@@ -488,7 +503,6 @@ fun MainDashboardContent() {
                     isUploadingProof = isUploadingProof, capturedEvidence = capturedEvidence, missionState = missionState,
                     lastPayoutAmount = lastPayoutAmount, timeOnSceneMs = timeOnSceneMs, totalResponseTimeMs = totalResponseTimeMs, lastTxHash = lastTxHash,
                     onReturnToPatrol = {
-                        // Wipe memory and secure storage
                         lastPayoutAmount = 0.0; timeOnSceneMs = 0L; totalResponseTimeMs = 0L; lastTxHash = ""; sceneArrivalTime = 0L; missionAcceptTime = 0L
                         sharedPrefs.edit().apply {
                             remove("last_payout"); remove("last_tx_hash"); remove("time_on_scene"); remove("total_response_time"); remove("scene_arrival_time"); remove("mission_accept_time")
@@ -511,7 +525,6 @@ fun MainDashboardContent() {
                                 Spacer(modifier = Modifier.height(8.dp)); Text(activeMission?.intersection ?: "Target Location", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text("Diagnostic: ${activeMission?.errorCode}", color = Color.LightGray, fontSize = 14.sp); Spacer(modifier = Modifier.height(16.dp))
                                 Button(
                                     onClick = {
-                                        // --- FIX: Stamping the exact T2 Arrival Time ---
                                         missionState = "ON_SCENE";
                                         sceneArrivalTime = System.currentTimeMillis()
                                         sharedPrefs.edit().putLong("scene_arrival_time", sceneArrivalTime).apply()
@@ -532,7 +545,6 @@ fun MainDashboardContent() {
                         hasCameraPermission = hasCameraPermission,
                         onRequestCameraPermission = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
                         onCapturePhoto = { takePictureLauncher.launch(null) },
-                        // --- NEW: Remove photo logic ---
                         onRemovePhoto = { indexToRemove ->
                             val mutableList = capturedEvidence.toMutableList()
                             if (indexToRemove in mutableList.indices) {
@@ -544,7 +556,14 @@ fun MainDashboardContent() {
                     )
                 }
 
-                androidx.compose.animation.AnimatedVisibility(visible = missionState != "ACTIVE" && missionState != "ON_SCENE") {
+                // --- FIX: Strictly hide these when on a mission OR viewing the completion receipt ---
+                androidx.compose.animation.AnimatedVisibility(visible = missionState == "IDLE") {
+                    OfflineLoadoutMenu(
+                        isLoadoutExpanded = isLoadoutExpanded, onToggleExpand = { isLoadoutExpanded = !isLoadoutExpanded }, patrolMode = patrolMode, onPatrolModeChange = { patrolMode = it; serviceRadiusMiles = if(it == "FOOT") 0.5f else 5f }, serviceRadiusMiles = serviceRadiusMiles, onRadiusChange = { serviceRadiusMiles = it }, agentCapabilities = agentCapabilities, onCapabilitiesChange = { agentCapabilities = it }
+                    )
+                }
+
+                androidx.compose.animation.AnimatedVisibility(visible = missionState == "IDLE") {
                     Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
                         if (isOnline) {
                             SwipeActionSlider(text = "SWIPE TO GO OFFLINE >>", trackColor = Color(0xFF333333), thumbColor = Color(0xFFF44336)) {

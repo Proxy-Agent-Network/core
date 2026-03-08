@@ -5,10 +5,12 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,7 +35,7 @@ fun PostMissionOverlays(
     missionState: String,
     lastPayoutAmount: Double,
     timeOnSceneMs: Long,
-    totalResponseTimeMs: Long, // --- NEW: Added Telemetry Metric ---
+    totalResponseTimeMs: Long,
     lastTxHash: String,
     onReturnToPatrol: () -> Unit
 ) {
@@ -59,12 +61,32 @@ fun PostMissionOverlays(
     AnimatedVisibility(visible = missionState == "COMPLETED", enter = slideInVertically(initialOffsetY = { it }) + fadeIn(), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp), contentAlignment = Alignment.Center) {
             Column(
-                modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E), RoundedCornerShape(12.dp)).border(2.dp, Color(0xFF4CAF50), RoundedCornerShape(12.dp)).padding(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1E1E1E), RoundedCornerShape(12.dp))
+                    .border(2.dp, Color(0xFF4CAF50), RoundedCornerShape(12.dp))
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState()), // --- FIX: Added Scrollbar ---
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Box(modifier = Modifier.size(64.dp).background(Color(0xFF4CAF50).copy(alpha = 0.2f), RoundedCornerShape(32.dp)), contentAlignment = Alignment.Center) {
-                    Text("✔", color = Color(0xFF4CAF50), fontSize = 32.sp, fontWeight = FontWeight.Black)
+
+                // --- FIX: Added Top Row for X button and Checkmark ---
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Box(modifier = Modifier.size(64.dp).background(Color(0xFF4CAF50).copy(alpha = 0.2f), RoundedCornerShape(32.dp)).align(Alignment.Center), contentAlignment = Alignment.Center) {
+                        Text("✔", color = Color(0xFF4CAF50), fontSize = 32.sp, fontWeight = FontWeight.Black)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFF333333), RoundedCornerShape(16.dp))
+                            .align(Alignment.TopEnd)
+                            .clickable { onReturnToPatrol() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("✕", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 Text("AV RE-ENGAGED", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
@@ -75,7 +97,6 @@ fun PostMissionOverlays(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // --- NEW: Telemetry Readouts ---
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("TOTAL RESPONSE TIME", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     val trtMinutes = (totalResponseTimeMs / 1000) / 60

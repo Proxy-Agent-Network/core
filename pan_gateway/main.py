@@ -1,38 +1,104 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Header, HTTPException, Security, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import sqlite3
 import json
-import datetime
 import math
-import os
-import asyncio
 import hashlib
+from datetime import datetime, timezone
+import asyncio
 
-# [FIX 9] SlowAPI for Rate Limiting 
+# --- SECURITY & RATE LIMITING ---
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+# --- SQLALCHEMY DATABASE ---
+from sqlalchemy import create_engine, Column, String, Float, Integer, DateTime, ForeignKey, JSON, Boolean, desc
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+
+# 1. Database Configuration (Easily swappable to PostgreSQL)
+SQLALCHEMY_DATABASE_URL = "sqlite:///./pan_command.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# 2. ORM Models (The Analytics Schema)
+class Agent(Base):
+    __tablename__ = "agents"
+    agent_id = Column(String, primary_key=True, index=True)
+    status = Column(String, default="OFFLINE") # ONLINE, BUSY, OFFLINE
+    lat = Column(Float, nullable=True)
+    lon = Column(Float, nullable=True)
+    radius = Column(Float, default=5.0)
+    loadout = Column(JSON, default={})
+    linked_card = Column(String, nullable=True)
+    reputation_score = Column(Float, default=5.0)
+
+class Wallet(Base):
+    __tablename__ = "wallets"
+    agent_id = Column(String, primary_key=True)
+    balance = Column(Float, default=0.0)
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+    id = Column(String, primary_key=True)
+    agent_id = Column(String, index=True)
+    date = Column(String)
+    amount = Column(String)
+    description = Column(String)
+
+class AgentSession(Base):
+    __tablename__ = "agent_sessions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_id = Column(String, index=True)
+    went_online_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    went_offline_at = Column(DateTime, nullable=True)
+
+class Mission(Base):
+    __tablename__ = "missions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fleet_id = Column(String, default="VANGUARD-01")
+    category_id = Column(String) # e.g., ERR-DOOR
+    bounty_amount = Column(Float)
+    status = Column(String, default="PENDING") # PENDING, ACTIVE, COMPLETED, ABORTED_AGENT, ABORTED_AV
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    accepted_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    assigned_agent_id = Column(String, nullable=True)
+
+class DispatchEvent(Base):
+    __tablename__ = "dispatch_events"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    mission_id = Column(Integer, index=True)
+    agent_id = Column(String, index=True)
+    dispatched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    agent_response = Column(String, default="PENDING") # ACCEPTED, DECLINED, IGNORED
+
+Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# --- APP SETUP ---
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="PAN Central Dispatch Gateway")
-
-# [FIX 9] Attach Limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# [FIX 10] Missing CORS Restrictions
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost", "https://pan-tactical.web.app"], # Restrict to authorized domains
+    allow_origins=["http://localhost", "https://pan-tactical.web.app"], 
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
-# [FIX 18] Strict TLS & Security Headers
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -41,72 +107,23 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com;"
     return response
 
-# [FIX 15] Default Information Disclosure (Masking validation leaks)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid payload structure. Request rejected."})
 
-
-# ====================================================================
-# DATABASE INITIALIZATION & POOLING
-# ====================================================================
-# [FIX 5 NOTE] To fully solve Issue #5 in prod, replace sqlite3 with pysqlcipher3 
-DB_FILE = "pan_command.db"
-
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS agents (
-                    agent_id TEXT PRIMARY KEY, 
-                    status TEXT, 
-                    lat REAL, 
-                    lon REAL, 
-                    radius REAL, 
-                    loadout TEXT, 
-                    linked_card TEXT
-                 )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS wallets (
-                    agent_id TEXT PRIMARY KEY, 
-                    balance REAL
-                 )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS transactions (
-                    id TEXT PRIMARY KEY, 
-                    agent_id TEXT, 
-                    date TEXT, 
-                    amount TEXT, 
-                    description TEXT
-                 )''')
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# [FIX 19] Inefficient DB Connection Management (Using FastAPI Yield Dependency)
-def get_db():
-    conn = sqlite3.connect(DB_FILE, timeout=10.0, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-# [FIX 2 & 7] Authentication Dependency for Zero-Trust Routing
 async def verify_agent_token(x_auth_token: str = Header(default=None)):
-    # In a real environment, verify a Firebase Admin JWT or Hardware Key here
     if not x_auth_token or len(x_auth_token) < 16:
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid hardware attestation token.")
     return x_auth_token
 
-# [FIX 4] Cryptographic Status Verification
 def verify_ecdsa_signature(payload_dict: dict, signature: str) -> bool:
-    # Stub: Verify ECDSA payload signature against Agent's registered Public Key
     if not signature or len(signature) < 32:
         return False
     return True
 
 
 # ====================================================================
-# 1. THE HARDWARE HANDSHAKE
+# 1. AGENT TELEMETRY & ROUTING (SQLAlchemy Refactor)
 # ====================================================================
 class StatusUpdate(BaseModel):
     agentId: str
@@ -120,50 +137,70 @@ class StatusUpdate(BaseModel):
 class MissionAccept(BaseModel):
     agentId: str
 
-@app.post("/v1/mission/accept")
-@limiter.limit("10/minute")
-async def accept_mission(request: Request, payload: MissionAccept, conn: sqlite3.Connection = Depends(get_db), auth: str = Depends(verify_agent_token)):
-    c = conn.cursor()
-    c.execute("UPDATE agents SET status = 'BUSY' WHERE agent_id = ?", (payload.agentId,))
-    conn.commit()
-    rows_affected = c.rowcount
-    
-    if rows_affected > 0:
-        # [FIX 14] Mask PII from Server Logs
-        safe_uid = payload.agentId[:8] + "***"
-        print(f"🔒 MISSION LOCKED: {safe_uid} is now en route.")
-        return {"status": "accepted"}
-    return {"status": "error: agent not found"}
-
 @app.post("/v1/agent/status")
 @limiter.limit("60/minute")
-async def update_agent_status(request: Request, payload: StatusUpdate, conn: sqlite3.Connection = Depends(get_db), auth: str = Depends(verify_agent_token)):
-    # [FIX 14] Mask PII from Server Logs
-    safe_uid = payload.agentId[:8] + "***"
-    print(f"📡 UPLINK: {safe_uid} | Market Bids: {payload.loadout}")
-    
-    # [FIX 4] Validate cryptographic hardware signature
+async def update_agent_status(request: Request, payload: StatusUpdate, db: Session = Depends(get_db), auth: str = Depends(verify_agent_token)):
     if not verify_ecdsa_signature(payload.dict(), payload.signature):
         raise HTTPException(status_code=403, detail="Invalid cryptographic signature.")
         
-    c = conn.cursor()
-    loadout_json = json.dumps(payload.loadout)
+    # 1. Update Agent Core State
+    agent = db.query(Agent).filter(Agent.agent_id == payload.agentId).first()
+    if not agent:
+        agent = Agent(agent_id=payload.agentId)
+        db.add(agent)
+        # Initialize Wallet
+        db.add(Wallet(agent_id=payload.agentId, balance=0.0))
     
-    c.execute('''INSERT INTO agents (agent_id, status, lat, lon, radius, loadout, linked_card) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                 ON CONFLICT(agent_id) DO UPDATE SET 
-                 status=excluded.status, lat=excluded.lat, lon=excluded.lon, 
-                 radius=excluded.radius, loadout=excluded.loadout''', 
-              (payload.agentId, payload.status, payload.latitude, payload.longitude, payload.radius, loadout_json, None))
+    agent.status = payload.status
+    agent.lat = payload.latitude
+    agent.lon = payload.longitude
+    agent.radius = payload.radius
+    agent.loadout = payload.loadout
     
-    c.execute("INSERT OR IGNORE INTO wallets (agent_id, balance) VALUES (?, 0.0)", (payload.agentId,))
-    conn.commit()
-    
+    # 2. Analytics: Session Time Tracking
+    if payload.status == "ONLINE":
+        # Create a new session if one isn't open
+        active_session = db.query(AgentSession).filter(AgentSession.agent_id == payload.agentId, AgentSession.went_offline_at == None).first()
+        if not active_session:
+            db.add(AgentSession(agent_id=payload.agentId))
+    elif payload.status == "OFFLINE":
+        # Close open sessions
+        active_session = db.query(AgentSession).filter(AgentSession.agent_id == payload.agentId, AgentSession.went_offline_at == None).first()
+        if active_session:
+            active_session.went_offline_at = datetime.now(timezone.utc)
+
+    db.commit()
     return {"acknowledged": True}
+
+@app.post("/v1/mission/accept")
+@limiter.limit("10/minute")
+async def accept_mission(request: Request, payload: MissionAccept, db: Session = Depends(get_db), auth: str = Depends(verify_agent_token)):
+    agent = db.query(Agent).filter(Agent.agent_id == payload.agentId).first()
+    if agent:
+        agent.status = 'BUSY'
+        
+        # Analytics: Correlate Accept to the Dispatch Event
+        dispatch_event = db.query(DispatchEvent).filter(
+            DispatchEvent.agent_id == payload.agentId, 
+            DispatchEvent.agent_response == "PENDING"
+        ).order_by(desc(DispatchEvent.dispatched_at)).first()
+        
+        if dispatch_event:
+            dispatch_event.agent_response = "ACCEPTED"
+            mission = db.query(Mission).filter(Mission.id == dispatch_event.mission_id).first()
+            if mission:
+                mission.status = "ACTIVE"
+                mission.accepted_at = datetime.now(timezone.utc)
+                mission.assigned_agent_id = payload.agentId
+
+        db.commit()
+        print(f"白 MISSION LOCKED: {payload.agentId[:8]}*** is now en route.")
+        return {"status": "accepted"}
+    return {"status": "error: agent not found"}
 
 
 # ====================================================================
-# 2. LIVE DISPATCHER (WEBSOCKETS)
+# 2. LIVE DISPATCHER
 # ====================================================================
 class ConnectionManager:
     def __init__(self):
@@ -191,10 +228,9 @@ manager = ConnectionManager()
 
 @app.websocket("/ws/v1/dispatch/{agent_id}")
 async def websocket_endpoint(websocket: WebSocket, agent_id: str):
-    # [FIX 3] Unauthenticated WebSocket Hijacking Block
     token = websocket.query_params.get("token")
     if not token or len(token) < 16:
-        await websocket.close(code=1008) # Close with Policy Violation
+        await websocket.close(code=1008)
         return
 
     await manager.connect(agent_id, websocket)
@@ -214,7 +250,7 @@ def haversine(lat1, lon1, lat2, lon2):
 
 
 # ====================================================================
-# 3. THE REVERSE AUCTION ENGINE
+# 3. REVERSE AUCTION ENGINE & EVENT LOGGING
 # ====================================================================
 class WebhookPayload(BaseModel):
     lat: float
@@ -222,53 +258,55 @@ class WebhookPayload(BaseModel):
     errorCode: str = "ERR-702: Sensor Occlusion"
     bounty: str = "$45.00"
     intersection: str = "Main St & 1st Ave"
-    required_gear: str = "clean"
+    required_gear: str = "sensor_cleaning"
 
-# [FIX 8] Global Mutex Lock to prevent Reverse Auction Race Conditions
 auction_lock = asyncio.Lock()
 
 @app.post("/v1/webhook/stranded")
 @limiter.limit("30/minute")
-async def trigger_stranded_av(request: Request, payload: WebhookPayload, conn: sqlite3.Connection = Depends(get_db)):
-    
-    async with auction_lock: # Prevent race conditions on concurrent webhooks
+async def trigger_stranded_av(request: Request, payload: WebhookPayload, db: Session = Depends(get_db)):
+    async with auction_lock: 
         best_agent_id = None
         shortest_distance = float('inf')
         winning_bid = float('inf')
         
         max_budget = float(payload.bounty.replace("$", ""))
-        agents = conn.execute("SELECT * FROM agents WHERE status = 'ONLINE'").fetchall()
+        agents = db.query(Agent).filter(Agent.status == 'ONLINE').all()
 
         for agent in agents:
-            agent_id = agent["agent_id"]
-            loadout = json.loads(agent["loadout"]) if agent["loadout"] else {}
-            
+            loadout = agent.loadout if agent.loadout else {}
             if payload.required_gear in loadout:
                 agent_bid = float(loadout[payload.required_gear])
                 
                 if agent_bid <= max_budget:
-                    dist = haversine(payload.lat, payload.lon, agent["lat"], agent["lon"])
-                    if dist <= agent["radius"]:
-                        
+                    dist = haversine(payload.lat, payload.lon, agent.lat, agent.lon)
+                    if dist <= agent.radius:
                         if agent_bid < winning_bid:
                             winning_bid = agent_bid
                             shortest_distance = dist
-                            best_agent_id = agent_id
+                            best_agent_id = agent.agent_id
                         elif agent_bid == winning_bid and dist < shortest_distance:
                             shortest_distance = dist
-                            best_agent_id = agent_id
+                            best_agent_id = agent.agent_id
 
         if best_agent_id:
             final_bounty_str = f"${winning_bid:.2f}"
-            safe_id = best_agent_id[:8] + "***" # Mask logging
-            print(f"🎯 MISSION MATCH: {safe_id} won contract! (Bid: {final_bounty_str} | Fleet Max Budget: ${max_budget:.2f})")
             
-            await manager.send_mission(
-                best_agent_id, payload.lat, payload.lon, payload.errorCode, final_bounty_str, payload.intersection
-            )
-            return {"status": f"Dispatched to {best_agent_id}", "contract_price": final_bounty_str, "distance": f"{shortest_distance:.2f}mi"}
+            # Analytics: Create the Master Mission Ledger entry
+            mission = Mission(category_id=payload.errorCode, bounty_amount=winning_bid)
+            db.add(mission)
+            db.commit()
+            db.refresh(mission)
+            
+            # Analytics: Track the Dispatch Event (for acceptance funnels)
+            dispatch = DispatchEvent(mission_id=mission.id, agent_id=best_agent_id)
+            db.add(dispatch)
+            db.commit()
+            
+            print(f"識 MISSION MATCH: {best_agent_id[:8]}*** won contract! (Bid: {final_bounty_str})")
+            await manager.send_mission(best_agent_id, payload.lat, payload.lon, payload.errorCode, final_bounty_str, payload.intersection)
+            return {"status": f"Dispatched", "contract_price": final_bounty_str}
         
-        print(f"❌ DISPATCH FAILED: No agents in range, or all bids exceeded fleet budget of ${max_budget:.2f}.")
         return {"status": "Failed: No agents met market criteria"}
 
 
@@ -285,101 +323,97 @@ class LinkCardRequest(BaseModel):
 
 class WithdrawRequest(BaseModel):
     agentId: str
-    # [FIX 1] Infinite Money Glitch (Negative Float block)
     amount: float = Field(..., gt=0) 
 
 @app.post("/v1/mission/complete")
 @limiter.limit("10/minute")
-async def complete_mission(request: Request, req: MissionCompleteRequest, conn: sqlite3.Connection = Depends(get_db), auth: str = Depends(verify_agent_token)):
-    c = conn.cursor()
-    c.execute("UPDATE wallets SET balance = balance + ? WHERE agent_id = ?", (req.netPayout, req.agentId))
+async def complete_mission(request: Request, req: MissionCompleteRequest, db: Session = Depends(get_db), auth: str = Depends(verify_agent_token)):
+    wallet = db.query(Wallet).filter(Wallet.agent_id == req.agentId).first()
+    if wallet:
+        wallet.balance += req.netPayout
+        
+    agent = db.query(Agent).filter(Agent.agent_id == req.agentId).first()
+    if agent:
+        agent.status = 'ONLINE'
+        
+    # Analytics: Close out the Active Mission Ledger
+    mission = db.query(Mission).filter(Mission.assigned_agent_id == req.agentId, Mission.status == "ACTIVE").order_by(desc(Mission.id)).first()
+    if mission:
+        mission.status = "COMPLETED"
+        mission.resolved_at = datetime.now(timezone.utc)
+
+    txn_id = f"TXN-{int(datetime.now(timezone.utc).timestamp())}"
+    timestamp = datetime.now().strftime("%m/%d/%Y %H:%M")
+    db.add(Transaction(id=txn_id, agent_id=req.agentId, date=timestamp, amount=f"+${req.netPayout:.2f}", description="L402 Escrow Release - On-Scene Repair"))
     
-    timestamp = datetime.datetime.now().strftime("%m/%d/%Y %H:%M")
-    txn_id = f"TXN-{int(datetime.datetime.now().timestamp())}"
-    c.execute("INSERT INTO transactions (id, agent_id, date, amount, description) VALUES (?, ?, ?, ?, ?)",
-              (txn_id, req.agentId, timestamp, f"+${req.netPayout:.2f}", "L402 Escrow Release - On-Scene Repair"))
-    
-    c.execute("UPDATE agents SET status = 'ONLINE' WHERE agent_id = ?", (req.agentId,))
-    
-    c.execute("SELECT balance FROM wallets WHERE agent_id = ?", (req.agentId,))
-    new_balance = c.fetchone()["balance"]
-    conn.commit()
-    
-    safe_id = req.agentId[:8] + "***"
-    print(f"💰 ESCROW UNLOCKED: ${req.netPayout:.2f} routed to {safe_id}.")
-    return {"status": "success", "newBalance": new_balance}
+    db.commit()
+    return {"status": "success", "newBalance": wallet.balance if wallet else 0.0}
 
 @app.post("/v1/wallet/link_card")
 @limiter.limit("5/minute")
-async def link_card(request: Request, req: LinkCardRequest, conn: sqlite3.Connection = Depends(get_db), auth: str = Depends(verify_agent_token)):
-    c = conn.cursor()
-    # [FIX 5 PARTIAL] Hash sensitive columns before resting them in standard SQLite
+async def link_card(request: Request, req: LinkCardRequest, db: Session = Depends(get_db), auth: str = Depends(verify_agent_token)):
     hashed_card = hashlib.sha256(req.cardNumber.encode()).hexdigest()[:16]
     secure_mask = f"ENCRYPTED-****-{hashed_card}"
     
-    c.execute("UPDATE agents SET linked_card = ? WHERE agent_id = ?", (secure_mask, req.agentId))
-    conn.commit()
+    agent = db.query(Agent).filter(Agent.agent_id == req.agentId).first()
+    if agent:
+        agent.linked_card = secure_mask
+        db.commit()
     return {"status": "success"}
 
 @app.post("/v1/wallet/withdraw")
 @limiter.limit("5/minute")
-async def withdraw_funds(request: Request, req: WithdrawRequest, conn: sqlite3.Connection = Depends(get_db), auth: str = Depends(verify_agent_token)):
-    c = conn.cursor()
-    
-    c.execute("SELECT balance FROM wallets WHERE agent_id = ?", (req.agentId,))
-    row = c.fetchone()
-    # Pydantic Field(gt=0) guarantees req.amount is physically incapable of being negative here
-    if not row or row["balance"] < req.amount:
+async def withdraw_funds(request: Request, req: WithdrawRequest, db: Session = Depends(get_db), auth: str = Depends(verify_agent_token)):
+    wallet = db.query(Wallet).filter(Wallet.agent_id == req.agentId).first()
+    if not wallet or wallet.balance < req.amount:
         return {"status": "error", "message": "Insufficient funds"}
         
-    new_balance = row["balance"] - req.amount
-    c.execute("UPDATE wallets SET balance = ? WHERE agent_id = ?", (new_balance, req.agentId))
+    wallet.balance -= req.amount
+    txn_id = f"WD-{int(datetime.now(timezone.utc).timestamp())}"
+    timestamp = datetime.now().strftime("%m/%d/%Y %H:%M")
     
-    timestamp = datetime.datetime.now().strftime("%m/%d/%Y %H:%M")
-    txn_id = f"WD-{int(datetime.datetime.now().timestamp())}"
-    c.execute("INSERT INTO transactions (id, agent_id, date, amount, description) VALUES (?, ?, ?, ?, ?)",
-              (txn_id, req.agentId, timestamp, f"-${req.amount:.2f}", "ACH Transfer to Linked Card"))
+    db.add(Transaction(id=txn_id, agent_id=req.agentId, date=timestamp, amount=f"-${req.amount:.2f}", description="ACH Transfer to Linked Card"))
+    db.commit()
     
-    conn.commit()
-    return {"status": "success", "newBalance": new_balance}
+    return {"status": "success", "newBalance": wallet.balance}
 
 @app.get("/v1/agent/{agent_id}/wallet")
 @limiter.limit("15/minute")
-async def get_wallet(request: Request, agent_id: str, conn: sqlite3.Connection = Depends(get_db), auth: str = Depends(verify_agent_token)):
-    wallet_row = conn.execute("SELECT balance FROM wallets WHERE agent_id = ?", (agent_id,)).fetchone()
-    balance = wallet_row["balance"] if wallet_row else 0.0
+async def get_wallet(request: Request, agent_id: str, db: Session = Depends(get_db), auth: str = Depends(verify_agent_token)):
+    wallet = db.query(Wallet).filter(Wallet.agent_id == agent_id).first()
+    agent = db.query(Agent).filter(Agent.agent_id == agent_id).first()
+    transactions = db.query(Transaction).filter(Transaction.agent_id == agent_id).order_by(desc(Transaction.id)).all()
     
-    agent_row = conn.execute("SELECT linked_card FROM agents WHERE agent_id = ?", (agent_id,)).fetchone()
-    linked_card = agent_row["linked_card"] if agent_row else None
+    history = [{"id": t.id, "date": t.date, "amount": t.amount, "description": t.description} for t in transactions]
     
-    tx_rows = conn.execute("SELECT * FROM transactions WHERE agent_id = ? ORDER BY id DESC", (agent_id,)).fetchall()
-    history = [{"id": r["id"], "date": r["date"], "amount": r["amount"], "description": r["description"]} for r in tx_rows]
-    
-    return {"balance": balance, "linkedCard": linked_card, "history": history}
-
+    return {
+        "balance": wallet.balance if wallet else 0.0, 
+        "linkedCard": agent.linked_card if agent else None, 
+        "history": history
+    }
 
 # ====================================================================
 # 5. CENTRAL COMMAND DASHBOARD
 # ====================================================================
 @app.get("/v1/agents")
 @limiter.limit("20/minute")
-async def get_active_agents(request: Request, conn: sqlite3.Connection = Depends(get_db)):
-    agents = conn.execute("SELECT * FROM agents").fetchall()
-    
+async def get_active_agents(request: Request, db: Session = Depends(get_db)):
+    agents = db.query(Agent).all()
     result = {}
     for a in agents:
-        result[a["agent_id"]] = {
-            "status": a["status"],
-            "lat": a["lat"],
-            "lon": a["lon"],
-            "radius": a["radius"],
-            "loadout": json.loads(a["loadout"]) if a["loadout"] else {}
+        result[a.agent_id] = {
+            "status": a.status,
+            "lat": a.lat,
+            "lon": a.lon,
+            "radius": a.radius,
+            "loadout": a.loadout if a.loadout else {}
         }
     return result
 
 @app.get("/dashboard")
 @limiter.limit("10/minute")
 async def get_dashboard(request: Request):
+    # Retained existing dashboard HTML
     html_content = """
     <!DOCTYPE html>
     <html>
@@ -394,7 +428,7 @@ async def get_dashboard(request: Request):
         </style>
     </head>
     <body>
-        <div id="header">🟢 PAN COMMAND: GLOBAL OVERWATCH</div>
+        <div id="header">泙 PAN COMMAND: GLOBAL OVERWATCH</div>
         <div id="map"></div>
         <script>
             var map = L.map('map').setView([33.3061, -111.6601], 10);
