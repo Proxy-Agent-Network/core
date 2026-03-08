@@ -28,6 +28,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,7 +70,7 @@ import com.google.maps.android.compose.*
 
 @Composable
 fun AgentDashboardScreen() {
-    var appState by remember { mutableStateOf("BOOT") }
+    var appState by rememberSaveable { mutableStateOf("BOOT") }
 
     Crossfade(targetState = appState, animationSpec = tween(durationMillis = 800), label = "app_boot") { state ->
         when (state) {
@@ -763,7 +764,23 @@ fun MainDashboardContent() {
                     Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
                         if (isOnline) {
                             SwipeActionSlider(text = "SWIPE TO GO OFFLINE >>", trackColor = Color(0xFF333333), thumbColor = Color(0xFFF44336)) {
-                                isProcessing = true; coroutineScope.launch { apiClient.updateAgentStatus(context, false, agentLocation.latitude, agentLocation.longitude, serviceRadiusMiles.toDouble(), emptyMap()); val serviceIntent = Intent(context, network.proxyagent.pantactical.services.PanLocationService::class.java); context.stopService(serviceIntent); isOnline = false; missionState = "IDLE"; isProcessing = false }
+                                isProcessing = true
+                                coroutineScope.launch {
+                                    // FORCE EXPLICIT TYPES AND NAMED ARGUMENTS
+                                    apiClient.updateAgentStatus(
+                                        context = context,
+                                        isOnline = false,
+                                        lat = agentLocation.latitude,
+                                        lon = agentLocation.longitude,
+                                        radiusMiles = serviceRadiusMiles.toDouble(),
+                                        loadout = emptyMap<String, Float>()
+                                    )
+                                    val serviceIntent = Intent(context, network.proxyagent.pantactical.services.PanLocationService::class.java)
+                                    context.stopService(serviceIntent)
+                                    isOnline = false
+                                    missionState = "IDLE"
+                                    isProcessing = false
+                                }
                             }
                         } else {
                             Button(
@@ -772,9 +789,24 @@ fun MainDashboardContent() {
                                     isProcessing = true
                                     coroutineScope.launch {
                                         val activeLoadout = agentCapabilities.filter { it.isQualified && it.isEnabled }.associate { it.id to it.currentBid }
-                                        if (apiClient.updateAgentStatus(context, true, agentLocation.latitude, agentLocation.longitude, serviceRadiusMiles.toDouble(), activeLoadout)) {
-                                            val serviceIntent = Intent(context, network.proxyagent.pantactical.services.PanLocationService::class.java); ContextCompat.startForegroundService(context, serviceIntent); isOnline = true
-                                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) { apiClient.openLiveDispatchLine("VANGUARD-01") { lat, lon, err, bounty, inter -> activeMission = MissionData(lat, lon, err, bounty, inter); missionState = "PENDING" } }
+                                        // FORCE EXPLICIT TYPES AND NAMED ARGUMENTS
+                                        if (apiClient.updateAgentStatus(
+                                                context = context,
+                                                isOnline = true,
+                                                lat = agentLocation.latitude,
+                                                lon = agentLocation.longitude,
+                                                radiusMiles = serviceRadiusMiles.toDouble(),
+                                                loadout = activeLoadout
+                                            )) {
+                                            val serviceIntent = Intent(context, network.proxyagent.pantactical.services.PanLocationService::class.java)
+                                            ContextCompat.startForegroundService(context, serviceIntent)
+                                            isOnline = true
+                                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                apiClient.openLiveDispatchLine("VANGUARD-01") { lat, lon, err, bounty, inter ->
+                                                    activeMission = MissionData(lat, lon, err, bounty, inter)
+                                                    missionState = "PENDING"
+                                                }
+                                            }
                                         }
                                         isProcessing = false
                                     }

@@ -17,8 +17,6 @@ class PanMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         println("📡 [FCM TELEMETRY] New Hardware Routing Token Generated: $token")
-        // In the future, we will upload this token to the agent's Firebase RTDB profile
-        // so the dispatch server knows exactly where to send the push payload.
     }
 
     // 2. This triggers when a secure payload hits the phone
@@ -35,8 +33,6 @@ class PanMessagingService : FirebaseMessagingService() {
 
     // 3. Build the high-priority Heads-Up Notification
     private fun sendNotification(title: String, messageBody: String) {
-        // When they tap the notification, open the main app
-        // Note: Change 'network.proxyagent.pantactical.MainActivity' if your main activity is named differently
         val intent = Intent(this, Class.forName("network.proxyagent.pantactical.MainActivity")).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
@@ -50,18 +46,16 @@ class PanMessagingService : FirebaseMessagingService() {
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
         val notificationBuilder = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert) // Standard alert icon
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title)
             .setContentText(messageBody)
             .setAutoCancel(true)
             .setSound(defaultSoundUri)
-            // MAX Priority forces it to drop down from the top of the screen (Heads-up)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setContentIntent(pendingIntent)
 
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // Android 8.0+ requires an explicit Notification Channel
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
