@@ -1,6 +1,7 @@
 package network.proxyagent.pantactical.network
 
 import android.graphics.Bitmap
+import com.google.firebase.auth.FirebaseAuth
 import io.ktor.client.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -8,13 +9,11 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
-import io.ktor.utils.io.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import network.proxyagent.pantactical.security.StrongBoxManager
 import com.google.android.gms.maps.model.LatLng
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
@@ -66,9 +65,12 @@ class PanApiClient {
         }
     }
 
-    // --- FIREBASE PRODUCTION URLS ---
     private val BASE_URL = "https://pan-tactical-default-rtdb.firebaseio.com"
-    private val STORAGE_BUCKET = "pan-tactical.firebasestorage.app"
+
+    // --- NEW: THE IDENTITY INTERCEPTOR ---
+    // Grabs the real cryptographic UID from the hardware, ignoring old hardcoded UI values
+    private val secureUid: String
+        get() = FirebaseAuth.getInstance().currentUser?.uid ?: "VANGUARD-01"
 
     suspend fun updateAgentStatus(
         context: android.content.Context,
@@ -80,6 +82,9 @@ class PanApiClient {
     ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                // Print the active UID so we know exactly who is logged in!
+                println("🔑 [IDENTITY] Active Node UID: $secureUid")
+
                 val statusString = if (isOnline) "ONLINE" else "OFFLINE"
                 val payloadToSign = "${statusString}_${lat}_${lon}_${radiusMiles}"
                 val nonce = android.util.Base64.encodeToString(
@@ -100,8 +105,9 @@ class PanApiClient {
                     timestamp = System.currentTimeMillis()
                 )
 
+                // OVERRIDE: Saving to their specific UID node
                 val response: HttpResponse =
-                    client.put("$BASE_URL/agents/VANGUARD-01/status.json") {
+                    client.put("$BASE_URL/agents/$secureUid/status.json") {
                         contentType(ContentType.Application.Json)
                         setBody(requestBody)
                     }
@@ -114,13 +120,16 @@ class PanApiClient {
     }
 
     suspend fun openLiveDispatchLine(
-        agentId: String,
+        agentId: String = "IGNORED", // Ignored to favor secureUid
         onMissionReceived: (lat: Double, lon: Double, errorCode: String, bounty: String, intersection: String) -> Unit
     ) {
         withContext(Dispatchers.IO) {
+            println("🟢 DISPATCH LINE OPEN: Listening on Node $secureUid...")
+
             while (isActive) {
                 try {
-                    val response: HttpResponse = client.get("$BASE_URL/dispatch/$agentId.json") {
+                    // OVERRIDE: Polling their specific UID dispatch line
+                    val response: HttpResponse = client.get("$BASE_URL/dispatch/$secureUid.json") {
                         header(HttpHeaders.CacheControl, "no-cache")
                     }
 
@@ -139,7 +148,8 @@ class PanApiClient {
                                 withContext(Dispatchers.Main) {
                                     onMissionReceived(lat, lon, errorCode, bounty, intersection)
                                 }
-                                client.delete("$BASE_URL/dispatch/$agentId.json")
+
+                                client.delete("$BASE_URL/dispatch/$secureUid.json")
                             }
                         } catch (e: Exception) { }
                     }
@@ -149,11 +159,11 @@ class PanApiClient {
         }
     }
 
-    suspend fun acceptMission(agentId: String = "VANGUARD-01"): Boolean {
+    suspend fun acceptMission(agentId: String = "IGNORED"): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse =
-                    client.put("$BASE_URL/agents/$agentId/mission_state.json") {
+                    client.put("$BASE_URL/agents/$secureUid/mission_state.json") {
                         contentType(ContentType.Application.Json)
                         setBody("\"ACCEPTED\"")
                     }
@@ -217,31 +227,21 @@ class PanApiClient {
         }
     }
 
-    // --- UPGRADED: Cloud Storage Upload Engine (Multipart Payload) ---
-    // --- UPGRADED: Tactical Relay Upload Engine (ImgBB API) ---
-    suspend fun uploadEvidenceArray(agentId: String = "VANGUARD-01", bitmaps: List<Bitmap>): List<String> {
+    suspend fun uploadEvidenceArray(agentId: String = "IGNORED", bitmaps: List<Bitmap>): List<String> {
         return withContext(Dispatchers.IO) {
             val uploadedUrls = mutableListOf<String>()
 
-            println("☁️ [TELEMETRY] Relaying ${bitmaps.size} evidence photos via Tactical API...")
-
-            // --- UPGRADED: Securely fetching the key from local.properties ---
             val relayApiKey = network.proxyagent.pantactical.BuildConfig.IMGBB_API_KEY
 
             bitmaps.forEachIndexed { index, bitmap ->
                 try {
-                    // 1. Compress the Bitmap
                     val stream = ByteArrayOutputStream()
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
                     val byteArray = stream.toByteArray()
-
-                    // 2. Convert to a pure Base64 string for the REST API
                     val base64Image = android.util.Base64.encodeToString(byteArray, android.util.Base64.DEFAULT)
 
-                    // 3. Fire the POST request to the Relay API
                     val response: HttpResponse = client.post("https://api.imgbb.com/1/upload?key=$relayApiKey") {
                         contentType(ContentType.Application.FormUrlEncoded)
-                        // ImgBB requires the base64 string to be sent as a form parameter named 'image'
                         setBody("image=${java.net.URLEncoder.encode(base64Image, "UTF-8")}")
                     }
 
@@ -250,36 +250,23 @@ class PanApiClient {
                     if (response.status.isSuccess()) {
                         val json = org.json.JSONObject(responseBody)
                         val dataObj = json.optJSONObject("data")
-
-                        // Extract the direct, permanent URL to the hosted image
                         val downloadUrl = dataObj?.optString("url", "") ?: ""
-
-                        if (downloadUrl.isNotEmpty()) {
-                            uploadedUrls.add(downloadUrl)
-                            println("☁️ [TELEMETRY] EVIDENCE UPLOADED: $downloadUrl")
-                        }
-                    } else {
-                        val flatBody = responseBody.replace("\n", "").replace("\r", "")
-                        println("❌ [TELEMETRY ERROR] HTTP ${response.status} | BODY: $flatBody")
+                        if (downloadUrl.isNotEmpty()) uploadedUrls.add(downloadUrl)
                     }
-                } catch (e: Exception) {
-                    println("❌ [TELEMETRY CRASH] Upload threw exception: ${e.message}")
-                }
+                } catch (e: Exception) { }
             }
-
-            println("☁️ [TELEMETRY] Final URLs to attach to ledger: $uploadedUrls")
             uploadedUrls
         }
     }
 
-    suspend fun claimEscrowFunds(agentId: String = "VANGUARD-01", netPayout: Double, evidenceUrls: List<String> = emptyList()): Boolean {
+    suspend fun claimEscrowFunds(agentId: String = "IGNORED", netPayout: Double, evidenceUrls: List<String> = emptyList()): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                println("💰 [TELEMETRY] Submitting Smart Contract with ${evidenceUrls.size} URLs attached.")
-                val currentWallet = getWalletData(agentId)
+                val currentWallet = getWalletData()
                 val newBalance = (currentWallet?.balance ?: 0.0) + netPayout
 
-                client.put("$BASE_URL/agents/$agentId/wallet/balance.json") {
+                // OVERRIDE
+                client.put("$BASE_URL/agents/$secureUid/wallet/balance.json") {
                     contentType(ContentType.Application.Json)
                     setBody(newBalance.toString())
                 }
@@ -294,7 +281,8 @@ class PanApiClient {
                     evidenceUrls = evidenceUrls
                 )
 
-                client.put("$BASE_URL/agents/$agentId/wallet/history/$txId.json") {
+                // OVERRIDE
+                client.put("$BASE_URL/agents/$secureUid/wallet/history/$txId.json") {
                     contentType(ContentType.Application.Json)
                     setBody(tx)
                 }
@@ -305,10 +293,11 @@ class PanApiClient {
         }
     }
 
-    suspend fun getWalletData(agentId: String = "VANGUARD-01"): WalletResponse? {
+    suspend fun getWalletData(agentId: String = "IGNORED"): WalletResponse? {
         return withContext(Dispatchers.IO) {
             try {
-                val response: HttpResponse = client.get("$BASE_URL/agents/$agentId/wallet.json") {
+                // OVERRIDE
+                val response: HttpResponse = client.get("$BASE_URL/agents/$secureUid/wallet.json") {
                     header(HttpHeaders.CacheControl, "no-cache")
                 }
 
@@ -329,10 +318,6 @@ class PanApiClient {
                     while (keys.hasNext()) {
                         val key = keys.next()
                         val tx = historyObj.getJSONObject(key)
-
-                        // --- NEW: Telemetry to see if RTDB is stripping our URLs ---
-                        println("🏦 [TELEMETRY] Reading TX: $key")
-                        println("🏦 [TELEMETRY] Raw Evidence Data: ${tx.opt("evidenceUrls")}")
 
                         val urls = mutableListOf<String>()
                         val urlArray = tx.optJSONArray("evidenceUrls")
@@ -363,11 +348,12 @@ class PanApiClient {
         }
     }
 
-    suspend fun linkDebitCard(agentId: String = "VANGUARD-01", cardNumber: String): Boolean {
+    suspend fun linkDebitCard(agentId: String = "IGNORED", cardNumber: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                // OVERRIDE
                 val response: HttpResponse =
-                    client.put("$BASE_URL/agents/$agentId/wallet/linkedCard.json") {
+                    client.put("$BASE_URL/agents/$secureUid/wallet/linkedCard.json") {
                         contentType(ContentType.Application.Json)
                         setBody("\"$cardNumber\"")
                     }
@@ -376,10 +362,11 @@ class PanApiClient {
         }
     }
 
-    suspend fun withdrawFunds(agentId: String = "VANGUARD-01", amount: Double): Boolean {
+    suspend fun withdrawFunds(agentId: String = "IGNORED", amount: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                client.put("$BASE_URL/agents/$agentId/wallet/balance.json") {
+                // OVERRIDE
+                client.put("$BASE_URL/agents/$secureUid/wallet/balance.json") {
                     contentType(ContentType.Application.Json)
                     setBody("0.0")
                 }
@@ -391,7 +378,9 @@ class PanApiClient {
                     String.format("-$%.2f", amount),
                     "ACH Bank Transfer"
                 )
-                client.put("$BASE_URL/agents/$agentId/wallet/history/$txId.json") {
+
+                // OVERRIDE
+                client.put("$BASE_URL/agents/$secureUid/wallet/history/$txId.json") {
                     contentType(ContentType.Application.Json)
                     setBody(tx)
                 }

@@ -81,6 +81,9 @@ kotlin {
             implementation(project.dependencies.platform("com.google.firebase:firebase-bom:32.8.0"))
             implementation("com.google.firebase:firebase-messaging")
 
+            // Firebase Auth for Identity Management
+            implementation("com.google.firebase:firebase-auth")
+
             // Google ML Kit for On-Device Privacy Redaction
             implementation("com.google.mlkit:face-detection:16.1.6")
             implementation("com.google.mlkit:text-recognition:16.0.0")
