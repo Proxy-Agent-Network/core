@@ -222,21 +222,27 @@ fun MainDashboardContent() {
     var sceneArrivalTime by remember { mutableLongStateOf(sharedPrefs.getLong("scene_arrival_time", 0L)) }
     var missionAcceptTime by remember { mutableLongStateOf(sharedPrefs.getLong("mission_accept_time", 0L)) }
 
+    // --- FIX: Strictly matching the public SLA Rate Matrix ---
     var agentCapabilities by remember {
         mutableStateOf(
             listOf(
+                // TIER 1: General Assistance
                 AgentCapability("door_securing", "Door Securing", "Push door completely shut.", null, 1, true, true, 8f, 20f, 1f, 8f),
                 AgentCapability("cabin_sweep", "Cabin Sweep & Trash", "Bag and dispose of trash.", null, 1, true, true, 8f, 20f, 1f, 8f),
                 AgentCapability("lost_item", "Lost Item Recovery", "Retrieve and secure item.", null, 1, true, false, 15f, 30f, 5f, 15f),
                 AgentCapability("path_clearing", "Path Clearing", "Remove debris/cones from path.", null, 1, true, true, 15f, 40f, 5f, 15f),
-                AgentCapability("spill_remediation", "Bio/Liquid Remediation", "Sanitize interior spills.", "Requires wet-vac/bio-kit.", 2, true, false, 30f, 80f, 10f, 30f),
-                AgentCapability("tire_pressure", "Tire Pressure", "Refill low tire.", "Requires air compressor.", 2, true, false, 20f, 50f, 5f, 20f),
-                AgentCapability("battery_jump", "12V System Jump", "Wake AV with jump-box.", "Requires jump kit.", 2, true, false, 25f, 60f, 10f, 25f),
-                AgentCapability("passenger_escort", "Passenger Escort", "Calm and escort passenger.", "High-vis vest required.", 2, true, false, 20f, 50f, 5f, 20f),
-                AgentCapability("sensor_cleaning", "Sensor Cleaning", "Microfiber clean LIDAR dome.", "Certified cleaning kit.", 3, false, false, 40f, 100f, 15f, 40f),
-                AgentCapability("scene_securement", "First Responder Liaison", "Interact with police/flares.", "Requires flare/iPad kit.", 3, false, false, 50f, 150f, 20f, 50f),
-                AgentCapability("tire_replacement", "Tire Replacement", "Swap spare or plug blowout.", "Requires jack/plug kit.", 3, false, false, 60f, 150f, 20f, 60f),
-                AgentCapability("manual_override", "Manual Drive Takeover", "Manually extract AV.", "Special ops clearance.", 3, false, false, 100f, 250f, 50f, 100f)
+
+                // TIER 2: Specialized Ops ($30 Minimums)
+                AgentCapability("spill_remediation", "Bio/Liquid Remediation", "Sanitize interior spills.", "Requires wet-vac/bio-kit", 2, true, false, 30f, 80f, 5f, 30f),
+                AgentCapability("tire_pressure", "Tire Pressure", "Refill low tire.", "Requires air compressor", 2, true, false, 30f, 80f, 5f, 30f),
+                AgentCapability("battery_jump", "12V System Jump", "Wake AV with jump-box.", "Requires jump kit", 2, true, false, 30f, 80f, 5f, 30f),
+                AgentCapability("passenger_escort", "Passenger Escort", "Calm and escort passenger.", "High-vis vest required", 2, true, false, 30f, 80f, 5f, 30f),
+
+                // TIER 3: Advanced Hardware ($50 Minimums)
+                AgentCapability("sensor_cleaning", "Sensor Cleaning", "Microfiber clean LIDAR dome.", "Certified cleaning kit", 3, false, false, 50f, 150f, 10f, 50f),
+                AgentCapability("scene_securement", "First Responder Liaison", "Interact with police/flares.", "Requires safety flares", 3, false, false, 50f, 150f, 10f, 50f),
+                AgentCapability("tire_replacement", "Tire Replacement", "Swap spare or plug blowout.", "Requires jack/plug kit", 3, false, false, 50f, 150f, 10f, 50f),
+                AgentCapability("manual_override", "Manual Drive Takeover", "Manually extract AV.", "Special ops clearance", 3, false, false, 50f, 150f, 10f, 50f)
             )
         )
     }
@@ -291,8 +297,7 @@ fun MainDashboardContent() {
         }
     }
 
-    // --- FIX: Dynamic Loadout Syncing ---
-    var agentLocation by remember { mutableStateOf(LatLng(33.3061, -111.6601)) } // Hoisted for access
+    var agentLocation by remember { mutableStateOf(LatLng(33.3061, -111.6601)) }
 
     LaunchedEffect(serviceRadiusMiles, navPreference, agentCapabilities, selectedVoice, voiceVolume, alertVolume, patrolMode) {
         if (isDataLoaded) {
@@ -300,7 +305,6 @@ fun MainDashboardContent() {
                 putFloat("radius", serviceRadiusMiles); putString("nav_pref", navPreference); putString("patrol_mode", patrolMode); putFloat("voice_volume", voiceVolume); putInt("alert_volume", alertVolume); putString("capabilities", Json.encodeToString(agentCapabilities)); selectedVoice?.name?.let { putString("voice_pref", it) }; apply()
             }
 
-            // If the user changes their bids or radius while ONLINE, instantly sync to the database
             if (isOnline) {
                 launch(kotlinx.coroutines.Dispatchers.IO) {
                     val activeLoadout = agentCapabilities.filter { it.isQualified && it.isEnabled && (patrolMode == "VEHICLE" || it.tier == 1) }.associate { it.id to it.currentBid }
@@ -421,8 +425,14 @@ fun MainDashboardContent() {
         permissionLauncher.launch(permissionsToRequest.toTypedArray())
     }
 
-    LaunchedEffect(locationPermissionGranted) {
-        if (locationPermissionGranted) { val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000).setMinUpdateDistanceMeters(2f).build(); try { fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper()) } catch (e: SecurityException) { } }
+    DisposableEffect(locationPermissionGranted) {
+        if (locationPermissionGranted) {
+            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000).setMinUpdateDistanceMeters(2f).build()
+            try { fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper()) } catch (e: SecurityException) { }
+        }
+        onDispose {
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        }
     }
 
     LaunchedEffect(missionState) { if (missionState == "ACTIVE") isMissionControlsExpanded = false }
@@ -491,7 +501,14 @@ fun MainDashboardContent() {
                                     sharedPrefs.edit().putLong("mission_accept_time", missionAcceptTime).apply()
 
                                     if (hasGpsLock && activeMission != null) { val routeMode = if (patrolMode == "FOOT") "foot" else "driving"; val routeData = apiClient.getTacticalRoute(agentLocation.latitude, agentLocation.longitude, activeMission!!.lat, activeMission!!.lon, routeMode); tacticalRoute = routeData.first }
-                                    if (navPreference == "GOOGLE") { val navMode = if (patrolMode == "FOOT") "w" else "d"; val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${activeMission!!.lat},${activeMission!!.lon}&mode=$navMode")); mapIntent.setPackage("com.google.android.apps.maps"); try { context.startActivity(mapIntent) } catch (e: Exception) { } }
+
+                                    if (navPreference == "GOOGLE") {
+                                        val navMode = if (patrolMode == "FOOT") "w" else "d"
+                                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${activeMission!!.lat},${activeMission!!.lon}&mode=$navMode"))
+                                        mapIntent.setPackage("com.google.android.apps.maps")
+                                        mapIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                        try { context.startActivity(mapIntent) } catch (e: Exception) { }
+                                    }
                                 }
                             }
                         },
@@ -556,7 +573,6 @@ fun MainDashboardContent() {
                     )
                 }
 
-                // --- FIX: Strictly hide these when on a mission OR viewing the completion receipt ---
                 androidx.compose.animation.AnimatedVisibility(visible = missionState == "IDLE") {
                     OfflineLoadoutMenu(
                         isLoadoutExpanded = isLoadoutExpanded, onToggleExpand = { isLoadoutExpanded = !isLoadoutExpanded }, patrolMode = patrolMode, onPatrolModeChange = { patrolMode = it; serviceRadiusMiles = if(it == "FOOT") 0.5f else 5f }, serviceRadiusMiles = serviceRadiusMiles, onRadiusChange = { serviceRadiusMiles = it }, agentCapabilities = agentCapabilities, onCapabilitiesChange = { agentCapabilities = it }
@@ -596,7 +612,7 @@ fun MainDashboardContent() {
         if (showDevMenu) {
             AlertDialog(onDismissRequest = { showDevMenu = false }, containerColor = Color(0xFF1E1E1E), title = { Text("DEV: INJECT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { activeMission = MissionData(33.432, -111.865, "SEC-999: Police Stop", "$150.00", "Mesa Riverview"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
+                    Button(onClick = { activeMission = MissionData(33.432, -111.865, "SEC-999: Police Stop", "$50.00", "Mesa Riverview"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
                     Button(onClick = { activeMission = MissionData(33.385, -111.683, "REQ-002: Lost Item", "$30.00", "Superstition Springs"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Lost Item (Tier 1)", color = Color.White) }
                     Button(onClick = { activeMission = MissionData(33.415, -111.831, "ERR-DOOR: Latch Fault", "$15.00", "Downtown Mesa"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
                 } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showDevMenu = false }) { Text("CLOSE", color = Color.Gray) } }

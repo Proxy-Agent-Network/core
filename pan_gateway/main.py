@@ -35,6 +35,9 @@ class Agent(Base):
     loadout = Column(JSON, default={})
     linked_card = Column(String, nullable=True)
     reputation_score = Column(Float, default=5.0)
+    onboarding_status = Column(String, default="UNVERIFIED") # UNVERIFIED, PENDING, APPROVED, REJECTED
+    checkr_candidate_id = Column(String, nullable=True) # The ID linking this agent to Checkr's vault
+    bg_check_status = Column(String, nullable=True) # CLEAR, CONSIDER, SUSPENDED
 
 class Wallet(Base):
     __tablename__ = "wallets"
@@ -197,6 +200,32 @@ async def accept_mission(request: Request, payload: MissionAccept, db: Session =
         print(f"白 MISSION LOCKED: {payload.agentId[:8]}*** is now en route.")
         return {"status": "accepted"}
     return {"status": "error: agent not found"}
+
+@app.post("/v1/webhooks/checkr")
+async def checkr_webhook(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    
+    # 1. Verify the webhook signature (prove it actually came from Checkr)
+    # ... verification logic ...
+    
+    event_type = payload.get("type")
+    
+    if event_type == "report.completed":
+        candidate_id = payload["data"]["object"]["candidate_id"]
+        status = payload["data"]["object"]["status"] # Will be "clear" or "consider"
+        
+        agent = db.query(Agent).filter(Agent.checkr_candidate_id == candidate_id).first()
+        if agent:
+            agent.bg_check_status = status.upper()
+            if status == "clear":
+                agent.onboarding_status = "APPROVED"
+                # Send push notification to agent: "You are approved for the Mesa Sector!"
+            else:
+                agent.onboarding_status = "REJECTED" # Flagged for manual review
+                
+            db.commit()
+            
+    return {"status": "received"}
 
 
 # ====================================================================
