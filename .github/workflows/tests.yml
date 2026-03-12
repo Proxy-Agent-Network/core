@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+# Opt-in to the new Node 24 runtime to clear the GitHub warnings
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -18,14 +22,16 @@ jobs:
       uses: actions/checkout@v4
 
     - name: 🐍 Set up Python 3.11
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # Upgraded to v5
       with:
         python-version: "3.11"
 
     - name: 📦 Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        if [ -f sdk/requirements.txt ]; then pip install -r sdk/requirements.txt; fi
+        # Updated to point to your root and backend requirements
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
         pip install pytest flake8
 
     - name: 🔍 Lint with Flake8 (Quality Check)
