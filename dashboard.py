@@ -25,6 +25,21 @@ if "messages" not in st.session_state:
 if "spent" not in st.session_state: st.session_state.spent = 0
 
 #... (Avatar and Sidebar logic remains consistent)
+# --- SESSION STATE INITIALIZATION ---
+if "pending_payment" not in st.session_state: st.session_state.pending_payment = None
+if "execute_payment" not in st.session_state: st.session_state.execute_payment = False
+if "messages" not in st.session_state: 
+    st.session_state.messages = []
+if "spent" not in st.session_state: st.session_state.spent = 0
+
+#... (Avatar and Sidebar logic remains consistent)
+
+# 👇 ADD THIS LINE to define your tabs before using them
+tab_chat, tab_settings = st.tabs(["💬 PowerChat", "⚙️ Settings"])
+
+with tab_chat:
+    # BUG 2 FIX: High-precedence rendering for pending payments.
+    # ... (the rest of your code)
 
 with tab_chat:
     # BUG 2 FIX: High-precedence rendering for pending payments.
