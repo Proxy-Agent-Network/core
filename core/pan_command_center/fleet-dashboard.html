@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PAN Fleet Command | East Valley Simulation</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0a192f;
+            --panel-bg: #112240;
+            --text-main: #e6f1ff;
+            --text-muted: #8892b0;
+            --neon-green: #64ffda;
+            --cyan: #00bcd4;
+            --alert-red: #ff5252;
+            --vfw-gold: #ffb300;
+        }
+        body { margin: 0; padding: 0; background-color: var(--bg-dark); color: var(--text-main); font-family: 'Courier New', Courier, monospace; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Sidebar Layout */
+        #sidebar { width: 380px; background-color: var(--panel-bg); display: flex; flex-direction: column; border-right: 1px solid #233554; z-index: 1000; box-shadow: 2px 0 15px rgba(0,0,0,0.5); }
+        .header { padding: 20px; border-bottom: 2px solid var(--neon-green); background-color: #020c1b; }
+        .header h1 { margin: 0; font-size: 1.5rem; letter-spacing: -0.5px; font-family: sans-serif; font-weight: 800; }
+        .header .subtitle { font-size: 0.8rem; color: var(--neon-green); margin-top: 5px; text-transform: uppercase; letter-spacing: 2px; }
+        
+        /* Metrics Grid */
+        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px; border-bottom: 1px solid #233554; }
+        .metric-box { background: rgba(2, 12, 27, 0.7); padding: 15px; border-radius: 6px; border: 1px solid #233554; }
+        .metric-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; }
+        .metric-val { font-size: 1.6rem; font-weight: bold; margin-top: 5px; color: var(--text-main); }
+        .val-green { color: var(--neon-green); }
+        
+        /* Live Feed */
+        #feed-container { flex: 1; padding: 20px; overflow-y: auto; }
+        .feed-header { font-size: 0.9rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 15px; border-bottom: 1px dashed #233554; padding-bottom: 5px; }
+        .log-entry { font-size: 0.8rem; margin-bottom: 12px; padding-left: 10px; border-left: 2px solid var(--text-muted); animation: fadeIn 0.5s ease-in; line-height: 1.4; }
+        .log-alert { border-color: var(--alert-red); }
+        .log-dispatch { border-color: var(--cyan); }
+        .log-time { color: var(--text-muted); font-size: 0.7rem; display: block; margin-bottom: 2px;}
+        .highlight { color: var(--neon-green); font-weight: bold; }
+        
+        /* Map Area */
+        #map { flex: 1; height: 100%; background: #000; }
+        
+        /* Custom Map Icons */
+        .agent-pulse { background: var(--neon-green); width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 15px var(--neon-green); }
+        .av-alert { background: var(--alert-red); width: 14px; height: 14px; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 20px var(--alert-red); animation: pulseRed 1s infinite; }
+        .vfw-hub { background: transparent; border: 2px dashed var(--vfw-gold); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--vfw-gold); font-weight: bold; }
+
+        @keyframes pulseRed { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.7); } 70% { transform: scale(1.2); box-shadow: 0 0 0 15px rgba(255, 82, 82, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="header">
+            <h1>PAN OPS-HUB</h1>
+            <div class="subtitle">East Valley Simulation</div>
+        </div>
+        
+        <div class="metrics-grid">
+            <div class="metric-box">
+                <div class="metric-label">Active Agents</div>
+                <div class="metric-val val-green" id="agent-count">25</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-label">Avg SLA Time</div>
+                <div class="metric-val">08m 14s</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-label">Pending Faults</div>
+                <div class="metric-val" id="fault-count" style="color: var(--alert-red);">0</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-label">Escrow Vol (24h)</div>
+                <div class="metric-val" style="font-size: 1.2rem;">$1,240.50</div>
+            </div>
+        </div>
+
+        <div id="feed-container">
+            <div class="feed-header">Live Telemetry Feed</div>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // 1. Initialize Tactical Dark Map
+        const map = L.map('map', { zoomControl: false }).setView([33.3900, -111.8800], 12);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
+        }).addTo(map);
+
+        // 2. VFW Hubs (The Anchors)
+        const hubs = [
+            { name: "Post 1760 (Mesa)", lat: 33.4150, lon: -111.8315 },
+            { name: "AZ HQ (Tempe)", lat: 33.3620, lon: -111.9410 }
+        ];
+
+        hubs.forEach(hub => {
+            const icon = L.divIcon({ className: 'vfw-hub', html: 'VFW', iconSize: [40, 40], iconAnchor: [20, 20] });
+            L.marker([hub.lat, hub.lon], { icon: icon }).bindPopup(hub.name).addTo(map);
+            L.circle([hub.lat, hub.lon], { radius: 4800, color: '#ffb300', weight: 1, fillOpacity: 0.05, dashArray: '5, 5' }).addTo(map);
+        });
+
+        // 3. Generate 25 Agents Clustered Around VFWs
+        const agents = [];
+        const agentIcon = L.divIcon({ className: 'agent-pulse', iconSize: [10, 10] });
+
+        for (let i = 0; i < 25; i++) {
+            const hub = hubs[Math.floor(Math.random() * hubs.length)];
+            // Random scatter within ~3 miles of the hub
+            const lat = hub.lat + (Math.random() - 0.5) * 0.06;
+            const lon = hub.lon + (Math.random() - 0.5) * 0.06;
+            
+            const marker = L.marker([lat, lon], { icon: agentIcon }).addTo(map);
+            agents.push({ id: `AGT-${Math.floor(1000 + Math.random() * 9000)}`, marker: marker, lat: lat, lon: lon, status: 'ONLINE' });
+        }
+
+        // Simulating Agent Patrol Drift
+        setInterval(() => {
+            agents.forEach(a => {
+                if (a.status === 'ONLINE') {
+                    a.lat += (Math.random() - 0.5) * 0.001;
+                    a.lon += (Math.random() - 0.5) * 0.001;
+                    a.marker.setLatLng([a.lat, a.lon]);
+                }
+            });
+        }, 3000);
+
+        // 4. Telemetry Logging System
+        function addLog(type, html) {
+            const logs = document.getElementById('logs');
+            const d = new Date();
+            const timeStr = d.toLocaleTimeString('en-US', { hour12: false, hour: "numeric", minute: "numeric", second: "numeric" }) + "." + d.getMilliseconds().toString().padStart(3, '0');
+            
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="log-time">[${timeStr}]</span> ${html}`;
+            logs.prepend(entry);
+        }
+
+        // 5. Simulation Event Loop (Injecting Faults)
+        const faultCodes = ["ERR-DOOR: Latch Open", "REQ-002: Pathway Blocked", "SEC-999: Law Enforcement", "ORP-702: Sensor Occlusion"];
+        
+        setInterval(() => {
+            // Pick a random location between Mesa and Tempe
+            const faultLat = 33.3600 + (Math.random() * 0.08);
+            const faultLon = -111.9400 + (Math.random() * 0.11);
+            const code = faultCodes[Math.floor(Math.random() * faultCodes.length)];
+
+            // Create AV Alert Marker
+            const alertIcon = L.divIcon({ className: 'av-alert', iconSize: [14, 14] });
+            const faultMarker = L.marker([faultLat, faultLon], { icon: alertIcon }).addTo(map);
+            
+            document.getElementById('fault-count').innerText = 1;
+            addLog('log-alert', `WAYMO-74 threw <span style="color:var(--alert-red)">${code}</span>. Geolocation locked. Initiating reverse-auction...`);
+
+            // Simulate the Auction & Dispatch
+            setTimeout(() => {
+                // Find closest online agent
+                let closest = null;
+                let minDist = Infinity;
+                agents.forEach(a => {
+                    if(a.status === 'ONLINE') {
+                        const dist = Math.sqrt(Math.pow(a.lat - faultLat, 2) + Math.pow(a.lon - faultLon, 2));
+                        if(dist < minDist) { minDist = dist; closest = a; }
+                    }
+                });
+
+                if (closest) {
+                    closest.status = 'BUSY';
+                    // Draw dispatch line
+                    const line = L.polyline([[closest.lat, closest.lon], [faultLat, faultLon]], { color: '#00bcd4', weight: 3, dashArray: '10, 10' }).addTo(map);
+                    
+                    document.getElementById('fault-count').innerText = 0;
+                    addLog('log-dispatch', `Contract awarded to <span class="highlight">${closest.id}</span>. ETA: 04m 12s. Escrow locked at $15.00.`);
+                    
+                    // Resolve after 10 seconds
+                    setTimeout(() => {
+                        map.removeLayer(faultMarker);
+                        map.removeLayer(line);
+                        closest.status = 'ONLINE';
+                        addLog('', `AV Re-engaged. Hardware attestation verified. ${closest.id} returned to patrol.`);
+                    }, 10000);
+                }
+            }, 3500);
+
+        }, 15000); // New fault every 15 seconds
+
+        // Initial boot sequence log
+        setTimeout(() => { addLog('', 'System Boot. Establishing secure connection to Waymo Fleet API...'); }, 500);
+        setTimeout(() => { addLog('', 'Connection established. SB-1417 audit logging enabled.'); }, 1500);
+        setTimeout(() => { addLog('', '<span class="highlight">25 Agents detected</span> in Mesa/Tempe sector. Vanguard hubs anchored.'); }, 2500);
+
+    </script>
+</body>
+</html>

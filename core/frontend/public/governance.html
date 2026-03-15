@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title>Governance // Proxy Protocol Infrastructure</title>
+    <meta name="description" content="Witness Decentralized Justice in action. Monitor real-time Quorum Signature Ceremonies, VRF-based jury selection, and the Satoshi-weighted consensus physics of the High Court.">
+    <meta name="keywords" content="Proxy Protocol, Decentralized Justice, High Court, VRF Jury, Bitcoin Entropy, Schelling Point, Multi-sig Quorum">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --terminal-green: #00FF41; --void-black: #050505; --signal-red: #FF3131; --indigo-accent: #6366f1; }
+        body { background-color: var(--void-black); color: #E5E5E5; font-family: 'Inter', sans-serif; margin: 0; }
+        .mono { font-family: 'Fira Code', monospace; }
+        .text-glow { text-shadow: 0 0 15px rgba(0, 255, 65, 0.6); }
+        .bg-grid { background-image: radial-gradient(circle, #1a1a1a 1px, transparent 1px); background-size: 30px 30px; }
+        .btn-outline { border: 1px solid var(--terminal-green); color: var(--terminal-green); font-weight: 700; padding: 0.5rem 1rem; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }
+        .btn-outline:hover { background-color: rgba(0, 255, 65, 0.1); box-shadow: 0 0 15px rgba(0, 255, 65, 0.2); }
+        .juror-slot { transition: all 0.7s cubic-bezier(0.4, 0, 0.2, 1); }
+        .sig-active { border-color: #f59e0b; background: rgba(245, 158, 11, 0.1); box-shadow: 0 0 20px rgba(245, 158, 11, 0.2); }
+        #gravity-field { position: relative; overflow: hidden; background: #080808; }
+        .gravity-node { position: absolute; border-radius: 50%; display: flex; align-items: center; justify-content: center; border-width: 1px; pointer-events: none; will-change: transform; }
+        .pass-glow { border-color: rgba(0, 255, 65, 0.4); background: rgba(0, 255, 65, 0.1); box-shadow: 0 0 15px rgba(0, 255, 65, 0.1); }
+        .fail-glow { border-color: rgba(255, 49, 49, 0.4); background: rgba(255, 49, 49, 0.1); box-shadow: 0 0 15px rgba(255, 49, 49, 0.1); }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+    </style>
+</head>
+<body class="bg-grid min-h-screen pb-20">
+
+    <nav class="max-w-7xl mx-auto p-6 flex justify-between items-center border-b border-gray-900">
+        <div class="flex items-center gap-2">
+            <a href="index.html" class="flex items-center gap-2">
+                <svg class="w-6 h-6 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span class="text-lg font-black tracking-tighter text-white uppercase">Proxy<span class="text-green-500">Protocol</span></span>
+            </a>
+        </div>
+        <div class="hidden md:flex gap-6 uppercase text-[10px] font-bold tracking-widest text-gray-500">
+            <a href="index.html" class="hover:text-green-500 transition-colors">Genesis</a>
+            <a href="economics.html" class="hover:text-green-500 transition-colors">Economics</a>
+            <a href="transparency.html" class="hover:text-green-500 transition-colors">Audit</a>
+            <a href="aup.html" class="hover:text-green-500 transition-colors">Legal</a>
+        </div>
+    </nav>
+
+    <header class="max-w-5xl mx-auto px-6 py-16">
+        <span class="mono text-green-500 text-xs font-bold uppercase tracking-[0.3em] block mb-4">Consensus Layer // v3.5.0</span>
+        <h1 class="text-4xl md:text-6xl font-black text-white mb-6 uppercase tracking-tighter">Decentralized <span class="italic text-green-500 text-glow">Justice</span></h1>
+        <p class="text-lg text-gray-400 max-w-2xl leading-relaxed">
+            Code is law, but physical execution requires human judgment. We utilize a multi-tiered court system to adjudicate disputes selected via VRF seeded by Bitcoin block entropy.
+        </p>
+    </header>
+
+    <section class="max-w-7xl mx-auto px-6 mb-24" id="quorum-ceremony">
+        <div class="flex justify-between items-end mb-8 border-b border-gray-900 pb-4">
+            <div>
+                <h2 class="text-xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+                    <i data-lucide="gavel" class="w-5 h-5 text-amber-500 animate-pulse"></i>
+                    Quorum Signature Ceremony
+                </h2>
+                <p class="text-[10px] text-gray-500 uppercase font-bold mt-1">Real-time status of 7-Signature Multi-Sig Case #8829-APP</p>
+            </div>
+            <div id="sig-counter" class="bg-[#0a0a0a] border border-white/5 p-3 rounded flex items-center gap-6">
+                <span class="text-[8px] text-gray-600 uppercase font-black">Signatures</span>
+                <span id="sig-count-ui" class="text-sm font-black text-amber-500 mono">4/7</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-8 items-stretch">
+            <div class="md:col-span-8 bg-[#0a0a0a] border border-white/5 rounded-2xl p-8 shadow-2xl relative overflow-hidden flex flex-col justify-between h-[450px]">
+                <div class="grid grid-cols-4 md:grid-cols-7 gap-4" id="juror-grid"></div>
+                
+                <div class="mt-auto pt-8 border-t border-white/5">
+                    <div id="ceremony-progress">
+                        <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+                            <div id="ceremony-bar" class="h-full bg-indigo-500 shadow-[0_0_15px_#6366f1] transition-all duration-1000" style="width: 57.1%"></div>
+                        </div>
+                        <button onclick="simulateCeremony()" id="simulate-btn" class="mt-6 w-full py-4 bg-white/5 border border-white/10 text-gray-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest rounded-xl">
+                            Simulate Final Sign-Off
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="md:col-span-4 bg-[#0a0a0a] border border-white/10 rounded-xl p-8 shadow-2xl flex flex-col">
+                <h3 class="text-xs font-black text-white uppercase tracking-widest mb-10 border-b border-white/10 pb-4">Resolution Metrics</h3>
+                <div class="space-y-10 flex-1">
+                    <div class="flex justify-between items-center text-xs border-b border-white/5 pb-2">
+                        <span class="text-green-500 font-bold uppercase tracking-widest">Approve</span>
+                        <span class="text-white font-black" id="tally-approve">3</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-red-500 font-bold uppercase tracking-widest">Reject</span>
+                        <span class="text-white font-black">1</span>
+                    </div>
+                </div>
+                <div class="p-4 rounded-xl border border-white/10 bg-white/5 opacity-30 mt-8">
+                    <span class="text-[9px] text-gray-500 uppercase font-black tracking-widest">Node Insurance Pool</span>
+                    <span class="text-sm font-black uppercase text-gray-700 block mt-1">Awaiting Finality</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="max-w-7xl mx-auto px-6 py-10 border-t border-gray-900 text-center">
+        <div class="flex justify-center gap-8 mb-10">
+            <a href="index.html" class="btn-outline">Return Home</a>
+            <a href="economics.html" class="btn-outline">View Economics</a>
+        </div>
+        <div class="mt-10 text-[10px] mono text-gray-700 uppercase tracking-widest flex flex-col gap-2">
+            <span>&copy; 2026 PROXY PROTOCOL FOUNDATION</span>
+            <span class="text-green-900 font-bold tracking-tighter uppercase">Consensus Standard: v3.5.0-VRF-ACTIVE</span>
+        </div>
+    </footer>
+
+    <script>
+        lucide.createIcons();
+        const jurorGrid = document.getElementById('juror-grid');
+        const jurors = [{ id: 'J-88293X' }, { id: 'J-77141Y' }, { id: 'J-00421Z' }, { id: 'J-11294A' }, { id: '...' }, { id: '...' }, { id: '...' }];
+
+        function renderJurors(signedCount) {
+            jurorGrid.innerHTML = '';
+            jurors.forEach((j, i) => {
+                const isSigned = i < signedCount;
+                const slot = document.createElement('div');
+                slot.className = `juror-slot flex flex-col items-center gap-4`;
+                slot.innerHTML = `
+                    <div class="w-12 h-12 rounded-2xl border-2 flex items-center justify-center ${isSigned ? 'sig-active border-amber-500' : 'bg-black border-white/5 opacity-40'}">
+                        <i data-lucide="fingerprint" class="w-6 h-6 ${isSigned ? 'text-amber-500' : 'text-gray-800'}"></i>
+                    </div>
+                    <span class="text-[8px] font-black uppercase tracking-tighter ${isSigned ? 'text-white' : 'text-gray-800'}">${isSigned ? j.id : '...'}</span>
+                `;
+                jurorGrid.appendChild(slot);
+            });
+            lucide.createIcons();
+        }
+
+        renderJurors(4);
+
+        function simulateCeremony() {
+            const btn = document.getElementById('simulate-btn');
+            btn.innerText = 'Transmitting Signatures...';
+            btn.disabled = true;
+            setTimeout(() => {
+                renderJurors(7);
+                document.getElementById('sig-count-ui').innerText = '7/7';
+                document.getElementById('ceremony-bar').style.width = '100%';
+                document.getElementById('ceremony-bar').classList.replace('bg-indigo-500', 'bg-green-500');
+                document.getElementById('tally-approve').innerText = '6';
+                lucide.createIcons();
+            }, 2500);
+        }
+    </script>
+</body>
+</html>

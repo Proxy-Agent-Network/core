@@ -11,6 +11,7 @@ PAN is a decentralized physical infrastructure network (DePIN) providing the cri
 * **Settlement Engine:** L402 (Lightning Network) for M2H (Machine-to-Human) instant micro-payments.
 * **Identity & Trust:** Hardware-backed attestation via TPM 2.0 (Android StrongBox) and Apple Secure Enclave.
 * **Compliance:** Automated logging for **Arizona SB 1417** (Section 28-9701) sensor diagnostic audits.
+* **Mobile Client:** Kotlin Multiplatform targeting iOS and Android for Agent field operations.
 
 ### 🛰 Operational Design Domain (ODD)
 * **Primary Sector:** Mesa, AZ (Sector 1)
@@ -21,6 +22,18 @@ PAN is a decentralized physical infrastructure network (DePIN) providing the cri
 * `/docs/SB-1417/`: Statutory compliance frameworks and audit log schemas.
 * `/src/L402-Gateway/`: Settlement logic for autonomous vehicle-triggered bounties.
 * `/protocols/ORP/`: Optical Reclamation Protocol (HP Potion) standard operating procedures.
+* `/composeApp/`: Shared Kotlin Multiplatform code for Vanguard mobile applications.
+* `/iosApp/`: iOS specific entry points and SwiftUI code.
+
+## 📱 Mobile App Development (Kotlin Multiplatform)
+
+### Build and Run Android Application
+To build and run the development version of the Android app, use the run configuration from the run widget in your IDE’s toolbar or build it directly from the terminal:
+* **macOS/Linux:** `./gradlew :composeApp:assembleDebug`
+* **Windows:** `.\gradlew.bat :composeApp:assembleDebug`
+
+### Build and Run iOS Application
+To build and run the development version of the iOS app, use the run configuration from the run widget in your IDE’s toolbar or open the `/iosApp` directory in Xcode and run it from there.
 
 ## 🎖 The Vanguard 50
 We are currently recruiting 50 Veterans for the Mesa Pilot. 

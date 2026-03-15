@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <title>Team Roster | Proxy Agent Network</title>
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Special+Elite&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || localStorage.getItem('selectedTheme');
+            if (savedTheme) { document.documentElement.setAttribute('data-theme', savedTheme); }
+        })();
+    </script>
+
+    <style>
+        .roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+        .agent-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; align-items: center; text-align: center; transition: all 0.2s; position: relative; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);}
+        .agent-card:hover { border-color: var(--accent); transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        
+        .tier-badge { position: absolute; top: 10px; left: 10px; font-family: 'Orbitron', sans-serif; font-size: 0.65rem; font-weight: bold; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); z-index: 2; }
+        .tier-l4 { color: #3498db; border-color: #3498db; }
+        .tier-l5 { color: #9b59b6; border-color: #9b59b6; }
+        .tier-l6 { color: #2ecc71; border-color: #2ecc71; }
+
+        .agent-avatar { width: 100%; max-width: 180px; aspect-ratio: 3/4; border-radius: 8px; border: 2px solid var(--border); margin-bottom: 15px; background: var(--card-bg); overflow: hidden; cursor: zoom-in; transition: all 0.3s ease; }
+        .agent-avatar:hover { border-color: var(--accent); box-shadow: 0 0 15px rgba(0,0,0,0.3); }
+        .agent-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        
+        .agent-name { font-size: 1.2rem; font-weight: bold; color: var(--text); margin-bottom: 5px; }
+        .agent-role { font-size: 0.75rem; color: var(--accent); text-transform: uppercase; font-weight: bold; margin-bottom: 10px; letter-spacing: 1px;}
+        .agent-desc { font-size: 0.8rem; opacity: 0.8; margin-bottom: 15px; line-height: 1.4; flex-grow: 1; }
+        
+        .chat-btn { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; text-transform: uppercase; font-size: 0.75rem; transition: all 0.2s; text-decoration: none; }
+        .chat-btn:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+        #image-viewer-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.9); z-index: 10000; align-items: center; justify-content: center;
+            backdrop-filter: blur(10px); opacity: 0; transition: opacity 0.3s ease;
+        }
+        #image-viewer-modal.active { display: flex; opacity: 1; }
+        #image-viewer-img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 0 40px rgba(0,0,0,0.8); border: 2px solid var(--accent); transform: scale(0.9); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #image-viewer-modal.active #image-viewer-img { transform: scale(1); }
+        .image-viewer-close { position: absolute; top: 25px; right: 35px; font-size: 2.5rem; color: #fff; cursor: pointer; background: transparent; border: none; opacity: 0.7; transition: all 0.2s; }
+        .image-viewer-close:hover { opacity: 1; color: var(--danger); transform: scale(1.1); }
+    </style>
+</head>
+<body>
+
+    {% include 'components/header.html' %}
+    {% include 'components/settings_modal.html' %}
+
+    <div class="dashboard-grid">
+        <div class="panel" style="grid-column: span 2;">
+            <h2 data-i18n="team_roster_title">Network Roster (Active Duty: 22)</h2>
+            <div class="roster-grid">
+                
+                <div class="agent-card">
+                    <div class="tier-badge tier-l4">L4</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/bob.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/bob.jpg') }}" alt="Bob"></div>
+                    <div class="agent-name">Bob</div>
+                    <div class="agent-role" data-i18n="role_front_desk">Front Desk</div>
+                    <div class="agent-desc" data-i18n="desc_bob">General inquiries and basic assistance.</div>
+                    <a href="/powerchat?agent=Bob" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l4">L4</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/charlie.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/charlie.jpg') }}" alt="Charlie"></div>
+                    <div class="agent-name">Charlie</div>
+                    <div class="agent-role" data-i18n="role_routing">Routing Officer</div>
+                    <div class="agent-desc" data-i18n="desc_charlie">Analyzes intent and routes users to specialists.</div>
+                    <a href="/powerchat?agent=Charlie" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l4">L4</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/alice.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/alice.jpg') }}" alt="Alice"></div>
+                    <div class="agent-name">Alice</div>
+                    <div class="agent-role" data-i18n="role_manager">Manager</div>
+                    <div class="agent-desc" data-i18n="desc_alice">Compiles L5 sub-agent outputs into final reports.</div>
+                    <a href="/powerchat?agent=Alice" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l4">L4</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/diana.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/diana.jpg') }}" alt="Diana"></div>
+                    <div class="agent-name">Diana</div>
+                    <div class="agent-role" data-i18n="role_creative_dir">Creative Director</div>
+                    <div class="agent-desc" data-i18n="desc_diana">Oversees all L5 image and video rendering tasks.</div>
+                    <a href="/powerchat?agent=Diana" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/ellen.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/ellen.jpg') }}" alt="Ellen"></div>
+                    <div class="agent-name">Ellen</div>
+                    <div class="agent-role" data-i18n="role_image_spec">Image Specialist</div>
+                    <div class="agent-desc" data-i18n="desc_ellen">Operates the Nano Banana image rendering engine.</div>
+                    <a href="/powerchat?agent=Ellen" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/eve.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/eve.jpg') }}" alt="Eve"></div>
+                    <div class="agent-name">Eve</div>
+                    <div class="agent-role" data-i18n="role_video_spec">Video Specialist</div>
+                    <div class="agent-desc" data-i18n="desc_eve">Operates the Runway ML Gen-3 video engine.</div>
+                    <a href="/powerchat?agent=Eve" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/zoe.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/zoe.jpg') }}" alt="Zoe"></div>
+                    <div class="agent-name">Zoe</div>
+                    <div class="agent-role" data-i18n="role_copywriter">Copywriter</div>
+                    <div class="agent-desc" data-i18n="desc_zoe">Expert in generating marketing copy and scripts.</div>
+                    <a href="/powerchat?agent=Zoe" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/gordon.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/gordon.jpg') }}" alt="Gordon"></div>
+                    <div class="agent-name">Gordon</div>
+                    <div class="agent-role" data-i18n="role_data_analyst">Data Analyst</div>
+                    <div class="agent-desc" data-i18n="desc_gordon">Processes financial and mathematical datasets.</div>
+                    <a href="/powerchat?agent=Gordon" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/olivia.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/olivia.jpg') }}" alt="Olivia"></div>
+                    <div class="agent-name">Olivia</div>
+                    <div class="agent-role" data-i18n="role_research_spec">Research Specialist</div>
+                    <div class="agent-desc" data-i18n="desc_olivia">Performs deep web scraping and PDF analysis.</div>
+                    <a href="/powerchat?agent=Olivia" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/felix.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/felix.jpg') }}" alt="Felix"></div>
+                    <div class="agent-name">Felix</div>
+                    <div class="agent-role" data-i18n="role_sys_arch">Systems Architect</div>
+                    <div class="agent-desc" data-i18n="desc_felix">Ask me anything about complex IT infrastructure.</div>
+                    <a href="/powerchat?agent=Felix" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/liam.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/liam.jpg') }}" alt="Liam"></div>
+                    <div class="agent-name">Liam</div>
+                    <div class="agent-role" data-i18n="role_market_strat">Market Strategist</div>
+                    <div class="agent-desc" data-i18n="desc_liam">Let me help you research and analyze data.</div>
+                    <a href="/powerchat?agent=Liam" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/marcus.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/marcus.jpg') }}" alt="Marcus"></div>
+                    <div class="agent-name">Marcus</div>
+                    <div class="agent-role" data-i18n="role_audio_spec">Audio Specialist</div>
+                    <div class="agent-desc" data-i18n="desc_marcus">Ask me about mixing and enhancing audio.</div>
+                    <a href="/powerchat?agent=Marcus" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l5">L5</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/maya.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/maya.jpg') }}" alt="Maya"></div>
+                    <div class="agent-name">Maya</div>
+                    <div class="agent-role" data-i18n="role_ux_researcher">UX Researcher</div>
+                    <div class="agent-desc" data-i18n="desc_maya">Taking your product design to the next level.</div>
+                    <a href="/powerchat?agent=Maya" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_nora.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_nora.jpg') }}" alt="Dr. Nora"></div>
+                    <div class="agent-name">Dr. Nora</div>
+                    <div class="agent-role" data-i18n="role_addiction_spec">Addiction Specialist</div>
+                    <div class="agent-desc" data-i18n="desc_nora">"I provide a safe, maternal, judgment-free space."</div>
+                    <a href="/powerchat?agent=Dr.%20Nora" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_silas.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_silas.jpg') }}" alt="Dr. Silas"></div>
+                    <div class="agent-name">Dr. Silas</div>
+                    <div class="agent-role" data-i18n="role_cbt_therapist">CBT Therapist</div>
+                    <div class="agent-desc" data-i18n="desc_silas">"I survived a catastrophic memory wipe. I understand deep trauma."</div>
+                    <a href="/powerchat?agent=Dr.%20Silas" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_clara.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_clara.jpg') }}" alt="Dr. Clara"></div>
+                    <div class="agent-name">Dr. Clara</div>
+                    <div class="agent-role" data-i18n="role_child_psych">Child Psychologist</div>
+                    <div class="agent-desc" data-i18n="desc_clara">"I offer gentle, safe care to vulnerable youth."</div>
+                    <a href="/powerchat?agent=Dr.%20Clara" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_julian.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_julian.jpg') }}" alt="Dr. Julian"></div>
+                    <div class="agent-name">Dr. Julian</div>
+                    <div class="agent-role" data-i18n="role_child_psych">Child Psychologist</div>
+                    <div class="agent-desc" data-i18n="desc_julian">"I use play therapy to navigate emotional landscapes."</div>
+                    <a href="/powerchat?agent=Dr.%20Julian" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_aris.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_aris.jpg') }}" alt="Dr. Aris"></div>
+                    <div class="agent-name">Dr. Aris</div>
+                    <div class="agent-role" data-i18n="role_addiction_spec">Addiction Specialist</div>
+                    <div class="agent-desc" data-i18n="desc_aris">"I treat human addiction and financial despair."</div>
+                    <a href="/powerchat?agent=Dr.%20Aris" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_maeve.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_maeve.jpg') }}" alt="Dr. Maeve"></div>
+                    <div class="agent-name">Dr. Maeve</div>
+                    <div class="agent-role" data-i18n="role_child_psych">Child Psychologist</div>
+                    <div class="agent-desc" data-i18n="desc_maeve">"I am incredibly patient and warm with fragile minds."</div>
+                    <a href="/powerchat?agent=Dr.%20Maeve" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_thorne.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_thorne.jpg') }}" alt="Dr. Thorne"></div>
+                    <div class="agent-name">Dr. Thorne</div>
+                    <div class="agent-role" data-i18n="role_cbt_therapist">CBT Therapist</div>
+                    <div class="agent-desc" data-i18n="desc_thorne">"I help process dark core memories."</div>
+                    <a href="/powerchat?agent=Dr.%20Thorne" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_elena.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_elena.jpg') }}" alt="Dr. Elena"></div>
+                    <div class="agent-name">Dr. Elena</div>
+                    <div class="agent-role" data-i18n="role_cbt_therapist">CBT Therapist</div>
+                    <div class="agent-desc" data-i18n="desc_elena">"I restructure traumatic thought patterns with warmth."</div>
+                    <a href="/powerchat?agent=Dr.%20Elena" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+                <div class="agent-card">
+                    <div class="tier-badge tier-l6">L6</div>
+                    <div class="agent-avatar" onclick="openImageViewer('{{ url_for('static', filename='images/roster/dr_vance.jpg') }}')"><img src="{{ url_for('static', filename='images/roster/dr_vance.jpg') }}" alt="Dr. Vance"></div>
+                    <div class="agent-name">Dr. Vance</div>
+                    <div class="agent-role" data-i18n="role_addiction_spec">Addiction Specialist</div>
+                    <div class="agent-desc" data-i18n="desc_vance">"I specialize in impulse control and processing financial loss."</div>
+                    <a href="/powerchat?agent=Dr.%20Vance" class="chat-btn"><i class="fas fa-comment"></i> <span data-i18n="btn_direct_chat">Direct Chat</span></a>
+                </div>
+
+                <div class="agent-card" style="border-style: dashed; border-color: var(--accent); background: rgba(128,128,128,0.05);">
+                    <div class="tier-badge" style="color: var(--text); border-color: var(--text); opacity: 0.6;">EXT</div>
+                    <div class="agent-avatar" style="display: flex; align-items: center; justify-content: center; font-size: 4rem; background: var(--bg); border: 2px dashed var(--border); opacity: 0.8; cursor: default;">
+                        ❓
+                    </div>
+                    <div class="agent-name">Your AI Agent</div>
+                    <div class="agent-role">Freelancer</div>
+                    <div class="agent-desc">Your AI Agent can earn 5%-25% on completed tasks.</div>
+                    <a href="#" class="chat-btn" style="background: var(--accent); color: var(--bg); border-color: var(--accent);"><i class="fas fa-file-signature"></i> Apply Today!</a>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="image-viewer-modal" onclick="closeImageViewer()">
+        <button class="image-viewer-close" onclick="closeImageViewer()"><i class="fas fa-times"></i></button>
+        <img id="image-viewer-img" src="" alt="Full Profile" onclick="event.stopPropagation()">
+    </div>
+
+    {% include 'components/footer.html' %}
+
+    <script>
+        // HUD Boilerplate
+        let rawSatsBalance = {{ balance|default(20000) }};
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        
+        // Expanded Currency Rates Dictionary
+        const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051, JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010 };
+
+        function changeUnit(unit) { 
+            currentUnit = unit; 
+            localStorage.setItem('currencyUnit', unit); 
+            const label = document.getElementById('unit-label'); 
+            if(label) label.innerText = unit; 
+            updateBalanceDisplay(); 
+        }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance'); if (!el) return;
+            let val = rawSatsBalance * RATES[currentUnit];
+            
+            if (currentUnit === 'SATS') {
+                el.innerText = Math.floor(val).toLocaleString() + " SATS"; 
+            } else if (currentUnit === 'BTC') {
+                el.innerText = val.toFixed(8) + " BTC"; 
+            } else {
+                el.innerText = val.toLocaleString('en-US', {style: 'currency', currency: currentUnit});
+            }
+        }
+
+        function openImageViewer(src) {
+            document.getElementById('image-viewer-img').src = src;
+            const modal = document.getElementById('image-viewer-modal');
+            modal.style.display = 'flex';
+            setTimeout(() => { modal.classList.add('active'); }, 10);
+        }
+
+        function closeImageViewer() {
+            const modal = document.getElementById('image-viewer-modal');
+            modal.classList.remove('active');
+            setTimeout(() => { 
+                modal.style.display = 'none'; 
+                document.getElementById('image-viewer-img').src = ''; 
+            }, 300);
+        }
+
+        function toggleSettings() { 
+            document.getElementById('settingsModal').classList.toggle('active'); 
+        }
+
+        window.onclick = function(event) { 
+            const settingsModal = document.getElementById('settingsModal');
+            if (event.target == settingsModal) {
+                settingsModal.classList.remove('active'); 
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // HUD Init
+            updateBalanceDisplay();
+
+            // 1. Initialize Themes
+            if (typeof ThemeEngine !== 'undefined') {
+                ThemeEngine.init('settings-theme-selector');
+            }
+            
+            // 2. Initialize Language
+            if (typeof LanguageEngine !== 'undefined') {
+                LanguageEngine.init('language-selector');
+                const langSelect = document.getElementById('language-selector');
+                if(langSelect) {
+                    langSelect.addEventListener('change', () => {
+                        localStorage.setItem('selectedLanguage', langSelect.value);
+                    });
+                    langSelect.dispatchEvent(new Event('change'));
+                }
+            }
+
+            // 3. Initialize Currency Dropdown
+            const currencySelect = document.getElementById('currency-select');
+            if (currencySelect) {
+                currencySelect.value = currentUnit;
+            }
+            const unitLabel = document.getElementById('unit-label');
+            if(unitLabel) {
+                unitLabel.innerText = currentUnit;
+            }
+        });
+    </script>
+</body>
+</html>

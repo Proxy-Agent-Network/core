@@ -9,6 +9,7 @@ config.local.yaml
 # Secret Lore and Live Agent Databases
 core_memories.json
 agency_lore.db
+secrets.js
 
 # --- TPM 2.0 HARDWARE (VITAL) ---
 # Protecting the Hardware Root of Trust
@@ -49,11 +50,11 @@ yarn-debug.log*
 # --- SYSTEM & IDE ---
 .vscode/
 .idea/
+.idea
 Thumbs.db
 .DS_Store
 *.swp
 *~
-secrets.js
 
 # --- RUST & HYBRID CORE ---
 # Huge build artifacts folder
@@ -65,7 +66,7 @@ target/
 # Linux Shared Objects (if we cross-compile later)
 *.so
 
-# Mainnet Credentials (NEVER COMMIT THESE)
+# --- L402 / MAINNET CREDENTIALS (NEVER COMMIT THESE) ---
 mainnet_secrets/
 *.macaroon
 *.cert
@@ -81,3 +82,21 @@ lyria_track_*.wav
 faiss_index/tests/
 hardware-node/mock_boot.py
 faiss_index/
+
+# --- MOBILE APP EXCLUDES (iOS/Android) ---
+*.iml
+.kotlin
+.gradle
+**/build/
+xcuserdata
+!src/**/build/
+local.properties
+captures
+.externalNativeBuild
+.cxx
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcshareddata/WorkspaceSettings.xcsettings

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <title>Legal Protocols | Proxy Agent Network</title>
+    
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) { document.documentElement.setAttribute('data-theme', savedTheme); }
+        })();
+    </script>
+
+    <style>
+        body { margin: 0; padding: 0; overflow-x: hidden; background-color: var(--bg); color: var(--text); }
+        .dashboard-grid { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        /* LEGAL CONTENT SPECIFIC */
+        .legal-container { 
+            max-width: 800px; margin: 40px auto; padding: 40px; 
+            border: 1px solid var(--border); background: var(--card-bg); 
+            border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 { font-family: 'Orbitron', sans-serif; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-top: 0; }
+        .content { font-family: 'Inter', sans-serif; line-height: 1.7; opacity: 0.9; font-size: 0.95rem; }
+        .content h3 { margin-top: 30px; color: var(--text); font-family: 'Orbitron', sans-serif; }
+        
+        .back-btn { 
+            display: inline-block; margin-bottom: 20px; color: var(--accent); 
+            text-decoration: none; font-family: 'Courier Prime', monospace; font-weight: bold; 
+            border: 1px solid var(--accent); padding: 5px 10px; border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .back-btn:hover { background: var(--accent); color: var(--bg); }
+    </style>
+</head>
+<body>
+    <script>window.OWNED_THEMES = JSON.parse('{{ (owned or [])|tojson|safe }}');</script>
+
+    {% include 'components/header.html' %}
+    {% include 'components/settings_modal.html' %}
+
+    <div class="legal-container">
+        <a href="/" class="back-btn">&lt; RETURN TO COMMAND</a>
+        <h1>{{ title }}</h1>
+        <div class="content">{{ content|safe }}</div>
+    </div>
+
+    {% include 'components/footer.html' %}
+
+    <script>
+        function toggleSettings() { document.getElementById('settingsModal').classList.toggle('active'); }
+        window.onclick = function(event) { const modal = document.getElementById('settingsModal'); if (event.target == modal) modal.classList.remove('active'); }
+
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        const currSelect = document.getElementById('currency-select'); if(currSelect) currSelect.value = currentUnit;
+        const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051, JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010 };
+
+        function changeUnit(unit) { currentUnit = unit; localStorage.setItem('currencyUnit', unit); const label = document.getElementById('unit-label'); if(label) label.innerText = unit; updateBalanceDisplay(); }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance'); if (!el) return;
+            let rawSats = {{ balance|default(0) }};
+            let val = rawSats * RATES[currentUnit];
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS"; else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC"; else el.innerText = val.toLocaleString('en-US', {style: 'currency', currency: currentUnit});
+        }
+
+        window.onload = () => {
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            if (typeof LanguageEngine !== 'undefined') LanguageEngine.init('language-selector');
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if(savedTheme) { if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme); }
+            const unitLabel = document.getElementById('unit-label'); if(unitLabel) unitLabel.innerText = currentUnit;
+            updateBalanceDisplay();
+        };
+    </script>
+</body>
+</html>

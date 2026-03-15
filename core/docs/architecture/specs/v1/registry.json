@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Vanguard Agent Identity Registry Profile",
+  "description": "Cryptographic and operational metadata for certified PAN Vanguard Agents.",
+  "type": "object",
+  "properties": {
+    "vanguard_id": {
+      "type": "string",
+      "description": "Unique PAN network identifier (e.g., VANGUARD-042)"
+    },
+    "tpm_public_key": {
+      "type": "string",
+      "description": "ECDSA Secp256r1 Public Key generated and locked by the mobile Secure Enclave/TPM 2.0"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["offline", "active_patrol", "en_route", "hardware_probation", "revoked"],
+      "description": "Current network routing and deployment status"
+    },
+    "vanguard_trust_score_vts": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Deterministic trust score governing Elite/Standard routing prioritization"
+    },
+    "hardware_attestation": {
+      "type": "object",
+      "description": "Verified specifications of the Agent's mobile edge node",
+      "properties": {
+        "device_model": { 
+          "type": "string", 
+          "example": "iPhone 16 Pro Max" 
+        },
+        "uwb_certified": { 
+          "type": "boolean", 
+          "description": "True if equipped with an approved Time-of-Flight UWB radio for precision homing" 
+        }
+      },
+      "required": ["device_model", "uwb_certified"]
+    },
+    "sector_assignments": {
+      "type": "array",
+      "description": "Approved Level-6 Geohash sectors where the Agent is authorized for dispatch",
+      "items": {
+        "type": "string",
+        "example": "MESA_AZ_01"
+      }
+    },
+    "verified_credentials": {
+      "type": "array",
+      "description": "On-chain hashes of physical onboarding documents and SOP certifications",
+      "items": {
+        "type": "string",
+        "enum": [
+          "VETERAN_DD214_VERIFIED", 
+          "BACKGROUND_CHECK_CLEARED", 
+          "ORP_LEVEL_1_CERTIFIED", 
+          "MESA_HUB_PROVISIONED"
+        ]
+      }
+    }
+  },
+  "required": [
+    "vanguard_id", 
+    "tpm_public_key", 
+    "status", 
+    "vanguard_trust_score_vts", 
+    "hardware_attestation",
+    "sector_assignments"
+  ]
+}

@@ -1,0 +1,9 @@
+[flake8]
+# We exclude files that contain JSX/React code mixed with Python
+exclude = 
+    insurance_governance_api.py,
+    ops/juror_voting_api.py,
+    .git,
+    __pycache__,
+    venv,
+    .venv

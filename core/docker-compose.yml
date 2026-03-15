@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # --- THE DATABASE (Stability Layer) ---
+  db:
+    image: postgres:15-alpine
+    container_name: proxy_db
+    environment:
+      - POSTGRES_USER=proxy_admin
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=proxy_network
+    expose:
+      - "5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proxy_admin -d proxy_network"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- LAYER 1: BITCOIN CORE (The Truth Layer) ---
+  bitcoind:
+    image: lncm/bitcoind:v25.0
+    container_name: bitcoin_core
+    environment:
+      - BITCOIN_NETWORK=regtest
+      - BITCOIN_RPC_USER=proxy_btc
+      - BITCOIN_RPC_PASSWORD=proxy_btc_pass
+    expose:
+      - "8332"  # RPC Port
+      - "28332" # ZMQ Block Port
+      - "28333" # ZMQ Tx Port
+    volumes:
+      - D:/Bitcoin:/data
+    command: >
+      -datadir=/data
+      -prune=10000
+      -server=1
+      -listen=1
+      -chain=regtest
+      -rpcuser=proxy_btc
+      -rpcpassword=proxy_btc_pass
+      -rpcport=8332
+      -rpcbind=0.0.0.0
+      -rpcallowip=0.0.0.0/0
+      -zmqpubrawblock=tcp://0.0.0.0:28332
+      -zmqpubrawtx=tcp://0.0.0.0:28333
+
+  # --- LAYER 2: THE BANK (Lightning Network) ---
+  lnd:
+    image: lightninglabs/lnd:v0.17.0-beta
+    container_name: lnd_node
+    depends_on:
+      - bitcoind
+    expose:
+      - "10009" # gRPC for the Agent
+      - "8080"  # REST for potential web tools
+      - "9735"  # P2P Network
+    environment:
+      - LND_DEBUGLEVEL=info
+    volumes:
+      - lnd_data:/root/.lnd
+    command: >
+      --bitcoin.active
+      --bitcoin.regtest
+      --bitcoin.node=bitcoind
+      --bitcoind.rpchost=bitcoind:8332
+      --bitcoind.rpcuser=proxy_btc
+      --bitcoind.rpcpass=proxy_btc_pass
+      --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+      --rpclisten=0.0.0.0:10009
+      --restlisten=0.0.0.0:8080
+      --alias=Proxy_Master_Treasury
+
+  # --- THE AI AGENT (The Principal) ---
+  proxy_agent_v1:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxy_agent
+    ports:
+      - "5000:5000"
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://proxy_admin:${POSTGRES_PASSWORD}@db:5432/proxy_network
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - LND_GRPC_HOST=lnd
+      - LND_GRPC_PORT=10009
+      - LND_MACAROON_PATH=/home/proxyuser/.lnd/data/chain/bitcoin/regtest/agent.macaroon
+      - LND_TLS_CERT_PATH=/home/proxyuser/.lnd/tls.cert
+      - ADMIN_SECRET_TOKEN=${ADMIN_SECRET_TOKEN}
+      - HARDWARE_ATTESTATION_SEED=${HARDWARE_ATTESTATION_SEED}
+    depends_on:
+      db:
+        condition: service_healthy
+      lnd:
+        condition: service_started
+    volumes:
+      - .:/app
+      - faiss_data:/app/faiss_index
+      - lnd_data:/home/proxyuser/.lnd:ro
+
+  # --- THE SEARCH ENGINE & DASHBOARD ---
+  proxy_agency_search:
+    build: 
+      context: .
+    container_name: proxy_search
+    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - DATABASE_URL=postgresql://proxy_admin:${POSTGRES_PASSWORD}@db:5432/proxy_network
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - LND_GRPC_HOST=lnd
+      - LND_GRPC_PORT=10009
+    depends_on:
+      db:
+        condition: service_healthy
+      lnd:
+        condition: service_started
+    volumes:
+      - .:/app
+      - faiss_data:/app/faiss_index
+      - lnd_data:/home/proxyuser/.lnd:ro
+
+volumes:
+  pgdata:
+  faiss_data:
+  lnd_data:
+  bitcoin_data:

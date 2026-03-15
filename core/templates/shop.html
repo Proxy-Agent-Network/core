@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <title>Service Provisioning | Proxy Agent Network</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Special+Elite&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) { document.documentElement.setAttribute('data-theme', savedTheme); }
+        })();
+    </script>
+
+    <style>
+        /* --- SHOP GRID STYLES --- */
+        .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .item-card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 25px; display: flex; flex-direction: column; justify-content: space-between; transition: border-color 0.2s; position: relative; }
+        .item-card:hover { border-color: var(--accent); }
+        .item-card.coming-soon { opacity: 0.6; pointer-events: none; filter: grayscale(0.8); }
+        .coming-soon-badge { position: absolute; top: 10px; right: 10px; background: #e67e22; color: white; font-size: 0.7rem; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-family: 'Orbitron', sans-serif; z-index: 10; }
+        .item-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
+        .item-icon { font-size: 2rem; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; background: rgba(128,128,128,0.1); border-radius: 4px; }
+        .item-name { font-weight: bold; font-size: 1.1rem; color: var(--text); }
+        .item-desc { font-size: 0.9rem; opacity: 0.7; margin-bottom: 20px; line-height: 1.5; }
+        .price-tag { font-family: 'Inter', sans-serif; font-weight: bold; color: var(--accent); font-size: 1rem; margin-bottom: 15px; padding: 5px 10px; background: rgba(128,128,128,0.05); display: inline-block; border-radius: 4px; }
+        .buy-btn { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; text-transform: uppercase; font-size: 0.8rem; transition: all 0.2s; }
+        .buy-btn:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+        .buy-btn:disabled { background: var(--bg); border-color: transparent; cursor: default; opacity: 0.5; }
+        .status-active { color: #2ecc71; font-weight: bold; font-size: 0.8rem; display: flex; align-items: center; gap: 5px; }
+        .status-active::before { content: "●"; }
+
+        /* Notification Modal */
+        #notification-modal .modal-content { max-width: 450px; text-align: center; }
+        #notification-modal h2 { border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 15px; }
+        #notification-modal p { margin-bottom: 30px; line-height: 1.6; }
+        .modal-btn { background: var(--accent); color: var(--bg); border: none; padding: 12px 30px; font-weight: bold; font-size: 1rem; cursor: pointer; border-radius: 4px; text-transform: uppercase; font-family: var(--font); transition: all 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+        .modal-btn:hover { transform: scale(1.05); box-shadow: 0 0 15px var(--accent); }
+    </style>
+</head>
+<body>
+    <script>window.OWNED_THEMES = JSON.parse('{{ (owned or [])|tojson|safe }}');</script>
+
+    <div id="lock-overlay">
+        <div class="lock-container">
+            <div class="lock-icon"><i class="fas fa-lock"></i></div>
+            <h2 id="lock-msg" data-i18n="btn_lock">SECURITY LOCKDOWN</h2>
+            <div class="pin-display" id="pin-dots"></div>
+            <div class="keypad">
+                <button class="key-btn" onclick="enterDigit(1)">1</button>
+                <button class="key-btn" onclick="enterDigit(2)">2</button>
+                <button class="key-btn" onclick="enterDigit(3)">3</button>
+                <button class="key-btn" onclick="enterDigit(4)">4</button>
+                <button class="key-btn" onclick="enterDigit(5)">5</button>
+                <button class="key-btn" onclick="enterDigit(6)">6</button>
+                <button class="key-btn" onclick="enterDigit(7)">7</button>
+                <button class="key-btn" onclick="enterDigit(8)">8</button>
+                <button class="key-btn" onclick="enterDigit(9)">9</button>
+                <button class="key-btn" onclick="enterDigit('clear')" style="color: #e74c3c; border-color: #e74c3c;"><i class="fas fa-times"></i></button>
+                <button class="key-btn" onclick="enterDigit(0)">0</button>
+                <button class="key-btn" onclick="enterDigit('enter')" style="color: #2ecc71; border-color: #2ecc71;"><i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="audio-unlock-overlay">
+        <h1 class="audio-title">PROXY // NETWORK</h1>
+        <div class="audio-subtitle">ESTABLISHING SECURE CONNECTION...</div>
+        <button class="audio-btn" onclick="unlockAudio()">INITIALIZE UPLINK</button>
+    </div>
+
+    <audio id="kaching" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
+    <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
+    <audio id="audio-success" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
+    <audio id="audio-marvin" src="{{ url_for('static', filename='audio/marvin_laughing.mp3') }}"></audio>
+    <audio id="audio-powerup" src="{{ url_for('static', filename='audio/Secret_PowerUp1.mp3') }}"></audio>
+    <audio id="audio-failure" src="{{ url_for('static', filename='audio/incorrect.mp3') }}" preload="auto"></audio>
+
+    <div id="bypass-overlay">
+        <div class="bypass-title">&gt;&gt;&gt;SYSTEM BYPASS&lt;&lt;&lt;</div>
+        <div style="color:white;">BONUS_REWARD: <span style="color:#f1c40f;">+30 XP</span></div>
+    </div>
+
+    <div id="marvin-sprite-container" onclick="handleMarvinClick()" ondblclick="marvinLaugh()">
+        <img id="marvin-image" src="{{ url_for('static', filename='images/magic_marvin_dance.webp') }}" alt="Magic Marvin">
+    </div>
+
+    <div id="notification-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 id="modal-title" data-i18n="modal_title_alert">SYSTEM ALERT</h2>
+            <p id="modal-message">Operation Successful</p>
+            <button class="modal-btn" onclick="closeModal()" data-i18n="btn_acknowledge">ACKNOWLEDGE</button>
+        </div>
+    </div>
+
+    {% include 'components/header.html' %}
+    {% include 'components/settings_modal.html' %}
+
+    <div class="dashboard-grid">
+        <div class="panel" style="grid-column: span 2;">
+            <h2 data-i18n="panel_catalog">Service Catalog</h2>
+            <div class="shop-grid">
+                
+                {% for key, item in items.items() %}
+                {% if item.id in ['license_auto', 'license_speed'] %}
+                <div class="item-card">
+                    <div class="item-header">
+                        <div class="item-icon">{{ item.icon }}</div>
+                        <div class="item-name" data-i18n="item_{{ item.id }}_name">{{ item.name }}</div>
+                    </div>
+                    <div class="item-desc" data-i18n="item_{{ item.id }}_desc">{{ item.desc }}</div>
+                    {% if item.id in owned %}
+                        <div style="margin-top: auto;">
+                            <div class="status-active" data-i18n="status_license_active">LICENSE ACTIVE</div>
+                            <button class="buy-btn" disabled style="margin-top: 10px;" data-i18n="btn_provisioned">PROVISIONED</button>
+                        </div>
+                    {% else %}
+                        <div style="margin-top: auto;">
+                            <div class="price-tag">{{ item.price }} SATS</div>
+                            {% if balance >= item.price %}
+                                <button class="buy-btn" onclick="buyItem('{{ item.id }}')" data-i18n="btn_provision">PROVISION RESOURCE</button>
+                            {% else %}
+                                <button class="buy-btn" disabled data-i18n="btn_insufficient">INSUFFICIENT FUNDS</button>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+
+                <div class="item-card">
+                    <div class="item-header"><div class="item-icon">🐝</div><div class="item-name" data-i18n="item_theme_neon_name">UI: Hex-Hive</div></div>
+                    <div class="item-desc" data-i18n="item_theme_neon_desc">Advanced tactical interface with living honeycomb geometry. Pulse visualization included.</div>
+                    <div style="margin-top: auto;">
+                        <div class="price-tag">1,000 SATS</div>
+                        {% if 'theme_neon' in owned %}
+                            <div class="status-active" data-i18n="status_license_active">LICENSE ACTIVE</div>
+                            <button class="buy-btn" disabled style="margin-top: 10px;" data-i18n="btn_provisioned">PROVISIONED</button>
+                        {% else %}
+                            <button class="buy-btn" onclick="buyItem('theme_neon')" {% if balance < 1000 %}disabled{% endif %}>{% if balance < 1000 %}<span data-i18n="btn_insufficient">INSUFFICIENT FUNDS</span>{% else %}<span data-i18n="btn_unlock">UNLOCK THEME</span>{% endif %}</button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="item-card">
+                    <div class="item-header"><div class="item-icon">🪩</div><div class="item-name" data-i18n="item_disco_name">UI: Studio 54</div></div>
+                    <div class="item-desc" data-i18n="item_disco_desc">Web Audio synthesized floor with 104 BPM rhythmic lighting. Includes hidden DJ controls.</div>
+                    <div style="margin-top: auto;">
+                        <div class="price-tag">1,000 SATS</div>
+                        {% if 'disco' in owned %}
+                            <div class="status-active" data-i18n="status_license_active">LICENSE ACTIVE</div>
+                            <button class="buy-btn" disabled style="margin-top: 10px;" data-i18n="btn_provisioned">PROVISIONED</button>
+                        {% else %}
+                            <button class="buy-btn" onclick="buyItem('disco')" {% if balance < 1000 %}disabled{% endif %}>{% if balance < 1000 %}<span data-i18n="btn_insufficient">INSUFFICIENT FUNDS</span>{% else %}<span data-i18n="btn_unlock">UNLOCK THEME</span>{% endif %}</button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="item-card">
+                    <div class="coming-soon-badge" style="background: #2ecc71;" data-i18n="badge_limited_free">LIMITED FREE</div>
+                    <div class="item-header"><div class="item-icon">🟩</div><div class="item-name" data-i18n="item_matrix_name">UI: The Matrix</div></div>
+                    <div class="item-desc" data-i18n="item_matrix_desc">Full digital rain simulation. Experience the source code. Early adopter special.</div>
+                    <div style="margin-top: auto;">
+                        <div class="price-tag" style="color: #2ecc71;">0 SATS</div>
+                        {% if 'matrix' in owned %}
+                            <div class="status-active" data-i18n="status_license_active">LICENSE ACTIVE</div>
+                            <button class="buy-btn" disabled style="margin-top: 10px;" data-i18n="btn_provisioned">PROVISIONED</button>
+                        {% else %}
+                            <button class="buy-btn" onclick="buyItem('matrix')" data-i18n="btn_activate_free">ACTIVATE FREE</button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% for key, item in items.items() %}
+                {% if item.id not in ['license_auto', 'license_speed', 'theme_neon', 'disco', 'matrix'] %}
+                <div class="item-card coming-soon">
+                    <div class="coming-soon-badge" data-i18n="badge_coming_soon">COMING SOON</div>
+                    <div class="item-header">
+                        <div class="item-icon">{{ item.icon }}</div>
+                        <div class="item-name" data-i18n="item_{{ item.id }}_name">{{ item.name }}</div>
+                    </div>
+                    <div class="item-desc" data-i18n="item_{{ item.id }}_desc">{{ item.desc }}</div>
+                    <div style="margin-top: auto;">
+                        <div class="price-tag">{{ item.price }} SATS</div>
+                        <button class="buy-btn" disabled data-i18n="btn_unavailable">UNAVAILABLE</button>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+
+            </div>
+        </div>
+    </div>
+
+    {% include 'components/footer.html' %}
+
+    <script>
+        const NODE_ID = "{{ node_id }}";
+        let rawSatsBalance = {{ balance|default(0) }};
+
+        // --- AUDIO ---
+        let audioMuted = localStorage.getItem('audioMuted') === 'true';
+        let audioVolume = localStorage.getItem('audioVolume') || 0.5;
+        
+        function toggleMute() { audioMuted = !audioMuted; localStorage.setItem('audioMuted', audioMuted); toggleMuteUI(); }
+        function toggleMuteUI() {
+            document.querySelectorAll('audio').forEach(el => el.muted = audioMuted);
+            const btn = document.getElementById('mute-btn'); const icon = document.getElementById('mute-icon');
+            if(btn && icon) {
+                if (audioMuted) { btn.style.color = '#e74c3c'; btn.style.borderColor = '#e74c3c'; icon.className = 'fas fa-volume-mute'; } 
+                else { btn.style.color = ''; btn.style.borderColor = ''; icon.className = 'fas fa-volume-up'; }
+            }
+        }
+        function adjustVolume(val) { localStorage.setItem('audioVolume', val); document.querySelectorAll('audio').forEach(el => el.volume = val); }
+        if (audioMuted) toggleMuteUI();
+        const slider = document.getElementById('volume-slider'); if (slider) slider.value = audioVolume; adjustVolume(audioVolume);
+        if (sessionStorage.getItem('audioUnlocked')) { const overlay = document.getElementById('audio-unlock-overlay'); if (overlay) overlay.style.display = 'none'; }
+        function unlockAudio() {
+            ['audio-click', 'audio-success', 'audio-failure', 'audio-marvin', 'audio-powerup'].forEach(id => { const el = document.getElementById(id); if (el) el.play().then(() => el.pause()).catch(e => {}); });
+            const overlay = document.getElementById('audio-unlock-overlay'); if (overlay) overlay.style.display = 'none'; sessionStorage.setItem('audioUnlocked', 'true');
+            const clickSound = document.getElementById('audio-click'); if (clickSound) clickSound.play().catch(e => {});
+        }
+
+        // --- CURRENCY ---
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        const currSelect = document.getElementById('currency-select'); if(currSelect) currSelect.value = currentUnit;
+        const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051, JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010 };
+        function changeUnit(unit) { currentUnit = unit; localStorage.setItem('currencyUnit', unit); const label = document.getElementById('unit-label'); if(label) label.innerText = unit; updateBalanceDisplay(); }
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance'); if (!el) return;
+            if (rawSatsBalance === 0) { const txt = el.innerText.replace(/,/g, '').split(' ')[0]; if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt); }
+            let val = rawSatsBalance * RATES[currentUnit];
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS"; else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC"; else el.innerText = val.toLocaleString('en-US', {style: 'currency', currency: currentUnit});
+        }
+
+        // --- MODAL & SHOP LOGIC ---
+        function toggleSettings() { document.getElementById('settingsModal').classList.toggle('active'); }
+        window.onclick = function(event) { if (event.target == document.getElementById('settingsModal')) document.getElementById('settingsModal').classList.remove('active'); if (event.target == document.getElementById('notification-modal')) closeModal(); }
+        function showModal(title, message) { document.getElementById('modal-title').innerText = title; document.getElementById('modal-message').innerText = message; document.getElementById('notification-modal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('notification-modal').style.display = 'none'; }
+
+        function buyItem(itemId) {
+            const lang = localStorage.getItem('selectedLanguage') || 'en';
+            let dict = window.TRANSLATIONS; if (!dict && typeof TRANSLATIONS !== 'undefined') dict = TRANSLATIONS;
+            const t = (dict && dict[lang]) ? dict[lang] : (dict && dict['en'] ? dict['en'] : {});
+
+            const allowedItems = ['license_auto', 'license_speed', 'theme_neon', 'disco', 'matrix'];
+            if (!allowedItems.includes(itemId)) { showModal(t.msg_restricted_title || "RESTRICTED", t.msg_restricted_body || "This item is not yet available for provisioning."); return; }
+
+            const btn = event.target; const originalText = btn.innerText;
+            btn.innerText = t.btn_allocating || "ALLOCATING..."; btn.disabled = true;
+
+            fetch('/api/v1/shop/buy', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ item_id: itemId, node_id: NODE_ID }) })
+            .then(r => r.json())
+            .then(data => {
+                if(data.success) {
+                    document.getElementById('kaching').play(); btn.innerText = t.btn_provisioned || "PROVISIONED"; rawSatsBalance = data.new_balance; updateBalanceDisplay();
+                    if(['theme_neon','disco','matrix'].includes(itemId)) { showModal(t.msg_theme_title || "THEME UNLOCKED", t.msg_theme_body || "New visual interface acquired. Check your settings."); } else { showModal(t.msg_prov_title || "PROVISIONING COMPLETE", t.msg_prov_body || "Resource allocated successfully."); }
+                    setTimeout(() => location.reload(), 2000); 
+                } else { showModal(t.msg_fail_title || "TRANSACTION FAILED", data.error); btn.innerText = originalText; btn.disabled = false; }
+            })
+            .catch(err => { showModal(t.msg_net_error_title || "NETWORK ERROR", t.msg_net_error_body || "Connection to provisioning server lost."); btn.innerText = originalText; btn.disabled = false; });
+        }
+
+        // --- NETWORK STATS ---
+        function updateNetworkStats() {
+            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
+                const healthSpan = document.getElementById('health-peers');
+                if (healthSpan) {
+                    const lang = localStorage.getItem('selectedLanguage') || 'en';
+                    let dict = window.TRANSLATIONS; if (!dict && typeof TRANSLATIONS !== 'undefined') dict = TRANSLATIONS;
+                    const t = (dict && dict[lang]) ? dict[lang] : (dict && dict['en'] ? dict['en'] : {});
+                    if (data.peers > 0) { healthSpan.innerHTML = `● ${data.peers} ${t.status_connected || "CONNECTED"}`; healthSpan.style.color = "#2ecc71"; } 
+                    else { healthSpan.innerHTML = `● 0 ${t.status_peers || "PEERS"} (${t.status_searching || "SEARCHING"})`; healthSpan.style.color = "#f1c40f"; }
+                }
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            if (typeof LanguageEngine !== 'undefined') {
+                LanguageEngine.init('language-selector');
+                const langSelect = document.getElementById('language-selector');
+                if(langSelect) {
+                    langSelect.addEventListener('change', () => {
+                        localStorage.setItem('selectedLanguage', langSelect.value);
+                        setTimeout(updateNetworkStats, 50);
+                    });
+                    langSelect.dispatchEvent(new Event('change'));
+                }
+            }
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if(savedTheme) { if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme); }
+            const unitLabel = document.getElementById('unit-label'); if(unitLabel) unitLabel.innerText = currentUnit;
+            updateBalanceDisplay(); updateNetworkStats(); setInterval(updateNetworkStats, 30000);
+        });
+    </script>
+</body>
+</html>

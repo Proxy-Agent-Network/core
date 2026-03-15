@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="slate">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PAN | Sector Command</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&family=Urbanist:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        /* CSS Variables for Tactical Theme Engine */
+        :root[data-theme="slate"] {
+            --bg-base: #020617;
+            --bg-surface: #0A192F;
+            --bg-surface-hover: #112240;
+            --text-primary: #E6F1FF;
+            --text-secondary: #8892B0;
+            --accent-primary: #B87333; /* Copper */
+            --accent-secondary: #64FFDA; /* Cyan */
+            --border-color: rgba(100, 255, 218, 0.1);
+            --danger: #ef4444;
+            --font-ui: 'Urbanist', sans-serif;
+            --font-data: 'JetBrains Mono', monospace;
+            --surge-glow: transparent;
+        }
+
+        :root[data-theme="high-vis"] {
+            --bg-base: #FFFFFF;
+            --bg-surface: #F1F5F9;
+            --bg-surface-hover: #E2E8F0;
+            --text-primary: #000000;
+            --text-secondary: #334155;
+            --accent-primary: #000000; 
+            --accent-secondary: #E8FF00; /* MUTCD Yellow */
+            --border-color: #CBD5E1;
+            --danger: #DC2626;
+            --font-ui: 'Urbanist', sans-serif;
+            --font-data: 'JetBrains Mono', monospace;
+            --surge-glow: transparent;
+        }
+
+        :root[data-theme="corporate"] {
+            --bg-base: #F8F9FA;
+            --bg-surface: #FFFFFF;
+            --bg-surface-hover: #F1F3F5;
+            --text-primary: #212529;
+            --text-secondary: #6C757D;
+            --accent-primary: #007BFF;
+            --accent-secondary: #495057;
+            --border-color: #DEE2E6;
+            --danger: #DC3545;
+            --font-ui: 'Inter', sans-serif;
+            --font-data: 'JetBrains Mono', monospace;
+            --surge-glow: transparent;
+        }
+
+        /* Brownout Surge State */
+        :root.brownout-active {
+            --surge-glow: rgba(184, 115, 51, 0.4);
+        }
+        :root[data-theme="high-vis"].brownout-active {
+            --surge-glow: rgba(232, 255, 0, 0.6);
+        }
+
+        /* Global Reset & Typography */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            font-family: var(--font-ui);
+            line-height: 1.5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Header */
+        header {
+            background-color: var(--bg-surface);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px var(--surge-glow);
+            transition: box-shadow 0.3s ease;
+            z-index: 10;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .brand-icon {
+            color: var(--accent-primary);
+            font-size: 1.5rem;
+        }
+        .brand-title {
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+        }
+        .brand-sector {
+            font-family: var(--font-data);
+            font-size: 0.875rem;
+            color: var(--accent-secondary);
+            background: rgba(100, 255, 218, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+        
+        /* Controls */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        .audio-rack {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .audio-rack button {
+            background: none;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            font-size: 1.1rem;
+        }
+        .audio-rack button:hover {
+            color: var(--accent-primary);
+        }
+        select.theme-picker {
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-family: var(--font-ui);
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            min-width: 180px;
+        }
+
+        /* Main Grid */
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 350px 1fr 350px;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            overflow: hidden;
+        }
+
+        /* Panels */
+        .panel {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        /* UDS Dispatch Monitor */
+        .uds-feed {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .uds-card {
+            background-color: var(--bg-base);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.75rem;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .uds-card:hover {
+            border-color: var(--accent-secondary);
+        }
+        .uds-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        .uds-mission {
+            font-family: var(--font-data);
+            font-weight: 700;
+            color: var(--accent-primary);
+            font-size: 0.875rem;
+        }
+        .uds-time {
+            font-family: var(--font-data);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .uds-fault {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+        .uds-tags {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .tag {
+            font-family: var(--font-data);
+            font-size: 0.65rem;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            background: rgba(136, 146, 176, 0.1);
+            color: var(--text-secondary);
+        }
+
+        /* Middle Column: Sector Operations */
+        .sector-ops {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .telemetry-dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        .metric-card {
+            background-color: var(--bg-base);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .metric-value {
+            font-family: var(--font-data);
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--accent-secondary);
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }
+        .metric-label {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+        }
+        .danger-zone {
+            margin-top: auto;
+            border: 1px solid var(--danger);
+            border-radius: 8px;
+            padding: 1.5rem;
+            background: rgba(239, 68, 68, 0.05);
+            text-align: center;
+        }
+        .danger-zone h3 {
+            color: var(--danger);
+            margin-bottom: 0.5rem;
+        }
+        .danger-zone p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+        .btn-brownout {
+            background-color: transparent;
+            color: var(--danger);
+            border: 2px solid var(--danger);
+            padding: 0.75rem 2rem;
+            font-family: var(--font-data);
+            font-weight: 700;
+            font-size: 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+        .btn-brownout:hover {
+            background-color: var(--danger);
+            color: white;
+        }
+        .btn-brownout.active {
+            background-color: var(--danger);
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        /* Vanguard Registry Search */
+        .search-box {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+        .search-box input {
+            width: 100%;
+            background-color: var(--bg-base);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            border-radius: 6px;
+            font-family: var(--font-ui);
+            outline: none;
+        }
+        .search-box i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+        .agent-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .agent-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background-color: var(--bg-base);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+        .agent-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .agent-id {
+            font-family: var(--font-data);
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+        .agent-status {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .agent-vts {
+            text-align: right;
+        }
+        .vts-score {
+            font-family: var(--font-data);
+            font-weight: 700;
+            color: var(--accent-secondary);
+        }
+        .vts-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        /* Modal (SB 1417 Ledger) */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(2, 6, 23, 0.8);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .modal-content {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--accent-primary);
+            border-radius: 8px;
+            width: 600px;
+            max-width: 90vw;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-title {
+            font-family: var(--font-data);
+            color: var(--accent-primary);
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.25rem;
+            cursor: pointer;
+        }
+        .close-btn:hover { color: var(--text-primary); }
+        
+        .modal-body {
+            padding: 1.5rem;
+        }
+        .ledger-tree {
+            font-family: var(--font-data);
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            line-height: 2;
+        }
+        .ledger-tree .base-mission {
+            font-weight: 700;
+            color: var(--accent-secondary);
+            margin-bottom: 0.5rem;
+        }
+        .ledger-tree .log-entry {
+            margin-left: 1.5rem;
+            color: var(--text-secondary);
+            position: relative;
+        }
+        .ledger-tree .log-entry::before {
+            content: "└─ ";
+            color: var(--border-color);
+        }
+        .ledger-tree .log-entry.success { color: var(--text-primary); }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+    </style>
+</head>
+<body>
+
+    <!-- Pre-render Theme Engine Script -->
+    <script>
+        const ThemeEngine = {
+            themes: [
+                { id: 'slate', label: '🌑 Slate (NOC Default)' },
+                { id: 'high-vis', label: '🦺 High-Vis (Field Ops)' },
+                { id: 'corporate', label: '📄 Corporate (Compliance)' }
+            ],
+            init: function(selectorId) {
+                let savedTheme = localStorage.getItem('theme') || 'slate';
+                if (!this.themes.find(t => t.id === savedTheme)) savedTheme = 'slate';
+                this.apply(savedTheme);
+
+                const selector = document.getElementById(selectorId);
+                if (selector) {
+                    this.populateSelector(selector, savedTheme);
+                    selector.addEventListener('change', (e) => this.apply(e.target.value));
+                }
+            },
+            apply: function(themeId) {
+                document.documentElement.setAttribute('data-theme', themeId);
+                localStorage.setItem('theme', themeId);
+            },
+            populateSelector: function(element, activeTheme) {
+                element.innerHTML = this.themes.map(t => 
+                    `<option value="${t.id}" ${t.id === activeTheme ? 'selected' : ''}>${t.label}</option>`
+                ).join('');
+            }
+        };
+
+        // FOUC Prevention
+        (function() {
+            let savedTheme = localStorage.getItem('theme') || 'slate';
+            const validThemes = ['slate', 'high-vis', 'corporate'];
+            if (!validThemes.includes(savedTheme)) savedTheme = 'slate';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+
+    <header>
+        <div class="brand">
+            <i class="fa-solid fa-shield-halved brand-icon"></i>
+            <span class="brand-title">PROXY AGENT NETWORK</span>
+            <span class="brand-sector"><i class="fa-solid fa-location-crosshairs"></i> MESA_AZ_01</span>
+        </div>
+        <div class="controls">
+            <div class="audio-rack">
+                <button id="btn-mute" title="Toggle Tactical Audio"><i class="fa-solid fa-volume-high"></i></button>
+                <span style="font-size: 0.75rem; font-family: var(--font-data);">AUDIO: ACTIVE</span>
+            </div>
+            <select id="theme-selector" class="theme-picker"></select>
+        </div>
+    </header>
+
+    <main>
+        <!-- Left Panel: UDS Dispatch Monitor -->
+        <section class="panel">
+            <div class="panel-header">
+                <span><i class="fa-solid fa-satellite-dish"></i> UDS Dispatch Monitor</span>
+                <span style="font-size: 0.75rem; color: var(--accent-secondary);">LIVE</span>
+            </div>
+            <div class="panel-content uds-feed" id="uds-feed">
+                <!-- Mock Webhooks -->
+                <div class="uds-card" onclick="openModal('MSN-88A9-4B2C')">
+                    <div class="uds-header">
+                        <span class="uds-mission">MSN-88A9-4B2C</span>
+                        <span class="uds-time">Just now</span>
+                    </div>
+                    <div class="uds-fault">LIDAR_MUD_OCCLUSION</div>
+                    <div class="uds-tags">
+                        <span class="tag">WAYMO_LLC</span>
+                        <span class="tag"><i class="fa-solid fa-bolt"></i> 25,000 Sats</span>
+                    </div>
+                </div>
+
+                <div class="uds-card" onclick="openModal('MSN-41F2-9X11')">
+                    <div class="uds-header">
+                        <span class="uds-mission">MSN-41F2-9X11</span>
+                        <span class="uds-time">-2 mins</span>
+                    </div>
+                    <div class="uds-fault">PERIMETER_VANDALISM</div>
+                    <div class="uds-tags">
+                        <span class="tag">ZOOX_INC</span>
+                        <span class="tag"><i class="fa-solid fa-bolt"></i> 30,000 Sats</span>
+                    </div>
+                </div>
+
+                <div class="uds-card" style="opacity: 0.6;">
+                    <div class="uds-header">
+                        <span class="uds-mission" style="color: var(--text-secondary);">MSN-22B1-7C44</span>
+                        <span class="uds-time">-14 mins</span>
+                    </div>
+                    <div class="uds-fault">CABIN_DOOR_AJAR</div>
+                    <div class="uds-tags">
+                        <span class="tag">CRUISE_LLC</span>
+                        <span class="tag">SETTLED</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Middle Panel: Ops & Telemetry -->
+        <section class="panel sector-ops" style="background: transparent; border: none;">
+            <div class="telemetry-dashboard">
+                <div class="metric-card">
+                    <div class="metric-value" id="aur-display">82%</div>
+                    <div class="metric-label">Agent Utilization (AUR)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" style="color: var(--accent-primary);" id="surge-display">1.7x</div>
+                    <div class="metric-label">L402 Surge Multiplier</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" style="color: var(--text-primary);">42</div>
+                    <div class="metric-label">Agents On-Patrol</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" style="color: var(--text-primary);">540s</div>
+                    <div class="metric-label">Avg SLA (Time-to-Site)</div>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="danger-zone">
+                <h3><i class="fa-solid fa-triangle-exclamation"></i> MANUAL OVERRIDE</h3>
+                <p>Execute Geohash Brownout to suspend new dispatches in Sector 1 if physical safety is compromised.</p>
+                <button class="btn-brownout" id="btn-brownout">INITIATE BROWNOUT</button>
+            </div>
+        </section>
+
+        <!-- Right Panel: Vanguard Registry -->
+        <section class="panel">
+            <div class="panel-header">
+                <span><i class="fa-solid fa-users-viewfinder"></i> Vanguard Registry</span>
+                <span style="font-size: 0.75rem; color: var(--text-secondary);">FILTER</span>
+            </div>
+            <div class="panel-content">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="agent-search" placeholder="Search by ID or Status...">
+                </div>
+                <div class="agent-list" id="agent-list">
+                    <div class="agent-row">
+                        <div class="agent-info">
+                            <span class="agent-id">VANGUARD-042</span>
+                            <span class="agent-status" style="color: var(--accent-secondary);"><i class="fa-solid fa-circle-check"></i> TPM Valid | EN_ROUTE</span>
+                        </div>
+                        <div class="agent-vts">
+                            <div class="vts-score">100</div>
+                            <div class="vts-label">Elite VTS</div>
+                        </div>
+                    </div>
+                    <div class="agent-row">
+                        <div class="agent-info">
+                            <span class="agent-id">VANGUARD-118</span>
+                            <span class="agent-status" style="color: var(--text-secondary);"><i class="fa-solid fa-location-dot"></i> ACTIVE_PATROL</span>
+                        </div>
+                        <div class="agent-vts">
+                            <div class="vts-score">92</div>
+                            <div class="vts-label">Elite VTS</div>
+                        </div>
+                    </div>
+                    <div class="agent-row">
+                        <div class="agent-info">
+                            <span class="agent-id">VANGUARD-089</span>
+                            <span class="agent-status" style="color: var(--accent-primary);"><i class="fa-solid fa-screwdriver-wrench"></i> EXECUTING_ORP</span>
+                        </div>
+                        <div class="agent-vts">
+                            <div class="vts-score">84</div>
+                            <div class="vts-label">Standard VTS</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Mission Telemetry Modal (SB 1417 Ledger) -->
+    <div class="modal-overlay" id="mission-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title"><i class="fa-solid fa-file-shield"></i> SB 1417 Audit Ledger</span>
+                <button class="close-btn" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="ledger-tree">
+                    <div class="base-mission">MSN-88A9-4B2C | LIDAR_MUD_OCCLUSION</div>
+                    <div class="log-entry success">📡 L402 HODL Invoice Locked (25,000 Sats)</div>
+                    <div class="log-entry success">👤 Agent VANGUARD-042 Dispatched</div>
+                    <div class="log-entry success">📍 UWB Proximity Lock Achieved (< 1.5m)</div>
+                    <div class="log-entry success">🛡️ TPM Signature Verified (Apple Secure Enclave)</div>
+                    <div class="log-entry">⚡ Awaiting Preimage Revelation (Fault Cleared) ...</div>
+                </div>
+                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-secondary); font-family: var(--font-data);">
+                    FLEET: WAYMO_LLC | VIN: e3b0c...2b855
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Initialize Theme Engine
+            ThemeEngine.init('theme-selector');
+
+            // 2. Brownout Toggle Logic
+            const brownoutBtn = document.getElementById('btn-brownout');
+            const root = document.documentElement;
+            const aurDisplay = document.getElementById('aur-display');
+            const surgeDisplay = document.getElementById('surge-display');
+            let isBrownout = false;
+
+            brownoutBtn.addEventListener('click', () => {
+                isBrownout = !isBrownout;
+                if (isBrownout) {
+                    root.classList.add('brownout-active');
+                    brownoutBtn.classList.add('active');
+                    brownoutBtn.innerHTML = 'BROWNOUT ACTIVE - CLICK TO LIFT';
+                    aurDisplay.textContent = '>95%';
+                    surgeDisplay.textContent = '5.0x (CAP)';
+                    aurDisplay.style.color = 'var(--danger)';
+                    playAudio('warning');
+                } else {
+                    root.classList.remove('brownout-active');
+                    brownoutBtn.classList.remove('active');
+                    brownoutBtn.innerHTML = 'INITIATE BROWNOUT';
+                    aurDisplay.textContent = '82%';
+                    surgeDisplay.textContent = '1.7x';
+                    aurDisplay.style.color = 'var(--accent-secondary)';
+                }
+            });
+
+            // 3. Vanguard Registry Search Filter
+            const searchInput = document.getElementById('agent-search');
+            const agentRows = document.querySelectorAll('.agent-row');
+
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                agentRows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(term) ? 'flex' : 'none';
+                });
+            });
+
+            // 4. Audio Control Rack
+            const btnMute = document.getElementById('btn-mute');
+            let isMuted = false;
+
+            btnMute.addEventListener('click', () => {
+                isMuted = !isMuted;
+                btnMute.innerHTML = isMuted ? '<i class="fa-solid fa-volume-xmark"></i>' : '<i class="fa-solid fa-volume-high"></i>';
+                btnMute.nextElementSibling.textContent = isMuted ? 'AUDIO: MUTED' : 'AUDIO: ACTIVE';
+            });
+        });
+
+        // Audio Player Mock
+        function playAudio(type) {
+            // In a real environment, this would play predefined Web Audio API buffers
+            console.log(`[AUDIO EVENT]: Playing ${type} sound.`);
+        }
+
+        // Modal Controls
+        function openModal(missionId) {
+            document.getElementById('mission-modal').classList.add('active');
+            playAudio('ui-click');
+        }
+
+        function closeModal() {
+            document.getElementById('mission-modal').classList.remove('active');
+        }
+
+        // Close modal on outside click
+        document.getElementById('mission-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'mission-modal') {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

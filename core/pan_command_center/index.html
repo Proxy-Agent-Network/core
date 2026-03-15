@@ -1,0 +1,2016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    
+    <title>PAN Command Center</title>
+    <style>
+        body {
+            margin: 0; padding: 0; background-color: #121212; color: #fff;
+            font-family: 'Courier New', Courier, monospace; display: flex; height: 100vh; overflow: hidden;
+            color-scheme: dark;
+        }
+        
+        #sidebar {
+            width: 380px; background-color: #1E1E1E; border-right: 2px solid #00BCD4;
+            display: flex; flex-direction: column; z-index: 10; position: relative;
+            transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1); flex-shrink: 0;
+        }
+        #sidebar.collapsed { margin-left: -380px; }
+        
+        #sidebar-toggle {
+            position: absolute; right: -30px; top: 15px; width: 30px; height: 45px;
+            background: #1E1E1E; border: 2px solid #00BCD4; border-left: none;
+            color: #00BCD4; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; border-radius: 0 6px 6px 0; font-size: 14px; z-index: 2000;
+            box-shadow: 4px 0 10px rgba(0,0,0,0.3); transition: 0.2s;
+        }
+        #sidebar-toggle:hover { background: #00BCD4; color: #000; }
+
+        #header { padding: 20px; background-color: #000; border-bottom: 1px solid #333; }
+        #header h1 { margin: 0; color: #00BCD4; font-size: 24px; font-weight: 900; letter-spacing: 2px; }
+        #header p { margin: 5px 0 0 0; color: #888; font-size: 12px; }
+        
+        #fleet-wallet { background-color: #111; border-bottom: 1px solid #333; padding: 15px 20px; position: relative; }
+        .wallet-title { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+        .wallet-balance { font-size: 28px; font-weight: 900; color: #4CAF50; font-family: monospace; margin: 2px 0; letter-spacing: 1px; transition: color 0.3s; }
+        .wallet-balance.premium { color: #00BCD4; text-shadow: 0 0 10px rgba(0, 188, 212, 0.4); }
+        .wallet-ticker { font-size: 11px; color: #ccc; font-family: monospace; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: 0.8; }
+        
+        .wallet-actions { display: flex; gap: 8px; margin-bottom: 8px; margin-top: 2px; }
+        .btn-wallet {
+            background: transparent; border: 1px solid #4CAF50; color: #4CAF50; 
+            padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; 
+            font-family: monospace; font-weight: bold; transition: 0.2s; flex: 1;
+        }
+        .btn-wallet:hover { background: #4CAF50; color: #000; }
+        .btn-deposit { border-color: #00BCD4; color: #00BCD4; }
+        .btn-deposit:hover { background: #00BCD4; color: #000; }
+
+        #routing-module { padding: 15px 20px 0 20px; background: #1E1E1E; border-bottom: 1px solid #333; padding-bottom: 15px; }
+        .routing-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 8px; display: block; }
+        .routing-toggle-group { display: flex; border: 1px solid #444; border-radius: 4px; overflow: hidden; }
+        .routing-btn { 
+            flex: 1; background: #222; color: #888; border: none; padding: 8px 0; font-size: 11px; 
+            font-family: monospace; font-weight: bold; cursor: pointer; transition: 0.2s; border-right: 1px solid #444;
+        }
+        .routing-btn:last-child { border-right: none; }
+        .routing-btn:hover { background: #333; color: #fff; }
+        .routing-btn.active { background: #00BCD4; color: #000; }
+
+        #deploy-all-wrapper { padding: 15px 20px 0 20px; background: #1E1E1E; display: flex; gap: 10px; }
+        .btn-top-action { flex: 1; padding: 12px; font-weight: bold; cursor: pointer; border-radius: 4px; letter-spacing: 1px; font-family: monospace; font-size: 12px; transition: 0.2s; text-align: center; }
+        #auto-pilot-btn { background: rgba(76, 175, 80, 0.1); border: 2px solid #4CAF50; color: #4CAF50; box-shadow: 0 0 10px rgba(76, 175, 80, 0.2); }
+        #auto-pilot-btn:hover { background: #4CAF50; color: #000; box-shadow: 0 0 20px rgba(76, 175, 80, 0.6); }
+        #deploy-all-btn { background: rgba(0, 188, 212, 0.1); border: 2px solid #00BCD4; color: #00BCD4; box-shadow: 0 0 10px rgba(0, 188, 212, 0.2); }
+        #deploy-all-btn:hover { background: #00BCD4; color: #000; box-shadow: 0 0 20px rgba(0, 188, 212, 0.6); }
+        #deploy-all-btn:disabled { border-color: #444; color: #666; background: transparent; box-shadow: none; cursor: not-allowed; }
+
+        #auto-active-banner { display: none; padding: 15px 20px; background: rgba(76, 175, 80, 0.15); border-bottom: 1px solid #4CAF50; justify-content: space-between; align-items: center; box-shadow: inset 0 0 20px rgba(76, 175, 80, 0.2); }
+        .auto-banner-text { display: flex; flex-direction: column; font-family: monospace; letter-spacing: 1px; }
+        .auto-banner-title { color: #4CAF50; font-weight: bold; font-size: 14px; }
+        .auto-banner-timer { color: #aaa; font-size: 10px; margin-top: 4px; }
+        .btn-stop-auto { width: auto !important; background: #F44336; border: none; color: #fff; padding: 8px 16px; border-radius: 4px; font-family: monospace; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-stop-auto:hover { background: #d32f2f; }
+
+        #fault-list { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .fault-card { background-color: #000; border: 2px solid transparent; border-radius: 8px; padding: 15px; cursor: pointer; transition: background-color 0.2s ease, box-shadow 0.2s ease; font-family: monospace; }
+        .fault-cyan { border-color: #00BCD4; box-shadow: 0 0 10px rgba(0, 188, 212, 0.1); }
+        .fault-cyan h4, .fault-cyan .fault-time { color: #00BCD4; }
+        .fault-cyan:hover { background-color: rgba(0, 188, 212, 0.15); box-shadow: 0 0 15px rgba(0, 188, 212, 0.3); }
+        .fault-orange { border-color: #FF9800; box-shadow: 0 0 10px rgba(255, 152, 0, 0.1); }
+        .fault-orange h4, .fault-orange .fault-time { color: #FF9800; }
+        .fault-orange:hover { background-color: rgba(255, 152, 0, 0.15); box-shadow: 0 0 15px rgba(255, 152, 0, 0.3); }
+        .fault-yellow { border-color: #FFEB3B; box-shadow: 0 0 10px rgba(255, 235, 59, 0.1); }
+        .fault-yellow h4, .fault-yellow .fault-time { color: #FFEB3B; }
+        .fault-yellow:hover { background-color: rgba(255, 235, 59, 0.15); box-shadow: 0 0 15px rgba(255, 235, 59, 0.3); }
+        .fault-grey { border-color: #555555; opacity: 0.6; }
+        .fault-grey h4, .fault-grey .fault-time { color: #888888; }
+        .fault-grey:hover { background-color: rgba(85, 85, 85, 0.2); border-color: #888; opacity: 1; }
+
+        .fault-card.selected-cyan { background-color: rgba(0, 188, 212, 0.3); box-shadow: 0 0 20px rgba(0, 188, 212, 0.5); border-color: #00BCD4; }
+        .fault-card.selected-orange { background-color: rgba(255, 152, 0, 0.3); box-shadow: 0 0 20px rgba(255, 152, 0, 0.5); border-color: #FF9800; }
+        .fault-card.selected-yellow { background-color: rgba(255, 235, 59, 0.3); box-shadow: 0 0 20px rgba(255, 235, 59, 0.5); border-color: #FFEB3B; }
+        .fault-card.selected-grey { background-color: rgba(85, 85, 85, 0.4); border-color: #aaa; opacity: 1; }
+        
+        .fault-card h4 { margin: 0 0 8px 0; font-size: 14px; letter-spacing: 0.5px; text-transform: uppercase; }
+        .fault-detail { color: #E6F1FF; font-size: 12px; margin-bottom: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+        .fault-eta { color: #FF9800; font-size: 13px; font-weight: bold; margin-bottom: 8px; }
+        .fault-eta.arrived { color: #FFEB3B; }
+        .fault-time { font-size: 13px; font-weight: bold; text-transform: uppercase; }
+        
+        .sidebar-actions { display: flex; gap: 10px; margin-top: 12px; }
+        .btn-action-small { flex: 1; padding: 8px 4px; border-radius: 4px; font-size: 11px; cursor: pointer; font-family: monospace; font-weight: bold; transition: 0.2s; text-align: center; border: 1px solid transparent; }
+        .btn-cancel-small { background: transparent; border-color: #555; color: #888; }
+        .btn-cancel-small:hover { background: #F44336; color: #fff; border-color: #F44336; }
+        .btn-deploy-cyan { background: transparent; border-color: #00BCD4; color: #00BCD4; }
+        .btn-deploy-cyan:hover { background: #00BCD4; color: #000; }
+        .btn-map-cyan { background: rgba(0, 188, 212, 0.1); border-color: #00BCD4; color: #00BCD4; }
+        .btn-map-cyan:hover { background: #00BCD4; color: #000; }
+        .btn-map-orange { background: rgba(255, 152, 0, 0.1); border-color: #FF9800; color: #FF9800; }
+        .btn-map-orange:hover { background: #FF9800; color: #000; }
+        .btn-map-yellow { background: rgba(255, 235, 59, 0.1); border-color: #FFEB3B; color: #FFEB3B; }
+        .btn-map-yellow:hover { background: #FFEB3B; color: #000; }
+        .btn-map-grey { background: rgba(136, 136, 136, 0.1); border-color: #888; color: #888; }
+        .btn-map-grey:hover { background: #888; color: #000; }
+
+        #dispatch-panel { padding: 20px; background-color: #000; border-top: 1px solid #333; }
+        #dispatch-header { margin: 0 0 15px 0; color: #F44336; font-size: 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+        #dispatch-header:hover { color: #ff6b6b; }
+        #dispatch-panel-content { display: block; } 
+        
+        input, select { width: 100%; background: #222; border: 1px solid #444; color: #00BCD4; padding: 8px; margin-bottom: 10px; box-sizing: border-box; font-family: monospace; border-radius: 4px; color-scheme: dark; }
+        select option { background: #222; color: #fff; }
+        select option:disabled { color: #888; font-weight: bold; background: #111; }
+        
+        button { width: 100%; background: #4CAF50; color: #fff; border: none; padding: 12px; font-weight: bold; cursor: pointer; border-radius: 4px; letter-spacing: 1px; font-family: monospace; }
+        button:hover { background: #45a049; }
+
+        #map-wrapper { flex: 1; position: relative; height: 100%; display: flex; }
+        #map { width: 100%; height: 100%; flex: 1; }
+
+        #map-legend { position: absolute; top: 20px; right: 20px; background: rgba(18, 18, 18, 0.9); border: 1px solid #333; border-radius: 6px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-family: sans-serif; z-index: 100; min-width: 250px; }
+        #legend-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px; user-select: none;}
+        #legend-header:hover { color: #00BCD4; }
+        #legend-header h4 { margin: 0; font-size: 14px; letter-spacing: 1px; text-transform: uppercase; border: none; padding: 0;}
+        #legend-content { display: block; }
+
+        .legend-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 13px; cursor: pointer; color: #ccc; }
+        .legend-item:hover { color: #fff; }
+        .legend-item input { width: auto; margin: 0 10px 0 0; cursor: pointer; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 10px; border: 1px solid #fff; }
+
+        #demo-alert { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0, 188, 212, 0.95); color: #000; padding: 15px 30px; border-radius: 30px; font-weight: bold; font-family: sans-serif; box-shadow: 0 4px 20px rgba(0,188,212,0.6); z-index: 2000; display: none; text-align: center; border: 2px solid #FFF; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 3000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+        .modal-content { background: #121212; border: 2px solid #00BCD4; border-radius: 8px; padding: 30px; width: 550px; max-width: 90%; font-family: monospace; box-shadow: 0 10px 40px rgba(0, 188, 212, 0.4); max-height: 90vh; display: flex; flex-direction: column; }
+        .modal-content h2 { margin: 0 0 20px 0; color: #00BCD4; text-align: center; letter-spacing: 1px; }
+        
+        .modal-content.cancel-theme { border-color: #F44336; box-shadow: 0 10px 40px rgba(244, 67, 54, 0.3); }
+        .modal-content.cancel-theme h2 { color: #F44336; }
+        .modal-content.cancel-theme p { color: #ccc; font-family: sans-serif; font-size: 14px; line-height: 1.5; margin-bottom: 25px; }
+
+        .modal-content.auto-theme { border-color: #4CAF50; box-shadow: 0 10px 40px rgba(76, 175, 80, 0.3); }
+        .modal-content.auto-theme h2 { color: #4CAF50; }
+
+        #modal-list { background: #000; border: 1px solid #333; border-radius: 4px; max-height: 250px; overflow-y: auto; padding: 10px; margin-bottom: 20px; flex-shrink: 1; }
+        .modal-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #333; font-size: 13px; color: #ccc; align-items: center; }
+        .modal-row:last-child { border-bottom: none; }
+        .modal-row span.fid { color: #fff; font-weight: bold; flex: 1; }
+        .modal-row span.fcode { color: #00BCD4; flex: 2; text-align: center; }
+        .modal-row span.fprice { color: #4CAF50; font-weight: bold; flex: 1; text-align: right; }
+        
+        .modal-content.ledger-theme { border-color: #4CAF50; box-shadow: 0 10px 40px rgba(76, 175, 80, 0.3); width: 800px; }
+        .modal-content.ledger-theme h2 { color: #4CAF50; }
+        #ledger-list { background: #000; border: 1px solid #333; border-radius: 4px; max-height: 450px; overflow-y: auto; padding: 10px; margin-bottom: 20px; }
+        
+        .ledger-item-container { border-bottom: 1px dashed #333; }
+        .ledger-item-container:last-child { border-bottom: none; }
+        .ledger-row { display: grid; grid-template-columns: 1fr 1.2fr 2.5fr 1fr 1fr; gap: 10px; padding: 10px; font-size: 12px; cursor: pointer; transition: 0.2s; border-radius: 4px; }
+        .ledger-row:hover { background: rgba(255,255,255,0.05); }
+        
+        .ledger-detail { display: none; padding: 10px 15px 15px 15px; background: rgba(0,0,0,0.4); font-size: 11px; color: #aaa; border-top: 1px solid #222; line-height: 1.6; }
+        .ledger-item-container.expanded .ledger-detail { display: block; }
+        .ledger-item-container.expanded .ledger-row { background: rgba(76, 175, 80, 0.1); }
+
+        .l-head { font-weight: bold; color: #666; border-bottom: 1px solid #333; padding-bottom: 5px; margin-bottom: 5px; cursor: default; }
+        .l-head:hover { background: transparent; }
+        .l-time { color: #888; }
+        .l-ref { color: #fff; font-weight: bold; }
+        .l-desc { color: #ccc; }
+        .l-amt.deduct { color: #F44336; font-weight: bold; text-align: right; }
+        .l-amt.refund { color: #4CAF50; font-weight: bold; text-align: right; }
+        .l-amt.zero { color: #888; font-weight: bold; text-align: right; }
+        .l-bal { color: #fff; font-weight: bold; text-align: right; font-size: 13px; }
+
+        .ledger-export-bar { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; background: #1A1A1A; padding: 10px; border-radius: 4px; border: 1px solid #333; }
+        .ledger-export-bar input[type="date"] { width: auto; margin:0; padding: 6px; font-size: 11px; }
+
+        .modal-actions { display: flex; gap: 15px; margin-top: auto; }
+        .btn-confirm { flex: 2; background: #00BCD4; color: #000; font-size: 16px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; transition: 0.2s; padding: 12px; }
+        .btn-confirm:hover { background: #0097a7; }
+        .btn-cancel { flex: 1; background: #333; color: #fff; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; transition: 0.2s; padding: 12px; }
+        .btn-cancel:hover { background: #444; }
+
+        .gm-style-iw { padding: 0 !important; border-radius: 8px !important; background-color: #fff !important; color: #000 !important; }
+        .gm-style-iw-c { padding: 0 !important; border-radius: 8px !important; }
+        .gm-style-iw-d { padding: 0 !important; overflow: hidden !important; }
+        .gm-ui-hover-effect { display: none !important; }
+        .pan-info-window { padding: 18px; min-width: 220px; cursor: pointer; font-family: sans-serif; box-sizing: border-box; width: 100%; height: 100%; }
+        
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div id="sidebar-toggle" onclick="window.toggleSidebar()" title="Collapse Sidebar">◀</div>
+
+        <div id="header">
+            <h1>PAN COMMAND</h1>
+            <p>GLOBAL FLEET TELEMETRY</p>
+        </div>
+
+        <div id="fleet-wallet">
+            <div class="wallet-title">FLEET RETAINER BALANCE</div>
+            <div class="wallet-balance" id="wallet-balance-display">$25,000.00</div>
+            <div class="wallet-actions">
+                <button class="btn-wallet btn-deposit" onclick="window.openDepositModal()">[+] ADD FUNDS</button>
+                <button class="btn-wallet" onclick="window.openLedgerModal()">VIEW LEDGER</button>
+            </div>
+            <div class="wallet-ticker" id="wallet-ticker-display">Awaiting first transaction...</div>
+        </div>
+
+        <div id="routing-module">
+            <span class="routing-label">ROUTING ALGORITHM:</span>
+            <div class="routing-toggle-group">
+                <button class="routing-btn" id="route-btn-speed" onclick="window.setRoutingStrategy('SPEED')">⚡ FASTEST</button>
+                <button class="routing-btn active" id="route-btn-balanced" onclick="window.setRoutingStrategy('BALANCED')">⚖️ BALANCED</button>
+                <button class="routing-btn" id="route-btn-cost" onclick="window.setRoutingStrategy('COST')">💰 LOWEST COST</button>
+            </div>
+        </div>
+        
+        <div id="auto-active-banner">
+            <div class="auto-banner-text">
+                <span class="auto-banner-title">🟢 AUTO-PILOT ACTIVE</span>
+                <span id="auto-pilot-timer" class="auto-banner-timer">TIME REMAINING: --:--</span>
+            </div>
+            <button class="btn-stop-auto" onclick="window.stopAutoDispatch('manual')">STOP</button>
+        </div>
+
+        <div id="deploy-all-wrapper">
+            <button id="auto-pilot-btn" class="btn-top-action" onclick="window.openAutoDispatchModal()">AUTO-PILOT</button>
+            <button id="deploy-all-btn" class="btn-top-action" onclick="window.openDispatchModal()" disabled>DEPLOY ALL (0)</button>
+        </div>
+
+        <div id="fault-list">
+            <p id="empty-msg" style="text-align:center; color:#666; font-size:12px; margin-top:20px;">AWAITING SATELLITE UPLINK...</p>
+        </div>
+        
+        <div id="dispatch-panel">
+            <h3 id="dispatch-header" onclick="window.toggleDispatchPanel()" title="Toggle Manual Dispatch">
+                🚨 MANUAL DISPATCH <span id="dispatch-toggle-arrow">▼</span>
+            </h3>
+            <div id="dispatch-panel-content">
+                <input type="text" id="disp-uid" placeholder="Target Agent UID (Leave blank for Auto)" readonly>
+                
+                <select id="disp-error" onchange="window.updateBounty()">
+                    <option value="door_securing: Door Securing" data-bounty="$15.00">Door Securing (Tier 1)</option>
+                    <option value="cabin_sweep: Cabin Sweep & Trash" data-bounty="$15.00">Cabin Sweep & Trash (Tier 1)</option>
+                    <option value="lost_item: Lost Item Recovery" data-bounty="$25.00">Lost Item Recovery (Tier 1)</option>
+                    <option value="path_clearing: Path Clearing" data-bounty="$25.00">Path Clearing (Tier 1)</option>
+                    <option value="spill_remediation: Bio/Liquid Remediation" data-bounty="$55.00">Bio/Liquid Remediation (Tier 2)</option>
+                    <option value="tire_pressure: Tire Pressure" data-bounty="$55.00">Tire Pressure (Tier 2)</option>
+                    <option value="battery_jump: 12V System Jump" data-bounty="$55.00">12V System Jump (Tier 2)</option>
+                    <option value="passenger_escort: Passenger Escort" data-bounty="$55.00">Passenger Escort (Tier 2)</option>
+                    <option value="sensor_cleaning: Sensor Cleaning" data-bounty="$85.00">Sensor Cleaning (Tier 3)</option>
+                    <option value="scene_securement: First Responder Liaison" data-bounty="$85.00">First Responder Liaison (Tier 3)</option>
+                    <option value="tire_replacement: Tire Replacement" data-bounty="$85.00">Tire Replacement (Tier 3)</option>
+                    <option value="manual_override: Manual Drive Takeover" data-bounty="$85.00">Manual Drive Takeover (Tier 3)</option>
+                </select>
+                
+                <input type="text" id="disp-loc" placeholder="Location Name" value="Awaiting Selection...">
+                <input type="text" id="disp-bounty" placeholder="Max Auth Bounty" value="$15.00">
+                <button onclick="window.sendDispatch()">DEPLOY PROXY AGENT</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="map-wrapper">
+        <div id="demo-alert">Sending dispatch request...</div>
+        
+        <div id="map-legend">
+            <div id="legend-header" onclick="window.toggleLegend()" title="Toggle Filters">
+                <h4>LIVE MAP FILTERS</h4>
+                <span id="legend-toggle-arrow">▼</span>
+            </div>
+            
+            <div id="legend-content">
+                <select id="filter-cap" onchange="window.mergeAndRender()" style="margin-bottom: 15px; border-color: #00BCD4; font-weight: bold; width: 100%;">
+                    <option value="ALL">ALL CAPABILITIES</option>
+                    <option disabled>--- Tier 1: General ---</option>
+                    <option value="door_securing">Door Securing</option>
+                    <option value="cabin_sweep">Cabin Sweep & Trash</option>
+                    <option value="lost_item">Lost Item Recovery</option>
+                    <option value="path_clearing">Path Clearing</option>
+                    <option disabled>--- Tier 2: Specialized ---</option>
+                    <option value="spill_remediation">Bio/Liquid Remediation</option>
+                    <option value="tire_pressure">Tire Pressure</option>
+                    <option value="battery_jump">12V System Jump</option>
+                    <option value="passenger_escort">Passenger Escort</option>
+                    <option disabled>--- Tier 3: Advanced ---</option>
+                    <option value="sensor_cleaning">Sensor Cleaning</option>
+                    <option value="scene_securement">First Responder Liaison</option>
+                    <option value="tire_replacement">Tire Replacement</option>
+                    <option value="manual_override">Manual Drive Takeover</option>
+                </select>
+                <hr style="border: 0; border-bottom: 1px solid #444; margin: 10px 0;">
+                <label class="legend-item"><input type="checkbox" id="leg-online" checked onchange="window.mergeAndRender()"> <span class="dot" style="background:#F44336"></span> Online (Vehicle)</label>
+                <label class="legend-item"><input type="checkbox" id="leg-foot" checked onchange="window.mergeAndRender()"> <span class="dot" style="background:#00BCD4"></span> Online (Foot Patrol)</label>
+                <label class="legend-item"><input type="checkbox" id="leg-onway" checked onchange="window.mergeAndRender()"> <span class="dot" style="background:#FF9800"></span> Busy - On The Way</label>
+                <label class="legend-item"><input type="checkbox" id="leg-onsite" checked onchange="window.mergeAndRender()"> <span class="dot" style="background:#FFEB3B"></span> Busy - On Site</label>
+                <hr style="border: 0; border-bottom: 1px solid #444; margin: 10px 0;">
+                <label class="legend-item"><span class="dot" style="border-radius:2px; background:#00BCD4"></span> Unassigned AV</label>
+                <label class="legend-item"><span class="dot" style="border-radius:2px; background:#FF9800; border-color:#FF9800;"></span> AV - Agent En Route</label>
+                <label class="legend-item"><span class="dot" style="border-radius:2px; background:#FFEB3B; border-color:#FFEB3B;"></span> AV - Agent On Site</label>
+                <label class="legend-item"><span class="dot" style="border-radius:2px; background:#555555; border-color:#555;"></span> Resolved AV (5m trace)</label>
+            </div>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <div id="dispatch-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 id="dispatch-modal-title">DISPATCH ESCROW</h2>
+            <div id="modal-list"></div>
+            <div class="modal-total-bar" style="display: flex; justify-content: space-between; align-items: center; background: #1A1A1A; padding: 15px; border-radius: 4px; margin-bottom: 25px; border: 1px solid #4CAF50;">
+                <span style="font-size: 16px; font-weight: bold; color: #fff;">MAX AUTHORIZATION (PENDING):</span>
+                <span id="modal-total-val" style="font-size: 24px; font-weight: 900; color: #4CAF50;">$0.00</span>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-confirm" onclick="window.executeDispatch()">AUTHORIZE & DEPLOY</button>
+                <button class="btn-cancel" onclick="window.closeDispatchModal()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="cancel-dispatch-modal" class="modal-overlay">
+        <div class="modal-content cancel-theme">
+            <h2>CANCEL DISPATCH</h2>
+            <p id="cancel-modal-text"></p>
+            <div class="modal-actions">
+                <button class="btn-confirm" style="background: #F44336; color: #fff;" onclick="window.executeCancelDispatch()">CONFIRM CANCEL</button>
+                <button class="btn-cancel" onclick="window.closeCancelModal()">KEEP DISPATCH</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="auto-dispatch-modal" class="modal-overlay">
+        <div class="modal-content auto-theme">
+            <h2>CONFIGURE AUTO-PILOT</h2>
+            <p style="color:#ccc; font-size:14px; margin-bottom: 20px;">Enable hands-free Machine-to-Human dispatch routing. PAN will automatically route the best agent to any new fault codes instantly based on your routing algorithm.</p>
+            
+            <label style="color:#4CAF50; font-size: 12px; font-weight: bold;">DURATION:</label>
+            <select id="auto-duration-select" style="margin-top: 5px; margin-bottom: 20px;">
+                <option value="1">1 Hour</option>
+                <option value="4" selected>4 Hours</option>
+                <option value="8">8 Hours (Full Shift)</option>
+                <option value="24">24 Hours</option>
+                <option value="168">1 Week</option>
+                <option value="999">Until Funds Depleted</option>
+            </select>
+            
+            <label style="color:#4CAF50; font-size: 12px; font-weight: bold;">SHUTOFF LIMIT (ESCROW RETAINER MINIMUM):</label>
+            <input type="number" id="auto-limit-input" value="1000" style="margin-top: 5px; margin-bottom: 30px;">
+
+            <div class="modal-actions">
+                <button class="btn-confirm" style="background: #4CAF50; color: #000;" onclick="window.executeAutoDispatch()">ACTIVATE AUTO-PILOT</button>
+                <button class="btn-cancel" onclick="window.closeAutoDispatchModal()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="deposit-modal" class="modal-overlay">
+        <div class="modal-content" style="border-color: #00BCD4; width: 450px;">
+            <h2 style="color: #00BCD4;">ACH TRANSFER</h2>
+            <p style="color:#ccc; font-size:12px; margin-bottom: 20px;">Secure bank-to-escrow transfer via Plaid API.</p>
+            
+            <input type="text" placeholder="Name on Account" value="Waymo LLC Operations" style="margin-bottom:10px;">
+            <input type="text" placeholder="Routing Number (9 Digits)" value="122105155" style="margin-bottom:10px;">
+            <input type="password" placeholder="Account Number" value="********4992" style="margin-bottom:15px;">
+            
+            <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                <select style="flex: 1;"><option>Checking</option><option>Savings</option><option>Corporate</option></select>
+                <input type="text" placeholder="Bank Name" value="Silicon Valley Bank" style="flex: 1.5; margin-bottom: 0;">
+            </div>
+
+            <label style="color:#00BCD4; font-size: 12px; font-weight: bold;">DEPOSIT AMOUNT (USD):</label>
+            <input type="number" id="deposit-input" value="10000" step="500" style="margin-top: 5px; margin-bottom: 30px; font-size: 18px; font-weight: bold;">
+
+            <div class="modal-actions">
+                <button class="btn-confirm" style="background: #00BCD4; color: #000;" onclick="window.executeDeposit()">AUTHORIZE TRANSFER</button>
+                <button class="btn-cancel" onclick="window.closeDepositModal()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="ledger-modal" class="modal-overlay" onclick="window.closeLedgerModal(event)">
+        <div class="modal-content ledger-theme" onclick="event.stopPropagation()">
+            <h2>FINANCIAL LEDGER</h2>
+            
+            <div class="ledger-export-bar">
+                <span style="color:#888; font-size: 11px; font-weight: bold;">EXPORT RANGE:</span>
+                <input type="date" id="export-start">
+                <span style="color:#888; font-size: 11px;">TO</span>
+                <input type="date" id="export-end">
+                <div style="flex: 1;"></div>
+                <button class="btn-action-small btn-map-cyan" onclick="window.exportLedger('pdf')" style="width: auto; padding: 6px 12px;">PDF</button>
+                <button class="btn-action-small btn-map-yellow" onclick="window.exportLedger('csv')" style="width: auto; padding: 6px 12px;">EXCEL (CSV)</button>
+            </div>
+
+            <div class="ledger-item-container" style="border: none;">
+                <div class="ledger-row l-head">
+                    <span class="l-time">TIME</span>
+                    <span class="l-ref">REFERENCE ID</span>
+                    <span class="l-desc">EVENT DESCRIPTION</span>
+                    <span class="l-amt" style="text-align: right;">AMOUNT</span>
+                    <span class="l-bal" style="text-align: right;">BALANCE</span>
+                </div>
+            </div>
+            <div id="ledger-list"></div>
+            <div class="modal-actions">
+                <button class="btn-cancel" style="flex: 1;" onclick="window.closeLedgerModal()">CLOSE LEDGER</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="secrets.js"></script>
+
+    <script>
+        window.formatMoney = function(num) {
+            let isNeg = num < 0;
+            let str = '$' + Math.abs(num).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+            return isNeg ? '-' + str : str;
+        };
+
+        window.escapeHTML = function(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
+        };
+
+        window.formatDuration = function(ms) {
+            let m = Math.floor(ms / 60000);
+            let s = Math.floor((ms % 60000) / 1000);
+            return m + " MIN " + s + " SEC";
+        };
+    </script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        const app = initializeApp(window.ENV.FIREBASE_CONFIG);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        let map;
+        let ds; 
+        let geocoder; 
+        let agentMarkers = {};
+        let agentCircles = {}; 
+        let agentLines = {}; 
+        let avMarkers = {}; 
+        let cyanCarIcon, orangeCarIcon, yellowCarIcon, greyCarIcon; 
+        
+        window.realAgents = {};
+        window.simAgents = {};
+        window.allAgents = {};
+        window.simFaults = {}; 
+        window.selectedFaultId = null; 
+        window.selectedFaultCircle = null; 
+        window.infoWindow = null;
+        window.faultToCancel = null; 
+        window.dispatchTargetId = null; 
+        window.demoAlertTimeout = null;
+
+        window.fleetBalance = 25000.00;
+        window.fleetLedger = [];
+        window.autoPilotActive = false;
+        window.autoPilotLimit = 0;
+        window.autoPilotEndTime = null;
+        window.lastSpawnTime = 0;
+        
+        window.routingStrategy = 'BALANCED'; 
+
+        window.capNames = {
+            "door_securing": "Door Securing", "cabin_sweep": "Cabin Sweep", "lost_item": "Lost Item", "path_clearing": "Path Clearing",
+            "spill_remediation": "Spill Remediation", "tire_pressure": "Tire Pressure", "battery_jump": "Battery Jump", "passenger_escort": "Passenger Escort",
+            "sensor_cleaning": "Sensor Cleaning", "scene_securement": "Scene Securement", "tire_replacement": "Tire Replacement", "manual_override": "Manual Override"
+        };
+
+        const faultPrices = {
+            "door_securing": 15.00, "cabin_sweep": 15.00, "lost_item": 25.00, "path_clearing": 25.00,
+            "spill_remediation": 55.00, "tire_pressure": 55.00, "battery_jump": 55.00, "passenger_escort": 55.00,
+            "sensor_cleaning": 85.00, "scene_securement": 85.00, "tire_replacement": 85.00, "manual_override": 85.00
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const panelState = localStorage.getItem('pan_dispatch_panel_state');
+            if (panelState === 'closed') {
+                document.getElementById('dispatch-panel-content').style.display = 'none';
+                document.getElementById('dispatch-toggle-arrow').innerText = '▲';
+            }
+            const legendState = localStorage.getItem('pan_legend_state');
+            if (legendState === 'closed') {
+                document.getElementById('legend-content').style.display = 'none';
+                document.getElementById('legend-toggle-arrow').innerText = '▲';
+            }
+            const savedRoute = localStorage.getItem('pan_routing_strategy');
+            if (savedRoute) { window.setRoutingStrategy(savedRoute); }
+            
+            document.getElementById('export-start').valueAsDate = new Date();
+            document.getElementById('export-end').valueAsDate = new Date();
+            window.checkPremiumStatus();
+        });
+
+        window.setRoutingStrategy = function(strategy) {
+            window.routingStrategy = strategy;
+            localStorage.setItem('pan_routing_strategy', strategy);
+            
+            document.getElementById('route-btn-speed').classList.remove('active');
+            document.getElementById('route-btn-balanced').classList.remove('active');
+            document.getElementById('route-btn-cost').classList.remove('active');
+            
+            if (strategy === 'SPEED') document.getElementById('route-btn-speed').classList.add('active');
+            if (strategy === 'BALANCED') document.getElementById('route-btn-balanced').classList.add('active');
+            if (strategy === 'COST') document.getElementById('route-btn-cost').classList.add('active');
+        };
+
+        window.toggleSidebar = function() {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.getElementById('sidebar-toggle');
+            sidebar.classList.toggle('collapsed');
+            if (sidebar.classList.contains('collapsed')) {
+                toggle.innerText = '▶';
+                toggle.title = "Expand Sidebar";
+            } else {
+                toggle.innerText = '◀';
+                toggle.title = "Collapse Sidebar";
+            }
+        };
+
+        window.toggleLegend = function() {
+            const content = document.getElementById('legend-content');
+            const arrow = document.getElementById('legend-toggle-arrow');
+            if (window.getComputedStyle(content).display === 'none') {
+                content.style.display = 'block';
+                arrow.innerText = '▼';
+                localStorage.setItem('pan_legend_state', 'open');
+            } else {
+                content.style.display = 'none';
+                arrow.innerText = '▲';
+                localStorage.setItem('pan_legend_state', 'closed');
+            }
+        };
+
+        window.toggleDispatchPanel = function() {
+            const content = document.getElementById('dispatch-panel-content');
+            const arrow = document.getElementById('dispatch-toggle-arrow');
+            if (window.getComputedStyle(content).display === 'none') {
+                content.style.display = 'block';
+                arrow.innerText = '▼';
+                localStorage.setItem('pan_dispatch_panel_state', 'open');
+            } else {
+                content.style.display = 'none';
+                arrow.innerText = '▲';
+                localStorage.setItem('pan_dispatch_panel_state', 'closed');
+            }
+        };
+
+        window.clearSelection = function() {
+            if (window.infoWindow) window.infoWindow.close();
+            window.selectedFaultId = null;
+            window.dispatchTargetId = null;
+            
+            let uidBox = document.getElementById('disp-uid');
+            if(uidBox) uidBox.value = "";
+            let locBox = document.getElementById('disp-loc');
+            if(locBox) locBox.value = "Awaiting Selection...";
+            
+            if (window.selectedFaultCircle) {
+                window.selectedFaultCircle.setMap(null);
+                window.selectedFaultCircle = null;
+            }
+            window.mergeAndRender();
+        };
+
+        window.showDemoAlert = function(msg, duration=4000) {
+            const el = document.getElementById('demo-alert');
+            el.innerHTML = msg; 
+            el.style.display = 'block';
+            
+            if(window.demoAlertTimeout) clearTimeout(window.demoAlertTimeout);
+            window.demoAlertTimeout = setTimeout(() => { el.style.display = 'none'; }, duration);
+        };
+
+        window.checkPremiumStatus = function() {
+            const balEl = document.getElementById('wallet-balance-display');
+            if (window.fleetBalance >= 25000) {
+                balEl.classList.add('premium');
+                balEl.title = "Premium Tier Activated (5% Platform Fee)";
+            } else {
+                balEl.classList.remove('premium');
+                balEl.title = "Standard Tier (10% Platform Fee). Add funds to reach $25k for discount.";
+            }
+        };
+
+        window.addLedgerEntry = function(amount, type, desc, refId, meta = {}) {
+            window.fleetBalance += amount;
+            document.getElementById('wallet-balance-display').innerText = window.formatMoney(window.fleetBalance);
+            window.checkPremiumStatus();
+
+            let txnId = 'TXN-' + Date.now().toString().slice(-6) + Math.floor(Math.random()*100);
+
+            let entry = { time: Date.now(), refId: refId, type: type, desc: desc, amount: amount, balance: window.fleetBalance, txnId: txnId, meta: meta };
+            window.fleetLedger.unshift(entry);
+
+            let amtStr = amount > 0 ? `+${window.formatMoney(amount)}` : window.formatMoney(amount);
+            if (amount === 0) amtStr = "$0.00";
+            
+            document.getElementById('wallet-ticker-display').innerText = `[${new Date().toLocaleTimeString()}] ${refId}: ${desc} (${amtStr})`;
+            
+            if (window.autoPilotActive && window.fleetBalance <= window.autoPilotLimit) {
+                window.stopAutoDispatch('funds');
+            }
+        };
+
+        window.settleLedger = function(refId, agentId, faultCode, timeElapsed) {
+            let pendingIdx = window.fleetLedger.findIndex(i => i.refId === refId && i.type === 'ESCROW_LOCK');
+            let lockedAmt = -(faultPrices[faultCode] || 15.00); 
+            
+            if (pendingIdx > -1) {
+                lockedAmt = window.fleetLedger[pendingIdx].amount;
+                window.fleetLedger.splice(pendingIdx, 1);
+            }
+            
+            let agent = window.allAgents[agentId] || window.simAgents[agentId];
+            let basePrice = faultPrices[faultCode] || 15.00;
+            let bid = basePrice * (agent && agent.costMultiplier ? agent.costMultiplier : 1.0);
+            
+            let feePercent = window.fleetBalance >= 25000 ? 0.05 : 0.10;
+            let panFee = bid * feePercent;
+            let totalCost = bid + panFee;
+            
+            let refundDiff = Math.abs(lockedAmt) - totalCost;
+            window.fleetBalance += refundDiff;
+            
+            let txnId = 'TXN-' + Date.now().toString().slice(-6) + Math.floor(Math.random()*100);
+            let meta = { errorCode: faultCode, responseTime: timeElapsed, agentId: agentId, baseBid: bid, panFee: panFee };
+
+            let desc = `Task Settled (${window.formatMoney(bid)} Agent Bid + ${window.formatMoney(panFee)} PAN Fee)`;
+            let entry = { time: Date.now(), refId: refId, type: 'SETTLED', desc: desc, amount: -totalCost, balance: window.fleetBalance, txnId: txnId, meta: meta };
+            window.fleetLedger.unshift(entry);
+            
+            document.getElementById('wallet-balance-display').innerText = window.formatMoney(window.fleetBalance);
+            window.checkPremiumStatus();
+            
+            let tickerText = `[${new Date().toLocaleTimeString()}] ${refId}: Task Completed (${window.formatMoney(-totalCost)})`;
+            document.getElementById('wallet-ticker-display').innerText = tickerText;
+        };
+
+        window.refundLedger = function(refId, totalLocked, feeAmount, reason, faultCode) {
+            let pendingIdx = window.fleetLedger.findIndex(i => i.refId === refId && i.type === 'ESCROW_LOCK');
+            if (pendingIdx > -1) {
+                window.fleetLedger.splice(pendingIdx, 1);
+            }
+            
+            window.fleetBalance += (totalLocked - feeAmount);
+            document.getElementById('wallet-balance-display').innerText = window.formatMoney(window.fleetBalance);
+            window.checkPremiumStatus();
+
+            if (feeAmount > 0) {
+                let txnId = 'TXN-' + Date.now().toString().slice(-6) + Math.floor(Math.random()*100);
+                let meta = { errorCode: faultCode };
+                let entry = { time: Date.now(), refId: refId, type: 'CANCEL_FEE', desc: reason || `Cancellation Fee`, amount: -feeAmount, balance: window.fleetBalance, txnId: txnId, meta: meta };
+                window.fleetLedger.unshift(entry);
+                document.getElementById('wallet-ticker-display').innerText = `[${new Date().toLocaleTimeString()}] ${refId}: ${entry.desc} (${window.formatMoney(-feeAmount)})`;
+            } else {
+                document.getElementById('wallet-ticker-display').innerText = `[${new Date().toLocaleTimeString()}] ${refId}: Pending Escrow Released ($0 Fee)`;
+            }
+        };
+
+        window.toggleLedgerDetail = function(element) {
+            element.closest('.ledger-item-container').classList.toggle('expanded');
+        };
+
+        window.openLedgerModal = function() {
+            const listEl = document.getElementById('ledger-list');
+            listEl.innerHTML = '';
+
+            window.fleetLedger.forEach(item => {
+                let timeStr = new Date(item.time).toLocaleTimeString();
+                let amtClass = item.amount > 0 ? 'refund' : (item.amount < 0 ? 'deduct' : 'zero');
+                let amtStr = item.amount > 0 ? `+${window.formatMoney(item.amount)}` : window.formatMoney(item.amount);
+                if (item.amount === 0) amtStr = "$0.00";
+                
+                let metaHtml = '';
+                if (item.meta && Object.keys(item.meta).length > 0) {
+                    if (item.meta.errorCode) metaHtml += `<br><strong style="color:#00BCD4;">FAULT:</strong> ${window.capNames[item.meta.errorCode].toUpperCase()} `;
+                    if (item.meta.agentId) metaHtml += `&nbsp;|&nbsp; <strong style="color:#FF9800;">AGENT:</strong> ${window.escapeHTML(item.meta.agentId.replace('SIM-VANGUARD-', 'VAN-'))} `;
+                    if (item.meta.responseTime) metaHtml += `&nbsp;|&nbsp; <strong style="color:#4CAF50;">SLA TIME:</strong> ${item.meta.responseTime} `;
+                    if (item.meta.baseBid) metaHtml += `<br><strong style="color:#aaa;">AGENT BID:</strong> ${window.formatMoney(item.meta.baseBid)} &nbsp;|&nbsp; <strong style="color:#aaa;">PAN FEE:</strong> ${window.formatMoney(item.meta.panFee)}`;
+                }
+
+                listEl.innerHTML += `
+                    <div class="ledger-item-container">
+                        <div class="ledger-row" onclick="window.toggleLedgerDetail(this)">
+                            <span class="l-time">${timeStr}</span>
+                            <span class="l-ref">${item.refId}</span>
+                            <span class="l-desc">${item.desc}</span>
+                            <span class="l-amt ${amtClass}">${amtStr}</span>
+                            <span class="l-bal">${window.formatMoney(item.balance)}</span>
+                        </div>
+                        <div class="ledger-detail">
+                            <strong style="color:#fff;">TXN ID:</strong> ${item.txnId} &nbsp;|&nbsp; 
+                            <strong>EVENT TYPE:</strong> ${item.type}
+                            ${metaHtml}
+                        </div>
+                    </div>
+                `;
+            });
+
+            if(window.fleetLedger.length === 0) {
+                listEl.innerHTML = `<div style="padding: 20px; text-align: center; color: #666; font-family: monospace;">No transactions found for this session.</div>`;
+            }
+            document.getElementById('ledger-modal').style.display = 'flex';
+        };
+        
+        window.closeLedgerModal = function(e) { 
+            if(e && e.target !== document.getElementById('ledger-modal') && e.target.className !== 'btn-cancel') return;
+            document.getElementById('ledger-modal').style.display = 'none'; 
+        };
+
+        window.exportLedger = function(format) {
+            let sDate = document.getElementById('export-start').value;
+            let eDate = document.getElementById('export-end').value;
+            
+            if(format === 'csv') {
+                let csvContent = "data:text/csv;charset=utf-8,Transaction ID,Time,Reference ID,Event Type,Description,Amount,Balance\n";
+                window.fleetLedger.forEach(row => {
+                    let rTime = new Date(row.time).toLocaleString();
+                    csvContent += `"${row.txnId}","${rTime}","${row.refId}","${row.type}","${row.desc}","${row.amount.toFixed(2)}","${row.balance.toFixed(2)}"\n`;
+                });
+                
+                var encodedUri = encodeURI(csvContent);
+                var link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `PAN_Ledger_${sDate}_to_${eDate}.csv`);
+                document.body.appendChild(link); 
+                link.click();
+                document.body.removeChild(link);
+                window.showDemoAlert(`✅ Excel CSV export complete.`, 3000);
+            } else {
+                window.showDemoAlert(`📄 Generating secure PDF report for ${sDate} to ${eDate}...`, 4000);
+                setTimeout(() => window.showDemoAlert(`✅ PDF downloaded successfully.`, 3000), 2500);
+            }
+        };
+
+        window.openDepositModal = function() { document.getElementById('deposit-modal').style.display = 'flex'; };
+        window.closeDepositModal = function() { document.getElementById('deposit-modal').style.display = 'none'; };
+        window.executeDeposit = function() {
+            let amt = parseFloat(document.getElementById('deposit-input').value);
+            if(isNaN(amt) || amt <= 0) return;
+            
+            window.closeDepositModal();
+            window.showDemoAlert("⏳ Establishing secure connection via Plaid API...", 2500);
+            
+            setTimeout(() => {
+                window.addLedgerEntry(amt, 'DEPOSIT', 'ACH Transfer - Retainer Replenished', 'DEP-' + Math.floor(Math.random()*9000+1000));
+                window.showDemoAlert(`✅ $${amt.toFixed(2)} ACH Transfer Successful.<br>Funds instantly available.`, 3000);
+            }, 2500);
+        };
+
+        window.openAutoDispatchModal = function() { document.getElementById('auto-dispatch-modal').style.display = 'flex'; };
+        window.closeAutoDispatchModal = function() { document.getElementById('auto-dispatch-modal').style.display = 'none'; };
+        window.executeAutoDispatch = function() {
+            window.autoPilotActive = true;
+            window.autoPilotLimit = parseFloat(document.getElementById('auto-limit-input').value) || 0;
+            
+            let durationHours = parseFloat(document.getElementById('auto-duration-select').value);
+            if (durationHours === 999) {
+                window.autoPilotEndTime = null; 
+                document.getElementById('auto-pilot-timer').innerText = `REMAINING: UNTIL FUNDS DEPLETED`;
+            } else {
+                window.autoPilotEndTime = Date.now() + (durationHours * 60 * 60 * 1000);
+            }
+
+            document.getElementById('deploy-all-wrapper').style.display = 'none';
+            document.getElementById('auto-active-banner').style.display = 'flex';
+            window.closeAutoDispatchModal();
+            window.showDemoAlert(`🟢 AUTO-PILOT ACTIVATED.<br>Routing set to ${window.routingStrategy} mode.`, 4000);
+        };
+        
+        window.stopAutoDispatch = function(reason = 'manual') {
+            window.autoPilotActive = false;
+            window.autoPilotEndTime = null;
+            document.getElementById('deploy-all-wrapper').style.display = 'flex';
+            document.getElementById('auto-active-banner').style.display = 'none';
+            if (reason === 'funds') {
+                window.showDemoAlert("🔴 AUTO-PILOT SUSPENDED.<br>Retainer balance dropped below designated minimum limit.", 6000);
+            } else if (reason === 'expired') {
+                window.showDemoAlert("🛑 AUTO-PILOT COMPLETED.<br>Time duration expired. Returning to manual control.", 5000);
+            } else {
+                window.showDemoAlert("🛑 AUTO-PILOT DEACTIVATED.<br>Returning to manual control.", 3000);
+            }
+        };
+
+        window.getBestAgent = function(qualifiedAgents, faultPos, basePrice) {
+            if (!qualifiedAgents || qualifiedAgents.length === 0) return null;
+            
+            qualifiedAgents.forEach(q => {
+                q.bid = basePrice * (q.agent.costMultiplier || 1.0);
+            });
+
+            if (window.routingStrategy === 'SPEED') {
+                qualifiedAgents.sort((a, b) => a.distance - b.distance);
+            } else if (window.routingStrategy === 'COST') {
+                qualifiedAgents.sort((a, b) => a.bid - b.bid);
+            } else { 
+                let maxDist = Math.max(...qualifiedAgents.map(q => q.distance));
+                let maxBid = Math.max(...qualifiedAgents.map(q => q.bid));
+                if(maxDist === 0) maxDist = 1; if(maxBid === 0) maxBid = 1;
+                
+                qualifiedAgents.sort((a, b) => {
+                    let scoreA = (a.distance / maxDist) + (a.bid / maxBid);
+                    let scoreB = (b.distance / maxDist) + (b.bid / maxBid);
+                    return scoreA - scoreB;
+                });
+            }
+            return qualifiedAgents[0];
+        };
+
+        window.openDispatchModal = function(faultId = null) {
+            window.dispatchTargetId = faultId;
+            const modalList = document.getElementById('modal-list');
+            const titleEl = document.getElementById('dispatch-modal-title');
+            modalList.innerHTML = '';
+            let totalCost = 0;
+            let count = 0;
+
+            Object.values(window.simFaults).forEach(f => {
+                if (f.status === "UNASSIGNED") {
+                    if (faultId && f.id !== faultId) return; 
+                    
+                    count++;
+                    let price = faultPrices[f.errorCode] || 15.00;
+                    totalCost += price;
+                    
+                    modalList.innerHTML += `
+                        <div class="modal-row">
+                            <span class="fid">${f.id}</span>
+                            <span class="fcode">${window.capNames[f.errorCode].toUpperCase()}</span>
+                            <span class="fprice">$${price.toFixed(2)}</span>
+                        </div>
+                    `;
+                }
+            });
+
+            if (count > 0) {
+                titleEl.innerText = faultId ? "QUICK DISPATCH ESCROW" : "MASS DISPATCH ESCROW";
+                document.getElementById('modal-total-val').innerText = `$${totalCost.toFixed(2)}`;
+                document.getElementById('dispatch-modal').style.display = 'flex';
+            }
+        };
+
+        window.closeDispatchModal = function() {
+            window.dispatchTargetId = null;
+            document.getElementById('dispatch-modal').style.display = 'none';
+        };
+
+        window.executeDispatch = function() {
+            let tid = window.dispatchTargetId; 
+            window.closeDispatchModal();
+            
+            let targetFaults = [];
+            if (tid) {
+                if (window.simFaults[tid]) {
+                    targetFaults.push(window.simFaults[tid]);
+                }
+                window.showDemoAlert(`🚀 QUICK DISPATCH INITIATED...<br>Routing best agent based on ${window.routingStrategy} algorithm.`, 3500);
+            } else {
+                targetFaults = Object.values(window.simFaults).filter(f => f.status === "UNASSIGNED");
+                window.showDemoAlert(`🚀 MASS DISPATCH INITIATED...<br>Routing best agents based on ${window.routingStrategy} algorithm.`, 4000);
+            }
+
+            targetFaults.forEach((fault, index) => {
+                let delay = tid ? 0 : index * 400; 
+                
+                setTimeout(() => {
+                    const faultPos = new google.maps.LatLng(fault.lat, fault.lon);
+                    let qualifiedAgents = [];
+
+                    Object.keys(window.simAgents).forEach(agentId => {
+                        let a = window.simAgents[agentId];
+                        if (a.status.status === "ONLINE" && a.capabilities.includes(fault.errorCode)) {
+                            let agentPos = new google.maps.LatLng(a.status.latitude, a.status.longitude);
+                            let dist = google.maps.geometry.spherical.computeDistanceBetween(faultPos, agentPos);
+                            qualifiedAgents.push({ id: agentId, agent: a, distance: dist });
+                        }
+                    });
+
+                    let target = window.getBestAgent(qualifiedAgents, faultPos, faultPrices[fault.errorCode] || 15.00);
+
+                    if (target) {
+                        let agent = target.agent;
+                        
+                        agent.status.status = "BUSY_ON_WAY";
+                        agent.status.currentFaultId = fault.id;
+                        fault.status = "ASSIGNED";
+                        fault.assignedAgent = target.id;
+                        fault.assignedAt = Date.now();
+                        
+                        let maxPrice = faultPrices[fault.errorCode] || 15.00;
+                        fault.lockedPrice = maxPrice; 
+                        
+                        fault.history = fault.history || [];
+                        fault.history.push({ time: Date.now(), event: tid ? 'ASSIGNED_QUICK' : 'ASSIGNED_MASS', agentId: target.id });
+
+                        window.addLedgerEntry(-maxPrice, 'ESCROW_LOCK', `Escrow Locked: ${window.capNames[fault.errorCode]}`, fault.id, { errorCode: fault.errorCode });
+
+                        let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
+                        let p2 = new google.maps.LatLng(fault.lat, fault.lon);
+
+                        ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
+                            if (status === 'OK') {
+                                agent.route = res.routes[0].overview_path;
+                                agent.routeIndex = 0;
+                            } else {
+                                agent.route = [p1, p2];
+                                agent.routeIndex = 0;
+                            }
+                        });
+                    } else if (tid) {
+                        window.showDemoAlert(`🚨 No qualified agents currently online for ${fault.id}.`, 4000);
+                    }
+                    window.mergeAndRender();
+                }, delay); 
+            });
+        };
+
+        window.openCancelModal = function(faultId) {
+            let f = window.simFaults[faultId];
+            if (!f || f.status !== "ASSIGNED") return;
+            window.faultToCancel = faultId;
+            let agentId = f.assignedAgent.replace('SIM-VANGUARD-', 'VAN-');
+            let errCodeName = window.capNames[f.errorCode].toUpperCase();
+            
+            let text = `Are you sure you want to cancel the dispatch for error code <strong>${errCodeName}</strong> on vehicle <strong>${f.id}</strong> assigned to agent <strong>${agentId}</strong>?<br><br><i style="color:#FF9800;">Note: A $5.00 cancellation fee is applied against escrow if the agent has been responding for more than 1 minute. The vehicle will be returned to the Unassigned queue.</i>`;
+            
+            document.getElementById('cancel-modal-text').innerHTML = text;
+            document.getElementById('cancel-dispatch-modal').style.display = 'flex';
+        };
+
+        window.closeCancelModal = function() {
+            window.faultToCancel = null;
+            document.getElementById('cancel-dispatch-modal').style.display = 'none';
+        };
+
+        window.executeCancelDispatch = function() {
+            let faultId = window.faultToCancel;
+            let f = window.simFaults[faultId];
+            
+            if (f && f.status === "ASSIGNED") {
+                let agentId = f.assignedAgent;
+                let a = window.allAgents[agentId];
+                
+                let timeResponded = Date.now() - (f.assignedAt || f.timestamp);
+                let fee = timeResponded > 60000 ? 5.00 : 0.00;
+                let price = f.lockedPrice || (faultPrices[f.errorCode] || 15.00);
+                
+                if (a) {
+                    a.status.status = "ONLINE";
+                    a.status.currentFaultId = null;
+                    a.route = null;
+                }
+                
+                f.status = "UNASSIGNED"; 
+                f.assignedAgent = null;
+
+                f.history = f.history || [];
+                f.history.push({ time: Date.now(), event: 'CANCELLED_BY_DISPATCH', fee: fee });
+                
+                if (fee > 0) {
+                    window.refundLedger(f.id, price, fee, `Dispatcher Cancelled ($5.00 Fee applied)`, f.errorCode);
+                    window.showDemoAlert(`❌ Dispatch Cancelled.<br>Agent paid $5.00 response fee. Vehicle returned to Unassigned.`, 4000);
+                } else {
+                    window.refundLedger(f.id, price, 0, `Dispatcher Cancelled ($0 Fee)`, f.errorCode);
+                    window.showDemoAlert(`❌ Dispatch Cancelled.<br>Full escrow refunded ($0 fee). Vehicle returned to Unassigned.`, 4000);
+                }
+                
+                if (window.selectedFaultId === faultId) window.clearSelection();
+            }
+            window.closeCancelModal();
+            window.mergeAndRender();
+        };
+
+        window.agentAbortsMission = function(agentId, faultId) {
+            let agent = window.simAgents[agentId];
+            let fault = window.simFaults[faultId];
+            if (!agent || !fault) return;
+
+            fault.history = fault.history || [];
+            fault.history.push({ time: Date.now(), event: 'AGENT_ABORTED', agentId: agentId });
+
+            let lockedAmt = fault.lockedPrice || (faultPrices[fault.errorCode] || 15.00);
+            window.refundLedger(fault.id, lockedAmt, 0, `Agent Flaked - Auto-Refunded`, fault.errorCode);
+
+            agent.status.status = "ONLINE";
+            agent.status.currentFaultId = null;
+            agent.route = null;
+
+            fault.status = "UNASSIGNED";
+            fault.assignedAgent = null;
+            fault.lockedPrice = null;
+
+            window.showDemoAlert(`⚠️ Agent ${agentId.replace('SIM-VANGUARD-', 'VAN-')} aborted mission!<br>Auto-rerouting next closest agent...`, 3500);
+            window.mergeAndRender();
+
+            setTimeout(() => {
+                let qualifiedAgents = [];
+                const faultPos = new google.maps.LatLng(fault.lat, fault.lon);
+                
+                Object.keys(window.simAgents).forEach(id => {
+                    if (id === agentId) return; 
+                    let a = window.simAgents[id];
+                    if (a.status.status === "ONLINE" && a.capabilities.includes(fault.errorCode)) {
+                        let agentPos = new google.maps.LatLng(a.status.latitude, a.status.longitude);
+                        let dist = google.maps.geometry.spherical.computeDistanceBetween(faultPos, agentPos);
+                        qualifiedAgents.push({ id: id, agent: a, distance: dist });
+                    }
+                });
+
+                let target = window.getBestAgent(qualifiedAgents, faultPos, faultPrices[fault.errorCode] || 15.00);
+
+                if (target) {
+                    target.agent.status.status = "BUSY_ON_WAY";
+                    target.agent.status.currentFaultId = fault.id;
+                    fault.status = "ASSIGNED";
+                    fault.assignedAgent = target.id;
+                    fault.assignedAt = Date.now();
+                    
+                    let newPrice = faultPrices[fault.errorCode] || 15.00;
+                    fault.lockedPrice = newPrice;
+                    window.addLedgerEntry(-newPrice, 'ESCROW_LOCK', `Escrow Re-Locked for Auto-Routing`, fault.id, { errorCode: fault.errorCode });
+
+                    fault.history.push({ time: Date.now(), event: 'AUTO_REASSIGN', newAgent: target.id });
+
+                    let p1 = new google.maps.LatLng(target.agent.status.latitude, target.agent.status.longitude);
+                    let p2 = new google.maps.LatLng(fault.lat, fault.lon);
+                    
+                    ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
+                        if (status === 'OK') {
+                            target.agent.route = res.routes[0].overview_path;
+                            target.agent.routeIndex = 0;
+                        } else {
+                            target.agent.route = [p1, p2];
+                            target.agent.routeIndex = 0;
+                        }
+                    });
+                    window.mergeAndRender();
+                } else {
+                    window.showDemoAlert(`🚨 No backup agents available for ${fault.id}. Escalate to fleet.`, 4000);
+                }
+            }, 2500); 
+        };
+
+        window.updateBounty = function() {
+            const sel = document.getElementById('disp-error');
+            const bounty = sel.options[sel.selectedIndex].getAttribute('data-bounty');
+            document.getElementById('disp-bounty').value = bounty;
+        };
+
+        window.sendDispatch = function() {
+            const uid = document.getElementById('disp-uid').value;
+            
+            if (!uid) { 
+                if (!window.selectedFaultId || !window.simFaults[window.selectedFaultId]) {
+                    alert("DEMO MODE: First click a Cyan AV car on the map to target it.");
+                    return;
+                }
+
+                const fault = window.simFaults[window.selectedFaultId];
+                const faultPos = new google.maps.LatLng(fault.lat, fault.lon);
+
+                let qualifiedAgents = [];
+                Object.keys(window.simAgents).forEach(agentId => {
+                    let a = window.simAgents[agentId];
+                    if (a.status.status === "ONLINE" && a.capabilities.includes(fault.errorCode)) {
+                        let agentPos = new google.maps.LatLng(a.status.latitude, a.status.longitude);
+                        let dist = google.maps.geometry.spherical.computeDistanceBetween(faultPos, agentPos);
+                        qualifiedAgents.push({ id: agentId, agent: a, distance: dist });
+                    }
+                });
+
+                if (qualifiedAgents.length === 0) {
+                    alert("No qualified agents are currently online for this task!");
+                    return;
+                }
+
+                let target = window.getBestAgent(qualifiedAgents, faultPos, faultPrices[fault.errorCode] || 15.00);
+
+                if (target) {
+                    let agent = target.agent;
+                    let agentId = target.id;
+
+                    agent.status.status = "PENDING";
+                    window.mergeAndRender();
+                    
+                    let milesAway = (target.distance / 1609.34).toFixed(1);
+                    window.showDemoAlert(`Auto-Dispatching closest agent (${agentId.replace('SIM-VANGUARD-', 'VAN-')}) - ${milesAway}mi away<br>Waiting for Acceptance...`, 3500);
+
+                    setTimeout(() => {
+                        let didAccept = Math.random() > 0.10; 
+                        
+                        if (didAccept) {
+                            agent.status.status = "BUSY_ON_WAY";
+                            agent.status.currentFaultId = window.selectedFaultId;
+                            fault.status = "ASSIGNED";
+                            fault.assignedAgent = agentId;
+                            fault.assignedAt = Date.now();
+                            
+                            let price = faultPrices[fault.errorCode] || 15.00;
+                            fault.lockedPrice = price;
+                            window.addLedgerEntry(-price, 'ESCROW_LOCK', `Escrow Locked: ${window.capNames[fault.errorCode]}`, fault.id, { errorCode: fault.errorCode });
+
+                            fault.history.push({ time: Date.now(), event: 'ASSIGNED_MANUAL', agentId: agentId });
+
+                            let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
+                            let p2 = new google.maps.LatLng(fault.lat, fault.lon);
+
+                            ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
+                                if (status === 'OK') {
+                                    agent.route = res.routes[0].overview_path;
+                                    agent.routeIndex = 0;
+                                } else {
+                                    agent.route = [];
+                                    for (let j = 0; j <= 20; j++) {
+                                        agent.route.push(google.maps.geometry.spherical.interpolate(p1, p2, j/20));
+                                    }
+                                    agent.routeIndex = 0;
+                                }
+                            });
+
+                            window.selectedFaultId = null; 
+                            window.showDemoAlert(`✅ Agent ${agentId.replace('SIM-VANGUARD-', 'VAN-')} Accepted!<br>En route to stranded AV.`, 3000);
+                            window.mergeAndRender();
+                        } else {
+                            agent.status.status = "ONLINE"; 
+                            window.mergeAndRender();
+                            window.showDemoAlert(`❌ Agent ${agentId.replace('SIM-VANGUARD-', 'VAN-')} declined or timed out.<br>Please re-deploy.`, 2500);
+                        }
+                    }, 3500);
+                }
+                return; 
+            }
+
+            if (uid.startsWith("SIM-")) { 
+                if (!window.selectedFaultId || !window.simFaults[window.selectedFaultId]) {
+                    alert("DEMO MODE: First click a Cyan AV car on the map to target it.");
+                    return;
+                }
+
+                let agent = window.simAgents[uid];
+                let fault = window.simFaults[window.selectedFaultId];
+
+                if (agent.status.status !== "ONLINE") {
+                    alert("This agent is currently busy. Please select an ONLINE agent.");
+                    return;
+                }
+
+                agent.status.status = "PENDING";
+                document.getElementById('disp-uid').value = ""; 
+                
+                window.mergeAndRender();
+                window.showDemoAlert(`Targeting specific agent (${uid.replace('SIM-VANGUARD-', 'VAN-')})...<br>Waiting for Acceptance.`, 3500);
+
+                setTimeout(() => {
+                    agent.status.status = "BUSY_ON_WAY";
+                    agent.status.currentFaultId = window.selectedFaultId;
+                    fault.status = "ASSIGNED";
+                    fault.assignedAgent = uid;
+                    fault.assignedAt = Date.now();
+                    
+                    let price = faultPrices[fault.errorCode] || 15.00;
+                    fault.lockedPrice = price;
+                    window.addLedgerEntry(-price, 'ESCROW_LOCK', `Escrow Locked: Targeted Dispatch`, fault.id, { errorCode: fault.errorCode });
+
+                    fault.history.push({ time: Date.now(), event: 'ASSIGNED_MANUAL_UID', agentId: uid });
+
+                    let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
+                    let p2 = new google.maps.LatLng(fault.lat, fault.lon);
+
+                    ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
+                        if (status === 'OK') {
+                            agent.route = res.routes[0].overview_path;
+                            agent.routeIndex = 0;
+                        } else {
+                            agent.route = [];
+                            for (let j = 0; j <= 20; j++) {
+                                agent.route.push(google.maps.geometry.spherical.interpolate(p1, p2, j/20));
+                            }
+                            agent.routeIndex = 0;
+                        }
+                    });
+
+                    window.selectedFaultId = null; 
+                    window.showDemoAlert(`✅ Agent ${uid.replace('SIM-VANGUARD-', 'VAN-')} Accepted!<br>En route to stranded AV.`, 3000);
+                    window.mergeAndRender();
+                }, 3500);
+
+                return; 
+            }
+
+            const center = map.getCenter();
+            const payload = {
+                type: "MISSION", lat: Number(center.lat()), lon: Number(center.lng()),
+                errorCode: String(document.getElementById('disp-error').value), bounty: String(document.getElementById('disp-bounty').value),
+                intersection: String(document.getElementById('disp-loc').value), timestamp: Date.now()
+            };
+            set(ref(db, 'dispatch/' + window.escapeHTML(uid)), payload).then(() => {
+                alert("MISSION DEPLOYED TO " + window.escapeHTML(uid).substring(0,8) + "...");
+                document.getElementById('disp-uid').value = ""; 
+            }).catch(error => { alert("SECURITY BLOCK: Dispatch failed."); });
+        };
+
+        window.spawnFault = function(forceAutoAssign = false, forceState = "BUSY_ON_WAY") {
+            const faultId = "FLT-" + Math.floor(Math.random() * 90000 + 10000);
+            const lat = 33.37 + Math.random() * 0.09; 
+            const lon = -111.87 + Math.random() * 0.19;
+            
+            const capKeys = Object.keys(window.capNames);
+            const errorCode = capKeys[Math.floor(Math.random() * capKeys.length)];
+
+            const randomPastTime = Math.floor(Math.random() * 120000); 
+            window.simFaults[faultId] = { 
+                id: faultId, lat: lat, lon: lon, errorCode: errorCode, 
+                status: "UNASSIGNED", assignedAgent: null, 
+                timestamp: Date.now() - randomPastTime,
+                history: [{ time: Date.now() - randomPastTime, event: 'CREATED' }]
+            };
+
+            if (forceAutoAssign) {
+                let availableAgents = Object.keys(window.simAgents).filter(uid => {
+                    let a = window.simAgents[uid];
+                    return a.status.status === "ONLINE" && a.capabilities.includes(errorCode);
+                });
+
+                if (availableAgents.length > 0) {
+                    let uid = availableAgents[Math.floor(Math.random() * availableAgents.length)];
+                    let agent = window.simAgents[uid];
+                    
+                    agent.status.status = forceState;
+                    agent.status.currentFaultId = faultId;
+                    window.simFaults[faultId].status = "ASSIGNED";
+                    window.simFaults[faultId].assignedAgent = uid;
+                    window.simFaults[faultId].assignedAt = Date.now() - randomPastTime; 
+                    
+                    let price = faultPrices[errorCode] || 15.00;
+                    window.simFaults[faultId].lockedPrice = price;
+                    
+                    window.addLedgerEntry(-price, 'ESCROW_LOCK', `Escrow Locked: System Auto-Spawn`, faultId, { errorCode: errorCode });
+                    window.simFaults[faultId].history.push({ time: Date.now() - randomPastTime, event: 'ASSIGNED_SEED', agentId: uid });
+
+                    if (forceState === "BUSY_ON_SITE") {
+                        agent.status.latitude = lat;
+                        agent.status.longitude = lon;
+                    } else {
+                        let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
+                        let p2 = new google.maps.LatLng(lat, lon);
+
+                        ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
+                            if (status === 'OK') {
+                                agent.route = res.routes[0].overview_path;
+                                agent.routeIndex = 0;
+                            } else {
+                                agent.route = [];
+                                for (let j = 0; j <= 20; j++) {
+                                    agent.route.push(google.maps.geometry.spherical.interpolate(p1, p2, j/20));
+                                }
+                                agent.routeIndex = 0;
+                            }
+                        });
+                    }
+                }
+            }
+            window.mergeAndRender();
+        };
+
+        window.autoPilotSweep = function() {
+            let unassignedFaults = Object.values(window.simFaults).filter(f => f.status === "UNASSIGNED" && (Date.now() - f.timestamp > 2000));
+            if (unassignedFaults.length === 0) return;
+
+            let handledAny = false;
+
+            unassignedFaults.forEach(fault => {
+                let qualifiedAgents = [];
+                Object.keys(window.simAgents).forEach(agentId => {
+                    let a = window.simAgents[agentId];
+                    if (a.status.status === "ONLINE" && a.capabilities.includes(fault.errorCode)) {
+                        let agentPos = new google.maps.LatLng(a.status.latitude, a.status.longitude);
+                        let faultPos = new google.maps.LatLng(fault.lat, fault.lon);
+                        let dist = google.maps.geometry.spherical.computeDistanceBetween(faultPos, agentPos);
+                        qualifiedAgents.push({ id: agentId, agent: a, distance: dist });
+                    }
+                });
+
+                let target = window.getBestAgent(qualifiedAgents, new google.maps.LatLng(fault.lat, fault.lon), faultPrices[fault.errorCode] || 15.00);
+
+                if (target) {
+                    let agent = target.agent;
+                    agent.status.status = "BUSY_ON_WAY";
+                    agent.status.currentFaultId = fault.id;
+                    fault.status = "ASSIGNED";
+                    fault.assignedAgent = target.id;
+                    fault.assignedAt = Date.now();
+
+                    let maxPrice = faultPrices[fault.errorCode] || 15.00;
+                    fault.lockedPrice = maxPrice;
+                    fault.history = fault.history || [];
+                    fault.history.push({ time: Date.now(), event: 'ASSIGNED_AUTOPILOT', agentId: target.id });
+
+                    window.addLedgerEntry(-maxPrice, 'ESCROW_LOCK', `Auto-Pilot Assigned: ${window.capNames[fault.errorCode]}`, fault.id, { errorCode: fault.errorCode });
+
+                    let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
+                    let p2 = new google.maps.LatLng(fault.lat, fault.lon);
+
+                    ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
+                        if (status === 'OK') {
+                            agent.route = res.routes[0].overview_path;
+                            agent.routeIndex = 0;
+                        } else {
+                            agent.route = [p1, p2];
+                            agent.routeIndex = 0;
+                        }
+                    });
+                    handledAny = true;
+                }
+            });
+            if (handledAny) window.mergeAndRender();
+        }
+
+        window.continuousSimulationLoop = function() {
+            let onWayCount = 0;
+            let unassignedCount = 0;
+
+            Object.values(window.simAgents).forEach(a => { 
+                if (a.status.status === "BUSY_ON_WAY") onWayCount++; 
+                
+                if (a.status.status === "BUSY_ON_SITE") {
+                    if (Math.random() < 0.1) {
+                        a.status.status = "ONLINE";
+                        if (a.status.currentFaultId) {
+                            let f = window.simFaults[a.status.currentFaultId];
+                            if (f && !f.canceled) {
+                                f.status = "RESOLVED";
+                                f.resolvedAt = Date.now(); 
+                                f.history.push({ time: Date.now(), event: 'COMPLETED' });
+                                
+                                let shortAgentId = f.assignedAgent ? f.assignedAgent.replace('SIM-VANGUARD-', 'VAN-') : 'Agent';
+                                window.settleLedger(f.id, shortAgentId, f.errorCode, window.formatDuration(f.resolvedAt - f.timestamp));
+                            }
+                            a.status.currentFaultId = null;
+                        }
+                    }
+                }
+            });
+
+            let unassignedFaults = [];
+            Object.values(window.simFaults).forEach(f => { 
+                if (f.status === "UNASSIGNED") {
+                    unassignedCount++; 
+                    unassignedFaults.push(f);
+                }
+                if (f.status === "RESOLVED" && (Date.now() - f.resolvedAt > 300000)) {
+                    delete window.simFaults[f.id]; 
+                }
+            });
+
+            window.lastSpawnTime = window.lastSpawnTime || 0;
+            let timeSinceLastSpawn = Date.now() - window.lastSpawnTime;
+            let spawnCooldown = window.autoPilotActive ? 60000 : 0; 
+
+            if (onWayCount < 2) window.spawnFault(true, "BUSY_ON_WAY");
+            
+            if (unassignedCount < 2 && timeSinceLastSpawn >= spawnCooldown) {
+                window.spawnFault(false);
+                window.lastSpawnTime = Date.now();
+            }
+
+            if (window.autoPilotActive) {
+                window.autoPilotSweep();
+            }
+            
+            window.mergeAndRender();
+        };
+
+        window.generateSimulatedAgents = function() {
+            const tiers = [
+                ['door_securing', 'cabin_sweep', 'lost_item', 'path_clearing'],
+                ['spill_remediation', 'tire_pressure', 'battery_jump', 'passenger_escort'],
+                ['sensor_cleaning', 'scene_securement', 'tire_replacement', 'manual_override']
+            ];
+
+            const locations = [
+                { lat: 33.426, lon: -111.932, name: "ASU Stadium", mode: "FOOT" },
+                { lat: 33.422, lon: -111.940, name: "Mill Ave", mode: "FOOT" },
+                { lat: 33.492, lon: -111.926, name: "Old Town", mode: "FOOT" },
+                { lat: 33.550, lon: -111.900, name: "McCormick Ranch", mode: "VEHICLE" },
+                { lat: 33.352, lon: -111.789, name: "Downtown Gilbert", mode: "FOOT" },
+                { lat: 33.308, lon: -111.743, name: "San Tan Village", mode: "VEHICLE" },
+                { lat: 33.306, lon: -111.841, name: "Downtown Chandler", mode: "FOOT" },
+                { lat: 33.432, lon: -111.865, name: "Mesa Riverview", mode: "VEHICLE" },
+                { lat: 33.391, lon: -111.876, name: "MCC Campus", mode: "FOOT" },
+                { lat: 33.385, lon: -111.683, name: "Superstition Springs", mode: "VEHICLE" },
+                { lat: 33.481, lon: -111.683, name: "Las Sendas", mode: "VEHICLE" }
+            ];
+
+            for(let i = 0; i < 25; i++) {
+                let lat, lon, mode, radius;
+                
+                if (i < 11) {
+                    lat = locations[i].lat; lon = locations[i].lon; mode = locations[i].mode;
+                } else {
+                    lat = 33.37 + Math.random() * 0.09; lon = -111.87 + Math.random() * 0.19; mode = "VEHICLE"; 
+                }
+
+                radius = mode === "FOOT" ? (Math.random() * 0.5) + 0.5 : (Math.random() * 3.0) + 3.0; 
+
+                let caps = [...tiers[0]]; 
+                if (Math.random() > 0.3) caps.push(...tiers[1].filter(() => Math.random() > 0.4)); 
+                if (i < 6 || Math.random() > 0.8) caps.push(...tiers[2]); 
+
+                let costMultiplier = 0.7 + (Math.random() * 0.6);
+
+                window.simAgents[`SIM-VANGUARD-${(i+1).toString().padStart(3, '0')}`] = {
+                    status: { status: "ONLINE", patrolMode: mode, latitude: lat, longitude: lon, radius: radius, timestamp: Date.now() },
+                    capabilities: caps,
+                    costMultiplier: costMultiplier
+                };
+            }
+
+            window.spawnFault(true, "BUSY_ON_WAY"); 
+            window.spawnFault(true, "BUSY_ON_WAY"); 
+            window.spawnFault(true, "BUSY_ON_SITE"); 
+            window.spawnFault(true, "BUSY_ON_SITE"); 
+            window.spawnFault(false); 
+            window.spawnFault(false);
+
+            setInterval(animateAgents, 150);
+            setInterval(window.continuousSimulationLoop, 4000);
+        };
+
+        function animateAgents() {
+            let needsUpdate = false;
+            
+            if (window.autoPilotActive && window.autoPilotEndTime) {
+                let remaining = window.autoPilotEndTime - Date.now();
+                if (remaining <= 0) {
+                    window.stopAutoDispatch('expired');
+                } else {
+                    let h = Math.floor(remaining / 3600000);
+                    let m = Math.floor((remaining % 3600000) / 60000);
+                    let timeStr = "";
+                    if (h > 0) timeStr += `${h} HR `;
+                    timeStr += `${m} MIN`;
+                    document.getElementById('auto-pilot-timer').innerText = `REMAINING: ${timeStr}`;
+                }
+            }
+
+            Object.keys(window.simAgents).forEach(uid => {
+                let a = window.simAgents[uid];
+                if (a.status.status === "BUSY_ON_WAY" && a.route && a.route.length > 0) {
+                    
+                    if (Math.random() < 0.0003) { 
+                        window.agentAbortsMission(uid, a.status.currentFaultId);
+                        return; 
+                    }
+
+                    let p1 = new google.maps.LatLng(a.status.latitude, a.status.longitude);
+                    let p2 = a.route[a.routeIndex];
+                    if (!p2) return;
+                    
+                    let dist = google.maps.geometry.spherical.computeDistanceBetween(p1, p2); 
+                    let speed = Math.random() < 0.1 ? 0 : 25; 
+                    
+                    if (dist <= speed) {
+                        a.status.latitude = p2.lat();
+                        a.status.longitude = p2.lng();
+                        a.routeIndex++;
+                        if (a.routeIndex >= a.route.length) {
+                            a.status.status = "BUSY_ON_SITE"; 
+                        }
+                    } else {
+                        let heading = google.maps.geometry.spherical.computeHeading(p1, p2);
+                        let newPos = google.maps.geometry.spherical.computeOffset(p1, speed, heading);
+                        a.status.latitude = newPos.lat();
+                        a.status.longitude = newPos.lng();
+                    }
+                    needsUpdate = true;
+                }
+            });
+            if (needsUpdate) window.mergeAndRender();
+
+            document.querySelectorAll('.live-timer').forEach(timerEl => {
+                let ts = parseInt(timerEl.getAttribute('data-timestamp'));
+                timerEl.innerText = window.formatDuration(Date.now() - ts);
+            });
+        }
+
+        window.initMap = function() {
+            ds = new google.maps.DirectionsService();
+            geocoder = new google.maps.Geocoder(); 
+
+            window.infoWindow = new google.maps.InfoWindow();
+            window.infoWindow.addListener('closeclick', window.clearSelection);
+            
+            const carSvg = 'M29.8,12.6l-5.3-3.6c-0.8-0.5-1.8-0.9-2.8-0.9h-8.5c-2.3,0-4.3,1.5-5,3.7L6.8,16H3c-1.7,0-3,1.3-3,3v4c0,1.1,0.9,2,2,2h1.2 c0.4,2.3,2.4,4,4.8,4s4.4-1.7,4.8-4h6.4c0.4,2.3,2.4,4,4.8,4s4.4-1.7,4.8-4h1.2c1.1,0,2-0.9,2-2v-5.6C32,15.7,31.2,14.1,29.8,12.6z M8,23c-1.1,0-2-0.9-2-2s0.9-2,2-2s2,0.9,2,2S9.1,23,8,23z M24,23c-1.1,0-2-0.9-2-2s0.9-2,2-2s2,0.9,2,2S25.1,23,24,23z M12.5,14 l2.1-4.7C14.8,9.1,15.1,9,15.4,9h6c0.5,0,0.9,0.3,1.2,0.7l4,5.3H12.5z';
+            cyanCarIcon = { path: carSvg, fillColor: '#00BCD4', fillOpacity: 1, strokeColor: '#121212', strokeWeight: 1, scale: 0.9, anchor: new google.maps.Point(16, 16) };
+            orangeCarIcon = { path: carSvg, fillColor: '#FF9800', fillOpacity: 1, strokeColor: '#121212', strokeWeight: 1, scale: 0.9, anchor: new google.maps.Point(16, 16) };
+            yellowCarIcon = { path: carSvg, fillColor: '#FFEB3B', fillOpacity: 1, strokeColor: '#121212', strokeWeight: 1, scale: 0.9, anchor: new google.maps.Point(16, 16) };
+            greyCarIcon = { path: carSvg, fillColor: '#555555', fillOpacity: 1, strokeColor: '#121212', strokeWeight: 1, scale: 0.9, anchor: new google.maps.Point(16, 16) };
+
+            const tacticalStyle = [
+                { elementType: "geometry", stylers: [{ color: "#212121" }] },
+                { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+                { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+                { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
+                { featureType: "road", elementType: "geometry", stylers: [{ color: "#383838" }] },
+                { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212121" }] },
+                { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] }
+            ];
+
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 33.415, lng: -111.831 }, zoom: 11, styles: tacticalStyle, disableDefaultUI: true, zoomControl: true
+            });
+            
+            map.addListener('click', window.clearSelection);
+
+            window.generateSimulatedAgents();
+
+            signInAnonymously(auth).then(() => { startTelemetryLink(); }).catch((error) => { startTelemetryLink(); });
+        };
+
+        function startTelemetryLink() {
+            const agentsRef = ref(db, 'agents');
+            onValue(agentsRef, (snapshot) => {
+                window.realAgents = snapshot.val() || {};
+                window.mergeAndRender();
+            });
+        }
+
+        window.mergeAndRender = function() {
+            window.allAgents = { ...window.simAgents, ...window.realAgents };
+            
+            const faultListDiv = document.getElementById('fault-list');
+            
+            let faultArr = Object.values(window.simFaults);
+            
+            if (faultArr.length > 0) {
+                let p = faultListDiv.querySelector('#empty-msg');
+                if (p) p.style.display = 'none';
+            }
+
+            let unassignedCount = faultArr.filter(f => f.status === "UNASSIGNED").length;
+            let deployBtn = document.getElementById('deploy-all-btn');
+            deployBtn.innerText = `DEPLOY ALL (${unassignedCount})`;
+            deployBtn.disabled = unassignedCount === 0 || window.autoPilotActive;
+
+            const getRank = (f) => {
+                if (f.status === "RESOLVED") return 3;
+                if (f.status === "UNASSIGNED") return 0;
+                let agent = window.allAgents[f.assignedAgent];
+                if (agent && agent.status.status === "BUSY_ON_SITE") return 2;
+                return 1;
+            };
+
+            faultArr.sort((a, b) => {
+                let rankA = getRank(a);
+                let rankB = getRank(b);
+                if (rankA !== rankB) return rankA - rankB;
+                return a.timestamp - b.timestamp; 
+            });
+
+            faultArr.forEach((f, index) => {
+                let isResolved = f.status === "RESOLVED";
+                let isCanceled = f.canceled === true;
+                let isAssigned = f.status === "ASSIGNED";
+                let isSelected = window.selectedFaultId === f.id;
+                
+                let agentOnSite = false;
+                if (isAssigned && f.assignedAgent && window.allAgents[f.assignedAgent]) {
+                    if (window.allAgents[f.assignedAgent].status.status === "BUSY_ON_SITE") agentOnSite = true;
+                }
+
+                let cardClass = isResolved ? "fault-grey" : (isAssigned ? (agentOnSite ? "fault-yellow" : "fault-orange") : "fault-cyan");
+                
+                if (isSelected && !isResolved) {
+                    cardClass += isAssigned ? (agentOnSite ? " selected-yellow" : " selected-orange") : " selected-cyan";
+                }
+                if (isSelected && isResolved) cardClass += " selected-grey";
+                
+                let tierStr = "TIER 1";
+                if (['spill_remediation', 'tire_pressure', 'battery_jump', 'passenger_escort'].includes(f.errorCode)) tierStr = "TIER 2";
+                if (['sensor_cleaning', 'scene_securement', 'tire_replacement', 'manual_override'].includes(f.errorCode)) tierStr = "TIER 3";
+
+                let shortAgentId = isAssigned && f.assignedAgent ? f.assignedAgent.replace('SIM-VANGUARD-', 'VAN-') : '';
+                
+                let titleTxt = `${f.id} (UNASSIGNED ${tierStr})`;
+                if (isAssigned) titleTxt = `${f.id} ASSIGNED TO ${shortAgentId}`;
+                if (isResolved) {
+                    titleTxt = isCanceled ? `${f.id} (CANCELLED)` : `${f.id} (RESOLVED)`;
+                }
+
+                let etaHtml = "";
+                let distMeters = 0; 
+                if (isAssigned && f.assignedAgent) {
+                    let agent = window.allAgents[f.assignedAgent];
+                    if (agent && agent.status.status === "BUSY_ON_WAY") {
+                        let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
+                        let p2 = new google.maps.LatLng(f.lat, f.lon);
+                        distMeters = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+                        let etaMinutes = Math.max(1, Math.ceil(distMeters / 600));
+                        etaHtml = `<div class="fault-eta">${etaMinutes} MINUTES UNTIL ARRIVAL</div>`;
+                    } else if (agent && agent.status.status === "BUSY_ON_SITE") {
+                        etaHtml = `<div class="fault-eta arrived">AGENT ON SITE</div>`;
+                    }
+                }
+
+                let btnTheme = "btn-map-cyan";
+                if (isResolved) btnTheme = "btn-map-grey";
+                else if (isAssigned) btnTheme = agentOnSite ? "btn-map-yellow" : "btn-map-orange";
+
+                let actionsHtml = `<div class="sidebar-actions">`;
+                if (isAssigned && !isResolved) {
+                    actionsHtml += `<button class="btn-action-small btn-cancel-small" onclick="event.stopPropagation(); window.openCancelModal('${f.id}')">CANCEL</button>`;
+                    actionsHtml += `<button class="btn-action-small ${btnTheme}" onclick="event.stopPropagation(); window.showOnMap('${f.id}')">SHOW ON MAP</button>`;
+                } else if (!isAssigned && !isResolved) {
+                    actionsHtml += `<button class="btn-action-small btn-deploy-cyan" onclick="event.stopPropagation(); window.openDispatchModal('${f.id}')">DEPLOY AGENT</button>`;
+                    actionsHtml += `<button class="btn-action-small ${btnTheme}" onclick="event.stopPropagation(); window.showOnMap('${f.id}')">SHOW ON MAP</button>`;
+                } else {
+                    actionsHtml += `<button class="btn-action-small ${btnTheme}" style="flex: 2;" onclick="event.stopPropagation(); window.showOnMap('${f.id}')">SHOW ON MAP</button>`;
+                }
+                actionsHtml += `</div>`;
+
+                let timerHtml = "";
+                if (isResolved) {
+                    let endWord = isCanceled ? "CANCELLED" : "CLEARED";
+                    let feeText = isCanceled && f.cancelFee > 0 ? ` (FEE: $${f.cancelFee.toFixed(2)})` : "";
+                    timerHtml = `<span style="color:#888;">${endWord} IN ${window.formatDuration(f.resolvedAt - f.timestamp)}${feeText}</span>`;
+                } else {
+                    timerHtml = `<span class="live-timer" data-timestamp="${f.timestamp}">${window.formatDuration(Date.now() - f.timestamp)}</span>`;
+                }
+
+                let cardId = 'card-' + f.id;
+                let card = document.getElementById(cardId);
+                
+                if (!card) {
+                    card = document.createElement('div');
+                    card.id = cardId;
+                    card.onclick = () => {
+                        window.selectedFaultId = f.id;
+                        map.panTo({lat: f.lat, lng: f.lon});
+                        new google.maps.event.trigger(avMarkers[f.id], 'click');
+                        window.mergeAndRender();
+                    };
+                    faultListDiv.appendChild(card);
+                }
+
+                let expectedClass = `fault-card ${cardClass}`;
+                if (card.className !== expectedClass) {
+                    card.className = expectedClass;
+                }
+
+                let stateHash = `${f.status}_${isSelected}_${etaHtml}_${f.canceled}_${actionsHtml}`;
+                if (card.getAttribute('data-state') !== stateHash) {
+                    card.setAttribute('data-state', stateHash);
+                    
+                    card.innerHTML = `
+                        <h4>${window.escapeHTML(titleTxt)}</h4>
+                        <div class="fault-detail">ERROR CODE: ${window.capNames[f.errorCode].toUpperCase()}</div>
+                        ${etaHtml}
+                        <div class="fault-time">TIME ELAPSED: ${timerHtml}</div>
+                        ${actionsHtml}
+                    `;
+                }
+
+                if (faultListDiv.children[index] !== card) {
+                    faultListDiv.insertBefore(card, faultListDiv.children[index]);
+                }
+            });
+
+            const currentIds = new Set(faultArr.map(f => 'card-' + f.id));
+            Array.from(faultListDiv.children).forEach(child => {
+                if (child.tagName.toLowerCase() === 'div' && !currentIds.has(child.id)) {
+                    faultListDiv.removeChild(child);
+                }
+            });
+
+            const activeFilter = document.getElementById('filter-cap').value;
+            const showOnline = document.getElementById('leg-online').checked;
+            const showFoot = document.getElementById('leg-foot').checked;
+            const showOnWay = document.getElementById('leg-onway').checked;
+            const showOnSite = document.getElementById('leg-onsite').checked;
+
+            const renderedUIDs = new Set();
+            const renderedFaultIDs = new Set();
+
+            Object.keys(window.simFaults).forEach(faultId => {
+                const fault = window.simFaults[faultId];
+                renderedFaultIDs.add(faultId);
+
+                const pos = { lat: fault.lat, lng: fault.lon };
+                const isAssigned = fault.status === "ASSIGNED";
+                const isResolved = fault.status === "RESOLVED";
+                
+                let agentOnSite = false;
+                if (isAssigned && fault.assignedAgent && window.allAgents[fault.assignedAgent]) {
+                    if (window.allAgents[fault.assignedAgent].status.status === "BUSY_ON_SITE") agentOnSite = true;
+                }
+
+                let iconToUse = cyanCarIcon;
+                if (isAssigned) iconToUse = agentOnSite ? yellowCarIcon : orangeCarIcon; 
+                if (isResolved) iconToUse = greyCarIcon;
+
+                if (!avMarkers[faultId]) {
+                    avMarkers[faultId] = new google.maps.Marker({
+                        position: pos, map: map, icon: iconToUse, zIndex: 1100
+                    });
+
+                    avMarkers[faultId].addListener('click', () => {
+                        window.selectedFaultId = faultId;
+                        
+                        let rerouteCount = fault.history ? fault.history.filter(h => h.event === 'AGENT_ABORTED').length : 0;
+                        let rerouteHtml = rerouteCount > 0 ? `<div style="color:#F44336; font-size: 10px; font-weight: bold; margin-top: 5px;">⚠️ REROUTED ${rerouteCount} TIME(S)</div>` : '';
+
+                        if (isResolved) {
+                            window.mergeAndRender();
+                            let endWord = fault.canceled ? "CANCELLED" : "RESOLVED";
+                            let feeTxt = fault.canceled && fault.cancelFee > 0 ? `<br>Cancel Fee: <strong style="color:#F44336;">$${fault.cancelFee.toFixed(2)}</strong>` : '';
+                            
+                            let content = `<div class="pan-info-window" onclick="window.clearSelection()" title="Click to dismiss">
+                                <strong style="color:#555; font-size:14px; letter-spacing: 1px;">MISSION ${endWord}</strong><br>
+                                <div style="margin-top: 5px; font-size:12px;">Asset: <strong>${faultId}</strong></div>
+                                <div style="font-size:12px;">Fault: <strong>${window.capNames[fault.errorCode]}</strong></div>
+                                <div style="margin-top: 8px; font-size:12px; border-top: 1px dashed #ccc; padding-top: 5px;">
+                                    Time to Action: <strong style="color:#555; font-size:14px;">${window.formatDuration(fault.resolvedAt - fault.timestamp)}</strong>
+                                    ${feeTxt}
+                                </div>
+                                ${rerouteHtml}
+                                <div style="margin-top: 10px; font-size:10px; color: #888; font-style: italic; text-align: center;">(Click anywhere to dismiss)</div>
+                            </div>`;
+                            window.infoWindow.setContent(content);
+                            window.infoWindow.open(map, avMarkers[faultId]);
+                            return;
+                        }
+
+                        if (isAssigned) {
+                            window.mergeAndRender();
+                            
+                            let cancelBtn = `<button style="margin-top: 10px; width: 100%; padding: 5px; background: transparent; border: 1px solid #555; color: #888; border-radius: 3px; cursor: pointer; font-weight: bold; font-family: monospace;" onmouseover="this.style.background='#F44336'; this.style.color='#fff'; this.style.borderColor='#F44336';" onmouseout="this.style.background='transparent'; this.style.color='#888'; this.style.borderColor='#555';" onclick="event.stopPropagation(); window.openCancelModal('${faultId}')">CANCEL DISPATCH</button>`;
+                            
+                            let content = `<div class="pan-info-window" onclick="window.clearSelection()" title="Click to dismiss">
+                                <strong style="color:#FF9800; font-size:14px; letter-spacing: 1px;">MISSION IN PROGRESS</strong><br>
+                                <div style="margin-top: 5px; font-size:12px;">Asset: <strong>${faultId}</strong></div>
+                                <div style="font-size:12px;">Fault: <strong>${window.capNames[fault.errorCode]}</strong></div>
+                                <div style="font-size:12px;">Agent: <strong>${window.escapeHTML(fault.assignedAgent.replace('SIM-VANGUARD-', 'VAN-'))}</strong></div>
+                                <div style="margin-top: 8px; font-size:12px; border-top: 1px dashed #ccc; padding-top: 5px;">
+                                    Time Active: <strong style="color:#F44336; font-size:14px;"><span class="live-timer" data-timestamp="${fault.timestamp}">${window.formatDuration(Date.now() - fault.timestamp)}</span></strong>
+                                </div>
+                                ${rerouteHtml}
+                                ${cancelBtn}
+                                <div style="margin-top: 10px; font-size:10px; color: #888; font-style: italic; text-align: center;">(Click anywhere to dismiss)</div>
+                            </div>`;
+                            window.infoWindow.setContent(content);
+                            window.infoWindow.open(map, avMarkers[faultId]);
+                            return; 
+                        }
+                        
+                        document.getElementById('disp-uid').value = ""; 
+                        document.getElementById('filter-cap').value = fault.errorCode;
+                        
+                        let dropdown = document.getElementById('disp-error');
+                        for(let i=0; i<dropdown.options.length; i++) {
+                            if(dropdown.options[i].value.startsWith(fault.errorCode)) {
+                                dropdown.selectedIndex = i; break;
+                            }
+                        }
+                        window.updateBounty();
+                        
+                        document.getElementById('disp-loc').value = "Locating Address...";
+                        if (geocoder) {
+                            geocoder.geocode({ location: pos }, (results, status) => {
+                                if (status === "OK" && results[0]) {
+                                    document.getElementById('disp-loc').value = results[0].formatted_address.split(',')[0];
+                                } else {
+                                    document.getElementById('disp-loc').value = `GPS: ${fault.lat.toFixed(4)}, ${fault.lon.toFixed(4)}`;
+                                }
+                            });
+                        }
+
+                        window.mergeAndRender();
+                        
+                        let content = `<div class="pan-info-window" onclick="window.clearSelection()" title="Click to dismiss">
+                            <strong style="color:#00BCD4; font-size:14px; letter-spacing: 1px;">TARGET ACQUIRED</strong><br>
+                            <div style="margin-top: 5px; font-size:12px;">Asset: <strong>${faultId}</strong></div>
+                            <div style="font-size:12px;">Fault: <strong>${window.capNames[fault.errorCode]}</strong></div>
+                            <div style="margin-top: 8px; font-size:12px; border-top: 1px dashed #ccc; padding-top: 5px;">
+                                Time Active: <strong style="color:#F44336; font-size:14px;"><span class="live-timer" data-timestamp="${fault.timestamp}">${window.formatDuration(Date.now() - fault.timestamp)}</span></strong>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <button style="width: 100%; padding: 8px; background: #00BCD4; color: #000; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; font-family: monospace;" onclick="event.stopPropagation(); window.openDispatchModal('${faultId}')">QUICK DEPLOY AGENT</button>
+                            </div>
+                            <div style="margin-top: 10px; font-size:10px; color: #888; font-style: italic; text-align: center;">(Click anywhere to dismiss)</div>
+                        </div>`;
+                        window.infoWindow.setContent(content);
+                        window.infoWindow.open(map, avMarkers[faultId]);
+                    });
+                } else {
+                    avMarkers[faultId].setPosition(pos);
+                    avMarkers[faultId].setIcon(iconToUse);
+                }
+            });
+
+            if (window.selectedFaultId && window.simFaults[window.selectedFaultId]) {
+                let sf = window.simFaults[window.selectedFaultId];
+                let pos = { lat: sf.lat, lng: sf.lon };
+                
+                let agentOnSite = false;
+                if (sf.status === "ASSIGNED" && sf.assignedAgent && window.allAgents[sf.assignedAgent]) {
+                    if (window.allAgents[sf.assignedAgent].status.status === "BUSY_ON_SITE") agentOnSite = true;
+                }
+
+                let glowColor = sf.status === "RESOLVED" ? "#555555" : (sf.status === "ASSIGNED" ? (agentOnSite ? "#FFEB3B" : "#FF9800") : "#00BCD4");
+                
+                if (!window.selectedFaultCircle) {
+                    window.selectedFaultCircle = new google.maps.Circle({
+                        strokeColor: glowColor, strokeOpacity: 0.8, strokeWeight: 2,
+                        fillColor: glowColor, fillOpacity: 0.25,
+                        map: map, center: pos, radius: 450, clickable: false
+                    });
+                } else {
+                    window.selectedFaultCircle.setOptions({
+                        strokeColor: glowColor, fillColor: glowColor,
+                        center: pos, map: map
+                    });
+                }
+            } else {
+                if (window.selectedFaultCircle) window.selectedFaultCircle.setMap(null);
+            }
+
+            Object.keys(window.allAgents).forEach(uid => {
+                try {
+                    const agent = window.allAgents[uid];
+                    if (!agent.status) return;
+
+                    let caps = agent.capabilities || [];
+                    if (agent.status.loadout) caps = Object.keys(agent.status.loadout);
+                    agent.resolvedCaps = caps;
+
+                    if (activeFilter !== 'ALL' && !caps.includes(activeFilter)) return; 
+
+                    const currentStatus = agent.status.status;
+                    const patrolMode = agent.status.patrolMode || "VEHICLE";
+                    
+                    let isVisible = false;
+                    if (currentStatus === "ONLINE" && patrolMode === "VEHICLE" && showOnline) isVisible = true;
+                    if (currentStatus === "ONLINE" && patrolMode === "FOOT" && showFoot) isVisible = true;
+                    if (currentStatus === "BUSY_ON_WAY" && showOnWay) isVisible = true;
+                    if (currentStatus === "BUSY_ON_SITE" && showOnSite) isVisible = true;
+                    if (currentStatus === "PENDING") isVisible = true; 
+                    if (currentStatus === "OFFLINE") isVisible = true; 
+                    
+                    if (!isVisible) return;
+                    renderedUIDs.add(uid);
+
+                    const lat = Number(agent.status.latitude);
+                    const lon = Number(agent.status.longitude);
+                    const radiusMiles = Number(agent.status.radius || 0);
+                    const radiusMeters = radiusMiles * 1609.34; 
+
+                    if (!isNaN(lat) && !isNaN(lon)) {
+                        const position = { lat: lat, lng: lon };
+                        
+                        let agentColor = "#F44336"; 
+                        let displayStatus = "ONLINE";
+
+                        if (currentStatus === "ONLINE" && patrolMode === "FOOT") {
+                            agentColor = "#00BCD4"; displayStatus = "ONLINE";
+                        } else if (currentStatus === "BUSY_ON_WAY") {
+                            agentColor = "#FF9800"; displayStatus = "BUSY - EN ROUTE";
+                        } else if (currentStatus === "BUSY_ON_SITE") {
+                            agentColor = "#FFEB3B"; displayStatus = "BUSY - ON SCENE";
+                        } else if (currentStatus === "PENDING") {
+                            agentColor = "#E040FB"; displayStatus = "PENDING ACCEPT...";
+                        } else if (currentStatus === "OFFLINE") {
+                            agentColor = "#888888"; displayStatus = "OFFLINE";
+                        }
+                        
+                        if (!agentMarkers[uid]) {
+                            agentMarkers[uid] = new google.maps.Marker({
+                                position: position, map: map, title: "Agent: " + window.escapeHTML(uid), icon: window.getMarkerIcon(agentColor), zIndex: 1000 
+                            });
+                            
+                            agentMarkers[uid].addListener('click', () => {
+                                document.getElementById('disp-uid').value = window.escapeHTML(uid);
+                                
+                                let humanCaps = agent.resolvedCaps.map(c => window.capNames[c] || c);
+                                let capsHtml = humanCaps.map(c => `<span style="background:#f0f0f0;color:#000;padding:2px 6px;margin:2px;border-radius:4px;font-size:11px;display:inline-block;border:1px solid #ccc;">${c}</span>`).join('');
+                                
+                                let etaText = "";
+                                let activeFaultText = "";
+                                if (currentStatus === "BUSY_ON_WAY" && agent.status.currentFaultId) {
+                                    let f = window.simFaults[agent.status.currentFaultId];
+                                    if (f) {
+                                        let p1 = new google.maps.LatLng(lat, lon);
+                                        let p2 = new google.maps.LatLng(f.lat, f.lon);
+                                        let distMeters = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+                                        let etaMinutes = Math.max(1, Math.ceil(distMeters / 600)); 
+                                        
+                                        activeFaultText = `<div style="margin-top:10px; margin-bottom:10px; background:#fff3e0; padding:8px; border-radius:4px; border:1px solid #FF9800;">
+                                            <strong style="color:#FF9800; font-size:11px; letter-spacing: 1px;">ACTIVE MISSION</strong><br>
+                                            <span style="font-size:12px; color:#000;">Target: <strong>${f.id}</strong></span><br>
+                                            <span style="font-size:12px; color:#000;">Fault: <strong>${window.capNames[f.errorCode]}</strong></span>
+                                        </div>`;
+                                        etaText = `<div style="margin-top: 5px; font-size:13px;">ETA: <strong style="color:#FF9800;">${etaMinutes} min</strong></div>`;
+                                    }
+                                }
+
+                                let content = `<div class="pan-info-window" onclick="window.clearSelection()" title="Click to dismiss">
+                                    <strong style="font-size:14px; color:#1E1E1E;">UID: ${window.escapeHTML(uid.replace('SIM-VANGUARD-', 'VAN-'))}</strong><br>
+                                    <div style="margin-top: 5px; font-size:12px;">Mode: <strong>${window.escapeHTML(patrolMode)}</strong></div>
+                                    <div style="font-size:12px;">Status: <strong style="color:${agentColor}">${displayStatus}</strong></div>
+                                    ${etaText}
+                                    <div style="font-size:12px;">Service Radius: <strong>${window.escapeHTML(radiusMiles.toFixed(1))} miles</strong></div>
+                                    ${activeFaultText}
+                                    <div style="margin-top:10px; margin-bottom:5px; font-weight: bold; font-size: 10px; color: #666; text-transform: uppercase;">Verified Loadout:</div>
+                                    <div style="margin-bottom:10px; display:flex; flex-wrap:wrap;">${capsHtml || '<span style="color:red">No capabilities listed</span>'}</div>
+                                    <div style="font-size:10px; color: #888; font-style: italic; text-align: center;">(Click anywhere to dismiss)</div>
+                                </div>`;
+                                
+                                window.infoWindow.setContent(content);
+                                window.infoWindow.open(map, agentMarkers[uid]);
+                            });
+                        } else {
+                            agentMarkers[uid].setPosition(position);
+                            agentMarkers[uid].setIcon(window.getMarkerIcon(agentColor));
+                        }
+
+                        if (currentStatus === "ONLINE" || currentStatus === "PENDING") {
+                            if (agentCircles[uid]) {
+                                agentCircles[uid].setCenter(position);
+                                agentCircles[uid].setRadius(radiusMeters);
+                                agentCircles[uid].setOptions({ fillColor: agentColor, strokeColor: agentColor });
+                            } else {
+                                agentCircles[uid] = new google.maps.Circle({
+                                    strokeColor: agentColor, strokeOpacity: 0.3, strokeWeight: 1, fillColor: agentColor,
+                                    fillOpacity: 0.10, map: map, center: position, radius: radiusMeters, clickable: false 
+                                });
+                            }
+                        } else {
+                            if (agentCircles[uid]) { agentCircles[uid].setMap(null); delete agentCircles[uid]; }
+                        }
+
+                        if (currentStatus === "BUSY_ON_WAY" && agent.route && agent.route.length > 0) {
+                            let remainingPath = agent.route.slice(agent.routeIndex);
+                            remainingPath.unshift(position); 
+                            
+                            if (!agentLines[uid]) {
+                                agentLines[uid] = new google.maps.Polyline({
+                                    path: remainingPath, strokeColor: '#FF9800', strokeOpacity: 0.9, strokeWeight: 4, zIndex: 900, map: map
+                                });
+                            } else {
+                                agentLines[uid].setPath(remainingPath);
+                                agentLines[uid].setMap(map);
+                            }
+                        } else {
+                            if (agentLines[uid]) { agentLines[uid].setMap(null); delete agentLines[uid]; }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to render agent: " + uid, e);
+                }
+            });
+            
+            Object.keys(agentMarkers).forEach(uid => {
+                if (!renderedUIDs.has(uid)) {
+                    agentMarkers[uid].setMap(null); delete agentMarkers[uid];
+                    if (agentCircles[uid]) { agentCircles[uid].setMap(null); delete agentCircles[uid]; }
+                    if (agentLines[uid]) { agentLines[uid].setMap(null); delete agentLines[uid]; }
+                }
+            });
+
+            Object.keys(avMarkers).forEach(fid => {
+                if (!renderedFaultIDs.has(fid)) {
+                    avMarkers[fid].setMap(null); delete avMarkers[fid];
+                }
+            });
+        };
+
+        window.getMarkerIcon = function(color) {
+            return { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2, scale: 8 };
+        };
+
+        // RUN MAP LOADER LAST TO PREVENT RACE CONDITIONS
+        const mapsScript = document.createElement('script');
+        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${window.ENV.GOOGLE_MAPS_API_KEY}&libraries=geometry,places&callback=initMap`;
+        mapsScript.async = true;
+        document.head.appendChild(mapsScript);
+        
+    </script>
+</body>
+</html>
