@@ -1,0 +1,83 @@
+# --- SENSITIVE DATA ---
+.env
+*.pem
+*.key
+proxy_api_secret.txt
+# Added to prevent accidental credential leaks
+secrets/
+config.local.yaml
+# Secret Lore and Live Agent Databases
+core_memories.json
+agency_lore.db
+
+# --- TPM 2.0 HARDWARE (VITAL) ---
+# Protecting the Hardware Root of Trust
+*.ctx
+*.priv
+*.pub
+*.bin
+*.session
+
+# --- PROJECT LOGS ---
+*.log
+proxy_heartbeat.log
+active_tasks.log
+# Catch-all for telemetry data
+telemetry/
+
+# --- BINARIES & LARGE ASSETS ---
+*.psd
+*.raw
+website/images/raw images/
+
+# --- PYTHON ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.pytest_cache/
+.mypy_cache/
+*.db
+
+# --- NODE.JS ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+.npm/
+
+# --- SYSTEM & IDE ---
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+*.swp
+*~
+secrets.js
+
+# --- RUST & HYBRID CORE ---
+# Huge build artifacts folder
+target/
+# Backup files
+**/*.rs.bk
+# Python Wheels (built packages)
+*.whl
+# Linux Shared Objects (if we cross-compile later)
+*.so
+
+# Mainnet Credentials (NEVER COMMIT THESE)
+mainnet_secrets/
+*.macaroon
+*.cert
+agent_memory.db
+polar_keys/
+
+# --- AGENT GENERATED MEDIA & VECTOR DB ---
+nano_banana_*.jpg
+nano_banana_*.png
+veo_video_*.mp4
+lyria_track_*.mp3
+lyria_track_*.wav
+faiss_index/tests/
+hardware-node/mock_boot.py
+faiss_index/

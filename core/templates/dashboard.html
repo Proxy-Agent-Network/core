@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Console | Proxy Agent Network</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Special+Elite&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) { document.documentElement.setAttribute('data-theme', savedTheme); }
+        })();
+    </script>
+
+    <style>
+        /* Table Styles Specific to Dashboard */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        th:nth-child(1), td:nth-child(1) { width: 15%; }
+        th:nth-child(2), td:nth-child(2) { width: 20%; }
+        th:nth-child(3), td:nth-child(3) { width: 30%; }
+        th:nth-child(4), td:nth-child(4) { width: 15%; text-align: right; }
+        th:nth-child(5), td:nth-child(5) { width: 20%; text-align: right; }
+        td:nth-child(4) span { display: inline-block; float: right; }
+        td:nth-child(5) button { float: right; margin-left: 5px; cursor: pointer; padding: 5px 10px; background: var(--bg); border: 1px solid var(--accent); color: var(--text); font-family: var(--font); border-radius: 4px; transition: all 0.2s; }
+        td:nth-child(5) button:hover { background: var(--accent); color: var(--bg); }
+    </style>
+</head>
+<body>
+    <script>window.OWNED_THEMES = JSON.parse('{{ owned|tojson|safe }}');</script>
+
+    <div id="lock-overlay">
+        <div class="lock-container">
+            <div class="lock-icon"><i class="fas fa-lock"></i></div>
+            <h2 id="lock-msg" data-i18n="btn_lock">SECURITY LOCKDOWN</h2>
+            <div class="pin-display" id="pin-dots"></div>
+            <div class="keypad">
+                <button class="key-btn" onclick="enterDigit(1)">1</button>
+                <button class="key-btn" onclick="enterDigit(2)">2</button>
+                <button class="key-btn" onclick="enterDigit(3)">3</button>
+                <button class="key-btn" onclick="enterDigit(4)">4</button>
+                <button class="key-btn" onclick="enterDigit(5)">5</button>
+                <button class="key-btn" onclick="enterDigit(6)">6</button>
+                <button class="key-btn" onclick="enterDigit(7)">7</button>
+                <button class="key-btn" onclick="enterDigit(8)">8</button>
+                <button class="key-btn" onclick="enterDigit(9)">9</button>
+                <button class="key-btn" onclick="enterDigit('clear')" style="color: #e74c3c; border-color: #e74c3c;"><i class="fas fa-times"></i></button>
+                <button class="key-btn" onclick="enterDigit(0)">0</button>
+                <button class="key-btn" onclick="enterDigit('enter')" style="color: #2ecc71; border-color: #2ecc71;"><i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="audio-unlock-overlay">
+        <h1 class="audio-title">PROXY // NETWORK</h1>
+        <div class="audio-subtitle">ESTABLISHING SECURE CONNECTION...</div>
+        <button class="audio-btn" onclick="unlockAudio()">INITIALIZE UPLINK</button>
+    </div>
+
+    <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
+    <audio id="audio-success" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
+    <audio id="audio-marvin" src="{{ url_for('static', filename='audio/marvin_laughing.mp3') }}"></audio>
+    <audio id="audio-powerup" src="{{ url_for('static', filename='audio/Secret_PowerUp1.mp3') }}"></audio>
+    <audio id="audio-failure" src="{{ url_for('static', filename='audio/incorrect.mp3') }}" preload="auto"></audio>
+
+    <div id="bypass-overlay">
+        <div class="bypass-title">&gt;&gt;&gt;SYSTEM BYPASS&lt;&lt;&lt;</div>
+        <div style="color:white;">BONUS_REWARD: <span style="color:#f1c40f;">+30 XP</span></div>
+    </div>
+
+    <div id="marvin-sprite-container" onclick="handleMarvinClick()" ondblclick="marvinLaugh()">
+        <img id="marvin-image" src="{{ url_for('static', filename='images/magic_marvin_dance.webp') }}" alt="Magic Marvin">
+    </div>
+
+    {% include 'components/header.html' %}
+    {% include 'components/settings_modal.html' %}
+
+    <div class="dashboard-grid">
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 data-i18n="node_id_label">Node Identity</h2>
+                <small style="opacity: 0.7;">ID: <span style="color: var(--accent);">{{ node.id }}</span></small>
+            </div>
+            <div style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; font-family: monospace;">
+                <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                    <span style="opacity: 0.7;" data-i18n="lbl_security">SECURITY:</span>
+                    {% if hw_secured %} 
+                        <span style="color: #2ecc71; font-weight: bold;" data-i18n="status_hw_locked">[HARDWARE_LOCKED] 🔒</span>
+                    {% else %} 
+                        <span style="color: #f1c40f;" data-i18n="status_simulation">[SIMULATION_MODE] ⚠️</span> 
+                    {% endif %}
+                </div>
+            </div>
+            
+            <p style="margin-top: 15px;">
+                <strong><span data-i18n="lbl_level">Level</span> <span id="level-num">1</span>:</strong> 
+                <span id="xp-text">0 / 5000</span>
+            </p>
+            <div class="xp-container" onclick="openXPHistory()" style="cursor: pointer;" title="View XP History">
+                <div id="xp-bar" class="xp-bar" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h2 id="activity-title" data-i18n="panel_activity">Network Activity</h2>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="switchTab('live')" style="font-size: 0.7rem; padding: 2px 8px; background: var(--accent); border: none; color: var(--bg); cursor: pointer;" data-i18n="btn_live">LIVE</button>
+                    <button onclick="switchTab('global')" style="font-size: 0.7rem; padding: 2px 8px; background: transparent; border: 1px solid var(--accent); color: var(--text); cursor: pointer;" data-i18n="btn_global">GLOBAL</button>
+                </div>
+            </div>
+            <div id="activity-log"><div style="opacity:0.5; font-style:italic;" data-i18n="msg_telemetry">Initializing telemetry stream...</div></div>
+            <div id="global-log" style="display: none;"><div style="opacity:0.5; font-style:italic;">Querying global event history...</div></div>
+        </div>
+
+        <div class="panel" style="border-color: var(--danger);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="color: var(--danger);" data-i18n="panel_rivals">Rival Chatter</h2>
+                <div class="live-dot" style="background-color: var(--danger);"></div>
+            </div>
+            <div id="rival-feed" style="height: 150px; overflow-y: auto; font-family: 'Courier Prime', monospace; font-size: 0.8rem; background: rgba(50,0,0,0.1); padding: 10px; border-radius: 4px;">
+                <div style="opacity:0.5; font-style:italic;">Intercepting rival comms...</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 data-i18n="panel_global">Global Rankings</h2>
+                <span class="live-dot" style="background-color: var(--accent);"></span>
+            </div>
+            <div id="leaderboard-list" style="font-family: 'Courier Prime', monospace; font-size: 0.9rem;">
+                <div style="opacity:0.5">Syncing with global registry...</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="scan-pulse" class="scanning-pulse"></span>
+                <h2 style="margin: 0;" data-i18n="panel_daemon">Automation Daemon</h2>
+            </div>
+            <p id="auto-status" style="opacity: 0.7; font-size: 0.85rem; margin-top: 5px;" data-i18n="msg_scanning">Scanning for high-yield proxy bids...</p>
+        </div>
+
+        <div class="panel" style="grid-column: span 2;">
+            <h2><span class="live-dot"></span><span data-i18n="panel_tasks">Live Task Feed (Race Against Rivals)</span></h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th data-i18n="col_id">ID</th>
+                        <th data-i18n="col_type">Type</th>
+                        <th data-i18n="col_status">Status</th>
+                        <th data-i18n="col_reward">Reward</th>
+                        <th data-i18n="col_action">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="task-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    {% include 'components/footer.html' %}
+
+    <div id="xp-history-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(10px);">
+        <div style="background: var(--card-bg); border: 2px solid var(--accent); padding: 25px; border-radius: 8px; width: 90%; max-width: 550px; box-shadow: 0 0 40px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; color: var(--accent); font-family: 'Montserrat', sans-serif; letter-spacing: 1px;">Session XP Ledger</h2>
+                <button onclick="closeXPHistory()" style="background: var(--bg); border: 1px solid var(--border); color: var(--text); font-weight: bold; padding: 5px 15px; border-radius: 4px; cursor: pointer;">CLOSE</button>
+            </div>
+            <div id="xp-ledger-body" class="session-ledger" style="max-height: 400px; overflow-y: auto; font-family: 'Courier Prime', monospace;"></div>
+        </div>
+    </div>
+
+    <script>
+        const NODE_ID = "{{ node.id }}";
+        let lastDaemonMsg = ""; 
+        let rawSatsBalance = 0;
+        let lastLevel = -1; 
+
+        let audioMuted = localStorage.getItem('audioMuted') === 'true';
+        let audioVolume = localStorage.getItem('audioVolume') || 0.5;
+        
+        if (audioMuted) toggleMuteUI(); 
+        document.getElementById('volume-slider').value = audioVolume;
+        adjustVolume(audioVolume);
+
+        if (sessionStorage.getItem('audioUnlocked')) document.getElementById('audio-unlock-overlay').style.display = 'none';
+
+        function unlockAudio() {
+            ['audio-click', 'audio-success', 'audio-failure', 'audio-marvin', 'audio-powerup'].forEach(id => {
+                const el = document.getElementById(id);
+                el.play().then(() => el.pause()).catch(() => {});
+            });
+            document.getElementById('audio-unlock-overlay').style.display = 'none';
+            sessionStorage.setItem('audioUnlocked', 'true');
+            document.getElementById('audio-click').play();
+        }
+
+        function toggleMute() {
+            audioMuted = !audioMuted;
+            localStorage.setItem('audioMuted', audioMuted);
+            toggleMuteUI();
+        }
+
+        function toggleMuteUI() {
+            document.querySelectorAll('audio').forEach(el => el.muted = audioMuted);
+            const btn = document.getElementById('mute-btn');
+            const icon = document.getElementById('mute-icon');
+            if (audioMuted) {
+                btn.style.color = '#e74c3c'; btn.style.borderColor = '#e74c3c';
+                icon.className = 'fas fa-volume-mute';
+            } else {
+                btn.style.color = ''; btn.style.borderColor = '';
+                icon.className = 'fas fa-volume-up';
+            }
+        }
+
+        function adjustVolume(val) {
+            localStorage.setItem('audioVolume', val);
+            document.querySelectorAll('audio').forEach(el => el.volume = val);
+        }
+
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        const currSelect = document.getElementById('currency-select');
+        if(currSelect) currSelect.value = currentUnit;
+        
+        const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051, JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010 };
+
+        function changeUnit(unit) {
+            currentUnit = unit;
+            localStorage.setItem('currencyUnit', unit);
+            const label = document.getElementById('unit-label');
+            if(label) label.innerText = unit;
+            updateBalanceDisplay();
+        }
+
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance');
+            if (!el) return;
+            if (rawSatsBalance === 0) {
+                const txt = el.innerText.replace(/,/g, '').split(' ')[0];
+                if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt);
+            }
+            let val = rawSatsBalance * RATES[currentUnit];
+            
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS";
+            else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC";
+            else el.innerText = val.toLocaleString('en-US', {style: 'currency', currency: currentUnit});
+        }
+
+        const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+        let konamiIndex = 0;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === konamiCode[konamiIndex]) {
+                konamiIndex++;
+                if (konamiIndex === konamiCode.length) { activateSystemBypass(); konamiIndex = 0; }
+            } else { konamiIndex = 0; }
+        });
+
+        function activateSystemBypass() {
+            document.getElementById('bypass-overlay').style.display = 'flex';
+            document.getElementById('audio-powerup').play();
+            setTimeout(() => { document.getElementById('bypass-overlay').style.display = 'none'; }, 3000);
+        }
+
+        function checkLevelUp(currentXP) {
+            const level = Math.floor(currentXP / 5000);
+            if (lastLevel === -1) { lastLevel = level; return; }
+            if (level > lastLevel) {
+                lastLevel = level;
+                triggerMarvin();
+            }
+        }
+
+        function triggerMarvin() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            if (currentTheme === 'business' || currentTheme === 'paperback') return;
+            const marvin = document.getElementById('marvin-sprite-container');
+            marvin.classList.add('active'); 
+            setTimeout(() => { marvin.classList.remove('active'); }, 5000); 
+        }
+
+        function handleMarvinClick() { 
+            const img = document.getElementById('marvin-image'); 
+            img.style.transform = "scale(1.1) rotate(5deg)"; 
+            setTimeout(() => img.style.transform = "scale(1) rotate(0deg)", 150); 
+        }
+        
+        function marvinLaugh() { 
+            const audio = document.getElementById('audio-marvin'); 
+            audio.currentTime = 0; audio.play(); 
+            document.getElementById('marvin-image').classList.add('laughing-anim'); 
+            setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000); 
+        }
+
+        let inputPin = "";
+        function lockDashboard() {
+            toggleSettings();
+            const overlay = document.getElementById('lock-overlay');
+            const msg = document.getElementById('lock-msg');
+            const storedPin = localStorage.getItem('user_pin');
+            inputPin = ""; updatePinDots(); overlay.style.display = 'flex';
+            if (!storedPin) { msg.innerText = "SET NEW PIN CODE"; msg.style.color = "#f1c40f"; } 
+            else { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }
+        }
+
+        function enterDigit(digit) {
+            const msg = document.getElementById('lock-msg');
+            if (digit === 'clear') { inputPin = ""; } 
+            else if (digit === 'enter') {
+                const storedPin = localStorage.getItem('user_pin');
+                if (!storedPin) {
+                    if (inputPin.length < 4) {
+                        msg.innerText = "PIN TOO SHORT"; document.getElementById('audio-failure').play();
+                        setTimeout(() => msg.innerText = "SET NEW PIN CODE", 1000); inputPin = "";
+                    } else {
+                        localStorage.setItem('user_pin', inputPin); msg.innerText = "PIN ESTABLISHED";
+                        document.getElementById('audio-success').play();
+                        setTimeout(() => { document.getElementById('lock-overlay').style.display = 'none'; inputPin = ""; }, 1000);
+                    }
+                } else {
+                    if (inputPin === storedPin) {
+                        document.getElementById('audio-success').play(); document.getElementById('lock-overlay').style.display = 'none'; inputPin = "";
+                    } else {
+                        document.getElementById('audio-failure').play(); msg.innerText = "ACCESS DENIED"; msg.style.color = "#e74c3c"; inputPin = "";
+                        setTimeout(() => { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }, 1000);
+                    }
+                }
+            } else { if (inputPin.length < 8) inputPin += digit; }
+            updatePinDots();
+        }
+        function updatePinDots() { document.getElementById('pin-dots').innerText = "•".repeat(inputPin.length); }
+
+        function toggleSettings() { document.getElementById('settingsModal').classList.toggle('active'); }
+        window.onclick = function(event) { const modal = document.getElementById('settingsModal'); if (event.target == modal) modal.classList.remove('active'); }
+
+        function refreshDashboard() {
+            fetch('/api/v1/dashboard/live').then(r => r.json()).then(data => {
+                if (data.daemon_event && data.daemon_event !== lastDaemonMsg) {
+                    document.getElementById('audio-success').play();
+                    addLog(`<span style="color:var(--accent)">🤖 DAEMON: ${data.daemon_event}</span>`);
+                    flashPulse('success'); lastDaemonMsg = data.daemon_event;
+                }
+                
+                rawSatsBalance = data.balance; updateBalanceDisplay();
+                const currentLevel = Math.floor(data.xp / 5000) + 1; const currentXP = data.xp % 5000;
+                const percent = (currentXP / 5000) * 100;
+                document.getElementById('xp-bar').style.width = `${percent}%`;
+                document.getElementById('xp-text').innerText = `${currentXP} / 5000`;
+                const lvlEl = document.getElementById('level-num'); if(lvlEl) lvlEl.innerText = currentLevel;
+                checkLevelUp(data.xp); 
+
+                const tbody = document.getElementById('task-table-body');
+                if(data.tasks.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; opacity:0.5;">No active tasks. Market is dry.</td></tr>'; } 
+                else {
+                    const currentLang = localStorage.getItem('selectedLanguage') || 'en';
+                    const t = (window.TRANSLATIONS && window.TRANSLATIONS[currentLang]) ? window.TRANSLATIONS[currentLang] : (window.TRANSLATIONS ? window.TRANSLATIONS['en'] : {});
+                    
+                    tbody.innerHTML = data.tasks.map(task => {
+                        if (task.type === 'AUTOMATED') {
+                            return `<tr><td style="color:var(--accent)">${task.id}</td><td>${t.task_automated || 'AUTOMATED'}</td><td style="color:var(--accent)">${t.task_secured || 'SECURED BY DAEMON'}</td><td><span class="sats-badge">${task.reward}</span></td><td><span style="opacity:0.5">${t.task_claimed || 'AUTO-CLAIMED'}</span></td></tr>`;
+                        } else {
+                            return `<tr><td>${task.id}</td><td>${task.type}</td><td><code>${t.task_open || 'OPEN'}</code></td><td><span class="sats-badge">${task.reward}</span></td><td><button style="cursor: pointer; padding: 5px 10px; background: var(--bg); border: 1px solid var(--accent); color: var(--text); border-radius: 4px;" onclick="completeTask('${task.id}', ${task.reward})">${t.btn_complete || 'COMPLETE'}</button></td></tr>`;
+                        }
+                    }).join('');
+                }
+            });
+        }
+
+        function updateNetworkStats() {
+            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
+                const healthSpan = document.getElementById('health-peers');
+                if (healthSpan) {
+                    const lang = localStorage.getItem('selectedLanguage') || 'en';
+                    const t = (window.TRANSLATIONS && window.TRANSLATIONS[lang]) ? window.TRANSLATIONS[lang] : (window.TRANSLATIONS ? window.TRANSLATIONS['en'] : {});
+                    const txtConnected = t.status_connected || "CONNECTED"; const txtPeers = t.status_peers || "PEERS"; const txtSearching = t.status_searching || "SEARCHING";
+                    if (data.peers > 0) { healthSpan.innerHTML = `● ${data.peers} ${txtConnected}`; healthSpan.style.color = "#2ecc71"; } 
+                    else { healthSpan.innerHTML = `● 0 ${txtPeers} (${txtSearching})`; healthSpan.style.color = "#f1c40f"; }
+                }
+            });
+        }
+
+        function switchTab(tab) {
+            const liveLog = document.getElementById('activity-log'); const globalLog = document.getElementById('global-log'); const title = document.getElementById('activity-title');
+            if (tab === 'live') { liveLog.style.display = 'block'; globalLog.style.display = 'none'; const lang = localStorage.getItem('selectedLanguage') || 'en'; const t = window.TRANSLATIONS && window.TRANSLATIONS[lang] ? window.TRANSLATIONS[lang] : {}; title.innerText = t.panel_activity || "Network Activity"; } 
+            else { liveLog.style.display = 'none'; globalLog.style.display = 'block'; title.innerText = "Global Event Log"; fetchGlobalEvents(); }
+        }
+        function fetchGlobalEvents() { fetch('/api/v1/network/events/history').then(r => r.json()).then(events => { document.getElementById('global-log').innerHTML = events.map(e => `<div style="margin-bottom: 5px;"><span style="opacity:0.5">[${e.timestamp.split(' ')[1]}]</span> <b style="color:var(--accent)">${e.event_type}:</b> ${e.message}</div>`).join('') || "No historical events found."; }); }
+        function addLog(msg) { const log = document.getElementById('activity-log'); const entry = document.createElement('div'); entry.innerHTML = `<span style="color:var(--accent)">[${new Date().toLocaleTimeString()}]</span> ${msg}`; log.prepend(entry); }
+        function flashPulse(type) { const pulse = document.getElementById('scan-pulse'); const className = type === 'success' ? 'success-flash' : 'rival-alert'; pulse.classList.add(className); setTimeout(() => pulse.classList.remove(className), 1200); }
+        function completeTask(taskId, reward) { fetch('/api/v1/tasks/complete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ node_id: NODE_ID, task_id: taskId, payout: reward }) }).then(r => r.json()).then(data => { if (data.status === 'success') { document.getElementById('audio-success').play(); addLog(`Task ${taskId} completed manually. Reward credited.`); refreshDashboard(); } }); }
+        function updateLeaderboard() { fetch('/api/v1/network/leaderboard').then(r => r.json()).then(data => { document.getElementById('leaderboard-list').innerHTML = data.map((entry, i) => `<div style="display: flex; justify-content: space-between; margin-bottom: 6px; ${entry.id === NODE_ID ? 'color:var(--accent); font-weight:bold;' : 'opacity:0.7;'}"><span>#${i+1} ${entry.id} ${entry.type === 'RIVAL' ? '🤖' : ''}</span><span>${entry.xp.toLocaleString()} XP</span></div>`).join(''); }); }
+        function openXPHistory() { document.getElementById('xp-history-modal').style.display = 'flex'; fetch('/api/v1/node/xp_ledger/' + NODE_ID).then(r => r.json()).then(data => { const body = document.getElementById('xp-ledger-body'); if (data.length === 0) { body.innerHTML = "<div style='text-align:center; padding:20px; opacity:0.5;'>No XP history recorded.</div>"; return; } body.innerHTML = data.map(log => `<div class="ledger-row"><div class="ledger-parent"><div><span class="ledger-timestamp">[${log.time}]</span> <span class="ledger-task-id">${log.taskId}</span></div><div class="ledger-xp-total">+${log.totalXp} XP</div></div><div class="ledger-children">${log.bonuses.map(b => `<div class="ledger-child"><span class="ledger-child-name" style="color: ${b.color}">${b.name}</span><span class="ledger-child-xp">+${b.xp} XP</span></div>`).join('')}</div></div>`).join(''); }); }
+        function closeXPHistory() { document.getElementById('xp-history-modal').style.display = 'none'; }
+        setInterval(updateNetworkStats, 30000); setInterval(pollRivals, 5000);
+        function pollRivals() { fetch('/api/v1/rivals/feed').then(r => r.json()).then(data => { if (data.has_msg) { const feed = document.getElementById('rival-feed'); const entry = document.createElement('div'); entry.style.marginBottom = "8px"; entry.innerHTML = `<span style="opacity:0.6">[${data.timestamp}]</span> <b style="color:var(--danger)">${data.rival}:</b> <span style="color:var(--text)">${data.message}</span>`; feed.prepend(entry); } }); }
+
+        window.onload = () => {
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            if (typeof LanguageEngine !== 'undefined') {
+                LanguageEngine.init('language-selector');
+                const langSelect = document.getElementById('language-selector');
+                if(langSelect) {
+                    langSelect.addEventListener('change', () => { setTimeout(() => { updateNetworkStats(); LanguageEngine.update(); }, 50); });
+                }
+            }
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if(savedTheme) { if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme); }
+            document.getElementById('unit-label').innerText = currentUnit;
+            refreshDashboard(); updateLeaderboard(); updateNetworkStats();
+        };
+    </script>
+</body>
+</html>

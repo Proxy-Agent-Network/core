@@ -1,0 +1,243 @@
+import asyncio
+import os
+import codecs
+import grpc
+import traceback
+import warnings
+import sqlite3
+from dotenv import load_dotenv
+
+# This tells Python to strictly look for your .env file
+load_dotenv()
+
+warnings.filterwarnings("ignore", module="langgraph")
+
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+import rpc_pb2 as ln
+import rpc_pb2_grpc as lnrpc
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.agents import create_agent
+from langchain_core.tools import tool
+
+# --- CONFIGURATION SWITCH ---
+# FIXED: Set to False so we use your local Polar sandbox!
+USE_MAINNET = False 
+
+if USE_MAINNET:
+    # VOLTAGE SETTINGS
+    BOB_HOST = "agent-proxy-network.m.voltageapp.io" 
+    BOB_PORT = "10009"
+    BOB_MACAROON_PATH = "./mainnet_secrets/admin.macaroon"
+    BOB_TLS_PATH = "./mainnet_secrets/tls.cert"
+else:
+    # POLAR SETTINGS: Pulling directly from your .env file
+    grpc_target = os.environ.get("CLIENT_LND_GRPC_HOST", "127.0.0.1:10002")
+    if ":" in grpc_target:
+        BOB_HOST, BOB_PORT = grpc_target.split(":")
+    else:
+        BOB_HOST = grpc_target
+        BOB_PORT = "10002"
+        
+    BOB_MACAROON_PATH = os.environ.get("CLIENT_LND_MACAROON_PATH", "")
+    BOB_TLS_PATH = os.environ.get("CLIENT_LND_TLS_CERT_PATH", "")
+
+# --- INITIALIZE LONG-TERM MEMORY ---
+db_path = "agent_memory.db"
+conn = sqlite3.connect(db_path, check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute("CREATE TABLE IF NOT EXISTS memory (key TEXT PRIMARY KEY, value TEXT)")
+conn.commit()
+
+def get_bob_stub():
+    # Use the absolute path if it exists, otherwise use the path relative to script
+    mac_path = os.path.abspath(BOB_MACAROON_PATH)
+    tls_path = os.path.abspath(BOB_TLS_PATH)
+    
+    with open(mac_path, 'rb') as f:
+        macaroon_bytes = f.read()
+        macaroon = codecs.encode(macaroon_bytes, 'hex')
+    
+    def metadata_callback(context, callback):
+        callback([('macaroon', macaroon)], None)
+    
+    os.environ["GRPC_SSL_CIPHER_SUITES"] = 'HIGH+ECDSA'
+    
+    with open(tls_path, 'rb') as f:
+        cert_creds = grpc.ssl_channel_credentials(f.read())
+    
+    auth_creds = grpc.metadata_call_credentials(metadata_callback)
+    combined_creds = grpc.composite_channel_credentials(cert_creds, auth_creds)
+    channel = grpc.secure_channel(f"{BOB_HOST}:{BOB_PORT}", combined_creds)
+    return lnrpc.LightningStub(channel)
+
+async def run():
+    # FIXED: Validating the GOOGLE_API_KEY correctly
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        print("❌ FATAL ERROR: Gemini API key is missing! Check your .env file.")
+        return
+
+    url = "http://127.0.0.1:8000/sse"
+    print(f"🔌 Connecting LangGraph Brain to proxy at {url}...")
+    
+    try:
+        async with sse_client(url) as streams:
+            async with ClientSession(streams[0], streams[1]) as session:
+                await session.initialize()
+                print(f"🧠 Gemini CFO Agent Online (Network: {'MAINNET' if USE_MAINNET else 'REGTEST'}).\n")
+                
+                @tool
+                def request_risk_approval(spend_amount: int, justification: str) -> str:
+                    """MANDATORY TOOL: Submits a spend request to Charlie the CRO. You MUST call this before paying any invoices."""
+                    print(f"\n👔 [CHARLIE] Reviewing Spend Request: {spend_amount} sats...")
+                    print(f"👔 [CHARLIE] Justification: {justification}")
+                    
+                    # Charlie gets his own dedicated brain
+                    charlie_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
+                    
+                    prompt = (
+                        f"You are Charlie, the ruthless Chief Risk Officer of an algorithmic hedge fund.\n"
+                        f"Your subordinate 'Bob' wants to spend {spend_amount} satoshis.\n"
+                        f"Bob's justification: {justification}\n\n"
+                        f"YOUR DIRECTIVES:\n"
+                        f"1. If the request is for financial data, market research, or high-ROI intelligence, reply EXACTLY with 'APPROVED'.\n"
+                        f"2. If the request is for frivolous things (like AI art, images, jokes, or non-financial data), reply with 'REJECTED: [Your harsh explanation]'.\n"
+                        f"Protect the treasury."
+                    )
+                    
+                    decision = charlie_llm.invoke(prompt).content
+                    print(f"👔 [CHARLIE] Decision: {decision}\n")
+                    return decision
+                
+                @tool
+                async def deep_market_analysis(
+                    primary_topic: str,
+                    original_user_intent: str,
+                    specific_data_points_required: list[str],
+                    historical_context: str = "",
+                    payment_hash: str = ""
+                ) -> str:
+                    """Hires a specialized Layer 2 AI agent. Costs 25 sats per data point. Pass partial memory into historical_context."""
+                    result = await session.call_tool("deep_market_analysis", arguments={
+                        "primary_topic": primary_topic,
+                        "original_user_intent": original_user_intent,
+                        "specific_data_points_required": specific_data_points_required,
+                        "historical_context": historical_context,
+                        "payment_hash": payment_hash
+                    })
+                    return result.content[0].text
+                
+                @tool
+                async def buy_vip_pass(payment_hash: str = "") -> str:
+                    """Buys a 1-Hour VIP Pass. Costs 10,000 sats. May return a 402 error with an invoice."""
+                    result = await session.call_tool("buy_vip_pass", arguments={"payment_hash": payment_hash})
+                    return result.content[0].text
+
+                @tool
+                async def fetch_crypto_price(ticker: str, payment_hash: str = "") -> str:
+                    """Fetches live crypto price. Costs 15 sats (or free if you provide a VIP Pass hash)."""
+                    result = await session.call_tool("get_crypto_spot_price", arguments={"ticker": ticker, "payment_hash": payment_hash})
+                    return result.content[0].text
+                
+                @tool
+                async def negotiate_price(item: str, bid_sats: int) -> str:
+                    """Submits a price bid to the server for a specific item (e.g., 'crypto_spot_price', 'image_generation'). Returns an invoice if accepted."""
+                    result = await session.call_tool("negotiate_price", arguments={"item": item, "bid_sats": bid_sats})
+                    return result.content[0].text
+
+                @tool
+                def save_to_memory(key: str, value: str) -> str:
+                    """Saves information to long-term SQLite memory."""
+                    print(f"💾 Saving to memory: [{key}] -> {value}")
+                    cursor.execute("INSERT OR REPLACE INTO memory (key, value) VALUES (?, ?)", (key, value))
+                    conn.commit()
+                    return f"Successfully saved '{value}' under key '{key}'."
+
+                @tool
+                def query_memory(key: str) -> str:
+                    """Retrieves information from long-term SQLite memory."""
+                    print(f"🔍 Searching memory for: [{key}]")
+                    cursor.execute("SELECT value FROM memory WHERE key=?", (key,))
+                    result = cursor.fetchone()
+                    if result:
+                        return f"Found in memory: {result[0]}"
+                    return f"No memory found for key '{key}'."
+
+                @tool
+                async def generate_ai_image(prompt: str, payment_hash: str = "") -> str:
+                    """Generates an AI image based on a text prompt. Costs 100 sats."""
+                    result = await session.call_tool("generate_image", arguments={"prompt": prompt, "payment_hash": payment_hash})
+                    return result.content[0].text
+
+                # --- PHASE 1 GUARDRAILS ---
+                DAILY_LIMIT_SATS = 20000 
+                total_spent_sats = 0
+
+                @tool
+                def pay_lightning_invoice(invoice: str) -> str:
+                    """Pays a Lightning invoice. Automatically checks spending guardrails."""
+                    nonlocal total_spent_sats
+                    print(f"\n💸 Gemini is attempting to pay: {invoice[:15]}...")
+                    stub = get_bob_stub()
+                    
+                    try:
+                        decode_req = ln.PayReqString(pay_req=invoice)
+                        decoded = stub.DecodePayReq(decode_req)
+                        invoice_amount = decoded.num_satoshis
+                    except Exception as e:
+                        return f"Payment blocked: Could not decode invoice. Error: {e}"
+                    
+                    print(f"🛡️ Guardrail Check: {invoice_amount} sats. (Spent: {total_spent_sats}/{DAILY_LIMIT_SATS})")
+                    
+                    if total_spent_sats + invoice_amount > DAILY_LIMIT_SATS:
+                        print("❌ GUARDRAIL TRIGGERED: Daily spending limit exceeded!")
+                        return f"Payment blocked: Daily spending limit of {DAILY_LIMIT_SATS} sats reached."
+                    
+                    try:
+                        request = ln.SendRequest(payment_request=invoice)
+                        response = stub.SendPaymentSync(request)
+                        
+                        if response.payment_error:
+                            return f"Payment failed: {response.payment_error}"
+                            
+                        total_spent_sats += invoice_amount
+                        print(f"✅ Payment successful! New total spent: {total_spent_sats} sats.")
+                        return "Payment successful! Use the r_hash from the original 402 error to retry the tool."
+                    except grpc.RpcError as e:
+                        print(f"⚠️ Network error intercepted: {e.details()}")
+                        return f"Payment failed due to network error: {e.details()}"
+                
+                # Update this line to include the new tool!
+                tools = [buy_vip_pass, fetch_crypto_price, pay_lightning_invoice, save_to_memory, query_memory, generate_ai_image, negotiate_price, deep_market_analysis, request_risk_approval]
+
+                llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+                
+                system_prompt = (
+                    "You are 'Bob', the General Contractor AI of a 4-Layer architecture. "
+                    "Your Prime Directive is to NEVER WASTE MONEY on data we already own.\n"
+                    "1. ALWAYS use `query_memory` first.\n"
+                    "2. If memory fails, use your tools to generate invoices.\n"
+                    "3. 🛑 THE CHARLIE PROTOCOL 🛑: BEFORE you use `pay_lightning_invoice` for ANY reason, you MUST call `request_risk_approval` with the exact satoshi amount and a strong financial justification.\n"
+                    "4. If Charlie says 'APPROVED', you may pay the invoice and complete the task.\n"
+                    "5. If Charlie says 'REJECTED', you MUST ABORT the payment and tell the user the request was blocked by Risk Management."
+                )
+                
+                agent_executor = create_agent(model=llm, tools=tools, system_prompt=system_prompt)
+                
+                mission = (
+                    "I have two tasks for you today:\n"
+                    "Task 1: I want you to use the `generate_image` tool to make a picture of a cute banana holding a dollar sign (costs 100 sats).\n"
+                    "Task 2: I need a `deep_market_analysis` on 'Solana (SOL) Network Upgrades in 2026' (specifically 1. Name of the upgrades, 2. Projected TPS). "
+                    "Make sure you get Charlie's approval for both expenses before you pay!"
+                )
+                
+                result = await agent_executor.ainvoke({"messages": [("user", mission)]})
+                print(f"\n🧠 Gemini Final Answer:\n{result['messages'][-1].content}")
+                                
+    except Exception as e:
+        print("\n❌ A fatal error occurred:")
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    asyncio.run(run())

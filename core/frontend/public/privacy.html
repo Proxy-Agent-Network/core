@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy // Proxy Protocol</title>
+    
+    <meta name="description" content="Proxy Protocol Privacy Policy. Details on Zero-Knowledge data handling, automated session TTL, and hardware-enforced privacy standards for AI-human interactions.">
+    <meta name="keywords" content="Privacy Policy, Zero Knowledge, ZK-Privacy, Proxy Protocol, Data TTL, AI Privacy">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Fira+Code:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { background: #050505; color: #e5e5e5; font-family: 'Inter', sans-serif; line-height: 1.6; }
+        .grid-bg { background-image: radial-gradient(#1a1a1a 1px, transparent 1px); background-size: 20px 20px; }
+        .mono { font-family: 'Fira Code', monospace; }
+        .privacy-section { border-left: 2px solid #6366f1; padding-left: 1.5rem; margin-bottom: 2.5rem; }
+        .btn-outline { border: 1px solid #00FF41; color: #00FF41; font-weight: 700; padding: 0.5rem 1rem; transition: all 0.2s; text-transform: uppercase; font-size: 0.75rem; }
+        .btn-outline:hover { background: rgba(0, 255, 65, 0.1); box-shadow: 0 0 15px rgba(0, 255, 65, 0.2); }
+    </style>
+</head>
+<body class="grid-bg min-h-screen p-8">
+    <main class="max-w-3xl mx-auto bg-[#0a0a0a] border border-gray-900 rounded-3xl p-12 shadow-2xl">
+        <header class="mb-12 border-b border-gray-900 pb-8">
+            <h1 class="text-4xl font-black uppercase tracking-tighter italic text-white">Privacy <span class="text-indigo-500 not-italic">Policy</span></h1>
+            <p class="text-[10px] text-gray-500 mono mt-3 font-bold uppercase tracking-[0.3em]">Protocol Standard v1.6.0 // Zero-Knowledge Focus</p>
+        </header>
+
+        <section class="space-y-8">
+            <div class="privacy-section">
+                <h2 class="text-white font-bold uppercase tracking-tight mb-2">1. Zero-Knowledge Context</h2>
+                <p class="text-sm text-gray-400">The Proxy Protocol utilizes a "need-to-know" data injection model. Human nodes (Proxies) are only provided with the minimum encrypted context required to perform a physical act. Core agent logic and sensitive backend data are never exposed to the human runtime.</p>
+            </div>
+
+            <div class="privacy-section">
+                <h2 class="text-white font-bold uppercase tracking-tight mb-2">2. Automated Session TTL</h2>
+                <p class="text-sm text-gray-400">All task-related data is subject to an automated **Time-To-Live (TTL)**. Once a task is signed and the Forensic Delta is verified, the ephemeral session data is purged from the node's hardware-attested cache.</p>
+            </div>
+
+            <div class="privacy-section">
+                <h2 class="text-white font-bold uppercase tracking-tight mb-2">3. Hardware-Enforced Privacy</h2>
+                <p class="text-sm text-gray-400">Node operators utilize **TPM 2.0** enclaves to manage cryptographic keys. This ensures that even the node operator cannot export the private keys used to sign privacy-compliant manifests.</p>
+            </div>
+
+            <div class="bg-indigo-950/20 border border-indigo-500/30 p-6 rounded-xl">
+                <h3 class="text-indigo-400 font-bold text-xs uppercase mb-3 flex items-center gap-2">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i>
+                    Anonymity Standard
+                </h3>
+                <p class="text-[11px] text-gray-400 leading-relaxed">
+                    By default, Agent-to-Proxy interactions are pseudonymous. Real-world identity is only disclosed in Tier 4 "Physical KYC" events where both parties have explicitly consented via cryptographic handshake.
+                </p>
+            </div>
+        </section>
+
+        <footer class="mt-16 pt-8 border-t border-gray-900 flex justify-between items-center">
+            <a href="legal.html" class="btn-outline">Return to Legal Nexus</a>
+            <span class="text-[9px] text-gray-700 mono uppercase tracking-widest">Privacy Guard: Active</span>
+        </footer>
+    </main>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

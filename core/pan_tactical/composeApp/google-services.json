@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "257275785096",
+    "project_id": "pan-tactical",
+    "storage_bucket": "pan-tactical.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:257275785096:android:bd23e207caab95bdba543d",
+        "android_client_info": {
+          "package_name": "network.proxyagent.pantactical"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB53_NGecMk17Rn8tEMR6Z-a4ajg-c9o5Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,37 @@
+# /etc/systemd/system/proxy-heartbeat.service
+
+[Unit]
+Description=Proxy Protocol Hardware Heartbeat Monitor
+Documentation=https://github.com/Proxy-Agent-Network/core/blob/main/hardware/README.md
+
+# Ensure network is available before starting
+After=network-online.target
+Wants=network-online.target
+
+# If the TPM is required, we want to wait for the tpm device to be initialized
+ConditionPathExists=/dev/tpm0
+
+[Service]
+Type=simple
+
+# Running as root is typically required for TPM access and nmcli scans
+User=root
+Group=root
+WorkingDirectory=/app/core/node
+ExecStart=/usr/bin/python3 /app/core/node/hardware_heartbeat.py
+
+# Automatic restart on failure after 10 seconds
+Restart=always
+RestartSec=10
+
+# Logging configuration
+StandardOutput=append:/var/log/proxy_heartbeat.log
+StandardError=append:/var/log/proxy_heartbeat.log
+
+# Resource Constraints
+MemoryMax=100M
+CPUWeight=50
+
+[Install]
+# Start the service in multi-user mode
+WantedBy=multi-user.target

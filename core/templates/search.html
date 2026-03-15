@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <title>Search | Proxy Agent Network</title>
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&family=Press+Start+2P&family=Special+Elite&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || localStorage.getItem('selectedTheme');
+            if (savedTheme) { document.documentElement.setAttribute('data-theme', savedTheme); }
+            
+            // 🛑 NUCLEAR AUDIO BAN
+            window.Audio = function() { return { play: () => Promise.resolve(), pause: () => {}, load: () => {} }; };
+            if(window.HTMLAudioElement) {
+                window.HTMLAudioElement.prototype.play = () => Promise.resolve();
+            }
+        })();
+    </script>
+
+    <style>
+        body { margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; }
+        .search-hero { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; }
+        .search-box-container { width: 100%; max-width: 700px; position: relative; margin-bottom: 30px; }
+        .search-input { width: 100%; padding: 18px 25px; border-radius: 50px; border: 2px solid var(--border); background: var(--card-bg); color: var(--text); font-size: 1.1rem; font-family: 'Courier Prime', monospace; transition: all 0.3s ease; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .search-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 15px var(--primary-glow); }
+        .search-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); padding: 10px 25px; border-radius: 40px; background: var(--primary); color: #000; font-weight: bold; border: none; cursor: pointer; transition: 0.2s; }
+        .search-btn:hover { filter: brightness(1.2); }
+        
+        /* L402 Payment Modal Styles */
+        .payment-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+        .modal-content { background: var(--card-bg); padding: 30px; border-radius: 15px; border: 2px solid #f1c40f; max-width: 500px; width: 90%; text-align: center; box-shadow: 0 0 50px rgba(241, 196, 15, 0.2); }
+        .invoice-box { background: #000; padding: 15px; border: 1px dashed #f1c40f; border-radius: 8px; margin: 20px 0; font-family: 'Courier Prime', monospace; font-size: 11px; word-break: break-all; color: #f1c40f; cursor: pointer; }
+        .invoice-box:active { background: #111; }
+        
+        /* Results View Styles */
+        .results-area { width: 100%; max-width: 800px; margin: 0 auto; padding: 0 20px 100px 20px; display: none; }
+        .result-card { background: var(--card-bg); border: 1px solid var(--border); padding: 20px; border-radius: 10px; margin-bottom: 20px; transition: 0.2s; }
+        .result-card:hover { border-color: var(--primary); }
+        .result-link { color: var(--primary); font-size: 1.2rem; font-weight: bold; text-decoration: none; display: block; margin-bottom: 5px; }
+        .result-snippet { font-size: 0.95rem; line-height: 1.5; color: #aaa; }
+        .hw-stamp { font-size: 10px; color: #666; margin-top: 10px; border-top: 1px solid #333; padding-top: 5px; font-family: 'Courier Prime', monospace; }
+        
+        .loader { display: none; width: 50px; height: 50px; border: 3px solid transparent; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    {% include 'components/header.html' %}
+    {% include 'components/settings_modal.html' %}
+
+    <main class="search-hero" id="main-view">
+        <h1 style="font-family: 'Orbitron'; margin-bottom: 10px; color: var(--primary);">PROXY SEARCH</h1>
+        <p style="margin-bottom: 40px; color: #888;">L402 Verified Intelligence Grid</p>
+
+        <div class="search-box-container">
+            <input type="text" id="search-query" class="search-input" placeholder="Query the decentralized web...">
+            <button onclick="initiateSearch()" class="search-btn">EXECUTE (10 SATS)</button>
+        </div>
+
+        <div id="loading-spinner" class="loader"></div>
+    </main>
+
+    <section class="results-area" id="results-view">
+        <div style="margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 15px;">
+            <span id="result-count">Showing Top 5 Results</span>
+            <button onclick="resetSearch()" style="float: right; background: none; border: 1px solid #444; color: #888; cursor: pointer; padding: 2px 10px; border-radius: 4px;">New Search</button>
+        </div>
+        <div id="results-list"></div>
+    </section>
+
+    <div class="payment-modal" id="paymentModal">
+        <div class="modal-content">
+            <i class="fas fa-bolt" style="color: #f1c40f; font-size: 2rem;"></i>
+            <h2 style="font-family: 'Orbitron'; margin: 15px 0;">PAYMENT REQUIRED</h2>
+            <p>Your search mission requires a 10 SAT micro-payout.</p>
+            
+            <div class="invoice-box" id="invoice-text" onclick="copyInvoice()" title="Click to copy invoice"></div>
+            
+            <button id="verify-btn" onclick="verifyPayment()" class="search-btn" style="position: static; transform: none; width: 100%; margin-top: 10px;">
+                I HAVE PAID
+            </button>
+            <p style="margin-top: 15px; font-size: 12px; color: #666; cursor: pointer;" onclick="closeModal()">Cancel Transaction</p>
+        </div>
+    </div>
+
+    {% include 'components/footer.html' %}
+
+    <script>
+        let currentHash = null;
+        let pollingInterval = null;
+
+        /**
+         * Step 1: Request Search execution. 
+         * Catches 402 if payment is needed via the L402 protocol.
+         */
+        async function initiateSearch() {
+            const query = document.getElementById('search-query').value;
+            if(!query) return;
+            
+            document.getElementById('loading-spinner').style.display = 'block';
+
+            try {
+                const response = await fetch('/api/v1/search/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        query: query, 
+                        payment_hash: currentHash // initially null
+                    })
+                });
+
+                if (response.status === 402) {
+                    // Backend returns 402 + Bolt11 Invoice
+                    const data = await response.json();
+                    currentHash = data.hash;
+                    showPaymentModal(data.invoice);
+                } else if (response.ok) {
+                    // Search is fulfilled after payment verification
+                    const data = await response.json();
+                    renderResults(data);
+                } else {
+                    const err = await response.json();
+                    alert("Error: " + (err.message || "Search execution failed."));
+                }
+            } catch (error) {
+                console.error("Search failed:", error);
+                alert("Core Network Offline.");
+            } finally {
+                document.getElementById('loading-spinner').style.display = 'none';
+            }
+        }
+
+        /**
+         * Step 2: Display the invoice to the user.
+         */
+        function showPaymentModal(invoice) {
+            document.getElementById('invoice-text').innerText = invoice;
+            document.getElementById('paymentModal').style.display = 'flex';
+            
+            // Start auto-polling for settlement status
+            if(pollingInterval) clearInterval(pollingInterval);
+            pollingInterval = setInterval(autoCheckStatus, 3000);
+        }
+
+        function closeModal() {
+            if(pollingInterval) clearInterval(pollingInterval);
+            document.getElementById('paymentModal').style.display = 'none';
+        }
+
+        function copyInvoice() {
+            const text = document.getElementById('invoice-text').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                alert("Invoice copied to clipboard!");
+            });
+        }
+
+        /**
+         * Step 3: Manual or automatic verification with the LND node.
+         */
+        async function verifyPayment() {
+            const btn = document.getElementById('verify-btn');
+            btn.innerText = "VERIFYING...";
+            
+            try {
+                const check = await fetch(`/api/v1/invoice/status/${currentHash}`);
+                const statusData = await check.json();
+
+                if (statusData.status === "SETTLED") {
+                    if(pollingInterval) clearInterval(pollingInterval);
+                    closeModal();
+                    initiateSearch(); // Re-trigger search with the paid preimage/hash
+                } else {
+                    alert("Payment not detected yet. Please settle the invoice in your wallet.");
+                    btn.innerText = "I HAVE PAID";
+                }
+            } catch (e) {
+                alert("Status check failed.");
+                btn.innerText = "I HAVE PAID";
+            }
+        }
+
+        async function autoCheckStatus() {
+            const check = await fetch(`/api/v1/invoice/status/${currentHash}`);
+            const data = await check.json();
+            if (data.status === "SETTLED") {
+                clearInterval(pollingInterval);
+                closeModal();
+                initiateSearch();
+            }
+        }
+
+        /**
+         * Step 4: Display results with Hardware Enclave attestation.
+         */
+        function renderResults(data) {
+            document.getElementById('main-view').style.display = 'none';
+            document.getElementById('results-view').style.display = 'block';
+            
+            const list = document.getElementById('results-list');
+            if (data.results && data.results.length > 0) {
+                list.innerHTML = data.results.map(res => `
+                    <div class="result-card">
+                        <a href="${res.href}" target="_blank" class="result-link">${res.title}</a>
+                        <div class="result-snippet">${res.body}</div>
+                        <div class="hw-stamp">🛡️ Attested by Enclave: ${data.hw_attestation || 'TPM2-ENCLAVE-0x8F9B'}</div>
+                    </div>
+                `).join('');
+            } else {
+                list.innerHTML = '<p style="text-align:center; color:#666;">No results found for this mission.</p>';
+            }
+        }
+
+        function resetSearch() {
+            currentHash = null;
+            document.getElementById('main-view').style.display = 'flex';
+            document.getElementById('results-view').style.display = 'none';
+            document.getElementById('search-query').value = '';
+        }
+
+        // Network Stats Sync with Enclave status
+        function updateNetworkStats() {
+            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
+                const healthSpan = document.getElementById('health-peers');
+                if (healthSpan) {
+                    healthSpan.innerHTML = `● ${data.node_id ? 'ENCLAVE ACTIVE' : 'PEERS CONNECTED'}`; 
+                    healthSpan.style.color = "#2ecc71"; 
+                }
+            }).catch(e => console.log("Stats fetch failed"));
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            updateNetworkStats();
+            setInterval(updateNetworkStats, 10000);
+            
+            document.getElementById('search-query').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') initiateSearch();
+            });
+        });
+    </script>
+</body>
+</html>

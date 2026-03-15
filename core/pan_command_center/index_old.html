@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    
+    <title>PAN Command Center</title>
+    <style>
+        body {
+            margin: 0; padding: 0; background-color: #121212; color: #fff;
+            font-family: 'Courier New', Courier, monospace; display: flex; height: 100vh; overflow: hidden;
+        }
+        #sidebar {
+            width: 350px; background-color: #1E1E1E; border-right: 2px solid #00BCD4;
+            display: flex; flex-direction: column; z-index: 10;
+        }
+        #header { padding: 20px; background-color: #000; border-bottom: 1px solid #333; }
+        #header h1 { margin: 0; color: #00BCD4; font-size: 24px; font-weight: 900; letter-spacing: 2px; }
+        #header p { margin: 5px 0 0 0; color: #888; font-size: 12px; }
+        
+        #agent-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .agent-card {
+            background-color: #2A2A2A; border: 1px solid #444; border-radius: 6px;
+            padding: 15px; margin-bottom: 10px; cursor: pointer; transition: 0.2s;
+        }
+        .agent-card:hover { border-color: #00BCD4; }
+        .agent-card.offline { opacity: 0.6; border-color: #F44336; }
+        .agent-id { font-size: 10px; color: #aaa; word-wrap: break-word; }
+        .agent-status { font-weight: bold; font-size: 14px; margin-top: 5px; }
+        .status-online { color: #4CAF50; }
+        .status-offline { color: #F44336; }
+        .agent-meta { font-size: 12px; color: #ccc; margin-top: 5px; }
+
+        #dispatch-panel {
+            padding: 20px; background-color: #000; border-top: 1px solid #333;
+        }
+        #dispatch-panel h3 { margin: 0 0 15px 0; color: #F44336; font-size: 16px; }
+        input { 
+            width: 100%; background: #222; border: 1px solid #444; color: #00BCD4; 
+            padding: 8px; margin-bottom: 10px; box-sizing: border-box; font-family: monospace;
+        }
+        button {
+            width: 100%; background: #4CAF50; color: #fff; border: none; padding: 12px;
+            font-weight: bold; cursor: pointer; border-radius: 4px; letter-spacing: 1px;
+        }
+        button:hover { background: #45a049; }
+
+        #map { flex: 1; height: 100%; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div id="header">
+            <h1>PAN COMMAND</h1>
+            <p>GLOBAL FLEET TELEMETRY</p>
+        </div>
+        <div id="agent-list">
+            <p style="text-align:center; color:#666; font-size:12px; margin-top:20px;">AWAITING SATELLITE UPLINK...</p>
+        </div>
+        <div id="dispatch-panel">
+            <h3>🚨 MANUAL DISPATCH</h3>
+            <input type="text" id="disp-uid" placeholder="Target Agent UID" readonly>
+            <input type="text" id="disp-error" placeholder="Error Code (e.g. ERR-TIRE)" value="ERR-TIRE: Puncture">
+            <input type="text" id="disp-loc" placeholder="Location Name" value="Downtown Hub">
+            <input type="text" id="disp-bounty" placeholder="Bounty Amount" value="$85.00">
+            <button onclick="sendDispatch()">DEPLOY PROXY AGENT</button>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="secrets.js"></script>
+
+    <script>
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${window.ENV.GOOGLE_MAPS_API_KEY}&callback=initMap`;
+        script.async = true;
+        document.head.appendChild(script);
+    </script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        // SECURITY FIX: Import Firebase Auth to establish a verifiable session
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        // Pull the config from the secure local window.ENV object
+        const app = initializeApp(window.ENV.FIREBASE_CONFIG);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        let map;
+        let agentMarkers = {};
+        let agentCircles = {}; 
+
+        // SECURITY FIX: HTML Sanitizer to prevent DOM-based XSS attacks from poisoned database nodes
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag])
+            );
+        }
+
+        window.sendDispatch = function() {
+            const uid = document.getElementById('disp-uid').value;
+            if (!uid) { alert("Click an agent in the list to select them for dispatch first!"); return; }
+            if (!map) { alert("Map not loaded yet."); return; }
+
+            const center = map.getCenter();
+            
+            // SECURITY FIX: Strict type casting prevents JSON object injection
+            const payload = {
+                type: "MISSION",
+                lat: Number(center.lat()),
+                lon: Number(center.lng()),
+                errorCode: String(document.getElementById('disp-error').value),
+                bounty: String(document.getElementById('disp-bounty').value),
+                intersection: String(document.getElementById('disp-loc').value),
+                timestamp: Date.now()
+            };
+
+            // Push to Firebase RTDB
+            set(ref(db, 'dispatch/' + escapeHTML(uid)), payload).then(() => {
+                alert("MISSION DEPLOYED TO " + escapeHTML(uid).substring(0,8) + "...");
+            }).catch(error => {
+                console.error("Dispatch Failed: ", error);
+                alert("SECURITY BLOCK: Dispatch failed. Check database permissions.");
+            });
+        };
+
+        window.initMap = function() {
+            const tacticalStyle = [
+                { elementType: "geometry", stylers: [{ color: "#212121" }] },
+                { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+                { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+                { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
+                { featureType: "road", elementType: "geometry", stylers: [{ color: "#383838" }] },
+                { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212121" }] },
+                { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] }
+            ];
+
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 33.415, lng: -111.831 },
+                zoom: 12,
+                styles: tacticalStyle,
+                disableDefaultUI: true,
+                zoomControl: true
+            });
+
+            // Authenticate session before attaching database listeners
+            signInAnonymously(auth).then(() => {
+                console.log("🔒 Command Center Session Authenticated.");
+                startTelemetryLink();
+            }).catch((error) => {
+                console.warn("Auth not configured or failed. Attempting read-only fallback...", error);
+                startTelemetryLink(); // Fallback for dev environments without Auth enforced
+            });
+        };
+
+        function startTelemetryLink() {
+            const agentsRef = ref(db, 'agents');
+            
+            onValue(agentsRef, (snapshot) => {
+                const data = snapshot.val();
+                if (!data) return;
+
+                const listDiv = document.getElementById('agent-list');
+                listDiv.innerHTML = ''; 
+
+                Object.keys(data).forEach(uid => {
+                    const agent = data[uid];
+                    if (!agent.status) return;
+
+                    const isOnline = agent.status.status === "ONLINE";
+                    const lat = agent.status.latitude;
+                    const lon = agent.status.longitude;
+                    const radiusMiles = agent.status.radius || 0;
+                    const radiusMeters = radiusMiles * 1609.34; 
+                    const lastPing = new Date(agent.status.timestamp || Date.now()).toLocaleTimeString();
+
+                    if (lat && lon) {
+                        const position = { lat: lat, lng: lon };
+                        
+                        if (agentMarkers[uid]) {
+                            agentMarkers[uid].setPosition(position);
+                            agentMarkers[uid].setIcon(getMarkerIcon(isOnline));
+                        } else {
+                            agentMarkers[uid] = new google.maps.Marker({
+                                position: position,
+                                map: map,
+                                title: "Agent: " + escapeHTML(uid),
+                                icon: getMarkerIcon(isOnline)
+                            });
+                        }
+
+                        if (isOnline) {
+                            if (agentCircles[uid]) {
+                                agentCircles[uid].setCenter(position);
+                                agentCircles[uid].setRadius(radiusMeters);
+                            } else {
+                                agentCircles[uid] = new google.maps.Circle({
+                                    strokeColor: "#F44336",
+                                    strokeOpacity: 0.5,
+                                    strokeWeight: 2,
+                                    fillColor: "#F44336",
+                                    fillOpacity: 0.1, 
+                                    map: map,
+                                    center: position,
+                                    radius: radiusMeters,
+                                    clickable: false 
+                                });
+                            }
+                        } else {
+                            if (agentCircles[uid]) {
+                                agentCircles[uid].setMap(null);
+                                delete agentCircles[uid];
+                            }
+                        }
+                    }
+
+                    // Build Sidebar Card with escaped properties to prevent injection
+                    const card = document.createElement('div');
+                    card.className = `agent-card ${isOnline ? '' : 'offline'}`;
+                    card.onclick = () => {
+                        document.getElementById('disp-uid').value = escapeHTML(uid);
+                        if(lat && lon) map.panTo({lat: lat, lng: lon});
+                    };
+
+                    card.innerHTML = `
+                        <div class="agent-id">UID: ${escapeHTML(uid)}</div>
+                        <div class="agent-status ${isOnline ? 'status-online' : 'status-offline'}">
+                            ${isOnline ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                        </div>
+                        <div class="agent-meta">
+                            Radius: ${escapeHTML(radiusMiles)} miles<br>
+                            Last Ping: ${escapeHTML(lastPing)}
+                        </div>
+                    `;
+                    listDiv.appendChild(card);
+                });
+            });
+        }
+
+        function getMarkerIcon(isOnline) {
+            return {
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: isOnline ? "#00BCD4" : "#F44336",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 2,
+                scale: 8
+            };
+        }
+    </script>
+</body>
+</html>

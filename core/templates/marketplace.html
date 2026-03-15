@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="business">
+<head>
+    <meta charset="UTF-8">
+    <title>Agent Marketplace | Proxy Agent Network</title>
+    
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language-engine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme-engine.js') }}"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if (savedTheme) { document.documentElement.setAttribute('data-theme', savedTheme); }
+        })();
+    </script>
+    
+    <style>
+        /* --- CARD STYLES --- */
+        .bid-card { position: relative; margin-bottom: 15px; border-radius: 6px; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; background: var(--bg); border: 1px solid rgba(128,128,128,0.2); }
+        .bid-card { --card-color: #2ecc71; --card-bg: rgba(46, 204, 113, 0.15); border-left: 6px solid var(--card-color) !important; border-right: 6px solid var(--card-color) !important; background: linear-gradient(90deg, var(--card-bg) 0%, transparent 40%, transparent 60%, var(--card-bg) 100%); }
+        .bid-info h3 { margin: 0 0 5px 0; font-size: 1.1rem; color: var(--card-color); }
+        .bid-info small { opacity: 0.7; font-family: monospace; }
+        .dist-badge { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 8px; border: 1px solid rgba(255,255,255,0.1); }
+        .claim-btn { background: var(--card-color); color: #fff; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: 'Orbitron', sans-serif; text-transform: uppercase; letter-spacing: 1px; box-shadow: 0 4px 0 rgba(0,0,0,0.3); transition: all 0.1s; text-shadow: 0 1px 2px rgba(0,0,0,0.3); white-space: nowrap; }
+        .claim-btn:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 5px 0 rgba(0,0,0,0.3); }
+        .claim-btn:active { transform: translateY(4px); box-shadow: 0 0 0 rgba(0,0,0,0.3); }
+        .claim-btn:disabled { background: var(--card-color); opacity: 0.8; cursor: not-allowed; transform: translateY(0); box-shadow: none; color: rgba(255,255,255,0.9); }
+
+        /* --- COLOR PICKER --- */
+        .color-picker-container { position: relative; display: flex; align-items: center; gap: 10px; }
+        .current-color-swatch { width: 42px; height: 42px; border-radius: 6px; cursor: pointer; border: 2px solid var(--border); transition: transform 0.1s; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .current-color-swatch:hover { transform: scale(1.05); border-color: var(--text); }
+        .color-popup { display: none; position: absolute; top: 50px; left: 0; z-index: 100; background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); grid-template-columns: repeat(4, 1fr); gap: 8px; width: 180px; }
+        .color-popup.active { display: grid; }
+        .popup-swatch { width: 32px; height: 32px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
+        .popup-swatch:hover { transform: scale(1.1); border-color: white; }
+
+        /* --- COMPACT & TOGGLES --- */
+        .bid-list.compact .bid-card { margin-bottom: 6px; padding: 6px 12px; border-radius: 4px; }
+        .bid-list.compact .bid-info h3 { font-size: 0.95rem; margin-bottom: 0; }
+        .bid-list.compact .claim-btn { padding: 4px 12px; font-size: 0.8rem; }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--accent); }
+        input:checked + .slider:before { transform: translateX(20px); }
+        .checkbox-wrapper { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        input[type=range] { width: 100%; margin: 10px 0; background: transparent; -webkit-appearance: none; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: rgba(128,128,128,0.3); border-radius: 3px; }
+        input[type=range]::-webkit-slider-thumb { height: 16px; width: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; -webkit-appearance: none; margin-top: -5px; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+
+        /* Escrow Overlay */
+        #escrow-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(8px); }
+    </style>
+</head>
+<body>
+    <script>window.OWNED_THEMES = JSON.parse('{{ (owned or [])|tojson|safe }}');</script>
+
+    <div id="lock-overlay">
+        <div class="lock-container">
+            <div class="lock-icon"><i class="fas fa-lock"></i></div>
+            <h2 id="lock-msg" data-i18n="btn_lock">SECURITY LOCKDOWN</h2>
+            <div class="pin-display" id="pin-dots"></div>
+            <div class="keypad">
+                <button class="key-btn" onclick="enterDigit(1)">1</button>
+                <button class="key-btn" onclick="enterDigit(2)">2</button>
+                <button class="key-btn" onclick="enterDigit(3)">3</button>
+                <button class="key-btn" onclick="enterDigit(4)">4</button>
+                <button class="key-btn" onclick="enterDigit(5)">5</button>
+                <button class="key-btn" onclick="enterDigit(6)">6</button>
+                <button class="key-btn" onclick="enterDigit(7)">7</button>
+                <button class="key-btn" onclick="enterDigit(8)">8</button>
+                <button class="key-btn" onclick="enterDigit(9)">9</button>
+                <button class="key-btn" onclick="enterDigit('clear')" style="color: #e74c3c; border-color: #e74c3c;"><i class="fas fa-times"></i></button>
+                <button class="key-btn" onclick="enterDigit(0)">0</button>
+                <button class="key-btn" onclick="enterDigit('enter')" style="color: #2ecc71; border-color: #2ecc71;"><i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="audio-unlock-overlay">
+        <h1 class="audio-title">PROXY // NETWORK</h1>
+        <div class="audio-subtitle">ESTABLISHING SECURE CONNECTION...</div>
+        <button class="audio-btn" onclick="unlockAudio()">INITIALIZE UPLINK</button>
+    </div>
+
+    <audio id="audio-click" src="{{ url_for('static', filename='audio/click.mp3') }}"></audio>
+    <audio id="audio-success" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}"></audio>
+    <audio id="audio-marvin" src="{{ url_for('static', filename='audio/marvin_laughing.mp3') }}"></audio>
+    <audio id="audio-powerup" src="{{ url_for('static', filename='audio/Secret_PowerUp1.mp3') }}"></audio>
+    <audio id="audio-failure" src="{{ url_for('static', filename='audio/incorrect.mp3') }}" preload="auto"></audio>
+    <audio id="cash-sound" src="{{ url_for('static', filename='audio/Claimed_Task_CashRegister.mp3') }}" preload="auto"></audio>
+    <audio id="lock-sound" src="{{ url_for('static', filename='audio/click.mp3') }}" preload="auto"></audio>
+
+    <div id="bypass-overlay">
+        <div class="bypass-title">&gt;&gt;&gt;SYSTEM BYPASS&lt;&lt;&lt;</div>
+        <div style="color:white;">BONUS_REWARD: <span style="color:#f1c40f;">+30 XP</span></div>
+    </div>
+
+    <div id="marvin-sprite-container" onclick="handleMarvinClick()" ondblclick="marvinLaugh()">
+        <img id="marvin-image" src="{{ url_for('static', filename='images/magic_marvin_dance.webp') }}" alt="Magic Marvin">
+    </div>
+
+    <div id="escrow-overlay">
+        <div style="background: var(--bg); padding: 30px; border-radius: 12px; border: 1px solid var(--accent); text-align: center; max-width: 400px; box-shadow: 0 0 50px rgba(0,0,0,0.5); position: relative;">
+            <h2 style="color: var(--accent); margin-bottom: 10px;">L2 ESCROW CONTRACT</h2>
+            <div style="font-family: monospace; opacity: 0.7; margin-bottom: 20px;">HASH: <span id="contract-hash">Loading...</span></div>
+            <div style="background: white; padding: 10px; display: inline-block; border-radius: 4px; margin-bottom: 20px;"><img id="ln-qr-code" src="" alt="Lightning Invoice" style="width: 150px; height: 150px;"></div>
+            <div id="escrow-status" style="font-weight: bold; margin-bottom: 20px;">WAITING FOR PAYMENT...</div>
+            <div class="progress-container" style="background: #333; height: 6px; width: 100%; border-radius: 3px; overflow: hidden;"><div id="escrow-bar" style="background: var(--accent); width: 0%; height: 100%; transition: width 0.1s linear;"></div></div>
+        </div>
+    </div>
+
+    {% include 'components/header.html' %}
+    {% include 'components/settings_modal.html' %}
+
+    <div class="dashboard-grid">
+        <div id="velocity-panel" class="panel" style="grid-column: span 2;">
+            <h2 data-i18n="panel_velocity">Market Velocity (Avg. Sats/Task)</h2>
+            <div style="height: 180px;"><canvas id="marketChart"></canvas></div>
+        </div>
+
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin:0;" data-i18n="panel_ops">Node Operations</h2>
+                <div class="sats-badge" id="node-status-badge" style="background: var(--border); font-size: 0.7rem;">IDLE</div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(128,128,128,0.1); border-radius: 8px;">
+                    <div>
+                        <b data-i18n="lbl_auto_accept">Auto-Accept Mode</b><br>
+                        {% if unlock_auto %}
+                            <small id="auto-status" style="opacity: 0.6;" data-i18n="status_manual">Manual Mode Active</small>
+                        {% else %}
+                            <small style="color: var(--danger); opacity: 0.8;" data-i18n="status_license_req">🔒 LICENSE REQUIRED</small>
+                        {% endif %}
+                    </div>
+                    <label class="switch">
+                        {% if unlock_auto %}
+                            <input type="checkbox" id="auto-accept-checkbox" onchange="toggleAutoAccept()">
+                            <span class="slider"></span>
+                        {% else %}
+                            <input type="checkbox" disabled><span class="slider" style="background: #444; opacity: 0.5;"></span>
+                        {% endif %}
+                    </label>
+                </div>
+
+                <div style="padding: 12px; background: rgba(128,128,128,0.1); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <b data-i18n="lbl_radius">Geofence Radius</b>
+                        <span id="radius-val" style="color: var(--accent); font-family: monospace;">{{ current_radius }} mi</span>
+                    </div>
+                    <input type="range" id="radius-slider" min="1" max="100" value="{{ current_radius }}" oninput="updateRadiusLabel(this.value)" onchange="applyRadiusFilter(this.value)">
+                    <small style="opacity: 0.6; display: block; margin-top: -5px;" data-i18n="lbl_radius_desc">Filter tasks by distance</small>
+                </div>
+                
+                <div style="padding: 10px 12px; background: rgba(128,128,128,0.05); border-radius: 8px; display: flex; flex-direction: column; gap: 8px;">
+                    <label class="checkbox-wrapper"><input type="checkbox" id="compact-toggle" onchange="toggleCompactMode()"><span style="font-size: 0.9rem;" data-i18n="lbl_compact">Compact View</span></label>
+                    <label class="checkbox-wrapper"><input type="checkbox" id="velocity-toggle" onchange="toggleVelocityChart()"><span style="font-size: 0.9rem;" data-i18n="lbl_velocity_hide">Hide Velocity Chart</span></label>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2 data-i18n="panel_broadcast">Broadcast Request</h2>
+            <form id="broadcast-form" onsubmit="handleBroadcast(event)" style="display: flex; flex-direction: column; gap: 12px;">
+                <select id="task-type-select" name="task_type" onchange="updateColorFromPreference()" required style="padding:10px; background:var(--bg); color:var(--text); border: 1px solid var(--border); border-radius: 4px;">
+                    <optgroup label="Live Oracle Data" id="grp_oracle">
+                        <option value="FINANCIAL" data-default="#f1c40f" data-i18n="task_financial">📈 Crypto Price Feed (BTC/USD)</option>
+                        <option value="COMPUTE_V1" data-default="#3498db" data-i18n="task_weather">☁️ Weather Station (Global)</option>
+                        <option value="IOT_SENSING" data-default="#2ecc71" data-i18n="task_iot">📡 IoT Sensor Grid</option>
+                    </optgroup>
+                    <optgroup label="Standard Tasks" id="grp_standard">
+                        <option value="Web Scraping" data-default="#2ecc71" data-i18n="task_scrape">🌐 Web Scraping</option>
+                        <option value="Data Validation" data-default="#3498db" data-i18n="task_validation">🛡️ Data Validation</option>
+                        <option value="Ping Test" data-default="#f1c40f" data-i18n="task_ping">📡 Ping Test</option>
+                        <option value="Model Training" data-default="#9b59b6" data-i18n="task_training">🧠 Model Training</option>
+                        <option value="Courier Task" data-default="#e67e22" data-i18n="task_courier">📦 Courier Task</option>
+                        <option value="Photography" data-default="#e84393" data-i18n="task_photo">📷 Photography</option>
+                        <option value="Document Scanning" data-default="#00cec9" data-i18n="task_scan">📠 Document Scanning</option>
+                    </optgroup>
+                </select>
+
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div class="color-picker-container">
+                        <input type="hidden" name="color" id="selected-color-input" value="#2ecc71">
+                        <div id="current-swatch" class="current-color-swatch" onclick="toggleColorPopup()" style="background-color: #2ecc71;"></div>
+                        <div id="color-popup" class="color-popup"></div>
+                    </div>
+                    <input type="number" id="sats-input" name="sats" placeholder="Sats Offered" required style="flex-grow: 1; padding:10px; background:var(--bg); color:var(--text); border: 1px solid var(--border); border-radius: 4px;">
+                </div>
+                <button type="submit" id="broadcast-btn" class="claim-btn" style="background: var(--accent); color: white;" data-i18n="btn_broadcast">BROADCAST</button>
+            </form>
+        </div>
+
+        <div class="panel" style="grid-column: span 2;">
+            <h2><span data-i18n="panel_available">Available Tasks</span> ({{ bids|length }})</h2>
+            <ul id="market-list" class="bid-list" style="list-style: none; padding: 0;">
+                {% for bid in bids %}
+                {% if bid.status == 'PENDING' %}
+                <li class="bid-card" style="--card-color: {{ bid.color or '#e67e22' }}; --card-bg: {{ bid.color or '#e67e22' }}26;">
+                    <div class="bid-info">
+                        <h3>{{ bid.task_type }} <span class="dist-badge">{{ bid.distance }} mi</span></h3>
+                        <small>{{ bid.requester_id }}</small>
+                    </div>
+                    <button class="claim-btn" data-id="{{ bid.bid_id }}" onclick="claimTask(this)">
+                        CLAIM {{ bid.sats_offered }} SATS
+                    </button>
+                </li>
+                {% endif %}
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    {% include 'components/footer.html' %}
+
+    <script>
+        const NODE_ID = "{{ node_id }}";
+        let rawSatsBalance = {{ balance|default(0) }};
+        const colors = ['#ff4757', '#ff6b81', '#ff7f50', '#ffa502', '#eccc68', '#f1c40f', '#2ed573', '#7bed9f', '#1e90ff', '#3742fa', '#a55eea', '#70a1ff', '#ff9ff3', '#f368e0', '#2bcbba', '#0fb9b1'];
+        let checkInterval = null;
+
+        let audioMuted = localStorage.getItem('audioMuted') === 'true';
+        let audioVolume = localStorage.getItem('audioVolume') || 0.5;
+        
+        function toggleMute() { audioMuted = !audioMuted; localStorage.setItem('audioMuted', audioMuted); toggleMuteUI(); }
+        function toggleMuteUI() {
+            document.querySelectorAll('audio').forEach(el => el.muted = audioMuted);
+            const btn = document.getElementById('mute-btn'); const icon = document.getElementById('mute-icon');
+            if(btn && icon) {
+                if (audioMuted) { btn.style.color = '#e74c3c'; btn.style.borderColor = '#e74c3c'; icon.className = 'fas fa-volume-mute'; } 
+                else { btn.style.color = ''; btn.style.borderColor = ''; icon.className = 'fas fa-volume-up'; }
+            }
+        }
+        function adjustVolume(val) { localStorage.setItem('audioVolume', val); document.querySelectorAll('audio').forEach(el => el.volume = val); }
+
+        if (audioMuted) toggleMuteUI();
+        const slider = document.getElementById('volume-slider'); if (slider) slider.value = audioVolume; adjustVolume(audioVolume);
+
+        if (sessionStorage.getItem('audioUnlocked')) { const overlay = document.getElementById('audio-unlock-overlay'); if(overlay) overlay.style.display = 'none'; }
+        function unlockAudio() {
+            ['audio-click', 'audio-success', 'audio-failure', 'audio-marvin', 'audio-powerup'].forEach(id => { const el = document.getElementById(id); if(el) el.play().then(() => el.pause()).catch(e => {}); });
+            const overlay = document.getElementById('audio-unlock-overlay'); if(overlay) overlay.style.display = 'none'; sessionStorage.setItem('audioUnlocked', 'true');
+            const clickSound = document.getElementById('audio-click'); if(clickSound) clickSound.play().catch(e => {});
+        }
+
+        let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
+        const currSelect = document.getElementById('currency-select'); if(currSelect) currSelect.value = currentUnit;
+        const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, CNY: 0.0047, TWD: 0.021, EUR: 0.00060, GBP: 0.00051, JPY: 0.1, MXN: 0.012, KRW: 0.90, AUD: 0.0010 };
+        function changeUnit(unit) { currentUnit = unit; localStorage.setItem('currencyUnit', unit); const label = document.getElementById('unit-label'); if(label) label.innerText = unit; updateBalanceDisplay(); }
+        function updateBalanceDisplay() {
+            const el = document.getElementById('hud-balance'); if (!el) return;
+            if (rawSatsBalance === 0) { const txt = el.innerText.replace(/,/g, '').split(' ')[0]; if (!isNaN(txt) && txt !== '') rawSatsBalance = parseFloat(txt); }
+            let val = rawSatsBalance * RATES[currentUnit];
+            if (currentUnit === 'SATS') el.innerText = Math.floor(val).toLocaleString() + " SATS"; else if (currentUnit === 'BTC') el.innerText = val.toFixed(8) + " BTC"; else el.innerText = val.toLocaleString('en-US', {style: 'currency', currency: currentUnit});
+        }
+
+        function handleBroadcast(e) {
+            e.preventDefault(); const form = document.getElementById('broadcast-form'); const formData = new FormData(form);
+            fetch('/marketplace', { method: 'POST', body: formData, headers: {'X-Requested-With': 'XMLHttpRequest'} })
+            .then(r => r.json()).then(data => { if(data.status === "INVOICE_REQUIRED") { showEscrow(data.invoice); } else { location.reload(); } })
+            .catch(err => console.error("Broadcast failed:", err));
+        }
+
+        function showEscrow(invoice) {
+            const overlay = document.getElementById('escrow-overlay'); const bar = document.getElementById('escrow-bar'); const status = document.getElementById('escrow-status');
+            const hashDisplay = document.getElementById('contract-hash'); const qrImg = document.getElementById('ln-qr-code');
+            bar.style.width = "0%"; status.innerText = "WAITING FOR PAYMENT..."; status.style.color = "var(--text)";
+            if (checkInterval) clearInterval(checkInterval);
+            overlay.style.display = 'flex'; document.getElementById('lock-sound').play();
+            hashDisplay.innerText = invoice.r_hash.substring(0, 20) + "..."; qrImg.src = invoice.qr_image; 
+            const animTime = (invoice.duration || 8) - 1; 
+            setTimeout(() => { bar.style.width = "90%"; bar.style.transition = `width ${animTime}s linear`; }, 100);
+            checkInterval = setInterval(() => {
+                fetch(`/api/v1/invoice/status/${invoice.r_hash}`).then(r => r.json()).then(res => {
+                    if(res.status === 'SETTLED') { clearInterval(checkInterval); bar.style.transition = "width 0.2s ease"; bar.style.width = "100%"; status.innerText = "PAYMENT CONFIRMED. BROADCASTING..."; status.style.color = "#2ecc71"; document.getElementById('cash-sound').play(); finalizeBid(invoice); }
+                });
+            }, 1000);
+        }
+
+        function finalizeBid(invoice) { fetch('/api/v1/market/finalize_bid', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ r_hash: invoice.r_hash }) }).then(() => setTimeout(() => location.reload(), 1500)); }
+
+        function claimTask(el) {
+            const bidId = el.getAttribute('data-id'); const originalText = el.innerText;
+            el.style.width = el.getBoundingClientRect().width + 'px'; el.style.height = el.getBoundingClientRect().height + 'px';
+            el.style.display = 'inline-flex'; el.style.justifyContent = 'center'; el.style.alignItems = 'center';
+            if (!bidId) { alert("Error: Invalid Task ID."); return; }
+            el.innerText = "CLAIMING..."; el.disabled = true;
+            fetch('/api/v1/market/claim/' + bidId, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ node_id: "{{ node_id }}" }) })
+            .then(r => { if (!r.ok) throw new Error("Server Error"); return r.json(); })
+            .then(data => { if(data.success) { el.innerText = "💰 SECURED"; const cashSound = document.getElementById('cash-sound'); if (cashSound) cashSound.play().catch(e=>console.log(e)).finally(() => setTimeout(()=>location.reload(), 500)); else location.reload(); } else throw new Error("Unavailable"); })
+            .catch(err => { el.innerText = "FAILED"; el.style.backgroundColor = "var(--danger)"; setTimeout(() => { el.innerText = originalText; el.style.backgroundColor = ""; el.disabled = false; }, 2000); });
+        }
+
+        let marketChart;
+        function initMarketChart() {
+            const ctx = document.getElementById('marketChart').getContext('2d');
+            marketChart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [{ data: [], borderColor: '#2ecc71', backgroundColor: '#2ecc7122', fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: false } }, plugins: { legend: { display: false } } } });
+            updateChart(); setInterval(updateChart, 5000);
+        }
+        function updateChart() { fetch('/api/v1/market/trends').then(r => r.json()).then(data => { if(data.labels) { marketChart.data.labels = data.labels; marketChart.data.datasets[0].data = data.prices; marketChart.update(); } }); }
+        function initColorPicker() { const popup = document.getElementById('color-popup'); colors.forEach(color => { const swatch = document.createElement('div'); swatch.className = 'popup-swatch'; swatch.style.backgroundColor = color; swatch.onclick = (e) => { e.stopPropagation(); selectColor(color); toggleColorPopup(); }; popup.appendChild(swatch); }); }
+        function toggleColorPopup() { document.getElementById('color-popup').classList.toggle('active'); }
+        function selectColor(color) { document.getElementById('selected-color-input').value = color; document.getElementById('current-swatch').style.backgroundColor = color; document.getElementById('broadcast-btn').style.background = color; localStorage.setItem('pref_color_' + document.getElementById('task-type-select').value, color); }
+        function updateColorFromPreference() { const select = document.getElementById('task-type-select'); const category = select.value; localStorage.setItem('last_selected_category', category); const savedColor = localStorage.getItem('pref_color_' + category) || select.options[select.selectedIndex].getAttribute('data-default'); selectColor(savedColor); }
+        function restoreState() { const lastCategory = localStorage.getItem('last_selected_category'); if (lastCategory) { document.getElementById('task-type-select').value = lastCategory; } updateColorFromPreference(); }
+        function updateRadiusLabel(val) { document.getElementById('radius-val').innerText = val + " mi"; }
+        function applyRadiusFilter(val) { const url = new URL(window.location.href); url.searchParams.set('radius', val); window.location.href = url.toString(); }
+        function toggleCompactMode() { const list = document.getElementById('market-list'); const isCompact = document.getElementById('compact-toggle').checked; if (isCompact) { list.classList.add('compact'); localStorage.setItem('marketCompact', 'true'); } else { list.classList.remove('compact'); localStorage.setItem('marketCompact', 'false'); } }
+        function toggleVelocityChart() { const panel = document.getElementById('velocity-panel'); const isHidden = document.getElementById('velocity-toggle').checked; panel.style.display = isHidden ? 'none' : 'block'; localStorage.setItem('hideVelocity', isHidden); }
+
+        let inputPin = "";
+        function lockDashboard() { toggleSettings(); const overlay = document.getElementById('lock-overlay'); const msg = document.getElementById('lock-msg'); const storedPin = localStorage.getItem('user_pin'); inputPin = ""; updatePinDots(); overlay.style.display = 'flex'; if (!storedPin) { msg.innerText = "SET NEW PIN CODE"; msg.style.color = "#f1c40f"; } else { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; } }
+        function enterDigit(digit) { const msg = document.getElementById('lock-msg'); if (digit === 'clear') { inputPin = ""; } else if (digit === 'enter') { const storedPin = localStorage.getItem('user_pin'); if (!storedPin) { if (inputPin.length < 4) { msg.innerText = "PIN TOO SHORT"; document.getElementById('audio-failure').play(); setTimeout(() => msg.innerText = "SET NEW PIN CODE", 1000); inputPin = ""; } else { localStorage.setItem('user_pin', inputPin); msg.innerText = "PIN ESTABLISHED"; document.getElementById('audio-success').play(); setTimeout(() => { document.getElementById('lock-overlay').style.display = 'none'; inputPin = ""; }, 1000); } } else { if (inputPin === storedPin) { document.getElementById('audio-success').play(); document.getElementById('lock-overlay').style.display = 'none'; inputPin = ""; } else { document.getElementById('audio-failure').play(); msg.innerText = "ACCESS DENIED"; msg.style.color = "#e74c3c"; inputPin = ""; setTimeout(() => { msg.innerText = "SECURITY LOCKDOWN"; msg.style.color = "var(--accent)"; }, 1000); } } } else { if (inputPin.length < 8) inputPin += digit; } updatePinDots(); }
+        function updatePinDots() { document.getElementById('pin-dots').innerText = "•".repeat(inputPin.length); }
+
+        function toggleSettings() { document.getElementById('settingsModal').classList.toggle('active'); }
+        window.onclick = function(event) { const modal = document.getElementById('settingsModal'); if (event.target == modal) modal.classList.remove('active'); }
+
+        const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a']; let konamiIndex = 0;
+        document.addEventListener('keydown', (e) => { if (e.key === konamiCode[konamiIndex]) { konamiIndex++; if (konamiIndex === konamiCode.length) { activateSystemBypass(); konamiIndex = 0; } } else { konamiIndex = 0; } });
+        function activateSystemBypass() { document.getElementById('bypass-overlay').style.display = 'flex'; document.getElementById('audio-powerup').play(); setTimeout(() => { document.getElementById('bypass-overlay').style.display = 'none'; }, 3000); }
+        function handleMarvinClick() { const img = document.getElementById('marvin-image'); img.style.transform = "scale(1.1) rotate(5deg)"; setTimeout(() => img.style.transform = "scale(1) rotate(0deg)", 150); }
+        function marvinLaugh() { const audio = document.getElementById('audio-marvin'); audio.currentTime = 0; audio.play(); document.getElementById('marvin-image').classList.add('laughing-anim'); setTimeout(() => document.getElementById('marvin-image').classList.remove('laughing-anim'), 1000); }
+
+        function updateNetworkStats() {
+            fetch('/api/v1/network/stats').then(r => r.json()).then(data => {
+                const healthSpan = document.getElementById('health-peers');
+                if (healthSpan) {
+                    const lang = localStorage.getItem('selectedLanguage') || 'en';
+                    let dict = window.TRANSLATIONS; if (!dict && typeof TRANSLATIONS !== 'undefined') dict = TRANSLATIONS;
+                    const t = (dict && dict[lang]) ? dict[lang] : (dict && dict['en'] ? dict['en'] : {});
+                    if (data.peers > 0) { healthSpan.innerHTML = `● ${data.peers} ${t.status_connected || "CONNECTED"}`; healthSpan.style.color = "#2ecc71"; } 
+                    else { healthSpan.innerHTML = `● 0 ${t.status_peers || "PEERS"} (${t.status_searching || "SEARCHING"})`; healthSpan.style.color = "#f1c40f"; }
+                }
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof ThemeEngine !== 'undefined') ThemeEngine.init('settings-theme-selector');
+            if (typeof LanguageEngine !== 'undefined') {
+                LanguageEngine.init('language-selector');
+                const langSelect = document.getElementById('language-selector');
+                if(langSelect) {
+                    langSelect.addEventListener('change', () => {
+                        localStorage.setItem('selectedLanguage', langSelect.value);
+                        const ph = (window.TRANSLATIONS && window.TRANSLATIONS[langSelect.value]) ? window.TRANSLATIONS[langSelect.value].ph_sats : "Sats Offered";
+                        const input = document.getElementById('sats-input'); if(input) input.placeholder = ph;
+                        setTimeout(updateNetworkStats, 50);
+                    });
+                    langSelect.dispatchEvent(new Event('change'));
+                }
+            }
+            const savedTheme = localStorage.getItem('selectedTheme');
+            if(savedTheme) { if (typeof ThemeEngine !== 'undefined') ThemeEngine.applyTheme(savedTheme); }
+            initMarketChart(); initColorPicker(); restoreState();
+            const savedCompact = localStorage.getItem('marketCompact') === 'true'; document.getElementById('compact-toggle').checked = savedCompact; if (savedCompact) document.getElementById('market-list').classList.add('compact');
+            const savedHideVelocity = localStorage.getItem('hideVelocity') === 'true'; document.getElementById('velocity-toggle').checked = savedHideVelocity; if (savedHideVelocity) document.getElementById('velocity-panel').style.display = 'none';
+            const unitLabel = document.getElementById('unit-label'); if(unitLabel) unitLabel.innerText = currentUnit;
+            updateBalanceDisplay(); updateNetworkStats(); setInterval(updateNetworkStats, 10000);
+            setInterval(() => { fetch('/api/v1/dashboard/live').then(r => r.json()).then(data => { rawSatsBalance = data.balance; updateBalanceDisplay(); }); }, 5000);
+        });
+    </script>
+</body>
+</html>
