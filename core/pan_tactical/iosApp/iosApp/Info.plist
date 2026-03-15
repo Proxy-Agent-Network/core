@@ -4,5 +4,7 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>PAN Tactical requires GPS access to route agents to active missions and calculate precise target distances.</string>
 </dict>
 </plist>

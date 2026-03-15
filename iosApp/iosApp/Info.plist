@@ -4,9 +4,5 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-    <key>NSCameraUsageDescription</key>
-    <string>PAN Tactical requires camera access to capture evidentiary mission photos.</string>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>PAN Tactical requires photo library access to upload mission evidence.</string>
 </dict>
 </plist>

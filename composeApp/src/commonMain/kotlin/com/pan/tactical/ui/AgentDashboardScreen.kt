@@ -37,6 +37,8 @@ import com.pan.tactical.AudioEngine
 import com.pan.tactical.getCurrentTimeMs
 import com.pan.tactical.getNativeMapUrl
 import com.pan.tactical.rememberSharedCameraManager
+import com.pan.tactical.rememberSharedLocationManager
+import com.pan.tactical.network.PythonNetworkBridge
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
@@ -170,6 +172,25 @@ fun MainDashboardContent() {
         )
     }
 
+    LaunchedEffect(isOnline, missionState) {
+        // Only scan the network if the agent is Online and waiting for a job
+        if (isOnline && missionState == "IDLE") {
+            while (isOnline && missionState == "IDLE") {
+                val incomingMissions = PythonNetworkBridge.fetchActiveMissions()
+
+                if (incomingMissions.isNotEmpty()) {
+                    // We got a hit! Assign it and trigger the alert UI
+                    activeMission = incomingMissions.first()
+                    missionState = "PENDING"
+                    break // Stop scanning while they handle the alert
+                }
+
+                // Wait 5 seconds before asking the server again
+                delay(5000)
+            }
+        }
+    }
+
     LaunchedEffect(isDataLoaded) {
         if (isDataLoaded && !hasSpokenWelcome) {
             delay(500)
@@ -178,16 +199,22 @@ fun MainDashboardContent() {
         }
     }
 
-    var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
+    // --- TARGET 3: THE LIVE GPS BRIDGE ---
+    var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) } // Defaults to Mesa
+
+    val locationManager = rememberSharedLocationManager { lat, lon ->
+        // DIAGNOSTIC PING
+        println("TACTICAL GPS: Agent is moving! $lat, $lon")
+        agentLocation = Pair(lat, lon)
+    }
+
     var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
     var hasCameraPermission by remember { mutableStateOf(false) }
     var capturedEvidence by remember { mutableStateOf<List<String>>(emptyList()) }
     var mockEvidenceCounter by remember { mutableIntStateOf(1) }
     var isUploadingProof by remember { mutableStateOf(false) }
 
-    // --- THE FIX: Instantiate our Native Camera Manager ---
     val cameraManager = rememberSharedCameraManager { imageData ->
-        // When the native camera finishes and hands us byte data, update the UI
         if (imageData != null) {
             capturedEvidence = capturedEvidence + "Real_Evidentiary_Photo_0${mockEvidenceCounter}_[${imageData.size} bytes].jpg"
             mockEvidenceCounter++
@@ -218,7 +245,7 @@ fun MainDashboardContent() {
 
     val distanceMiles = remember(agentLocation, activeMission) {
         if (activeMission == null) return@remember 0.0
-        2.5
+        2.5 // You can eventually replace this with a real Haversine formula using the new agentLocation!
     }
 
     LaunchedEffect(missionState) {
@@ -391,7 +418,6 @@ fun MainDashboardContent() {
                             hasCameraPermission = true
                         },
                         onCapturePhoto = {
-                            // --- THE FIX: Actually fire the native camera hardware ---
                             cameraManager.launchCamera()
                         },
                         onRemovePhoto = { photo ->
@@ -445,10 +471,23 @@ fun MainDashboardContent() {
             }
         }
 
-        AnimatedVisibility(visible = currentScreen == "WALLET", enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(), exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(), modifier = Modifier.fillMaxSize().zIndex(10f)) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-                Button(onClick = { currentScreen = "DASHBOARD" }) { Text("MOCK CLOSE WALLET") }
-            }
+        // --- RESTORED MULTIPLATFORM WALLET ---
+        AnimatedVisibility(
+            visible = currentScreen == "WALLET",
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.fillMaxSize().zIndex(10f)
+        ) {
+            WalletAndProfileScreen(
+                onBack = { currentScreen = "DASHBOARD" },
+                navPreference = navPreference,
+                onNavPrefChange = { navPreference = it },
+                audioEngine = audio,
+                voiceVolume = voiceVolume,
+                onVoiceVolumeChange = { voiceVolume = it },
+                alertVolume = alertVolume,
+                onAlertVolumeChange = { alertVolume = it }
+            )
         }
 
         if (showDevMenu) {

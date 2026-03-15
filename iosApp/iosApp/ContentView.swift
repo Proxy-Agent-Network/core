@@ -15,6 +15,10 @@ struct ComposeView: UIViewControllerRepresentable {
         let camera = GMSCameraPosition.camera(withLatitude: 0, longitude: 0, zoom: 14.2)
         let mapView = GMSMapView.map(withFrame: .zero, camera: camera)
         
+        // --- TARGET 3 SECURED: Turn on the native Google Maps Blue Dot ---
+        mapView.isMyLocationEnabled = true
+        mapView.settings.myLocationButton = true
+        
         MapConfigKt.iosMapViewFactory = {
             return mapView
         }

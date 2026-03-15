@@ -1,26 +1,72 @@
 package com.pan.tactical
 
-import platform.AVFAudio.AVSpeechBoundary
-import platform.AVFAudio.AVSpeechSynthesizer
-import platform.AVFAudio.AVSpeechUtterance
-
-// --- THE FIX: This makes the audio engine global so voices never overlap! ---
-private val globalSynthesizer = AVSpeechSynthesizer()
+import platform.AVFAudio.*
+import platform.Foundation.*
 
 actual class AudioEngine {
-    actual fun speak(text: String, volume: Float) {
-        globalSynthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
+    private val synthesizer = AVSpeechSynthesizer()
+    private var currentVoice: AVSpeechSynthesisVoice? = AVSpeechSynthesisVoice.voiceWithLanguage("en-US")
 
-        val utterance = AVSpeechUtterance(string = text)
-        utterance.volume = volume
-        globalSynthesizer.speakUtterance(utterance)
+    private val nativeVoices = mutableMapOf<String, AVSpeechSynthesisVoice>()
+
+    init {
+        try {
+            // --- THE FIX: A VIP list of Apple's most human-sounding professional voices ---
+            val premiumRoster = listOf("Samantha", "Daniel", "Karen", "Moira", "Alex", "Arthur", "Rishi", "Martha")
+
+            val voices = AVSpeechSynthesisVoice.speechVoices() as List<AVSpeechSynthesisVoice>
+
+            // Filter the master list to only include our premium agents
+            voices.filter { it.name in premiumRoster }.forEach { voice ->
+                nativeVoices[voice.identifier] = voice
+            }
+
+            // Fallback just in case the Simulator is stripped down
+            if (nativeVoices.isEmpty()) {
+                voices.filter { it.language.startsWith("en") }.forEach { voice ->
+                    nativeVoices[voice.identifier] = voice
+                }
+            }
+        } catch (e: Exception) {
+            println("AUDIO ERROR: Failed to load Apple voices")
+        }
+    }
+
+    actual fun speak(text: String, volume: Float) {
+        try {
+            val utterance = AVSpeechUtterance(string = text).apply {
+                this.volume = volume
+                this.voice = currentVoice
+            }
+
+            if (synthesizer.isSpeaking()) {
+                // Using the strict Enum path to prevent compilation errors
+                synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
+            }
+            synthesizer.speakUtterance(utterance)
+        } catch (e: Exception) {
+            println("AUDIO ERROR: Utterance failed")
+        }
     }
 
     actual fun stop() {
-        globalSynthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
+        if (synthesizer.isSpeaking()) {
+            synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
+        }
     }
 
-    actual fun playAlertBeep(volumeLevel: Int) {
-        // iOS alert bridge coming soon
+    actual fun getAvailableVoices(): List<TacticalVoice> {
+        return nativeVoices.values.take(6).map {
+            TacticalVoice(id = it.identifier, name = it.name.uppercase())
+        }
+    }
+
+    actual fun setVoice(voiceId: String) {
+        nativeVoices[voiceId]?.let { currentVoice = it }
+    }
+
+    // Added the parameter so App.kt is happy
+    actual fun playAlertBeep(volume: Int) {
+        // Safe placeholder for iOS
     }
 }

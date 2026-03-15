@@ -105,7 +105,12 @@ kotlin {
 
             // Image Loading (To load the Escrow Proof images)
             implementation("io.coil-kt.coil3:coil-compose:3.0.0-alpha10")
-            implementation("io.coil-kt.coil3:coil-network-ktor3:3.0.0-alpha10")
+            implementation("io.coil-kt.coil3:coil-network-ktor2:3.0.0-alpha10")
+        }
+
+        iosMain.dependencies {
+            // Ktor iOS Engine (Darwin)
+            implementation("io.ktor:ktor-client-darwin:2.3.11")
         }
 
         commonTest.dependencies {
