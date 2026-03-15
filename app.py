@@ -360,6 +360,24 @@ def get_db():
         db.execute('''CREATE TABLE IF NOT EXISTS affinity (user_id TEXT, agent_name TEXT, score INTEGER DEFAULT 0, PRIMARY KEY (user_id, agent_name))''')
         db.execute('''CREATE TABLE IF NOT EXISTS agents (name TEXT PRIMARY KEY, category TEXT DEFAULT 'SPECIALIST', wallet_balance INTEGER DEFAULT 1000, affinity_threshold INTEGER DEFAULT 80, threshold_min INTEGER DEFAULT 30, threshold_max INTEGER DEFAULT 90)''')
         db.execute('''CREATE TABLE IF NOT EXISTS agent_memories (id SERIAL PRIMARY KEY, user_id TEXT, agent_name TEXT, memory_text TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        
+        # 🟢 NEW: Vanguard 50 Telemetry Ledger (Time-Series)
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS agent_telemetry_history (
+                id SERIAL PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                latitude DOUBLE PRECISION NOT NULL,
+                longitude DOUBLE PRECISION NOT NULL,
+                status TEXT NOT NULL,
+                current_mission_id TEXT,
+                event_type TEXT DEFAULT 'PING',
+                recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # 🟢 NEW: High-performance indexes for the Command Center "Rewind" feature
+        db.execute('''CREATE INDEX IF NOT EXISTS idx_telemetry_agent_time ON agent_telemetry_history (agent_id, recorded_at DESC)''')
+        db.execute('''CREATE INDEX IF NOT EXISTS idx_telemetry_mission ON agent_telemetry_history (current_mission_id)''')
+        
         db.commit()
     return db
 
@@ -1064,6 +1082,98 @@ def api_wipe_memories():
 # ==========================================
 # 🤖 AUTONOMOUS WORKER MOCK ENDPOINTS
 # ==========================================
+@app.route('/api/v1/telemetry/ingest', methods=['POST'])
+@rate_limit(max_requests=30, window_seconds=60) # Allow rapid GPS pings
+def ingest_telemetry():
+    """
+    Catches live GPS streams from the Android KMP application and logs them 
+    immutably into the time-series ledger for Incident Replay.
+    """
+    try:
+        data = request.json
+        agent_id = data.get('agent_id')
+        lat = float(data.get('latitude'))
+        lon = float(data.get('longitude'))
+        status = data.get('status', 'ONLINE')
+        mission_id = data.get('current_mission_id')
+        event_type = data.get('event_type', 'PING')
+
+        if not agent_id:
+            return jsonify({"status": "error", "message": "Missing agent_id"}), 400
+
+        conn = get_db()
+        
+        # Insert the immutable GPS breadcrumb
+        conn.execute('''
+            INSERT INTO agent_telemetry_history 
+            (agent_id, latitude, longitude, status, current_mission_id, event_type) 
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (agent_id, lat, lon, status, mission_id, event_type))
+        
+        # Keep the legacy `nodes` table updated for backwards compatibility with the current map UI
+        conn.execute('''
+            UPDATE nodes 
+            SET last_seen = %s 
+            WHERE node_id = %s
+        ''', (time.time(), agent_id))
+        
+        conn.commit()
+        return jsonify({"status": "success", "recorded_at": time.time()})
+
+    except Exception as e:
+        print(f" [TELEMETRY] 🚨 Ingestion Error: {str(e)}")
+        return jsonify({"status": "error", "message": "Internal processing error."}), 500
+
+@app.route('/api/v1/telemetry/history', methods=['GET'])
+@requires_permission(Permission.READ_TASK)
+def get_telemetry_history():
+    """
+    Universal Forensic Retrieval API.
+    Supports filtering by agent_id, mission_id (car/task), and time windows.
+    Examples: 
+      /api/v1/telemetry/history?agent_id=VAN-123
+      /api/v1/telemetry/history?mission_id=FLT-999
+    """
+    try:
+        agent_id = request.args.get('agent_id')
+        mission_id = request.args.get('mission_id')
+        minutes = int(request.args.get('minutes', 60))
+
+        # We must have at least one anchor point to prevent dumping the entire database
+        if not agent_id and not mission_id:
+            return jsonify({"status": "error", "message": "Must provide agent_id or mission_id."}), 400
+
+        conn = get_db()
+        
+        # Start building the base query
+        query = '''
+            SELECT agent_id, latitude, longitude, status, current_mission_id, event_type, 
+                   EXTRACT(EPOCH FROM recorded_at) as timestamp
+            FROM agent_telemetry_history 
+            WHERE recorded_at >= NOW() - INTERVAL '%s minutes'
+        '''
+        params = [minutes]
+
+        # Dynamically append filters based on user request
+        if agent_id:
+            query += " AND agent_id = %s"
+            params.append(agent_id)
+        
+        if mission_id:
+            query += " AND current_mission_id = %s"
+            params.append(mission_id)
+
+        query += " ORDER BY recorded_at ASC"
+
+        # Execute the dynamically generated SQL safely
+        history = conn.execute(query, tuple(params)).fetchall()
+        
+        return jsonify([dict(row) for row in history])
+
+    except Exception as e:
+        print(f" [TELEMETRY] 🚨 Forensic Retrieval Error: {str(e)}")
+        return jsonify({"status": "error", "message": "Failed to retrieve forensic history."}), 500
+    
 @app.route('/api/v1/node/register', methods=['POST'])
 @rate_limit(max_requests=10, window_seconds=60) # 🛑 SECURITY FIX: Rate Limit Worker APIs
 def mock_register():

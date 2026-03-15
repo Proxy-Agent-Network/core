@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com http://localhost:5000 http://127.0.0.1:5000; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     
     <title>PAN Command Center</title>
@@ -143,6 +143,20 @@
         .legend-item:hover { color: #fff; }
         .legend-item input { width: auto; margin: 0 10px 0 0; cursor: pointer; }
         .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 10px; border: 1px solid #fff; }
+
+        /* 🟢 NEW REPLAY UI CSS */
+        #replay-panel {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(18, 18, 18, 0.95); border: 2px solid #E040FB; border-radius: 8px;
+            padding: 15px 20px; box-shadow: 0 4px 20px rgba(224, 64, 251, 0.4);
+            z-index: 1500; display: none; width: 600px; font-family: monospace;
+        }
+        #replay-header { color: #E040FB; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        #replay-slider { width: 100%; margin: 15px 0; cursor: pointer; accent-color: #E040FB; }
+        .replay-controls { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #ccc;}
+        .btn-replay-exit { background: #333; color: #fff; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: monospace; width: auto !important;}
+        .btn-replay-exit:hover { background: #F44336; }
+        .replay-stat { background: #222; padding: 4px 8px; border-radius: 4px; border: 1px solid #444;}
 
         #demo-alert { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0, 188, 212, 0.95); color: #000; padding: 15px 30px; border-radius: 30px; font-weight: bold; font-family: sans-serif; box-shadow: 0 4px 20px rgba(0,188,212,0.6); z-index: 2000; display: none; text-align: center; border: 2px solid #FFF; }
 
@@ -283,6 +297,18 @@
     <div id="map-wrapper">
         <div id="demo-alert">Sending dispatch request...</div>
         
+        <div id="replay-panel">
+            <div id="replay-header">
+                <span>⏪ INCIDENT FORENSIC REPLAY</span>
+                <button class="btn-replay-exit" onclick="window.exitReplay()">EXIT REPLAY</button>
+            </div>
+            <input type="range" id="replay-slider" min="0" max="100" value="100" oninput="window.scrubReplay()">
+            <div class="replay-controls">
+                <span class="replay-stat">TIME: <strong id="replay-time-display" style="color:#fff;">--:--:--</strong></span>
+                <span class="replay-stat">STATUS: <strong id="replay-status-display" style="color:#E040FB;">AWAITING DATA</strong></span>
+            </div>
+        </div>
+
         <div id="map-legend">
             <div id="legend-header" onclick="window.toggleLegend()" title="Toggle Filters">
                 <h4>LIVE MAP FILTERS</h4>
@@ -487,6 +513,12 @@
         
         window.routingStrategy = 'BALANCED'; 
 
+        // 🟢 NEW: INCIDENT REPLAY VARIABLES
+        window.isReplayMode = false;
+        window.replayData = [];
+        window.replayPath = null;
+        window.replayGhostMarker = null;
+
         window.capNames = {
             "door_securing": "Door Securing", "cabin_sweep": "Cabin Sweep", "lost_item": "Lost Item", "path_clearing": "Path Clearing",
             "spill_remediation": "Spill Remediation", "tire_pressure": "Tire Pressure", "battery_jump": "Battery Jump", "passenger_escort": "Passenger Escort",
@@ -517,6 +549,111 @@
             document.getElementById('export-end').valueAsDate = new Date();
             window.checkPremiumStatus();
         });
+
+        // 🟢 NEW: INCIDENT REPLAY FUNCTIONS
+        window.loadReplay = async function(agentId, missionId) {
+            // Guard clause for purely simulated frontend agents
+            if ((agentId && agentId.startsWith("SIM-")) || (missionId && !window.realAgents[missionId] && !agentId)) {
+                window.showDemoAlert("⚠️ No telemetry found. (Simulated demo agents do not persist to the Postgres ledger).", 4000);
+                return;
+            }
+
+            window.showDemoAlert("⏳ Fetching forensic telemetry from Postgres ledger...", 2000);
+            
+            let url = '/api/v1/telemetry/history?minutes=60';
+            if (agentId) url += '&agent_id=' + encodeURIComponent(agentId);
+            if (missionId) url += '&mission_id=' + encodeURIComponent(missionId);
+
+            try {
+                // Ensure we pass the local Flask session/CSRF token if needed
+                let res = await fetch(url);
+                if (!res.ok) throw new Error("API returned status " + res.status);
+                let data = await res.json();
+                
+                if (!data || data.length === 0) {
+                    window.showDemoAlert("⚠️ No telemetry data found for this entity.", 3000);
+                    return;
+                }
+
+                window.isReplayMode = true;
+                window.replayData = data;
+                
+                window.clearLiveMapForReplay();
+                document.getElementById('replay-panel').style.display = 'block';
+                
+                let minTime = data[0].timestamp;
+                let maxTime = data[data.length - 1].timestamp;
+                let slider = document.getElementById('replay-slider');
+                slider.min = minTime;
+                slider.max = maxTime;
+                slider.step = (maxTime - minTime) / 1000 || 1; // Smooth scrubbing
+                slider.value = maxTime; 
+                
+                let pathCoords = data.map(d => ({ lat: d.latitude, lng: d.longitude }));
+                
+                window.replayPath = new google.maps.Polyline({
+                    path: pathCoords, strokeColor: '#E040FB', strokeOpacity: 0.5, strokeWeight: 6, map: map
+                });
+                
+                window.replayGhostMarker = new google.maps.Marker({
+                    position: pathCoords[pathCoords.length - 1],
+                    map: map,
+                    icon: window.getMarkerIcon('#E040FB'), 
+                    zIndex: 2000
+                });
+                
+                let bounds = new google.maps.LatLngBounds();
+                pathCoords.forEach(p => bounds.extend(p));
+                map.fitBounds(bounds);
+                
+                window.updateReplayUI(maxTime);
+
+            } catch (err) {
+                console.error(err);
+                window.showDemoAlert("❌ Error fetching telemetry from server.", 3000);
+            }
+        };
+
+        window.scrubReplay = function() {
+            let val = parseFloat(document.getElementById('replay-slider').value);
+            window.updateReplayUI(val);
+        };
+
+        window.updateReplayUI = function(targetTs) {
+            let closest = window.replayData[0];
+            let minDiff = Math.abs(targetTs - closest.timestamp);
+            for(let i=1; i<window.replayData.length; i++) {
+                let diff = Math.abs(targetTs - window.replayData[i].timestamp);
+                if(diff < minDiff) {
+                    minDiff = diff;
+                    closest = window.replayData[i];
+                }
+            }
+            
+            window.replayGhostMarker.setPosition({lat: closest.latitude, lng: closest.longitude});
+            
+            let date = new Date(closest.timestamp * 1000);
+            document.getElementById('replay-time-display').innerText = date.toLocaleTimeString();
+            document.getElementById('replay-status-display').innerText = `${closest.status} | Event: ${closest.event_type}`;
+        };
+
+        window.exitReplay = function() {
+            window.isReplayMode = false;
+            document.getElementById('replay-panel').style.display = 'none';
+            if (window.replayPath) window.replayPath.setMap(null);
+            if (window.replayGhostMarker) window.replayGhostMarker.setMap(null);
+            window.replayData = [];
+            window.mergeAndRender(); 
+        };
+
+        window.clearLiveMapForReplay = function() {
+            Object.values(agentMarkers).forEach(m => m.setMap(null));
+            Object.values(avMarkers).forEach(m => m.setMap(null));
+            Object.values(agentLines).forEach(m => m.setMap(null));
+            Object.values(agentCircles).forEach(m => m.setMap(null));
+            if (window.selectedFaultCircle) window.selectedFaultCircle.setMap(null);
+            if (window.infoWindow) window.infoWindow.close();
+        };
 
         window.setRoutingStrategy = function(strategy) {
             window.routingStrategy = strategy;
@@ -1554,6 +1691,9 @@
         }
 
         window.mergeAndRender = function() {
+            // 🟢 NEW: Pause Live Updates if Rewinding Time!
+            if (window.isReplayMode) return;
+
             window.allAgents = { ...window.simAgents, ...window.realAgents };
             
             const faultListDiv = document.getElementById('fault-list');
@@ -1736,6 +1876,9 @@
                         
                         let rerouteCount = fault.history ? fault.history.filter(h => h.event === 'AGENT_ABORTED').length : 0;
                         let rerouteHtml = rerouteCount > 0 ? `<div style="color:#F44336; font-size: 10px; font-weight: bold; margin-top: 5px;">⚠️ REROUTED ${rerouteCount} TIME(S)</div>` : '';
+                        
+                        // 🟢 NEW: INCIDENT REPLAY BUTTON
+                        let rewindBtn = `<button style="margin-top: 10px; width: 100%; padding: 8px; background: transparent; border: 1px solid #E040FB; color: #E040FB; border-radius: 3px; cursor: pointer; font-weight: bold; font-family: monospace;" onmouseover="this.style.background='#E040FB'; this.style.color='#fff';" onmouseout="this.style.background='transparent'; this.style.color='#E040FB';" onclick="event.stopPropagation(); window.loadReplay(null, '${faultId}')">⏪ REWIND INCIDENT</button>`;
 
                         if (isResolved) {
                             window.mergeAndRender();
@@ -1751,6 +1894,7 @@
                                     ${feeTxt}
                                 </div>
                                 ${rerouteHtml}
+                                ${rewindBtn}
                                 <div style="margin-top: 10px; font-size:10px; color: #888; font-style: italic; text-align: center;">(Click anywhere to dismiss)</div>
                             </div>`;
                             window.infoWindow.setContent(content);
@@ -1772,6 +1916,7 @@
                                     Time Active: <strong style="color:#F44336; font-size:14px;"><span class="live-timer" data-timestamp="${fault.timestamp}">${window.formatDuration(Date.now() - fault.timestamp)}</span></strong>
                                 </div>
                                 ${rerouteHtml}
+                                ${rewindBtn}
                                 ${cancelBtn}
                                 <div style="margin-top: 10px; font-size:10px; color: #888; font-style: italic; text-align: center;">(Click anywhere to dismiss)</div>
                             </div>`;
@@ -1813,6 +1958,9 @@
                             </div>
                             <div style="margin-top: 10px;">
                                 <button style="width: 100%; padding: 8px; background: #00BCD4; color: #000; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; font-family: monospace;" onclick="event.stopPropagation(); window.openDispatchModal('${faultId}')">QUICK DEPLOY AGENT</button>
+                            </div>
+                            <div style="margin-top: 5px;">
+                                ${rewindBtn}
                             </div>
                             <div style="margin-top: 10px; font-size:10px; color: #888; font-style: italic; text-align: center;">(Click anywhere to dismiss)</div>
                         </div>`;
@@ -1930,6 +2078,9 @@
                                     }
                                 }
 
+                                // 🟢 NEW: INCIDENT REPLAY BUTTON
+                                let rewindBtn = `<button style="margin-top: 10px; width: 100%; padding: 8px; background: transparent; border: 1px solid #E040FB; color: #E040FB; border-radius: 3px; cursor: pointer; font-weight: bold; font-family: monospace;" onmouseover="this.style.background='#E040FB'; this.style.color='#fff';" onmouseout="this.style.background='transparent'; this.style.color='#E040FB';" onclick="event.stopPropagation(); window.loadReplay('${uid}', null)">⏪ REWIND AGENT</button>`;
+
                                 let content = `<div class="pan-info-window" onclick="window.clearSelection()" title="Click to dismiss">
                                     <strong style="font-size:14px; color:#1E1E1E;">UID: ${window.escapeHTML(uid.replace('SIM-VANGUARD-', 'VAN-'))}</strong><br>
                                     <div style="margin-top: 5px; font-size:12px;">Mode: <strong>${window.escapeHTML(patrolMode)}</strong></div>
@@ -1939,7 +2090,8 @@
                                     ${activeFaultText}
                                     <div style="margin-top:10px; margin-bottom:5px; font-weight: bold; font-size: 10px; color: #666; text-transform: uppercase;">Verified Loadout:</div>
                                     <div style="margin-bottom:10px; display:flex; flex-wrap:wrap;">${capsHtml || '<span style="color:red">No capabilities listed</span>'}</div>
-                                    <div style="font-size:10px; color: #888; font-style: italic; text-align: center;">(Click anywhere to dismiss)</div>
+                                    ${rewindBtn}
+                                    <div style="font-size:10px; color: #888; font-style: italic; text-align: center; margin-top: 10px;">(Click anywhere to dismiss)</div>
                                 </div>`;
                                 
                                 window.infoWindow.setContent(content);

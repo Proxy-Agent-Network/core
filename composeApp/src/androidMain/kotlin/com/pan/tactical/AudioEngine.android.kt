@@ -14,7 +14,7 @@ actual class AudioEngine {
     private val nativeVoices = mutableMapOf<String, Voice>()
 
     init {
-        val context = com.pan.tactical.MainApplication.appContext
+        val context = com.pan.tactical.MainActivity.appContext!!
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.US

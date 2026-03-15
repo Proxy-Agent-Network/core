@@ -99,30 +99,6 @@ services:
       lnd:
         condition: service_started
     volumes:
-      - .:/app
-      - faiss_data:/app/faiss_index
-      - lnd_data:/home/proxyuser/.lnd:ro
-
-  # --- THE SEARCH ENGINE & DASHBOARD ---
-  proxy_agency_search:
-    build: 
-      context: .
-    container_name: proxy_search
-    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
-    ports:
-      - "8501:8501"
-    environment:
-      - DATABASE_URL=postgresql://proxy_admin:${POSTGRES_PASSWORD}@db:5432/proxy_network
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - LND_GRPC_HOST=lnd
-      - LND_GRPC_PORT=10009
-    depends_on:
-      db:
-        condition: service_healthy
-      lnd:
-        condition: service_started
-    volumes:
-      - .:/app
       - faiss_data:/app/faiss_index
       - lnd_data:/home/proxyuser/.lnd:ro
 

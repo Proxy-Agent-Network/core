@@ -254,7 +254,7 @@ class PanApiClient {
             val relayApiKey = network.proxyagent.pantactical.BuildConfig.IMGBB_API_KEY
 
             bitmaps.forEachIndexed { index, bitmap ->
-                try {
+                try { // <--- THE MISSING TRY BLOCK
                     val stream = ByteArrayOutputStream()
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
                     val byteArray = stream.toByteArray()

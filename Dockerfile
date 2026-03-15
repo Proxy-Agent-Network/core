@@ -44,7 +44,8 @@ RUN apt-get update && apt-get install -y \
 
 # 2. Install Python Dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements.txt backend/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -r backend/requirements.txt
 
 # 3. Install gRPC Tools for Lightning Network integration
 RUN pip install grpcio grpcio-tools googleapis-common-protos requests
