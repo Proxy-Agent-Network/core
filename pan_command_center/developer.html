@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PAN Partner API Portal</title>
+    <link rel="stylesheet" href="css/developer.css">
+    <script src="js/matrix.js"></script>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>PAN DEVELOPER</h2>
+            <p style="margin: 5px 0 0 0; font-size: 11px; color: #888;">INFRASTRUCTURE & API</p>
+        </div>
+        <div class="nav-menu">
+            <div class="nav-item active">🔑 API Keys & Auth</div>
+            <div class="nav-item">🪝 Webhook Subscriptions</div>
+            <div class="nav-item">🤖 Auto-Dispatch Rules</div>
+            <div class="nav-item">📡 Traffic Logs</div>
+        </div>
+        <div style="padding: 20px;">
+            <button class="btn-primary" style="width: 100%;" onclick="window.location.href='/'">◀ RETURN TO MAP</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <div>
+                <h1 style="margin: 0;">Partner Integration Portal</h1>
+                <p style="color: #888; margin-top: 5px;">Manage your programmatic connection to the PAN Proxy Network.</p>
+            </div>
+            
+            <button id="matrix-toggle" class="btn-primary" onclick="toggleMatrix()">💊 ENTER THE MATRIX</button>
+        </div>
+
+        <div class="panel">
+            <h2 style="margin-top: 0; color: var(--accent);">API Authentication Keys</h2>
+            <p style="font-size: 14px; color: #aaa;">Use these keys to authenticate REST requests to <code style="background: #000; padding: 2px 4px;">https://api.pan-network.io/v1/</code></p>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 12px; font-weight: bold; color: #888;">TEST SECRET KEY <span class="pill" style="color:#aaa; border-color:#555;">Sandbox</span></label>
+                <div class="api-key-box" style="margin-top: 5px;">
+                    <span style="color: #888;">sk_test_51Nx82H...</span>
+                    <span style="cursor: pointer;">📋 Copy</span>
+                </div>
+            </div>
+
+            <div>
+                <label style="font-size: 12px; font-weight: bold; color: #888;">LIVE SECRET KEY <span class="pill" style="color: var(--danger); border-color: var(--danger);">Production</span></label>
+                <div class="api-key-box" style="margin-top: 5px; color: var(--text);">
+                    <span>sk_live_***********************************</span>
+                    <span style="cursor: pointer;">🔄 Reveal</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2 style="margin-top: 0; color: var(--accent);">Webhook Subscriptions</h2>
+            <p style="font-size: 14px; color: #aaa;">Where should we push HTTP POST requests when dispatch events occur?</p>
+            
+            <label style="font-size: 12px; font-weight: bold; color: #888;">YOUR ENDPOINT URL</label>
+            <input type="text" class="input-field" style="margin-top: 5px; margin-bottom: 15px;" value="https://internal-api.waymo.com/webhooks/pan-network">
+            
+            <label style="font-size: 12px; font-weight: bold; color: #888;">EVENT SUBSCRIPTIONS</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 14px;">
+                <div><input type="checkbox" checked> <code>mission.created</code></div>
+                <div><input type="checkbox" checked> <code>mission.accepted</code></div>
+                <div><input type="checkbox" checked> <code>mission.agent_on_site</code></div>
+                <div><input type="checkbox" checked> <code>mission.resolved</code></div>
+                <div><input type="checkbox"> <code>escrow.balance_low</code></div>
+                <div><input type="checkbox"> <code>agent.sl_breach</code></div>
+            </div>
+            
+            <button class="btn-primary" style="margin-top: 20px;">SAVE WEBHOOKS</button>
+        </div>
+
+        <div class="panel">
+            <h2 style="margin-top: 0; color: var(--accent);">Automated Dispatch Bidding Rules</h2>
+            <p style="font-size: 14px; color: #aaa;">Configure the reverse-auction logic for when your AVs programmatically request a proxy agent.</p>
+            
+            <div style="display: flex; gap: 20px; margin-top: 15px;">
+                <div style="flex: 1;">
+                    <label style="font-size: 12px; font-weight: bold; color: #888;">TIER 1 STARTING BID</label>
+                    <input type="text" class="input-field" style="margin-top: 5px;" value="$15.00">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 12px; font-weight: bold; color: #888;">MAX AUTO-ESCALATION CAP</label>
+                    <input type="text" class="input-field" style="margin-top: 5px;" value="$35.00">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 12px; font-weight: bold; color: #888;">ESCALATE EVERY (MINUTES)</label>
+                    <input type="number" class="input-field" style="margin-top: 5px;" value="3">
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let isMatrixActive = false;
+
+        function toggleMatrix() {
+            const htmlTag = document.documentElement;
+            const btn = document.getElementById('matrix-toggle');
+
+            if (!isMatrixActive) {
+                // Activate Matrix
+                htmlTag.setAttribute('data-theme', 'matrix');
+                if (window.MatrixEngine) {
+                    window.MatrixEngine.init();
+                } else {
+                    console.error("matrix.js is not loaded.");
+                }
+                btn.innerText = "🔌 EXIT THE MATRIX";
+                btn.style.color = "#ff0000";
+                btn.style.borderColor = "#ff0000";
+                isMatrixActive = true;
+            } else {
+                // Deactivate Matrix
+                htmlTag.removeAttribute('data-theme');
+                if (window.MatrixEngine) {
+                    window.MatrixEngine.stop();
+                }
+                btn.innerText = "💊 ENTER THE MATRIX";
+                btn.style.color = "";
+                btn.style.borderColor = "";
+                isMatrixActive = false;
+            }
+        }
+    </script>
+</body>
+</html>

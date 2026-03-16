@@ -1,11 +1,7 @@
 package com.pan.tactical.ui.components
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border // 🟢 Added for the new distance box
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -13,119 +9,125 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pan.tactical.models.MissionData
 
 @Composable
-fun PostMissionOverlays(
-    isUploadingProof: Boolean,
-    capturedEvidence: List<Any>,
-    missionState: String,
-    lastPayoutAmount: Double,
-    timeOnSceneMs: Long,
-    totalResponseTimeMs: Long,
-    lastTxHash: String,
-    onReturnToPatrol: () -> Unit
+fun MissionAlertOverlay(
+    activeMission: MissionData?,
+    countdownProgress: Float,
+    flashAlpha: Float,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit
 ) {
-    AnimatedVisibility(visible = isUploadingProof, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xEE000000)).padding(24.dp), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    capturedEvidence.forEach { bmp ->
-                        Box(modifier = Modifier.size(120.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
-                            //Image(bitmap = bmp.asImageBitmap(), contentDescription = "Proof", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-                CircularProgressIndicator(color = Color(0xFF00BCD4))
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("CRYPTOGRAPHIC WATERMARKING...", color = Color(0xFF00BCD4), fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-                Text("UPLOADING ${capturedEvidence.size}-PART EVIDENCE ARRAY", color = Color.Gray, fontSize = 12.sp)
-            }
-        }
-    }
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF4CAF50).copy(alpha = flashAlpha)))
 
-    AnimatedVisibility(visible = missionState == "COMPLETED", enter = slideInVertically(initialOffsetY = { it }) + fadeIn(), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(), modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp), contentAlignment = Alignment.Center) {
-            Column(
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+
+            // --- THE FIX: Custom Drawn KMP Warning Icons ---
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                // Left Warning Icon
+                Box(modifier = Modifier.size(32.dp).background(Color(0xFFF44336), CircleShape), contentAlignment = Alignment.Center) {
+                    Text("!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    "RESCUE DISPATCH",
+                    color = Color(0xFFF44336),
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Right Warning Icon
+                Box(modifier = Modifier.size(32.dp).background(Color(0xFFF44336), CircleShape), contentAlignment = Alignment.Center) {
+                    Text("!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                }
+            }
+            // -----------------------------------------------
+
+            Box(
+                modifier = Modifier.fillMaxWidth().height(12.dp).background(Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(countdownProgress).background(Color(0xFF4CAF50), shape = RoundedCornerShape(8.dp)))
+            }
+
+            val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
+            val netPayout = rawBounty * 0.90f
+
+            val wholePart = netPayout.toInt()
+            val fractionalPart = ((netPayout - wholePart) * 100).toInt()
+            val formattedBounty = "$$wholePart.${fractionalPart.toString().padStart(2, '0')}"
+
+            Text("GUARANTEED NET PAYOUT", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text(formattedBounty, color = Color(0xFF4CAF50), fontSize = 48.sp, fontWeight = FontWeight.Black)
+            Text(activeMission?.intersection ?: "Unknown", color = Color(0xFFFF9800), fontSize = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+            Text(activeMission?.errorCode ?: "Unknown Error", color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+
+            // 🟢 NEW: High-Visibility Target Distance Block
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1E1E1E), RoundedCornerShape(12.dp))
-                    .border(2.dp, Color(0xFF4CAF50), RoundedCornerShape(12.dp))
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .background(Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp))
+                    .border(2.dp, Color(0xFF00BCD4), shape = RoundedCornerShape(8.dp))
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
             ) {
+                Text(
+                    text = "TARGET DISTANCE: ${activeMission?.distanceMiles ?: "--"} MILES",
+                    color = Color(0xFF00BCD4),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            // -----------------------------------------------
 
-                // --- THE FIX: Swapped emojis for safe text characters and added CircleShape ---
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Box(modifier = Modifier.size(64.dp).background(Color(0xFF4CAF50).copy(alpha = 0.2f), CircleShape).align(Alignment.Center), contentAlignment = Alignment.Center) {
-                        Text("✓", color = Color(0xFF4CAF50), fontSize = 32.sp, fontWeight = FontWeight.Black)
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .background(Color(0xFF333333), CircleShape)
-                            .align(Alignment.TopEnd)
-                            .clickable { onReturnToPatrol() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("X", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = onDecline,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
+                    modifier = Modifier.weight(1f).height(64.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("DECLINE", color = Color.White)
                 }
-
-                Text("AV RE-ENGAGED", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-                Text("Autonomous systems online. Incident resolved.", color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
-
-                Text("FUNDS SECURED", color = Color(0xFF4CAF50), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                val dollars = lastPayoutAmount.toInt()
-                val cents = ((lastPayoutAmount * 100).toInt() % 100).toString().padStart(2, '0')
-                Text("+$${dollars}.${cents}", color = Color(0xFF4CAF50), fontSize = 48.sp, fontWeight = FontWeight.Black)
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("TOTAL RESPONSE TIME", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    val trtMinutes = (totalResponseTimeMs / 1000) / 60
-                    val trtSeconds = (totalResponseTimeMs / 1000) % 60
-                    val trtStr = "${trtMinutes.toString().padStart(2, '0')}m ${trtSeconds.toString().padStart(2, '0')}s"
-                    Text(trtStr, color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("TIME ON SCENE", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    val minutes = (timeOnSceneMs / 1000) / 60
-                    val seconds = (timeOnSceneMs / 1000) % 60
-                    val timeStr = "${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s"
-                    Text(timeStr, color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("CRYPTOGRAPHIC HASH", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(lastTxHash, color = Color(0xFF00BCD4), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
-                    onClick = onReturnToPatrol,
+                    onClick = onAccept,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                    modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(8.dp)
-                ) { Text("RETURN TO PATROL", color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 1.sp) }
+                    modifier = Modifier.weight(1f).height(64.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("ACCEPT", color = Color.White, fontWeight = FontWeight.Black)
+                }
             }
         }
     }

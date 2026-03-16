@@ -1,0 +1,80 @@
+/* pan_command_center/css/developer.css */
+@import url('https://fonts.googleapis.com/css2?family=Courier+Prime&family=Inter:wght@400;700&display=swap');
+
+:root {
+    --bg: #0F172A;
+    --card-bg: #1E293B;
+    --text: #F8FAFC;
+    --accent: #00BCD4;
+    --border: #334155;
+    --font: 'Inter', sans-serif;
+    --danger: #F44336;
+}
+
+/* 🟩 MATRIX OVERRIDES (From your v2.0 themes.css) */
+[data-theme="matrix"] {
+    --bg: transparent;
+    --card-bg: rgba(0, 20, 0, 0.75); 
+    --text: #00ff00; 
+    --accent: #008f11; 
+    --border: #003b00;
+    --danger: #ff0000;
+    --font: 'Courier Prime', monospace;
+}
+
+body {
+    margin: 0; padding: 0;
+    font-family: var(--font);
+    background-color: var(--bg);
+    color: var(--text);
+    display: flex; height: 100vh; overflow: hidden;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+/* Sidebar & Layout (Inherited structure from reports) */
+.sidebar { width: 250px; background-color: var(--card-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; }
+.sidebar-header { padding: 20px; border-bottom: 2px solid var(--accent); }
+.sidebar-header h2 { margin: 0; font-size: 18px; color: var(--accent); }
+.nav-menu { flex: 1; padding: 20px 0; }
+.nav-item { padding: 15px 25px; cursor: pointer; font-size: 14px; font-weight: bold; color: var(--text); opacity: 0.6; transition: 0.2s; }
+.nav-item.active { opacity: 1; border-left: 4px solid var(--accent); background: rgba(0,188,212,0.1); }
+.main-content { flex: 1; padding: 40px; overflow-y: auto; z-index: 10; }
+
+/* Dev Portal Panels */
+.panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 25px;
+    margin-bottom: 30px;
+    transition: all 0.3s ease;
+}
+
+/* Matrix Glassmorphism */
+[data-theme="matrix"] .panel, 
+[data-theme="matrix"] .sidebar {
+    backdrop-filter: blur(4px);
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.1);
+}
+
+.api-key-box {
+    background: #000;
+    color: var(--accent);
+    padding: 12px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    display: flex; justify-content: space-between;
+}
+.btn-primary {
+    background: var(--accent); color: #000; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer;
+}
+.input-field {
+    width: 100%; padding: 10px; background: #000; border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: monospace; box-sizing: border-box;
+}
+.pill { padding: 4px 8px; background: rgba(0,188,212,0.2); color: var(--accent); border-radius: 12px; font-size: 11px; font-weight: bold; border: 1px solid var(--accent); }
+
+/* Matrix specific button overrides */
+[data-theme="matrix"] .btn-primary { background: transparent; border: 1px solid #0f0; color: #0f0; }
+[data-theme="matrix"] .btn-primary:hover { background: #0f0; color: #000; }

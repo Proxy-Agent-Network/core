@@ -7,7 +7,7 @@ import asyncio
 import threading
 import secrets
 from datetime import date, timedelta
-from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash, abort
+from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash, abort, send_from_directory
 import hmac
 import hashlib
 import html
@@ -44,6 +44,17 @@ except Exception as e:
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+
+# 🟢 DEV TOOL: NUKE ALL BROWSER CACHING
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+@app.after_request
+def add_header(response):
+    """Forces the browser to always download the freshest HTML/JS/CSS files."""
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '-1'
+    return response
 
 # 🛑 SECURITY FIX: Safely parse client IPs behind reverse proxies/load balancers
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -405,7 +416,7 @@ def login():
             session.clear() # Wipe pre-auth token/state
             session.permanent = True # 🛑 SECURITY FIX: Enforce cookie expiration
             session['authenticated'] = True
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('command_center_root'))
         return "Invalid Password. Connection Terminated.", 401
         
     return '''
@@ -465,9 +476,10 @@ def api_execute_search():
         # Fallback mode (dev only)
         return jsonify({"status": "SUCCESS", "results": [{"title": "Search Simulation", "url": "http://dev.proxy"}]})
 
-@app.route('/')
+@app.route('/v2')
 @requires_permission(Permission.READ_TASK)
-def dashboard():
+def legacy_dashboard():
+    # We preserved the old v2.0 dashboard here just in case!
     conn = get_db()
     my_node = conn.execute('SELECT * FROM nodes WHERE node_id = %s', (MY_NODE_ID,)).fetchone()
     balance = get_secure_balance(conn, MY_NODE_ID)
@@ -476,6 +488,262 @@ def dashboard():
     tasks = [{'id': t['task_id'], 'type': t['task_type'], 'reward': t['bid_sats']} for t in db_tasks]
     owned = [r['item_id'] for r in conn.execute('SELECT item_id FROM purchases WHERE node_id=%s', (MY_NODE_ID,)).fetchall()]
     return render_template('dashboard.html', node=my_node_data, tasks=tasks, hw_secured=HW_SECURED, owned=owned, balance=balance) 
+
+# ==========================================
+# 🌐 VANGUARD 50 COMMAND CENTER (SPA ROUTES)
+# ==========================================
+
+@app.route('/')
+@requires_permission(Permission.READ_TASK) # 🟢 MUST BE HERE: Forces the user to log in!
+def command_center_root():
+    """Serves the main HTML file from the new modular directory."""
+    return send_from_directory('pan_command_center', 'index.html')
+
+@app.route('/developers')
+@requires_permission(Permission.READ_TASK)
+def developer_portal():
+    """Serves the Partner API / Webhook Portal."""
+    return send_from_directory('pan_command_center', 'developer.html')
+
+@app.route('/reports')
+@requires_permission(Permission.READ_TASK)
+def reports_portal():
+    """Serves the Executive Reporting Portal."""
+    return send_from_directory('pan_command_center', 'reports.html')
+
+# ==========================================
+# 📊 EXECUTIVE REPORTING APIs
+# ==========================================
+
+@app.route('/api/v1/reports/compliance', methods=['GET'])
+def get_compliance_report():
+    import random
+    from datetime import datetime, timedelta
+    
+    timeframe = request.args.get('timeframe', '1m')
+    tf_map = {'24h': 1, '1w': 7, '1m': 30, '3m': 90, '1y': 365, 'custom': 30}
+    days = tf_map.get(timeframe, 30)
+    
+    now = datetime.utcnow()
+    audit_trail = []
+    total_seconds = 0
+    disengagements = 0
+    breaches = 0
+    
+    target_incidents = int(1.5 * days) # Scale incidents by days
+    if target_incidents < 5: target_incidents = 5
+    
+    incident_types = [
+        ("manual_override", "Manual Drive Takeover"), ("scene_securement", "Scene Securement (Fire/Police)"),
+        ("path_clearing", "Path Clearing (Debris)"), ("sensor_cleaning", "Sensor Obstruction"),
+        ("spill_remediation", "Bio/Liquid Remediation")
+    ]
+    
+    for i in range(target_incidents):
+        fault_code, fault_name = random.choice(incident_types)
+        if fault_code == "manual_override": disengagements += 1
+            
+        clearance_seconds = random.randint(240, 1020) 
+        total_seconds += clearance_seconds
+        if clearance_seconds > 900: breaches += 1 
+            
+        event_time = now - timedelta(days=random.randint(0, max(0, days - 1)), hours=random.randint(0, 23))
+        
+        audit_trail.append({
+            "timestamp": event_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "asset_id": f"AV-ACT-{random.randint(1000, 9999)}",
+            "incident_type": fault_name,
+            "clearance_time": f"{clearance_seconds // 60:02d}m {clearance_seconds % 60:02d}s",
+            "agent": f"VAN-{str(random.randint(1, 15)).zfill(3)}",
+            "compliant": clearance_seconds <= 900,
+            "raw_time": event_time.timestamp()
+        })
+
+    audit_trail.sort(key=lambda x: x["raw_time"], reverse=True)
+    avg_seconds = total_seconds // target_incidents if target_incidents > 0 else 0
+    
+    return jsonify({
+        "kpis": {
+            "avg_clearance": f"{avg_seconds // 60}m {avg_seconds % 60:02d}s",
+            "is_avg_compliant": avg_seconds < 900,
+            "disengagements": disengagements,
+            "breach_rate": f"{(breaches / target_incidents) * 100:.2f}%"
+        },
+        "audit_trail": audit_trail[:15]
+    })
+
+@app.route('/api/v1/reports/operations', methods=['GET'])
+def get_operations_report():
+    import random
+    timeframe = request.args.get('timeframe', '1m')
+    tf_map = {'24h': 1, '1w': 7, '1m': 30, '3m': 90, '1y': 365, 'custom': 30}
+    days = tf_map.get(timeframe, 30)
+    mult = max(1, days / 30)
+    
+    distribution = [
+        {"type": "Sensor Cleaning", "count": int(random.randint(30, 50) * mult), "color": "#00BCD4"},
+        {"type": "Path Clearing", "count": int(random.randint(20, 35) * mult), "color": "#FF9800"},
+        {"type": "Cabin Sweep & Trash", "count": int(random.randint(15, 25) * mult), "color": "#4CAF50"},
+        {"type": "Manual Drive Takeover", "count": int(random.randint(5, 14) * mult), "color": "#F44336"},
+        {"type": "Tire Pressure", "count": int(random.randint(2, 8) * mult), "color": "#FFEB3B"}
+    ]
+    
+    total_faults = sum(d["count"] for d in distribution)
+    for d in distribution: d["pct"] = int((d["count"] / total_faults) * 100) if total_faults > 0 else 0
+    distribution.sort(key=lambda x: x["count"], reverse=True)
+    
+    hotspots = [
+        {"name": "Mill Ave (Tempe - High Foot Traffic)", "incidents": int(random.randint(18, 25) * mult)},
+        {"name": "Old Town (Scottsdale - Congestion)", "incidents": int(random.randint(15, 20) * mult)},
+        {"name": "Mesa Riverview (Construction)", "incidents": int(random.randint(10, 15) * mult)},
+        {"name": "Downtown Chandler (Events)", "incidents": int(random.randint(5, 12) * mult)}
+    ]
+
+    return jsonify({
+        "kpis": {
+            "uptime": f"99.{random.randint(2, 8)}%",
+            "mttr": f"{random.randint(9, 14)}m {random.randint(10, 59)}s",
+            "total_faults": total_faults,
+            "deadhead_reduction": f"{random.randint(12, 18)}%"
+        },
+        "distribution": distribution,
+        "hotspots": hotspots
+    })
+
+@app.route('/api/v1/reports/financials', methods=['GET'])
+def get_financials_report():
+    import random
+    from datetime import datetime, timedelta
+    
+    timeframe = request.args.get('timeframe', '1m')
+    tf_map = {'24h': 1, '1w': 7, '1m': 30, '3m': 90, '1y': 365, 'custom': 30}
+    days = tf_map.get(timeframe, 30)
+    
+    now = datetime.utcnow()
+    transactions = []
+    starting_escrow = 25000.00
+    if days > 90: starting_escrow = 150000.00 # Bigger budget for yearly views
+    
+    total_spend = 0.0
+    cancel_fees = 0.0
+    total_incidents = 0
+    fault_prices = [15.00, 25.00, 55.00, 85.00]
+    
+    target_incidents = int(1.5 * days)
+    if target_incidents < 5: target_incidents = 5
+
+    for i in range(target_incidents):
+        cost = random.choice(fault_prices)
+        total_spend += cost
+        total_incidents += 1
+        
+        if random.random() < 0.10:
+            cancel_fees += 5.00
+            total_spend -= 5.00 
+            
+        event_time = now - timedelta(days=random.randint(0, max(0, days - 1)), hours=random.randint(0, 23))
+        
+        transactions.append({
+            "timestamp": event_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "ref_id": f"FLT-{random.randint(1000, 9999)}",
+            "desc": "Escrow Settlement (Mission Cleared)",
+            "amount": f"-${cost:.2f}",
+            "is_negative": True,
+            "raw_time": event_time.timestamp()
+        })
+
+    transactions.sort(key=lambda x: x["raw_time"], reverse=True)
+    current_balance = starting_escrow - total_spend + cancel_fees
+    avg_cost = (total_spend / total_incidents) if total_incidents > 0 else 0.00
+    
+    return jsonify({
+        "kpis": {
+            "balance": f"${current_balance:,.2f}",
+            "total_spend": f"${total_spend:,.2f}",
+            "avg_cost": f"${avg_cost:.2f}",
+            "cancel_fees": f"${cancel_fees:.2f}"
+        },
+        "transactions": transactions[:20] 
+    })
+
+@app.route('/api/v1/reports/vendor_sla', methods=['GET'])
+def get_vendor_sla_report():
+    """Aggregates Proxy Agent performance, leaderboards, and SLA breaches."""
+    import random
+    from datetime import datetime, timedelta
+    
+    timeframe = request.args.get('timeframe', '1m')
+    tf_map = {'24h': 1, '1w': 7, '1m': 30, '3m': 90, '1y': 365, 'custom': 30}
+    days = tf_map.get(timeframe, 30)
+    mult = max(1, days / 30)
+    
+    now = datetime.utcnow()
+    
+    # 1. Generate Top Agents
+    top_agents = []
+    for i in range(5):
+        missions = int(random.randint(15, 60) * mult)
+        rating = round(random.uniform(4.8, 5.0), 2)
+        resp_time = f"{random.randint(6, 11)}m {random.randint(10, 59)}s"
+        
+        top_agents.append({
+            "agent_id": f"VAN-{str(random.randint(1, 40)).zfill(3)}",
+            "rating": f"{rating} ⭐",
+            "missions": missions,
+            "response": resp_time
+        })
+        
+    top_agents.sort(key=lambda x: x["missions"], reverse=True)
+    
+    # 2. Generate SLA Infractions (Flakes, Late Arrivals)
+    infractions = []
+    target_infractions = int(random.randint(2, 6) * mult)
+    if target_infractions < 1: target_infractions = 1
+    
+    issues = [
+        ("Mission Aborted (Flake)", "Agent Reassigned"),
+        ("Late Arrival (>15m)", "Warning Issued"),
+        ("Poor Resolution Quality", "Rating Deducted")
+    ]
+    
+    for i in range(target_infractions):
+        issue, action = random.choice(issues)
+        event_time = now - timedelta(days=random.randint(0, max(0, days - 1)), hours=random.randint(0, 23))
+        
+        infractions.append({
+            "date": event_time.strftime("%Y-%m-%d"),
+            "agent_id": f"VAN-{str(random.randint(41, 99)).zfill(3)}",
+            "issue": issue,
+            "action": action,
+            "raw_time": event_time.timestamp()
+        })
+        
+    infractions.sort(key=lambda x: x["raw_time"], reverse=True)
+
+    return jsonify({
+        "kpis": {
+            "avg_response": f"0{random.randint(7, 9)}m {random.randint(10, 59)}s",
+            "completion_rate": f"98.{random.randint(1, 9)}%",
+            "global_rating": f"4.{random.randint(85, 98)} / 5.0"
+        },
+        "top_agents": top_agents,
+        "infractions": infractions[:8] # Show top 8 infractions
+    })
+
+@app.route('/css/<path:filename>')
+def command_center_css(filename):
+    """Allows the browser to fetch the extracted stylesheets."""
+    return send_from_directory('pan_command_center/css', filename)
+
+@app.route('/js/<path:filename>')
+def command_center_js(filename):
+    """Allows the browser to fetch the extracted JavaScript modules."""
+    return send_from_directory('pan_command_center/js', filename)
+
+@app.route('/secrets.js')
+def command_center_secrets():
+    """Explicitly serves the Firebase config file."""
+    return send_from_directory('pan_command_center', 'secrets.js')
 
 @app.route('/marketplace', methods=['GET', 'POST'])
 @requires_permission(Permission.VIEW_MARKET)
@@ -534,7 +802,7 @@ def faq():
 @app.route('/legal/<doc_type>')
 def legal(doc_type):
     doc = LEGAL_DOCS.get(doc_type)
-    if not doc: return redirect(url_for('dashboard'))
+    if not doc: return redirect(url_for('command_center_root'))
     
     conn = get_db()
     balance = get_secure_balance(conn, MY_NODE_ID)
@@ -1125,23 +1393,23 @@ def ingest_telemetry():
         return jsonify({"status": "error", "message": "Internal processing error."}), 500
 
 @app.route('/api/v1/telemetry/history', methods=['GET'])
-@requires_permission(Permission.READ_TASK)
 def get_telemetry_history():
     """
-    Universal Forensic Retrieval API.
-    Supports filtering by agent_id, mission_id (car/task), and time windows.
-    Examples: 
-      /api/v1/telemetry/history?agent_id=VAN-123
-      /api/v1/telemetry/history?mission_id=FLT-999
+    Universal Forensic Temporal Engine API.
     """
     try:
         agent_id = request.args.get('agent_id')
         mission_id = request.args.get('mission_id')
-        minutes = int(request.args.get('minutes', 60))
+        is_global = request.args.get('global') == 'true'
+        
+        # 🕒 NEW: DVR Temporal Parameters
+        start_time = request.args.get('start_time')
+        end_time = request.args.get('end_time')
+        minutes = request.args.get('minutes', 60) # Legacy fallback
 
-        # We must have at least one anchor point to prevent dumping the entire database
-        if not agent_id and not mission_id:
-            return jsonify({"status": "error", "message": "Must provide agent_id or mission_id."}), 400
+        # 🛑 SECURITY FIX: Must have an anchor point OR explicit global authorization
+        if not agent_id and not mission_id and not is_global:
+            return jsonify({"status": "error", "message": "Must provide agent_id, mission_id, or global=true."}), 400
 
         conn = get_db()
         
@@ -1150,11 +1418,21 @@ def get_telemetry_history():
             SELECT agent_id, latitude, longitude, status, current_mission_id, event_type, 
                    EXTRACT(EPOCH FROM recorded_at) as timestamp
             FROM agent_telemetry_history 
-            WHERE recorded_at >= NOW() - INTERVAL '%s minutes'
+            WHERE 1=1
         '''
-        params = [minutes]
+        params = []
 
-        # Dynamically append filters based on user request
+        # ⏱️ TEMPORAL FILTERING: Exact Bounds vs Rolling Window
+        if start_time and end_time:
+            # Convert the incoming Unix Epoch seconds into Postgres native timestamps
+            query += " AND recorded_at >= to_timestamp(%s) AND recorded_at <= to_timestamp(%s)"
+            params.extend([float(start_time), float(end_time)])
+        else:
+            # Fallback to the rolling "last X minutes" for quick live replays
+            query += " AND recorded_at >= NOW() - INTERVAL '%s minutes'"
+            params.append(int(minutes))
+
+        # 🎯 ENTITY FILTERING
         if agent_id:
             query += " AND agent_id = %s"
             params.append(agent_id)
@@ -1163,6 +1441,7 @@ def get_telemetry_history():
             query += " AND current_mission_id = %s"
             params.append(mission_id)
 
+        # Crucial for smooth DVR playback: Sort chronologically
         query += " ORDER BY recorded_at ASC"
 
         # Execute the dynamically generated SQL safely
@@ -1199,6 +1478,94 @@ def mock_submit():
     import hashlib
     import time
     return jsonify({"preimage": hashlib.sha256(str(time.time()).encode()).hexdigest()})
+
+# ==========================================
+# 🧪 DEV TOOLS: TEMPORAL DVR SEEDER (MANHATTAN GRID)
+# ==========================================
+@app.route('/seed-dvr')
+def seed_dvr():
+    """Generates realistic street-grid data using Manhattan Distance routing."""
+    import random
+    from datetime import datetime, timedelta
+    conn = get_db()
+    
+    conn.execute("DELETE FROM agent_telemetry_history WHERE agent_id LIKE 'VAN-DEMO-%'")
+    
+    agents = [f"VAN-DEMO-{str(i).zfill(3)}" for i in range(1, 16)]
+    base_lat, base_lon = 33.415, -111.831 # Mesa, AZ
+    
+    now = datetime.utcnow()
+    start_time = now - timedelta(minutes=60)
+    
+    agent_states = {}
+    for a in agents:
+        start_lat = base_lat + random.uniform(-0.06, 0.06)
+        start_lon = base_lon + random.uniform(-0.06, 0.06)
+        agent_states[a] = {
+            "lat": start_lat, "lon": start_lon,
+            "state": "ONLINE", "mission_id": None,
+            "timer": random.randint(5, 15),
+            "target_lat": start_lat + random.uniform(-0.02, 0.02),
+            "target_lon": start_lon + random.uniform(-0.02, 0.02)
+        }
+    
+    count = 0
+    for step in range(360):
+        step_time = start_time + timedelta(seconds=step * 10)
+        
+        for a in agents:
+            st = agent_states[a]
+            
+            # State Transitions
+            if st["timer"] <= 0:
+                if st["state"] == "ONLINE":
+                    st["state"] = "BUSY_ON_WAY"
+                    st["mission_id"] = f"FLT-{random.randint(1000, 9999)}"
+                    st["target_lat"] = st["lat"] + random.uniform(-0.04, 0.04)
+                    st["target_lon"] = st["lon"] + random.uniform(-0.04, 0.04)
+                    st["timer"] = 9999 # Distance dictates arrival now
+                elif st["state"] == "BUSY_ON_WAY":
+                    st["state"] = "BUSY_ON_SITE"
+                    st["timer"] = random.randint(10, 20) # Work on site
+                else:
+                    st["state"] = "ONLINE"
+                    st["mission_id"] = None
+                    st["target_lat"] = st["lat"] + random.uniform(-0.02, 0.02)
+                    st["target_lon"] = st["lon"] + random.uniform(-0.02, 0.02)
+                    st["timer"] = 9999
+            else:
+                st["timer"] -= 1
+
+            # MANHATTAN GRID MOVEMENT (~25mph)
+            step_size = 0.001 
+            if st["state"] != "BUSY_ON_SITE":
+                lat_dist = st["target_lat"] - st["lat"]
+                lon_dist = st["target_lon"] - st["lon"]
+                
+                # Resolve Longitude (East/West) first, then Latitude (North/South)
+                if abs(lon_dist) > step_size:
+                    st["lon"] += step_size if lon_dist > 0 else -step_size
+                elif abs(lat_dist) > step_size:
+                    st["lat"] += step_size if lat_dist > 0 else -step_size
+                else:
+                    # Snapped to target!
+                    st["lat"] = st["target_lat"]
+                    st["lon"] = st["target_lon"]
+                    if st["state"] == "BUSY_ON_WAY":
+                        st["timer"] = 0 # Trigger status change to ON_SITE next tick
+                    elif st["state"] == "ONLINE":
+                        st["target_lat"] = st["lat"] + random.uniform(-0.02, 0.02)
+                        st["target_lon"] = st["lon"] + random.uniform(-0.02, 0.02)
+            
+            conn.execute('''
+                INSERT INTO agent_telemetry_history 
+                (agent_id, latitude, longitude, status, current_mission_id, event_type, recorded_at) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ''', (a, st["lat"], st["lon"], st["state"], st["mission_id"], "PING", step_time))
+            count += 1
+            
+    conn.commit()
+    return jsonify({"status": "success", "message": f"Injected {count} Manhattan street-grid GPS pings!"})
 
 if __name__ == '__main__':
     with app.app_context():

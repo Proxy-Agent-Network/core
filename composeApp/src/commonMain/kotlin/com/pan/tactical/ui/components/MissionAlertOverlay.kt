@@ -1,6 +1,7 @@
 package com.pan.tactical.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border // 🟢 Added for the new distance box
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -87,6 +88,27 @@ fun MissionAlertOverlay(
             Text(formattedBounty, color = Color(0xFF4CAF50), fontSize = 48.sp, fontWeight = FontWeight.Black)
             Text(activeMission?.intersection ?: "Unknown", color = Color(0xFFFF9800), fontSize = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
             Text(activeMission?.errorCode ?: "Unknown Error", color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+
+            // 🟢 NEW: High-Visibility Target Distance Block
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp))
+                    .border(2.dp, Color(0xFF00BCD4), shape = RoundedCornerShape(8.dp))
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "TARGET DISTANCE: ${activeMission?.distanceMiles ?: "--"} MILES",
+                    color = Color(0xFF00BCD4),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            // -----------------------------------------------
 
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
