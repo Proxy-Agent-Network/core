@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ProxyAgent.Network{% endblock %}</title>
+    
+    <style>
+        :root {
+            --navy: #0A192F;
+            --copper: #B87333;
+            --slate: #8892B0;
+            --white: #E6F1FF;
+            --success: #64FFDA;
+            --alert: #FF4D4D;
+            --bg-dark: #020c1b;
+        }
+        body {
+            margin: 0; padding: 0; background-color: var(--navy);
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            color: var(--white); line-height: 1.6;
+        }
+        .top-nav { padding: 20px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; text-align: center; }
+        .top-nav a { color: var(--slate); text-decoration: none; transition: 0.3s; margin: 0 15px; }
+        .top-nav a:hover { color: var(--copper); }
+        .custom-footer {
+            margin-top: 60px; padding: 40px 20px; border-top: 1px solid #112240;
+            text-align: center; color: var(--slate); font-size: 0.85rem;
+        }
+        .custom-footer a { color: var(--copper); text-decoration: none; }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+    <div class="top-nav">
+        <a href="/">[ HOME ]</a>
+        <a href="/enlist">[ VANGUARD 50 ENLISTMENT ]</a>
+        <a href="/operations">[ SECTOR OPS ]</a>
+        <a href="/rates">[ SLA RATES ]</a>
+        <a href="/investors">[ INVESTOR RELATIONS ]</a>
+        <a href="/login">[ COMMAND LOGIN ]</a>
+    </div>
+
+    {% block content %}
+    {% endblock %}
+
+    <div class="custom-footer">
+        © 2026 ProxyAgent.Network &nbsp;|&nbsp; 
+        <a href="/faq">FAQ</a> &nbsp;|&nbsp; 
+        <a href="/compliance">Compliance Center</a> &nbsp;|&nbsp; 
+        <a href="/human/proxy_node_agreement.md">MSA</a>
+    </div>
+
+</body>
+</html>

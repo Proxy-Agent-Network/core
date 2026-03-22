@@ -7,18 +7,28 @@ import asyncio
 import threading
 import secrets
 from datetime import date, timedelta
+
+# --- 1. INJECT MONOREPO PATHS ---
+import sys
+import os
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(ROOT_DIR, "apps", "backend", "src"))
+sys.path.insert(0, os.path.join(ROOT_DIR, "hardware"))
+sys.path.insert(0, os.path.join(ROOT_DIR, "archive", "legacy_hardware"))
+# --------------------------------
+
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for, session, flash, abort, send_from_directory
 import hmac
 import hashlib
 import html
 from functools import wraps
-from backend.core.db import get_db_conn
+from core.db import get_db_conn
 from duckduckgo_search import DDGS
 
-from backend.auth.agency_rbac import RBACEngine, Permission
+from auth.agency_rbac import RBACEngine, Permission
 
 try:
-    from backend.core.lightning_engine import lnd
+    from core.lightning_engine import lnd
     print(" [SYSTEM] ⚡ Lightning Treasury Layer Loaded.")
 except ImportError:
     print(" [WARN] ⚠️  lightning_engine.py not found. Running without payment rails.")
@@ -43,7 +53,13 @@ except Exception as e:
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-app = Flask(__name__)
+# --- REPLACEMENT 1: Tell Flask where the new Public Website lives ---
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+TEMPLATE_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "templates")
+STATIC_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "static")
+
+app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
+# --------------------------------------------------------------------
 
 # 🟢 DEV TOOL: NUKE ALL BROWSER CACHING
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -567,26 +583,50 @@ def legacy_dashboard():
     return render_template('dashboard.html', node=my_node_data, tasks=tasks, hw_secured=HW_SECURED, owned=owned, balance=balance) 
 
 # ==========================================
+# 🌐 PUBLIC WEBSITE ROUTES (Jinja2 Templates)
+# ==========================================
+@app.route('/')
+def index():
+    return render_template('home.html')
+
+@app.route('/enlist')
+def enlist():
+    return render_template('enlist.html')
+
+@app.route('/operations')
+def operations():
+    return render_template('operations.html')
+
+@app.route('/rates')
+def rates():
+    return render_template('rates.html')
+
+@app.route('/investors')
+def investors():
+    return render_template('investors.html')
+
+# ==========================================
 # 🌐 VANGUARD 50 COMMAND CENTER (SPA ROUTES)
 # ==========================================
+CMD_CENTER_DIR = os.path.join(ROOT_DIR, 'apps', 'web', 'command_center')
 
-@app.route('/')
-@requires_permission(Permission.READ_TASK) # 🟢 MUST BE HERE: Forces the user to log in!
+@app.route('/command')
+@requires_permission(Permission.READ_TASK)
 def command_center_root():
     """Serves the main HTML file from the new modular directory."""
-    return send_from_directory('pan_command_center', 'index.html')
+    return send_from_directory(CMD_CENTER_DIR, 'index.html')
 
 @app.route('/developers')
 @requires_permission(Permission.READ_TASK)
 def developer_portal():
     """Serves the Partner API / Webhook Portal."""
-    return send_from_directory('pan_command_center', 'developer.html')
+    return send_from_directory(CMD_CENTER_DIR, 'developer.html')
 
 @app.route('/reports')
 @requires_permission(Permission.READ_TASK)
 def reports_portal():
     """Serves the Executive Reporting Portal."""
-    return send_from_directory('pan_command_center', 'reports.html')
+    return send_from_directory(CMD_CENTER_DIR, 'reports.html')
 
 # ==========================================
 # 📊 EXECUTIVE REPORTING APIs
@@ -810,17 +850,17 @@ def get_vendor_sla_report():
 @app.route('/css/<path:filename>')
 def command_center_css(filename):
     """Allows the browser to fetch the extracted stylesheets."""
-    return send_from_directory('pan_command_center/css', filename)
+    return send_from_directory(os.path.join(CMD_CENTER_DIR, 'css'), filename)
 
 @app.route('/js/<path:filename>')
 def command_center_js(filename):
     """Allows the browser to fetch the extracted JavaScript modules."""
-    return send_from_directory('pan_command_center/js', filename)
+    return send_from_directory(os.path.join(CMD_CENTER_DIR, 'js'), filename)
 
 @app.route('/secrets.js')
 def command_center_secrets():
     """Explicitly serves the Firebase config file."""
-    return send_from_directory('pan_command_center', 'secrets.js')
+    return send_from_directory(CMD_CENTER_DIR, 'secrets.js')
 
 @app.route('/marketplace', methods=['GET', 'POST'])
 @requires_permission(Permission.VIEW_MARKET)
@@ -1210,7 +1250,7 @@ def trigger_leisure_loop():
     try:
         import agent_engine_v2
         import asyncio
-        from backend.core.db import get_db_conn
+        from core.db import get_db_conn
         
         # 1. Execute the slow LLM network call BEFORE touching the database
         content = asyncio.run(agent_engine_v2.generate_watercooler_thought(agent, target, log_type))
@@ -1280,7 +1320,7 @@ def start_marketplace_heartbeat():
 
             try:
                 # Use a standalone connection to avoid Flask context issues
-                from backend.core.db import get_db_conn
+                from core.db import get_db_conn
                 db = get_db_conn()
                 try:
                     # Logic moved from dashboard_live to this safe background thread
