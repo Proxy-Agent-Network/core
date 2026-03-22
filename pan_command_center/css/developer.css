@@ -11,7 +11,7 @@
     --danger: #F44336;
 }
 
-/* 🟩 MATRIX OVERRIDES (From your v2.0 themes.css) */
+/* 🟩 MATRIX OVERRIDES */
 [data-theme="matrix"] {
     --bg: transparent;
     --card-bg: rgba(0, 20, 0, 0.75); 
@@ -22,6 +22,10 @@
     --font: 'Courier Prime', monospace;
 }
 
+/* 🟢 FIX 1: Force HTML background to be dark so it never flashes white */
+html { background-color: var(--bg); }
+html[data-theme="matrix"] { background-color: #000; }
+
 body {
     margin: 0; padding: 0;
     font-family: var(--font);
@@ -31,14 +35,22 @@ body {
     transition: background-color 0.3s, color 0.3s;
 }
 
-/* Sidebar & Layout (Inherited structure from reports) */
-.sidebar { width: 250px; background-color: var(--card-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; }
+/* 🟢 FIX 2: Add position: relative so z-index actually works */
+.sidebar { 
+    position: relative; /* REQUIRED FOR Z-INDEX */
+    width: 250px; background-color: var(--card-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; 
+}
 .sidebar-header { padding: 20px; border-bottom: 2px solid var(--accent); }
 .sidebar-header h2 { margin: 0; font-size: 18px; color: var(--accent); }
 .nav-menu { flex: 1; padding: 20px 0; }
 .nav-item { padding: 15px 25px; cursor: pointer; font-size: 14px; font-weight: bold; color: var(--text); opacity: 0.6; transition: 0.2s; }
 .nav-item.active { opacity: 1; border-left: 4px solid var(--accent); background: rgba(0,188,212,0.1); }
-.main-content { flex: 1; padding: 40px; overflow-y: auto; z-index: 10; }
+
+/* 🟢 FIX 3: Add position: relative to main content */
+.main-content { 
+    position: relative; /* REQUIRED FOR Z-INDEX */
+    flex: 1; padding: 40px; overflow-y: auto; z-index: 10; 
+}
 
 /* Dev Portal Panels */
 .panel {
@@ -68,7 +80,7 @@ body {
     display: flex; justify-content: space-between;
 }
 .btn-primary {
-    background: var(--accent); color: #000; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer;
+    background: var(--accent); color: #000; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s;
 }
 .input-field {
     width: 100%; padding: 10px; background: #000; border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: monospace; box-sizing: border-box;
@@ -77,4 +89,4 @@ body {
 
 /* Matrix specific button overrides */
 [data-theme="matrix"] .btn-primary { background: transparent; border: 1px solid #0f0; color: #0f0; }
-[data-theme="matrix"] .btn-primary:hover { background: #0f0; color: #000; }
+[data-theme="matrix"] .btn-primary:hover { background: #0f0; color: #000; box-shadow: 0 0 10px #0f0; }

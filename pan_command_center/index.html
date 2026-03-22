@@ -4,12 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com http://localhost:5000 http://127.0.0.1:5000; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com https://cdnjs.cloudflare.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com http://localhost:5000 http://127.0.0.1:5000 ws://localhost:5000 ws://127.0.0.1:5000; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     
     <title>PAN Command Center</title>
     
     <link rel="stylesheet" href="css/command_center.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
 
     <script src="js/core/state.js?v=999"></script>
     <script src="js/ui/dashboard_ui.js?v=999"></script>
@@ -298,18 +300,15 @@
         import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-        // Securely initialize Firebase based on your secrets.js
         const app = initializeApp(window.ENV.FIREBASE_CONFIG);
         const db = getDatabase(app);
         const auth = getAuth(app);
         
-        // Expose Firebase tools so the external simulation.js and renderer.js can use them
         window.firebaseDb = db;
         window.firebaseRef = ref;
         window.firebaseSet = set;
         window.firebaseOnValue = onValue;
 
-        // Automatically sign in anonymously to enable database reads
         signInAnonymously(auth)
             .then(() => { window.startTelemetryLink(); })
             .catch((error) => { 
@@ -317,7 +316,6 @@
                 window.startTelemetryLink(); 
             });
 
-        // 🟢 STRICT LOCAL TIMEZONE FIX
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -326,12 +324,58 @@
         console.log("[INIT] Setting local DVR date to:", localDateStr);
         document.getElementById('dvr-date').value = localDateStr;
 
-        // Run the Google Maps script loader
         const mapsScript = document.createElement('script');
         mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${window.ENV.GOOGLE_MAPS_API_KEY}&libraries=geometry,places&callback=initMap`;
         mapsScript.async = true;
         document.head.appendChild(mapsScript);
         
     </script>
+
+    <script>
+        // Connect to the local Python WebSocket Server
+        const socket = io();
+
+        socket.on('partner_fault_ingested', function(data) {
+            console.log("⚠️ INCOMING B2B PING:", data);
+
+            // 1. Create a dynamic, high-priority UI Notification
+            const toast = document.createElement('div');
+            toast.style.position = 'fixed';
+            toast.style.top = '20px';
+            toast.style.right = '20px';
+            toast.style.background = 'rgba(15, 23, 42, 0.95)';
+            toast.style.border = '1px solid #00BCD4';
+            toast.style.borderLeft = '4px solid #00BCD4';
+            toast.style.color = '#fff';
+            toast.style.padding = '15px 20px';
+            toast.style.borderRadius = '4px';
+            toast.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 188, 212, 0.2)';
+            toast.style.zIndex = '9999';
+            toast.style.fontFamily = 'monospace';
+            toast.style.animation = 'fadeIn 0.3s ease-out';
+            
+            toast.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong style="color: #00BCD4; font-size: 14px;">⚠️ AUTOMATED TELEMETRY INGESTED</strong>
+                    <span style="font-size: 10px; color: #888;">JUST NOW</span>
+                </div>
+                <div style="font-size: 13px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>ASSET:</strong> <span style="color: #fff;">${data.asset_id}</span><br>
+                    <strong>FAULT:</strong> <span style="color: #F44336;">${data.fault_code.toUpperCase()}</span><br>
+                    <strong>ESCROW LOCK:</strong> <span style="color: #4CAF50;">${data.bounty}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+
+            // 3. Remove the notification after 6 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.5s';
+                setTimeout(() => toast.remove(), 500);
+            }, 6000);
+        });
+    </script>
+
 </body>
 </html>

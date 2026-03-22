@@ -475,6 +475,83 @@ def api_execute_search():
     else:
         # Fallback mode (dev only)
         return jsonify({"status": "SUCCESS", "results": [{"title": "Search Simulation", "url": "http://dev.proxy"}]})
+    
+# ==========================================
+# 🤖 B2B PARTNER API (WEBHOOK INGESTION)
+# ==========================================
+
+@app.route('/api/v1/dispatch/request', methods=['POST'])
+def api_dispatch_request():
+    """
+    Receives an automated dispatch request directly from a partner's AV telemetry server.
+    Expected Payload: JSON containing asset_id, gps coordinates, and fault_code.
+    """
+    import random
+    from datetime import datetime
+    
+    # 1. Authenticate the Request
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer sk_'):
+        return jsonify({
+            "error": "Unauthorized", 
+            "message": "Missing or invalid API Key. Expected format: 'Authorization: Bearer sk_live_...'"
+        }), 401
+
+    # 2. Validate the Payload
+    data = request.json
+    if not data:
+        return jsonify({"error": "Bad Request", "message": "Invalid JSON payload."}), 400
+
+    required_fields = ['asset_id', 'latitude', 'longitude', 'error_code']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"error": "Bad Request", "message": f"Missing required field: {field}"}), 400
+
+    # 3. Process the Request (Generate Mission & Escrow Hold)
+    # In a fully wired environment, this would INSERT into your PostgreSQL database
+    # and broadcast via WebSockets to make the dot instantly appear on the map.
+    
+    mission_id = f"FLT-{random.randint(10000, 99999)}"
+    
+    # Simple tiering logic for the response
+    # ... existing tiering logic ...
+    tier = 1
+    base_bounty = 15.00
+    if data['error_code'] in ['spill_remediation', 'tire_pressure']:
+        tier = 2; base_bounty = 25.00
+    elif data['error_code'] in ['manual_override', 'scene_securement']:
+        tier = 3; base_bounty = 85.00
+
+    # 🟢 NEW: Construct the real-time map payload
+    map_payload = {
+        "id": mission_id,
+        "asset_id": data['asset_id'],
+        "lat": data['latitude'],
+        "lng": data['longitude'],
+        "fault_code": data['error_code'],
+        "bounty": f"${base_bounty:.2f}",
+        "tier": tier
+    }
+
+    # 🟢 NEW: Broadcast to all connected Command Center browsers instantly
+    socketio.emit('partner_fault_ingested', map_payload)
+
+    # 4. Return the standard 201 Created response to the AV
+    response_payload = {
+        "status": "accepted",
+        "mission_id": mission_id,
+        "asset": data['asset_id'],
+        "tier": tier,
+        "financials": {
+            "escrow_locked": f"${base_bounty:.2f}",
+            "bidding_mode": "auto_escalate",
+            "max_cap": f"${base_bounty + 20:.2f}"
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "message": "Reverse-auction dispatch initiated. Webhooks will fire on status changes."
+    }
+    
+    return jsonify(response_payload), 201
 
 @app.route('/v2')
 @requires_permission(Permission.READ_TASK)
