@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Secure Command Login | ProxyAgent.Network</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root { --navy: #0A192F; --copper: #B87333; --white: #E6F1FF; --slate: #8892B0; --bg-dark: #020c1b; --alert: #ff6b6b; --success: #64FFDA; }
+        body { margin: 0; background-color: var(--navy); color: var(--white); font-family: 'Inter', sans-serif; line-height: 1.6; display: flex; justify-content: center; padding: 60px 20px; }
+        
+        .login-wrapper { max-width: 1000px; width: 100%; }
+        
+        .header { text-align: center; margin-bottom: 50px; border-bottom: 1px solid #112240; padding-bottom: 30px; }
+        .header h1 { font-size: 2.5rem; margin: 0 0 10px 0; font-weight: 800; letter-spacing: -1px; }
+        .badge { color: var(--copper); font-family: monospace; font-size: 0.9rem; letter-spacing: 2px; }
+
+        .split-container { display: flex; gap: 40px; }
+        
+        .login-card { flex: 1; background: var(--bg-dark); border: 1px solid #112240; border-radius: 6px; padding: 40px; position: relative; overflow: hidden; }
+        .login-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--copper); }
+        .login-card.agent::before { background: var(--slate); }
+
+        .login-card h2 { margin-top: 0; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 1px; color: var(--white); }
+        .login-card p { color: var(--slate); font-size: 0.9rem; margin-bottom: 30px; }
+
+        .input-group { margin-bottom: 20px; }
+        label { display: block; font-size: 0.8rem; font-weight: bold; color: var(--slate); margin-bottom: 8px; font-family: monospace; }
+        input { width: 100%; padding: 12px 15px; background: rgba(255,255,255,0.03); border: 1px solid #233554; border-radius: 4px; color: var(--white); font-size: 1rem; box-sizing: border-box; transition: 0.3s; }
+        input:focus { outline: none; border-color: var(--copper); background: rgba(255,255,255,0.05); }
+
+        .submit-btn { width: 100%; padding: 15px; background: transparent; color: var(--copper); border: 1px solid var(--copper); font-weight: bold; font-size: 1rem; cursor: pointer; border-radius: 4px; transition: 0.3s; letter-spacing: 1px; margin-top: 10px; }
+        .submit-btn:hover { background: rgba(184, 115, 51, 0.1); }
+
+        .agent-btn { color: var(--slate); border-color: var(--slate); }
+        .agent-btn:hover { background: rgba(136, 146, 176, 0.1); color: var(--white); border-color: var(--white); }
+
+        .status-msg { margin-top: 20px; font-family: monospace; font-size: 0.85rem; text-align: center; min-height: 40px; }
+        .alert-text { color: var(--alert); }
+        
+        .redirect-link { color: var(--copper); text-decoration: underline; cursor: pointer; }
+
+        @media (max-width: 768px) {
+            .split-container { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-wrapper">
+    <div class="header">
+        <div class="badge">SYSTEM ENCRYPTED // L402 ACTIVE</div>
+        <h1>Command Portal</h1>
+        <p style="color: var(--slate);">Select your secure gateway to access the PAN Protocol.</p>
+    </div>
+
+    <div class="split-container">
+        
+        <div class="login-card">
+            <h2>Fleet Command</h2>
+            <p>For AV operators, API routing, and venture partners.</p>
+            
+            <form id="fleetForm">
+                <div class="input-group">
+                    <label>CORPORATE ID / NODE ADDRESS</label>
+                    <input type="text" placeholder="Enter API Node..." required>
+                </div>
+                <div class="input-group">
+                    <label>ENCRYPTED ACCESS KEY</label>
+                    <input type="password" placeholder="••••••••••••" required>
+                </div>
+                <button type="submit" class="submit-btn" id="fleetBtn">AUTHENTICATE FLEET</button>
+            </form>
+            <div class="status-msg" id="fleetStatus"></div>
+        </div>
+
+        <div class="login-card agent">
+            <h2>Agent Terminal</h2>
+            <p>For active Vanguard 50 deployed personnel.</p>
+            
+            <form id="agentForm">
+                <div class="input-group">
+                    <label>OPERATOR CALLSIGN</label>
+                    <input type="text" placeholder="Enter Callsign..." required>
+                </div>
+                <div class="input-group">
+                    <label>SECURE ENCLAVE PIN</label>
+                    <input type="password" placeholder="••••••••••••" required>
+                </div>
+                <button type="submit" class="submit-btn agent-btn" id="agentBtn">ACCESS TERMINAL</button>
+            </form>
+            <div class="status-msg" id="agentStatus"></div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    // Fake Fleet Login Logic
+    document.getElementById('fleetForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('fleetBtn');
+        const status = document.getElementById('fleetStatus');
+        
+        btn.innerHTML = "VERIFYING NODE...";
+        status.innerHTML = "";
+
+        setTimeout(() => {
+            btn.innerHTML = "AUTHENTICATE FLEET";
+            status.innerHTML = "<span class='alert-text'>[!] ACCESS DENIED: Unrecognized Enterprise Node.</span><br>If you require API access, please submit a request via the <a href='https://www.proxyagent.network/partner' class='redirect-link' target='_parent'>Partner Portal</a>.";
+        }, 1200);
+    });
+
+    // Fake Agent Login Logic
+    document.getElementById('agentForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('agentBtn');
+        const status = document.getElementById('agentStatus');
+        
+        btn.innerHTML = "CHECKING ENCLAVE...";
+        status.innerHTML = "";
+
+        setTimeout(() => {
+            btn.innerHTML = "ACCESS TERMINAL";
+            status.innerHTML = "<span class='alert-text'>[!] CLEARANCE DENIED: Callsign not found in active roster.</span><br>Pending recruits must complete onboarding at the <a href='https://www.proxyagent.network/enlist' class='redirect-link' target='_parent'>Mesa Command Enlistment Page</a>.";
+        }, 1200);
+    });
+</script>
+
+</body>
+</html>

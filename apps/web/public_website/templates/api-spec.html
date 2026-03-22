@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>API Integration Spec | ProxyAgent.Network</title>
+    <meta name="description" content="RESTful API documentation for ProxyAgent.Network. Integrate M2H dispatch, SB 1417 compliance, and Zero-Trust ephemeral keys into your AV fleet software.">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        :root {
+            --navy: #0A192F;
+            --copper: #B87333;
+            --white: #E6F1FF;
+            --slate: #8892B0;
+            --success: #64FFDA;
+            --bg-dark: #020c1b;
+        }
+        body { margin: 0; background-color: var(--navy); color: var(--white); font-family: 'Inter', -apple-system, sans-serif; line-height: 1.6; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 40px 20px 80px; }
+        
+        .top-nav { margin-bottom: 40px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
+        .top-nav a { color: var(--slate); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
+        .top-nav a:hover { color: var(--copper); }
+
+        .header { border-left: 4px solid var(--copper); padding-left: 20px; margin-bottom: 50px; }
+        h1 { font-size: 3rem; margin: 5px 0; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+        .badge { color: var(--success); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; font-family: monospace; }
+        .intro-text { color: var(--slate); font-size: 1.1rem; max-width: 800px; margin-top: 15px; }
+
+        /* Security Banner (Reused from Vanguard Banner) */
+        .security-banner { background: linear-gradient(90deg, rgba(100, 255, 218, 0.1) 0%, rgba(2, 12, 27, 1) 100%); border: 1px solid var(--success); border-left: 4px solid var(--success); padding: 30px; border-radius: 4px; margin-bottom: 50px; display: flex; align-items: center; gap: 20px; }
+        .security-icon { font-size: 2.5rem; line-height: 1; }
+        .security-content h3 { margin: 0 0 5px 0; color: var(--white); font-size: 1.4rem; text-transform: uppercase; letter-spacing: 1px; }
+        .security-content p { margin: 0; color: var(--slate); font-size: 1rem; }
+        .highlight { color: var(--success); font-weight: bold; }
+
+        /* API Endpoint Cards */
+        .endpoint-card { background: var(--bg-dark); border: 1px solid #112240; border-radius: 8px; overflow: hidden; margin-bottom: 40px; }
+        .endpoint-header { background: #112240; padding: 15px 20px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #1d2d50; }
+        .method-post { background: var(--copper); color: #fff; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; letter-spacing: 1px; }
+        .method-web { background: var(--success); color: #000; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; letter-spacing: 1px; }
+        .endpoint-url { font-family: monospace; color: var(--white); font-size: 1.1rem; font-weight: bold; }
+        .endpoint-body { padding: 25px; }
+        
+        /* Code Blocks */
+        pre.code-block { background: #0a192f; border: 1px solid #233554; padding: 20px; border-radius: 6px; overflow-x: auto; color: var(--white); font-family: monospace; font-size: 0.9rem; line-height: 1.5; margin-top: 15px; }
+        .json-key { color: var(--success); }
+        .json-str { color: #ce9178; }
+        .json-num { color: #b5cea8; }
+        .json-bool { color: #569cd6; }
+        .code-comment { color: var(--slate); font-style: italic; }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { text-align: left; padding: 12px 20px; font-size: 0.75rem; color: var(--slate); text-transform: uppercase; border-bottom: 1px dashed #112240; }
+        td { padding: 15px 20px; border-bottom: 1px solid #112240; vertical-align: top; font-size: 0.9rem;}
+        tr:last-child td { border-bottom: none; }
+        .param-name { font-family: monospace; color: var(--white); font-weight: bold; }
+        .param-type { color: var(--copper); font-size: 0.8rem; font-style: italic; display: block; margin-top: 4px; }
+        
+        .code-inline { background: #112240; padding: 2px 6px; border-radius: 4px; font-family: monospace; color: var(--success); font-size: 0.85rem; }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.4rem; }
+            .endpoint-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    
+    <div class="top-nav">
+        <a href="https://www.proxyagent.network/ops-hub">← RETURN TO OPERATIONS HUB</a>
+    </div>
+
+    <div class="header">
+        <span class="badge">REST API DOCS [VERSION 1.0]</span>
+        <h1>Integration Spec</h1>
+        <p class="intro-text">
+            The PAN API provides a secure, event-driven interface for Autonomous Vehicle fleets to instantly trigger hyper-local, physical interventions. Integrate M2H dispatch directly into your existing fleet management dashboard.
+        </p>
+    </div>
+
+    <div class="security-banner">
+        <div class="security-icon">🔒</div>
+        <div class="security-content">
+            <h3>Zero-Trust Ephemeral Access</h3>
+            <p>PAN acts as a secure courier for your digital keys. Using our <span class="highlight">asset_access</span> payload, you generate a Time-Boxed JWT. The PAN app locks this token directly into the Agent's hardware Secure Enclave. The key mathematically self-destructs after 30 minutes, or the moment the agent's BLE signal drops beyond 100 feet of the asset.</p>
+        </div>
+    </div>
+
+    <div class="endpoint-card">
+        <div class="endpoint-header">
+            <span class="method-post">POST</span>
+            <span class="endpoint-url">https://api.proxyagent.network/v1/dispatch/mission</span>
+        </div>
+        <div class="endpoint-body">
+            <p style="color: var(--slate); margin-top: 0;">Initiate a geographic reverse-auction to dispatch the nearest qualified Vanguard Agent to a stranded asset.</p>
+            
+            <pre class="code-block">
+{
+  <span class="json-key">"fleet_id"</span>: <span class="json-str">"waymo_mesa_01"</span>,
+  <span class="json-key">"vehicle_id"</span>: <span class="json-str">"W-7492"</span>,
+  <span class="json-key">"fault_code"</span>: <span class="json-str">"sensor_cleaning"</span>,
+  <span class="json-key">"max_bounty_usd"</span>: <span class="json-num">50.00</span>,
+  <span class="json-key">"location"</span>: {
+    <span class="json-key">"latitude"</span>: <span class="json-num">33.415031</span>,
+    <span class="json-key">"longitude"</span>: <span class="json-num">-111.831492</span>,
+    <span class="json-key">"intersection_hint"</span>: <span class="json-str">"E Main St & S Macdonald"</span>
+  },
+  <span class="code-comment">// Ephemeral Key Handshake</span>
+  <span class="json-key">"asset_access"</span>: {
+    <span class="json-key">"requires_unlock"</span>: <span class="json-bool">true</span>,
+    <span class="json-key">"ephemeral_key_token"</span>: <span class="json-str">"eyJhbGciOiJIUzI1NiIs..."</span>,
+    <span class="json-key">"allowed_actions"</span>: [<span class="json-str">"unlock_doors"</span>, <span class="json-str">"trunk_access"</span>],
+    <span class="json-key">"expiry_minutes"</span>: <span class="json-num">30</span>,
+    <span class="json-key">"geo_revoke_distance_feet"</span>: <span class="json-num">100</span>
+  }
+}</pre>
+
+            <table>
+                <tr><th>Parameter</th><th>Description</th></tr>
+                <tr>
+                    <td><span class="param-name">vehicle_id</span><span class="param-type">string, required</span></td>
+                    <td>Your internal tracking ID for the stranded asset. This ensures audit logs tie directly to your database.</td>
+                </tr>
+                <tr>
+                    <td><span class="param-name">fault_code</span><span class="param-type">string, required</span></td>
+                    <td>The task type. Must map to one of our 12 standard tiers (e.g. <span class="code-inline">door_securing</span>, <span class="code-inline">sensor_cleaning</span>). Filters agent dispatch pool.</td>
+                </tr>
+                <tr>
+                    <td><span class="param-name">max_bounty_usd</span><span class="param-type">float, required</span></td>
+                    <td>The maximum L402 escrow payout authorized. PAN's reverse-auction will attempt to fill the contract below this threshold.</td>
+                </tr>
+                <tr>
+                    <td><span class="param-name">ephemeral_key_token</span><span class="param-type">string, optional</span></td>
+                    <td>A secure JWT generated by your servers. This will be transmitted via UWB/BLE from the Agent's TPM enclave to unlock the physical asset on-site.</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="endpoint-card">
+        <div class="endpoint-header">
+            <span class="method-web">WEBHOOK</span>
+            <span class="endpoint-url">https://api.yourfleet.com/pan-callbacks</span>
+        </div>
+        <div class="endpoint-body">
+            <p style="color: var(--slate); margin-top: 0;">PAN utilizes an event-driven architecture. We push real-time mission state changes directly to your listener endpoints so you do not need to poll our servers.</p>
+            
+            <pre class="code-block">
+{
+  <span class="json-key">"event_id"</span>: <span class="json-str">"evt_4920184"</span>,
+  <span class="json-key">"type"</span>: <span class="json-str">"mission.status_updated"</span>,
+  <span class="json-key">"data"</span>: {
+    <span class="json-key">"mission_id"</span>: <span class="json-str">"PAN-MSN-98421"</span>,
+    <span class="json-key">"vehicle_id"</span>: <span class="json-str">"W-7492"</span>,
+    <span class="json-key">"status"</span>: <span class="json-str">"BUSY_ON_SITE"</span>,
+    <span class="json-key">"agent"</span>: {
+      <span class="json-key">"uid"</span>: <span class="json-str">"AGT-VANGUARD-042"</span>,
+      <span class="json-key">"distance_to_asset_meters"</span>: <span class="json-num">2.4</span>
+    },
+    <span class="json-key">"timestamp"</span>: <span class="json-str">"2026-03-10T00:04:12Z"</span>
+  }
+}</pre>
+            
+            <div style="margin-top: 25px;">
+                <h4 style="margin-bottom: 10px; color: var(--white);">Supported Webhook States:</h4>
+                <ul style="color: var(--slate); font-size: 0.9rem; padding-left: 20px;">
+                    <li><span class="code-inline" style="color:var(--white)">AUCTION_PENDING</span> - Calculating proximity routing and verifying qualifications.</li>
+                    <li><span class="code-inline" style="color:var(--copper)">BUSY_ON_WAY</span> - Contract accepted. Agent is navigating to coordinates.</li>
+                    <li><span class="code-inline" style="color:var(--success)">BUSY_ON_SITE</span> - Agent has arrived and established BLE handshake with asset.</li>
+                    <li><span class="code-inline" style="color:var(--slate)">COMPLETED</span> - Cryptographic photo proof uploaded. Fleet is cleared to resume ops.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>

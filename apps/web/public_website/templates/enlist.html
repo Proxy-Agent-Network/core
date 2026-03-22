@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Enlistment Portal | ProxyAgent.Network</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root { --navy: #0A192F; --copper: #B87333; --white: #E6F1FF; --slate: #8892B0; --bg-dark: #020c1b; --alert: #ff6b6b; --success: #64FFDA; }
+        body { margin: 0; background-color: var(--navy); color: var(--white); font-family: 'Inter', monospace, sans-serif; line-height: 1.6; padding: 40px 20px; }
+        .form-wrapper { max-width: 800px; margin: 0 auto; background: var(--bg-dark); border: 1px solid #112240; border-top: 4px solid var(--copper); border-radius: 4px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        
+        .header { text-align: center; margin-bottom: 40px; border-bottom: 1px dashed #112240; padding-bottom: 30px; }
+        .header h1 { font-size: 2.2rem; margin: 0 0 10px 0; font-family: sans-serif; font-weight: 800; letter-spacing: -1px; text-transform: uppercase; }
+        .badge { color: var(--success); font-family: monospace; font-size: 0.9rem; letter-spacing: 2px; }
+        .subtext { color: var(--slate); font-family: sans-serif; font-size: 0.95rem; margin-top: 10px; }
+
+        .section-title { color: var(--copper); font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; margin: 30px 0 15px 0; border-bottom: 1px solid #112240; padding-bottom: 5px; font-family: sans-serif;}
+        
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .full-width { grid-column: span 2; }
+        
+        .input-group { display: flex; flex-direction: column; }
+        label { font-size: 0.8rem; font-weight: bold; color: var(--slate); margin-bottom: 6px; letter-spacing: 0.5px; }
+        
+        /* Form Field Styling - Changed to solid dark backgrounds */
+        input, select { padding: 12px 15px; background-color: #061121; border: 1px solid #233554; border-radius: 4px; color: var(--white); font-size: 1rem; font-family: sans-serif; transition: 0.3s; }
+        input:focus, select:focus { outline: none; border-color: var(--copper); background-color: #0a192f; }
+        
+        /* Override OS Default Dropdown Backgrounds */
+        option { background-color: var(--bg-dark); color: var(--white); }
+
+        /* Force Chrome Autofill to stay Dark Mode */
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover, 
+        input:-webkit-autofill:focus, 
+        input:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0 30px #061121 inset !important;
+            -webkit-text-fill-color: var(--white) !important;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+
+        /* Custom Checkbox Grid */
+        .task-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: rgba(0,0,0,0.2); padding: 20px; border: 1px solid #112240; border-radius: 4px; }
+        .checkbox-label { display: flex; align-items: flex-start; gap: 10px; font-family: sans-serif; font-size: 0.9rem; color: var(--white); cursor: pointer; }
+        .checkbox-label input { margin-top: 4px; accent-color: var(--copper); width: 16px; height: 16px; cursor: pointer; }
+        .task-desc { display: block; font-size: 0.75rem; color: var(--slate); margin-top: 2px; }
+
+        .submit-btn { grid-column: span 2; padding: 18px; background: rgba(184, 115, 51, 0.1); color: var(--copper); border: 1px solid var(--copper); font-weight: bold; font-size: 1.1rem; cursor: pointer; border-radius: 4px; transition: 0.3s; letter-spacing: 2px; margin-top: 20px; font-family: sans-serif; text-transform: uppercase; }
+        .submit-btn:hover { background: var(--copper); color: var(--navy); }
+
+        .status-msg { margin-top: 20px; text-align: center; font-size: 0.95rem; min-height: 25px; }
+        .success-text { color: var(--success); }
+        .error-text { color: var(--alert); }
+
+        @media (max-width: 768px) {
+            .form-grid, .task-grid { grid-template-columns: 1fr; }
+            .full-width { grid-column: span 1; }
+            .submit-btn { grid-column: span 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="form-wrapper">
+    <div class="header">
+        <div class="badge">VANGUARD 50 // MESA SECTOR</div>
+        <h1>Operator Enlistment</h1>
+        <p class="subtext">Phase 1 Pre-Screening. Provide your operational baseline below.</p>
+    </div>
+
+    <form action="https://formspree.io/f/xjgeneyl" method="POST" id="enlistForm" class="form-grid">
+        
+        <div class="full-width section-title">1. Identity & Comms Protocol</div>
+        
+        <div class="input-group">
+            <label>FULL LEGAL NAME</label>
+            <input type="text" id="fullName" name="Full Name" required placeholder="John Doe">
+        </div>
+        
+        <div class="input-group">
+            <label>CALLSIGN / NICKNAME</label>
+            <input type="text" id="callsign" name="Callsign" required placeholder="e.g. 'Ghost', 'Maverick'">
+        </div>
+
+        <div class="input-group">
+            <label>SECURE EMAIL ADDRESS</label>
+            <input type="email" id="email" name="email" required placeholder="name@domain.com">
+        </div>
+
+        <div class="input-group">
+            <label>MOBILE NUMBER</label>
+            <input type="tel" id="phone" name="Phone Number" required placeholder="(555) 555-5555">
+        </div>
+
+        <div class="input-group">
+            <label>PREFERRED COMM CHANNEL</label>
+            <select id="contactPref" name="Preferred Contact" required>
+                <option value="" disabled selected>Select routing method...</option>
+                <option value="Text Message (SMS)">Text Message (SMS)</option>
+                <option value="Email">Encrypted Email</option>
+                <option value="Phone Call">Direct Phone Call</option>
+            </select>
+        </div>
+
+        <div class="input-group">
+            <label>MILITARY BRANCH & YEARS</label>
+            <input type="text" id="branch" name="Military Branch" required placeholder="e.g. USMC, 4 Years">
+        </div>
+
+        <div class="input-group full-width">
+            <label>LOCAL VFW / LEGION POST (OPTIONAL)</label>
+            <input type="text" id="vfw" name="VFW Post" placeholder="e.g. Post 1760 Mesa">
+        </div>
+
+        <div class="full-width section-title">2. Tactical Logistics</div>
+
+        <div class="input-group">
+            <label>PRIMARY OPERATING ZIP CODE</label>
+            <input type="text" id="zipcode" name="Zip Code" required placeholder="e.g. 85201" pattern="[0-9]{5}">
+        </div>
+
+        <div class="input-group">
+            <label>SECURE ENCLAVE HARDWARE</label>
+            <select id="os" name="Hardware OS" required>
+                <option value="" disabled selected>Select Smartphone OS...</option>
+                <option value="iOS">Apple iOS (iPhone)</option>
+                <option value="Android">Android</option>
+            </select>
+        </div>
+
+        <div class="input-group full-width">
+            <label>PRIMARY DEPLOYMENT VEHICLE</label>
+            <select id="vehicle" name="Vehicle Class" required>
+                <option value="" disabled selected>Select transport class...</option>
+                <option value="Car">Standard Commuter (Car/Truck/SUV)</option>
+                <option value="Motorcycle">Motorcycle / Scooter</option>
+                <option value="EBike">E-Bike / Micromobility</option>
+                <option value="Foot">Foot Patrol (High Density Zones)</option>
+            </select>
+        </div>
+
+        <div class="full-width section-title">3. Mission Capabilities</div>
+        <p class="subtext full-width" style="margin-top: -10px; margin-bottom: 15px;">Review the SLA protocols below. Uncheck any operational parameters you are unable or unwilling to perform. This will not disqualify you; it only calibrates your dispatch routing.</p>
+
+        <div class="task-grid full-width">
+            <label class="checkbox-label">
+                <input type="checkbox" name="Task: Manual Repositioning" value="Accepted" checked> 
+                <div>
+                    <b>AV-Assist.Move</b>
+                    <span class="task-desc">Manual repositioning / driving of stalled autonomous vehicles.</span>
+                </div>
+            </label>
+
+            <label class="checkbox-label">
+                <input type="checkbox" name="Task: Accident & Escort" value="Accepted" checked> 
+                <div>
+                    <b>AV-Assist.Accident & Escort</b>
+                    <span class="task-desc">Scene management, traffic control, and passenger security.</span>
+                </div>
+            </label>
+
+            <label class="checkbox-label">
+                <input type="checkbox" name="Task: Sensor Cleaning" value="Accepted" checked> 
+                <div>
+                    <b>AV-Assist.Sensor</b>
+                    <span class="task-desc">Precision wiping/cleaning of exterior LiDAR and Camera arrays.</span>
+                </div>
+            </label>
+
+            <label class="checkbox-label">
+                <input type="checkbox" name="Task: Tire Repair" value="Accepted" checked> 
+                <div>
+                    <b>AV-Assist.TPMS & TireRepair</b>
+                    <span class="task-desc">Air compressor filling, tire plugging, or manual spare installation.</span>
+                </div>
+            </label>
+
+            <label class="checkbox-label">
+                <input type="checkbox" name="Task: Biohazard Clean" value="Accepted" checked> 
+                <div>
+                    <b>AV-Assist.Biohazard & Soiled</b>
+                    <span class="task-desc">Cleaning spills, bodily fluids, or hazardous materials from cabin.</span>
+                </div>
+            </label>
+
+            <label class="checkbox-label">
+                <input type="checkbox" name="Task: Trash & Doors" value="Accepted" checked> 
+                <div>
+                    <b>AV-Assist.Trash & Doors</b>
+                    <span class="task-desc">Routine cabin clearing and closure of doors left open by riders.</span>
+                </div>
+            </label>
+
+            <label class="checkbox-label">
+                <input type="checkbox" name="Task: Night Ops" value="Accepted" checked> 
+                <div>
+                    <b>Night Ops Authorization</b>
+                    <span class="task-desc">Willing to accept dispatches between 22:00 and 06:00.</span>
+                </div>
+            </label>
+        </div>
+
+        <button type="submit" class="submit-btn" id="submitBtn">Submit Enlistment Dossier</button>
+    </form>
+    
+    <div class="status-msg" id="statusMsg"></div>
+</div>
+
+<script>
+    document.getElementById('enlistForm').addEventListener('submit', function(e) {
+        e.preventDefault(); 
+        
+        const form = e.target;
+        const btn = document.getElementById('submitBtn');
+        const status = document.getElementById('statusMsg');
+        
+        btn.innerHTML = "ENCRYPTING DOSSIER...";
+        btn.style.opacity = "0.7";
+        btn.style.pointerEvents = "none";
+        status.innerHTML = "";
+
+        const data = new FormData(form);
+
+        fetch(form.action, {
+            method: form.method,
+            body: data,
+            headers: {
+                'Accept': 'application/json'
+            }
+        }).then(response => {
+            if (response.ok) {
+                form.reset();
+                btn.innerHTML = "DOSSIER TRANSMITTED";
+                btn.style.background = "var(--success)";
+                btn.style.color = "var(--navy)";
+                btn.style.borderColor = "var(--success)";
+                
+                status.innerHTML = "<span class='success-text'>[✓] SECURE UPLOAD COMPLETE. Vanguard Command will contact you within 48 hours.</span>";
+                
+                setTimeout(() => {
+                    btn.innerHTML = "SUBMIT ENLISTMENT DOSSIER";
+                    btn.style.background = "rgba(184, 115, 51, 0.1)";
+                    btn.style.color = "var(--copper)";
+                    btn.style.borderColor = "var(--copper)";
+                    btn.style.opacity = "1";
+                    btn.style.pointerEvents = "auto";
+                }, 5000);
+            } else {
+                status.innerHTML = "<span class='error-text'>[!] TRANSMISSION FAILED: Network error. Please try again.</span>";
+                btn.innerHTML = "RETRY TRANSMISSION";
+                btn.style.opacity = "1";
+                btn.style.pointerEvents = "auto";
+            }
+        }).catch(error => {
+            status.innerHTML = "<span class='error-text'>[!] OFFLINE: Unable to reach command server. Check your connection.</span>";
+            btn.innerHTML = "RETRY TRANSMISSION";
+            btn.style.opacity = "1";
+            btn.style.pointerEvents = "auto";
+        });
+    });
+</script>
+
+</body>
+</html>
