@@ -3,7 +3,8 @@ package com.pan.tactical
 import platform.UIKit.UIView
 
 fun getSecureMapsKey(): String {
-    return BuildConfig.MAPS_API_KEY
+    // 🟢 Changed to pull the iOS-specific key!
+    return BuildConfig.IOS_MAPS_API_KEY
 }
 
 var iosMapViewFactory: (() -> UIView)? = null

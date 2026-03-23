@@ -1,55 +1,43 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Investor Relations | ProxyAgent.Network</title>
-    <style>
-        :root {
-            --navy: #0A192F;
-            --copper: #B87333;
-            --white: #E6F1FF;
-            --slate: #8892B0;
-            --accent: #64FFDA;
-        }
-        body {
-            margin: 0; background-color: var(--navy); color: var(--white);
-            font-family: 'Inter', -apple-system, sans-serif; line-height: 1.6;
-        }
-        .container { max-width: 1100px; margin: 0 auto; padding: 80px 20px; }
-        .header { border-left: 5px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
-        .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; }
-        h1 { font-size: 3.5rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; }
-        
-        /* Dashboard Cards */
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 50px; }
-        .card { background: #112240; padding: 35px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); transition: 0.3s; }
-        .card:hover { border-color: var(--copper); transform: translateY(-5px); }
-        .card h3 { margin-top: 0; font-size: 1.1rem; color: var(--slate); text-transform: uppercase; }
-        .big-number { display: block; font-size: 3.5rem; font-weight: 800; color: var(--white); margin: 15px 0; }
-        .card p { font-size: 0.95rem; color: var(--slate); margin: 0; }
+{% extends "base.html" %}
 
-        /* Comparison Table */
-        .table-container { background: #020c1b; border-radius: 12px; padding: 30px; border: 1px solid #112240; margin-top: 40px; }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; color: var(--copper); padding: 15px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #112240; }
-        td { padding: 20px 15px; border-bottom: 1px solid #112240; font-size: 1rem; }
-        .highlight-row { background: rgba(184, 115, 51, 0.05); color: var(--white); font-weight: bold; }
-        .legal-tag { background: rgba(100, 255, 218, 0.1); color: var(--accent); padding: 4px 12px; border-radius: 15px; font-size: 0.75rem; font-weight: bold; }
+{% block title %}Investor Relations | ProxyAgent.Network{% endblock %}
 
-        .footer-cta { text-align: center; margin-top: 100px; padding-top: 40px; border-top: 1px solid #112240; }
-        .btn-link { color: var(--copper); text-decoration: none; font-weight: bold; border-bottom: 2px solid transparent; transition: 0.3s; font-size: 1.2rem; }
-        .btn-link:hover { border-bottom-color: var(--copper); }
+{% block extra_css %}
+<style>
+    .container-investors { max-width: 1100px; margin: 0 auto; padding: 80px 20px; }
+    .header-investors { border-left: 5px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
+    .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; }
+    .header-investors h1 { font-size: 3.5rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; }
+    
+    /* Dashboard Cards */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 50px; }
+    .card { background: #112240; padding: 35px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); transition: 0.3s; }
+    .card:hover { border-color: var(--copper); transform: translateY(-5px); }
+    .card h3 { margin-top: 0; font-size: 1.1rem; color: var(--slate); text-transform: uppercase; }
+    .big-number { display: block; font-size: 3.5rem; font-weight: 800; color: var(--white); margin: 15px 0; }
+    .card p { font-size: 0.95rem; color: var(--slate); margin: 0; }
 
-        .infrastructure-row { margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
-        .infra-text h2 { font-size: 2.2rem; margin-top: 0; color: var(--white); }
-        .infra-text p { color: var(--slate); font-size: 1.1rem; }
-    </style>
-</head>
-<body>
+    /* Comparison Table */
+    .table-container { background: #020c1b; border-radius: 12px; padding: 30px; border: 1px solid #112240; margin-top: 40px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; color: var(--copper); padding: 15px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #112240; }
+    td { padding: 20px 15px; border-bottom: 1px solid #112240; font-size: 1rem; }
+    .highlight-row { background: rgba(184, 115, 51, 0.05); color: var(--white); font-weight: bold; }
+    .legal-tag { background: rgba(100, 255, 218, 0.1); color: var(--accent); padding: 4px 12px; border-radius: 15px; font-size: 0.75rem; font-weight: bold; }
 
-<div class="container">
-    <div class="header">
+    .footer-cta { text-align: center; margin-top: 100px; padding-top: 40px; border-top: 1px solid #112240; }
+    .btn-link { color: var(--copper); text-decoration: none; font-weight: bold; border-bottom: 2px solid transparent; transition: 0.3s; font-size: 1.2rem; }
+    .btn-link:hover { border-bottom-color: var(--copper); }
+
+    .infrastructure-row { margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+    .infra-text h2 { font-size: 2.2rem; margin-top: 0; color: var(--white); }
+    .infra-text p { color: var(--slate); font-size: 1.1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-investors">
+    <div class="header-investors">
         <div class="subtitle">Micro-Seed Opportunity // Q1 2026</div>
         <h1>Securing the Autonomous Economy.</h1>
         <p style="color: var(--slate); font-size: 1.25rem; max-width: 800px;">
@@ -119,9 +107,7 @@
 
     <div class="footer-cta">
         <p style="color: var(--slate); margin-bottom: 20px;">Strictly Confidential // Limited Distribution to Accredited Partners</p>
-        <a href="https://www.proxyagent.network/partners" class="btn-link">REQUEST VIRTUAL DATA ROOM (VDR) ACCESS →</a>
+        <a href="/partners" class="btn-link">REQUEST VIRTUAL DATA ROOM (VDR) ACCESS →</a>
     </div>
 </div>
-
-</body>
-</html>
+{% endblock %}

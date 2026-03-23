@@ -1,91 +1,74 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>Investor Relations | ProxyAgent.Network Mesa Pilot</title>
-    <meta name="description" content="Invest in the infrastructure of autonomy. ProxyAgent.Network slashes autonomous vehicle recovery costs in Mesa, AZ using L402 payments and hardware-verified Veteran operators.">
-    <meta name="keywords" content="Autonomous Vehicle Investments, Scottsdale VC, AI Infrastructure, Proxy Agent Network, L402, Fleet Operations OpEx, Waymo Phoenix, Veteran Tech Jobs">
-    <meta name="author" content="ProxyAgent.Network">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% extends "base.html" %}
 
-    <style>
-        :root {
-            --navy: #0A192F;
-            --copper: #B87333;
-            --white: #E6F1FF;
-            --slate: #8892B0;
-            --success: #64FFDA;
-            --bg-dark: #020c1b;
-        }
-        body {
-            margin: 0; background-color: var(--navy); color: var(--white);
-            font-family: 'Inter', -apple-system, sans-serif; line-height: 1.6;
-        }
-        .container { max-width: 1100px; margin: 0 auto; padding: 40px 20px 80px; }
-        
-        /* Utility Nav */
-        .top-nav { margin-bottom: 40px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
-        .top-nav a { color: var(--slate); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
-        .top-nav a:hover { color: var(--copper); }
+{% block title %}Investor Relations | ProxyAgent.Network Mesa Pilot{% endblock %}
 
-        /* Header */
-        .header { border-left: 4px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
-        .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 0.85rem; }
-        h1 { font-size: 3.2rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; line-height: 1.1; }
-        .lead-text { color: var(--slate); font-size: 1.2rem; max-width: 800px; }
-        
-        /* ROI Grid */
-        .roi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 60px; }
-        .card { background: #112240; padding: 35px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); transition: transform 0.3s ease; }
-        .card:hover { transform: translateY(-5px); border-color: rgba(184, 115, 51, 0.4); }
-        .card h3 { color: var(--copper); margin-top: 0; text-transform: uppercase; font-size: 1rem; letter-spacing: 1px; }
-        .big-number { display: block; font-size: 3.5rem; font-weight: 800; margin: 10px 0; color: var(--white); line-height: 1; }
-        
-        /* Technology Moat Section */
-        .tech-moat { background: var(--bg-dark); padding: 40px; border-radius: 8px; border: 1px solid #112240; margin-bottom: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
-        .tech-moat h2 { margin-top: 0; font-size: 2rem; }
-        .tech-feature { margin-bottom: 20px; }
-        .tech-feature h4 { color: var(--copper); margin: 0 0 5px 0; font-size: 1.1rem; }
-        .tech-feature p { color: var(--slate); font-size: 0.95rem; margin: 0; }
-        
-        /* Code Visualizer */
-        .terminal { background: #000; padding: 20px; border-radius: 6px; border: 1px solid #333; font-family: monospace; font-size: 0.85rem; color: var(--success); }
-        .term-comment { color: #666; }
-        .term-key { color: var(--copper); }
-        
-        /* Table Style */
-        h2 { font-size: 2rem; margin-bottom: 20px; }
-        .table-container { overflow-x: auto; background: rgba(2, 12, 27, 0.5); border-radius: 8px; border: 1px solid #112240; }
-        table { width: 100%; border-collapse: collapse; min-width: 600px; }
-        th, td { text-align: left; padding: 20px; border-bottom: 1px solid #112240; }
-        th { background: #112240; color: var(--copper); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
-        .highlight-row { background: rgba(184, 115, 51, 0.08); }
-        .highlight-text { color: var(--copper); font-weight: bold; }
-        
-        /* Legal Badge Box */
-        .compliance-box { margin-top: 60px; padding: 25px; border-left: 4px solid var(--success); background: rgba(100, 255, 218, 0.05); }
-        .compliance-box h4 { color: var(--success); margin: 0 0 10px 0; font-size: 1.2rem; }
-        
-        /* Buttons */
-        .footer-cta { margin-top: 80px; text-align: center; border-top: 1px solid #112240; padding-top: 50px; }
-        .btn { padding: 16px 32px; border-radius: 4px; font-weight: bold; text-decoration: none; transition: all 0.3s ease; font-size: 1.1rem; display: inline-block; cursor: pointer; }
-        .btn-primary { background-color: var(--copper); color: white; border: 1px solid var(--copper); }
-        .btn-primary:hover { background-color: transparent; color: var(--copper); }
-        
-        @media (max-width: 800px) {
-            .tech-moat { grid-template-columns: 1fr; }
-            h1 { font-size: 2.5rem; }
-        }
-    </style>
-</head>
-<body>
+{% block extra_css %}
+<style>
+    .container-ir { max-width: 1100px; margin: 0 auto; padding: 40px 20px 80px; }
+    
+    /* Utility Nav */
+    .top-nav-local { margin-bottom: 40px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
+    .top-nav-local a { color: var(--slate); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
+    .top-nav-local a:hover { color: var(--copper); }
 
-<div class="container">
-    <div class="top-nav">
-        <a href="https://www.proxyagent.network/home">← RETURN TO BASE COMMAND (HOME)</a>
+    /* Header */
+    .header-ir { border-left: 4px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
+    .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 0.85rem; }
+    .header-ir h1 { font-size: 3.2rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; line-height: 1.1; }
+    .lead-text { color: var(--slate); font-size: 1.2rem; max-width: 800px; }
+    
+    /* ROI Grid */
+    .roi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 60px; }
+    .card { background: #112240; padding: 35px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); transition: transform 0.3s ease; }
+    .card:hover { transform: translateY(-5px); border-color: rgba(184, 115, 51, 0.4); }
+    .card h3 { color: var(--copper); margin-top: 0; text-transform: uppercase; font-size: 1rem; letter-spacing: 1px; }
+    .big-number { display: block; font-size: 3.5rem; font-weight: 800; margin: 10px 0; color: var(--white); line-height: 1; }
+    
+    /* Technology Moat Section */
+    .tech-moat { background: var(--bg-dark); padding: 40px; border-radius: 8px; border: 1px solid #112240; margin-bottom: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+    .tech-moat h2 { margin-top: 0; font-size: 2rem; }
+    .tech-feature { margin-bottom: 20px; }
+    .tech-feature h4 { color: var(--copper); margin: 0 0 5px 0; font-size: 1.1rem; }
+    .tech-feature p { color: var(--slate); font-size: 0.95rem; margin: 0; }
+    
+    /* Code Visualizer */
+    .terminal { background: #000; padding: 20px; border-radius: 6px; border: 1px solid #333; font-family: monospace; font-size: 0.85rem; color: var(--success); }
+    .term-comment { color: #666; }
+    .term-key { color: var(--copper); }
+    
+    /* Table Style */
+    .container-ir h2 { font-size: 2rem; margin-bottom: 20px; }
+    .table-container { overflow-x: auto; background: rgba(2, 12, 27, 0.5); border-radius: 8px; border: 1px solid #112240; }
+    table { width: 100%; border-collapse: collapse; min-width: 600px; }
+    th, td { text-align: left; padding: 20px; border-bottom: 1px solid #112240; }
+    th { background: #112240; color: var(--copper); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
+    .highlight-row { background: rgba(184, 115, 51, 0.08); }
+    .highlight-text { color: var(--copper); font-weight: bold; }
+    
+    /* Legal Badge Box */
+    .compliance-box { margin-top: 60px; padding: 25px; border-left: 4px solid var(--success); background: rgba(100, 255, 218, 0.05); }
+    .compliance-box h4 { color: var(--success); margin: 0 0 10px 0; font-size: 1.2rem; }
+    
+    /* Buttons */
+    .footer-cta { margin-top: 80px; text-align: center; border-top: 1px solid #112240; padding-top: 50px; }
+    .btn { padding: 16px 32px; border-radius: 4px; font-weight: bold; text-decoration: none; transition: all 0.3s ease; font-size: 1.1rem; display: inline-block; cursor: pointer; }
+    .btn-primary { background-color: var(--copper); color: white; border: 1px solid var(--copper); }
+    .btn-primary:hover { background-color: transparent; color: var(--copper); }
+    
+    @media (max-width: 800px) {
+        .tech-moat { grid-template-columns: 1fr; }
+        .header-ir h1 { font-size: 2.5rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-ir">
+    <div class="top-nav-local">
+        <a href="/">← RETURN TO BASE COMMAND (HOME)</a>
     </div>
 
-    <div class="header">
+    <div class="header-ir">
         <div class="subtitle">Investment Thesis Q1 2026</div>
         <h1>Securing the Autonomous Human Infrastructure.</h1>
         <p class="lead-text">
@@ -110,8 +93,6 @@
             <p style="color: var(--slate); font-size: 0.95rem; margin:0;">Cost savings for a $12.00 "Door Close" mission via PAN vs. a $150,000/year centralized chase van dispatch.</p>
         </div>
     </div>
-
-    
 
     <div class="tech-moat">
         <div>
@@ -182,13 +163,9 @@
         </p>
     </div>
 
-    
-
     <div class="footer-cta">
         <p style="color: var(--slate); margin-bottom: 25px;">Micro-Seed Round ($24,048) Opening May 16, 2026</p>
-        <a href="https://www.proxyagent.network/partners" class="btn btn-primary">REQUEST VIRTUAL DATA ROOM ACCESS</a>
+        <a href="/partners" class="btn btn-primary">REQUEST VIRTUAL DATA ROOM ACCESS</a>
     </div>
 </div>
-
-</body>
-</html>
+{% endblock %}

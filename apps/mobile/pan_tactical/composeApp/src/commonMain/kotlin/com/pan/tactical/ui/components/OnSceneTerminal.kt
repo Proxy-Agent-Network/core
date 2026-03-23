@@ -1,11 +1,5 @@
 package com.pan.tactical.ui.components
 
-// --- QUARANTINED ANDROID IMPORTS ---
-// import android.graphics.Bitmap
-// import androidx.compose.foundation.Image
-// import androidx.compose.ui.graphics.asImageBitmap
-// -----------------------------------
-
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,10 +18,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage // 🟢 Added Coil3
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.pan.tactical.models.MissionData
@@ -35,32 +31,30 @@ import com.pan.tactical.models.MissionData
 @Composable
 fun OnSceneTerminal(
     activeMission: MissionData?,
-    capturedEvidence: List<Any>, 
+    capturedEvidence: List<ByteArray>, // 🟢 Updated to accept ByteArray
     hasCameraPermission: Boolean,
     onRequestCameraPermission: () -> Unit,
     onCapturePhoto: () -> Unit,
-    onRemovePhoto: (Int) -> Unit, 
+    onRemovePhoto: (Int) -> Unit,
     onSubmitEvidence: () -> Unit,
-    onVerifyIdentity: () -> Unit = {} // 🟢 NEW: Hook for Android BiometricPrompt
+    onVerifyIdentity: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     var terminalLogs by remember { mutableStateOf(listOf("Establishing local UWB connection to AV...", "Connection secured.")) }
     var isResolving by remember { mutableStateOf(false) }
     val requiredPhotos = 2
 
-    // 🟢 NEW: Biometric State Management
     var requiresBiometrics by remember { mutableStateOf(false) }
     var biometricsPassed by remember { mutableStateOf(true) }
 
     LaunchedEffect(activeMission) {
         terminalLogs = listOf("Connection secured.", "Awaiting visual evidence package...")
         isResolving = false
-        
-        // Always require biometrics for high-liability faults, 20% chance for others
+
         val isHighTier = activeMission?.errorCode == "manual_override" || activeMission?.errorCode == "scene_securement"
         requiresBiometrics = Math.random() < 0.20 || isHighTier
         biometricsPassed = !requiresBiometrics
-        
+
         if (requiresBiometrics) {
             terminalLogs = terminalLogs + "WARNING: Identity verification required for this asset."
         }
@@ -68,7 +62,7 @@ fun OnSceneTerminal(
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp).background(Color(0xFF0D1117)).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("📟 AV DIAGNOSTIC TERMINAL", color = Color(0xFF00FF00), fontSize = 16.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp); Spacer(modifier = Modifier.height(12.dp))
-        
+
         Box(modifier = Modifier.fillMaxWidth().height(140.dp).background(Color.Black, RoundedCornerShape(8.dp)).border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp)).padding(12.dp)) {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 terminalLogs.forEach { log -> Text("> $log", color = Color(0xFF00FF00), fontFamily = FontFamily.Monospace, fontSize = 12.sp); Spacer(modifier = Modifier.height(4.dp)) }
@@ -76,7 +70,6 @@ fun OnSceneTerminal(
         }
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 🟢 1. THE BIOMETRIC GATE
         if (!biometricsPassed) {
             Box(
                 modifier = Modifier
@@ -93,7 +86,7 @@ fun OnSceneTerminal(
                     Button(
                         onClick = {
                             onVerifyIdentity()
-                            biometricsPassed = true // For prototype, clicking auto-passes
+                            biometricsPassed = true
                             terminalLogs = terminalLogs + "Identity verified via Biometrics."
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
@@ -102,16 +95,20 @@ fun OnSceneTerminal(
                     }
                 }
             }
-        } 
-        // 🟢 2. THE PHOTO & DIAGNOSTIC FLOW (Unlocked after biometrics)
+        }
         else {
             if (capturedEvidence.isNotEmpty()) {
                 Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    capturedEvidence.forEachIndexed { index, bmp ->
+                    capturedEvidence.forEachIndexed { index, imgBytes ->
                         Box(modifier = Modifier.size(80.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
 
-                            // --- QUARANTINED ANDROID IMAGE RENDERER ---
-                            // Image(bitmap = bmp.asImageBitmap(), contentDescription = "Evidence", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            // 🟢 Multiplatform Image Loading via Coil3
+                            AsyncImage(
+                                model = imgBytes,
+                                contentDescription = "Evidence",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
 
                             Box(modifier = Modifier.align(Alignment.BottomStart).background(Color(0xAA000000)).padding(4.dp)) {
                                 Text(if(index == 0) "BEFORE" else "AFTER", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
@@ -136,7 +133,6 @@ fun OnSceneTerminal(
                     else -> "ADDITIONAL"
                 }
 
-                // Show Camera Button if we need more photos
                 if (capturedEvidence.size < requiredPhotos) {
                     Button(
                         onClick = { if (hasCameraPermission) onCapturePhoto() else onRequestCameraPermission() },
@@ -148,14 +144,13 @@ fun OnSceneTerminal(
                             Text("CAPTURE '$photoType' PHOTO (${capturedEvidence.size}/$requiredPhotos)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
                         }
                     }
-                } 
-                // Show Diagnostics/Submit button once photos are complete
+                }
                 else {
                     Button(
                         enabled = !isResolving,
-                        onClick = { 
-                            isResolving = true 
-                            coroutineScope.launch { 
+                        onClick = {
+                            isResolving = true
+                            coroutineScope.launch {
                                 terminalLogs = terminalLogs + "Pinging AV CAN bus..."
                                 delay(1000)
                                 terminalLogs = terminalLogs + "Diagnostic Trouble Codes (DTC) cleared."
@@ -163,15 +158,15 @@ fun OnSceneTerminal(
                                 terminalLogs = terminalLogs + "Evidence package encrypted and queued."
                                 delay(500)
                                 isResolving = false
-                                onSubmitEvidence() 
-                            } 
-                        }, 
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4), disabledContainerColor = Color(0xFF333333)), 
-                        modifier = Modifier.fillMaxWidth().height(64.dp), 
+                                onSubmitEvidence()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4), disabledContainerColor = Color(0xFF333333)),
+                        modifier = Modifier.fillMaxWidth().height(64.dp),
                         shape = RoundedCornerShape(8.dp)
-                    ) { 
+                    ) {
                         if (isResolving) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black) 
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black)
                         } else {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("⚙️", fontSize = 18.sp)

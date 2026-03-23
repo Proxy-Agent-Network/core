@@ -1,87 +1,74 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>Institutional Engagement | ProxyAgent.Network</title>
-    <meta name="description" content="Partner with ProxyAgent.Network. Deploy our decentralized, veteran-led physical recovery layer for your autonomous vehicle fleet, or connect with our venture capital relations team.">
-    <meta name="keywords" content="AV Fleet Integration, Proxy Agent Network, Autonomous Vehicle Partnerships, AI Infrastructure Investment, Scottsdale VC, Waymo Support API, Enterprise AV">
-    <meta name="author" content="ProxyAgent.Network">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% extends "base.html" %}
 
-    <style>
-        :root { 
-            --navy: #0A192F; 
-            --copper: #B87333; 
-            --white: #E6F1FF; 
-            --slate: #8892B0; 
-            --success: #64FFDA;
-            --bg-dark: #020c1b;
-        }
-        body { margin: 0; background-color: var(--navy); color: var(--white); font-family: 'Inter', -apple-system, sans-serif; line-height: 1.6; }
-        .container { max-width: 1100px; margin: 0 auto; padding: 40px 20px 80px; }
-        
-        /* Utility Nav */
-        .top-nav { margin-bottom: 50px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
-        .top-nav a { color: var(--slate); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
-        .top-nav a:hover { color: var(--copper); }
+{% block title %}Institutional Engagement | ProxyAgent.Network{% endblock %}
 
-        /* Header */
-        .header { margin-bottom: 60px; border-bottom: 1px solid #112240; padding-bottom: 30px; }
-        h1 { font-size: 3rem; font-weight: 800; margin: 5px 0 15px 0; color: var(--white); letter-spacing: -1px; }
-        .badge { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; }
-        
-        /* Grid Layout */
-        .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; }
-        
-        /* Info Column */
-        .info-col h3 { color: var(--copper); margin-top: 0; font-size: 1.3rem; letter-spacing: 1px; text-transform: uppercase; }
-        .info-col p { color: var(--slate); font-size: 1.05rem; margin-bottom: 25px; }
-        
-        /* Trust Signals / Badges */
-        .security-badge { 
-            margin-top: 40px; padding: 20px; background: rgba(100, 255, 218, 0.05); 
-            border-left: 4px solid var(--success); border-radius: 0 4px 4px 0;
-        }
-        .security-badge h4 { color: var(--success); margin: 0 0 8px 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
-        .security-badge p { font-size: 0.9rem; margin: 0; }
-        
-        .tech-stack { margin-top: 30px; font-family: monospace; color: var(--slate); font-size: 0.8rem; opacity: 0.8; line-height: 1.8; }
-
-        /* Form Styling */
-        .form-container { background: var(--bg-dark); padding: 40px; border-radius: 8px; border: 1px solid #112240; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        
-        input, select, textarea { 
-            width: 100%; padding: 15px; background-color: #061121; border: 1px solid #233554; 
-            color: white; margin-bottom: 20px; border-radius: 4px; font-family: inherit; font-size: 1rem;
-            box-sizing: border-box; transition: border-color 0.3s;
-        }
-        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--copper); background-color: #0a192f; }
-        label { display: block; margin-bottom: 8px; font-size: 0.85rem; color: var(--slate); font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
-        .field-note { font-size: 0.75rem; color: var(--slate); margin-top: -15px; margin-bottom: 20px; font-style: italic; opacity: 0.7; }
-        
-        option { background-color: var(--bg-dark); color: var(--white); }
-
-        .submit-btn {
-            background: rgba(184, 115, 51, 0.1); border: 1px solid var(--copper); color: var(--copper);
-            padding: 18px 30px; font-weight: bold; cursor: pointer; transition: 0.3s; 
-            width: 100%; border-radius: 4px; font-size: 1.1rem; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase;
-        }
-        .submit-btn:hover { background: var(--copper); color: var(--navy); }
-
-        @media (max-width: 900px) {
-            .contact-grid { grid-template-columns: 1fr; }
-            h1 { font-size: 2.4rem; }
-        }
-    </style>
-</head>
-<body>
-<div class="container">
+{% block extra_css %}
+<style>
+    .container-partners { max-width: 1100px; margin: 0 auto; padding: 40px 20px 80px; }
     
-    <div class="top-nav">
-        <a href="https://www.proxyagent.network/home">← RETURN TO BASE COMMAND (HOME)</a>
+    /* Utility Nav */
+    .top-nav-partners { margin-bottom: 50px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
+    .top-nav-partners a { color: var(--slate); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
+    .top-nav-partners a:hover { color: var(--copper); }
+
+    /* Header */
+    .header-partners { margin-bottom: 60px; border-bottom: 1px solid #112240; padding-bottom: 30px; }
+    .header-partners h1 { font-size: 3rem; font-weight: 800; margin: 5px 0 15px 0; color: var(--white); letter-spacing: -1px; }
+    .badge { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; }
+    
+    /* Grid Layout */
+    .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; }
+    
+    /* Info Column */
+    .info-col h3 { color: var(--copper); margin-top: 0; font-size: 1.3rem; letter-spacing: 1px; text-transform: uppercase; }
+    .info-col p { color: var(--slate); font-size: 1.05rem; margin-bottom: 25px; }
+    
+    /* Trust Signals / Badges */
+    .security-badge { 
+        margin-top: 40px; padding: 20px; background: rgba(100, 255, 218, 0.05); 
+        border-left: 4px solid var(--success); border-radius: 0 4px 4px 0;
+    }
+    .security-badge h4 { color: var(--success); margin: 0 0 8px 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+    .security-badge p { font-size: 0.9rem; margin: 0; }
+    
+    .tech-stack { margin-top: 30px; font-family: monospace; color: var(--slate); font-size: 0.8rem; opacity: 0.8; line-height: 1.8; }
+
+    /* Form Styling - Scoped to prevent global bleed */
+    .form-container { background: var(--bg-dark); padding: 40px; border-radius: 8px; border: 1px solid #112240; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    
+    .form-container input, .form-container select, .form-container textarea { 
+        width: 100%; padding: 15px; background-color: #061121; border: 1px solid #233554; 
+        color: white; margin-bottom: 20px; border-radius: 4px; font-family: inherit; font-size: 1rem;
+        box-sizing: border-box; transition: border-color 0.3s;
+    }
+    .form-container input:focus, .form-container select:focus, .form-container textarea:focus { outline: none; border-color: var(--copper); background-color: #0a192f; }
+    .form-container label { display: block; margin-bottom: 8px; font-size: 0.85rem; color: var(--slate); font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .field-note { font-size: 0.75rem; color: var(--slate); margin-top: -15px; margin-bottom: 20px; font-style: italic; opacity: 0.7; }
+    
+    .form-container option { background-color: var(--bg-dark); color: var(--white); }
+
+    .submit-btn {
+        background: rgba(184, 115, 51, 0.1); border: 1px solid var(--copper); color: var(--copper);
+        padding: 18px 30px; font-weight: bold; cursor: pointer; transition: 0.3s; 
+        width: 100%; border-radius: 4px; font-size: 1.1rem; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase;
+    }
+    .submit-btn:hover { background: var(--copper); color: var(--navy); }
+
+    @media (max-width: 900px) {
+        .contact-grid { grid-template-columns: 1fr; }
+        .header-partners h1 { font-size: 2.4rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-partners">
+    
+    <div class="top-nav-partners">
+        <a href="/">← RETURN TO BASE COMMAND (HOME)</a>
     </div>
 
-    <div class="header">
+    <div class="header-partners">
         <span class="badge">Enterprise Gateway</span>
         <h1>Institutional Engagement</h1>
         <p style="color: var(--slate); font-size: 1.2rem; max-width: 700px; margin-top: 10px;">
@@ -94,8 +81,6 @@
             <h3>Fleet API Partnerships</h3>
             <p>Deploy PAN as your zero-CapEx physical recovery layer. Fully compatible with Waymo, Amazon Zoox, and Tesla operational stacks. Optimized for Arizona SB 1417 audit logging requirements and V2X-triggered maintenance events.</p>
             
-            
-
             <h3 style="margin-top:50px;">Capital Relations</h3>
             <p>Direct inquiries regarding the Q1 2026 Seed Round for the Mesa Operational Expansion. Access to our Virtual Data Room (VDR) requires identity verification via LinkedIn or Corporate Domain.</p>
 
@@ -212,6 +197,4 @@
         });
     });
 </script>
-
-</body>
-</html>
+{% endblock %}

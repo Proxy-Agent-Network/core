@@ -20,6 +20,7 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 val secureMapsKey = localProperties.getProperty("MAPS_API_KEY") ?: "MISSING_KEY"
+val secureIosMapsKey = localProperties.getProperty("IOS_MAPS_API_KEY") ?: "MISSING_KEY"
 val secureImgbbKey = localProperties.getProperty("IMGBB_API_KEY") ?: "MISSING_KEY"
 // -------------------------------------------------
 
@@ -27,6 +28,7 @@ val secureImgbbKey = localProperties.getProperty("IMGBB_API_KEY") ?: "MISSING_KE
 buildConfig {
     packageName("com.pan.tactical")
     buildConfigField("String", "MAPS_API_KEY", "\"$secureMapsKey\"")
+    buildConfigField("String", "IOS_MAPS_API_KEY", "\"$secureIosMapsKey\"")
     buildConfigField("String", "IMGBB_API_KEY", "\"$secureImgbbKey\"")
 }
 // --------------------------
@@ -61,15 +63,7 @@ kotlin {
 
             // Google Maps & Location Telemetry
             implementation("com.google.android.gms:play-services-location:21.2.0")
-            implementation("com.google.maps.android:maps-compose:4.4.1") {
-                exclude(group = "com.google.android.gms", module = "play-services-maps")
-            }
-
-            // Google Navigation SDK (For TacticalNavEngine)
-            implementation("com.google.android.libraries.navigation:navigation:5.1.1")
-
-            // Explicitly required Cronet fallback for the Nav SDK
-            implementation("org.chromium.net:cronet-fallback:101.4951.41")
+            implementation("com.google.maps.android:maps-compose:4.4.1")
 
             // Hardware Security & Attestation
             implementation("com.google.android.play:integrity:1.4.0")
@@ -135,9 +129,10 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // Keeping the manifest placeholder so the Android Google Maps SDK still works!
+        // 🟢 THE FIX: Safely passing the key we extracted at the very top!
         manifestPlaceholders["MAPS_API_KEY"] = secureMapsKey
     }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

@@ -1,74 +1,67 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>Enlistment Portal | ProxyAgent.Network</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        :root { --navy: #0A192F; --copper: #B87333; --white: #E6F1FF; --slate: #8892B0; --bg-dark: #020c1b; --alert: #ff6b6b; --success: #64FFDA; }
-        body { margin: 0; background-color: var(--navy); color: var(--white); font-family: 'Inter', monospace, sans-serif; line-height: 1.6; padding: 40px 20px; }
-        .form-wrapper { max-width: 800px; margin: 0 auto; background: var(--bg-dark); border: 1px solid #112240; border-top: 4px solid var(--copper); border-radius: 4px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        
-        .header { text-align: center; margin-bottom: 40px; border-bottom: 1px dashed #112240; padding-bottom: 30px; }
-        .header h1 { font-size: 2.2rem; margin: 0 0 10px 0; font-family: sans-serif; font-weight: 800; letter-spacing: -1px; text-transform: uppercase; }
-        .badge { color: var(--success); font-family: monospace; font-size: 0.9rem; letter-spacing: 2px; }
-        .subtext { color: var(--slate); font-family: sans-serif; font-size: 0.95rem; margin-top: 10px; }
+{% extends "base.html" %}
 
-        .section-title { color: var(--copper); font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; margin: 30px 0 15px 0; border-bottom: 1px solid #112240; padding-bottom: 5px; font-family: sans-serif;}
-        
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .full-width { grid-column: span 2; }
-        
-        .input-group { display: flex; flex-direction: column; }
-        label { font-size: 0.8rem; font-weight: bold; color: var(--slate); margin-bottom: 6px; letter-spacing: 0.5px; }
-        
-        /* Form Field Styling - Changed to solid dark backgrounds */
-        input, select { padding: 12px 15px; background-color: #061121; border: 1px solid #233554; border-radius: 4px; color: var(--white); font-size: 1rem; font-family: sans-serif; transition: 0.3s; }
-        input:focus, select:focus { outline: none; border-color: var(--copper); background-color: #0a192f; }
-        
-        /* Override OS Default Dropdown Backgrounds */
-        option { background-color: var(--bg-dark); color: var(--white); }
+{% block title %}Enlistment Portal | ProxyAgent.Network{% endblock %}
 
-        /* Force Chrome Autofill to stay Dark Mode */
-        input:-webkit-autofill,
-        input:-webkit-autofill:hover, 
-        input:-webkit-autofill:focus, 
-        input:-webkit-autofill:active {
-            -webkit-box-shadow: 0 0 0 30px #061121 inset !important;
-            -webkit-text-fill-color: var(--white) !important;
-            transition: background-color 5000s ease-in-out 0s;
-        }
+{% block extra_css %}
+<style>
+    /* Safely isolated form styles */
+    .form-wrapper { max-width: 800px; margin: 40px auto; background: var(--bg-dark); border: 1px solid #112240; border-top: 4px solid var(--copper); border-radius: 4px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .header-enlist { text-align: center; margin-bottom: 40px; border-bottom: 1px dashed #112240; padding-bottom: 30px; }
+    .header-enlist h1 { font-size: 2.2rem; margin: 0 0 10px 0; font-family: sans-serif; font-weight: 800; letter-spacing: -1px; text-transform: uppercase; }
+    .badge { color: var(--success); font-family: monospace; font-size: 0.9rem; letter-spacing: 2px; }
+    .subtext { color: var(--slate); font-family: sans-serif; font-size: 0.95rem; margin-top: 10px; }
 
-        /* Custom Checkbox Grid */
-        .task-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: rgba(0,0,0,0.2); padding: 20px; border: 1px solid #112240; border-radius: 4px; }
-        .checkbox-label { display: flex; align-items: flex-start; gap: 10px; font-family: sans-serif; font-size: 0.9rem; color: var(--white); cursor: pointer; }
-        .checkbox-label input { margin-top: 4px; accent-color: var(--copper); width: 16px; height: 16px; cursor: pointer; }
-        .task-desc { display: block; font-size: 0.75rem; color: var(--slate); margin-top: 2px; }
+    .section-title { color: var(--copper); font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; margin: 30px 0 15px 0; border-bottom: 1px solid #112240; padding-bottom: 5px; font-family: sans-serif;}
+    
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .full-width { grid-column: span 2; }
+    
+    .input-group { display: flex; flex-direction: column; }
+    .input-group label { font-size: 0.8rem; font-weight: bold; color: var(--slate); margin-bottom: 6px; letter-spacing: 0.5px; }
+    
+    .input-group input, .input-group select { padding: 12px 15px; background-color: #061121; border: 1px solid #233554; border-radius: 4px; color: var(--white); font-size: 1rem; font-family: sans-serif; transition: 0.3s; }
+    .input-group input:focus, .input-group select:focus { outline: none; border-color: var(--copper); background-color: #0a192f; }
+    .input-group option { background-color: var(--bg-dark); color: var(--white); }
 
-        .submit-btn { grid-column: span 2; padding: 18px; background: rgba(184, 115, 51, 0.1); color: var(--copper); border: 1px solid var(--copper); font-weight: bold; font-size: 1.1rem; cursor: pointer; border-radius: 4px; transition: 0.3s; letter-spacing: 2px; margin-top: 20px; font-family: sans-serif; text-transform: uppercase; }
-        .submit-btn:hover { background: var(--copper); color: var(--navy); }
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover, 
+    input:-webkit-autofill:focus, 
+    input:-webkit-autofill:active {
+        -webkit-box-shadow: 0 0 0 30px #061121 inset !important;
+        -webkit-text-fill-color: var(--white) !important;
+        transition: background-color 5000s ease-in-out 0s;
+    }
 
-        .status-msg { margin-top: 20px; text-align: center; font-size: 0.95rem; min-height: 25px; }
-        .success-text { color: var(--success); }
-        .error-text { color: var(--alert); }
+    .task-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: rgba(0,0,0,0.2); padding: 20px; border: 1px solid #112240; border-radius: 4px; }
+    .checkbox-label { display: flex; align-items: flex-start; gap: 10px; font-family: sans-serif; font-size: 0.9rem; color: var(--white); cursor: pointer; }
+    .checkbox-label input { margin-top: 4px; accent-color: var(--copper); width: 16px; height: 16px; cursor: pointer; }
+    .task-desc { display: block; font-size: 0.75rem; color: var(--slate); margin-top: 2px; }
 
-        @media (max-width: 768px) {
-            .form-grid, .task-grid { grid-template-columns: 1fr; }
-            .full-width { grid-column: span 1; }
-            .submit-btn { grid-column: span 1; }
-        }
-    </style>
-</head>
-<body>
+    .submit-btn { grid-column: span 2; padding: 18px; background: rgba(184, 115, 51, 0.1); color: var(--copper); border: 1px solid var(--copper); font-weight: bold; font-size: 1.1rem; cursor: pointer; border-radius: 4px; transition: 0.3s; letter-spacing: 2px; margin-top: 20px; font-family: sans-serif; text-transform: uppercase; width: 100%; }
+    .submit-btn:hover { background: var(--copper); color: var(--navy); }
 
+    .status-msg { margin-top: 20px; text-align: center; font-size: 0.95rem; min-height: 25px; grid-column: span 2; }
+    .success-text { color: var(--success); }
+    .error-text { color: var(--alert); }
+
+    @media (max-width: 768px) {
+        .form-grid, .task-grid { grid-template-columns: 1fr; }
+        .full-width { grid-column: span 1; }
+        .submit-btn { grid-column: span 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
 <div class="form-wrapper">
-    <div class="header">
+    <div class="header-enlist">
         <div class="badge">VANGUARD 50 // MESA SECTOR</div>
         <h1>Operator Enlistment</h1>
         <p class="subtext">Phase 1 Pre-Screening. Provide your operational baseline below.</p>
     </div>
 
     <form action="https://formspree.io/f/xjgeneyl" method="POST" id="enlistForm" class="form-grid">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         
         <div class="full-width section-title">1. Identity & Comms Protocol</div>
         
@@ -201,9 +194,8 @@
         </div>
 
         <button type="submit" class="submit-btn" id="submitBtn">Submit Enlistment Dossier</button>
+        <div class="status-msg" id="statusMsg"></div>
     </form>
-    
-    <div class="status-msg" id="statusMsg"></div>
 </div>
 
 <script>
@@ -259,6 +251,4 @@
         });
     });
 </script>
-
-</body>
-</html>
+{% endblock %}

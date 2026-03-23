@@ -1,16 +1,21 @@
 import random
 import time
-import os
 import json
 import base64
 import asyncio
 import threading
 import secrets
+import jinja2
 from datetime import date, timedelta
 
 # --- 1. INJECT MONOREPO PATHS ---
 import sys
 import os
+from dotenv import load_dotenv
+
+# Load the local .env file securely into the environment
+load_dotenv()
+
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 sys.path.insert(0, os.path.join(ROOT_DIR, "apps", "backend", "src"))
 sys.path.insert(0, os.path.join(ROOT_DIR, "hardware"))
@@ -59,6 +64,14 @@ TEMPLATE_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "template
 STATIC_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "static")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
+
+CMD_CENTER_DIR = os.path.join(ROOT_DIR, 'apps', 'web', 'command_center')
+
+# Tell Jinja to look in BOTH the public templates folder and the command center folder
+app.jinja_loader = jinja2.ChoiceLoader([
+    jinja2.FileSystemLoader(TEMPLATE_DIR),
+    jinja2.FileSystemLoader(CMD_CENTER_DIR)
+])
 # --------------------------------------------------------------------
 
 # 🟢 DEV TOOL: NUKE ALL BROWSER CACHING
@@ -608,25 +621,20 @@ def investors():
 # ==========================================
 # 🌐 VANGUARD 50 COMMAND CENTER (SPA ROUTES)
 # ==========================================
-CMD_CENTER_DIR = os.path.join(ROOT_DIR, 'apps', 'web', 'command_center')
-
 @app.route('/command')
 @requires_permission(Permission.READ_TASK)
 def command_center_root():
-    """Serves the main HTML file from the new modular directory."""
-    return send_from_directory(CMD_CENTER_DIR, 'index.html')
+    return render_template('index.html')
 
 @app.route('/developers')
 @requires_permission(Permission.READ_TASK)
 def developer_portal():
-    """Serves the Partner API / Webhook Portal."""
-    return send_from_directory(CMD_CENTER_DIR, 'developer.html')
+    return render_template('developer.html')
 
 @app.route('/reports')
 @requires_permission(Permission.READ_TASK)
 def reports_portal():
-    """Serves the Executive Reporting Portal."""
-    return send_from_directory(CMD_CENTER_DIR, 'reports.html')
+    return render_template('reports.html')
 
 # ==========================================
 # 📊 EXECUTIVE REPORTING APIs

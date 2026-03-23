@@ -1,44 +1,36 @@
 package com.pan.tactical
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import com.pan.tactical.ui.LoginScreen
-
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 @Composable
 fun App() {
     MaterialTheme {
-        var currentScreen by remember { mutableStateOf("LOGIN") }
-        var isLoading by remember { mutableStateOf(false) }
-        var errorMsg by remember { mutableStateOf<String?>(null) }
+        var currentScreen by remember { mutableStateOf("ATTESTATION") }
 
         when (currentScreen) {
-            "LOGIN" -> {
-                LoginScreen(
-                    isLoading = isLoading,
-                    errorMessage = errorMsg,
-                    onLoginClick = { email, password ->
-                        isLoading = true
-                        errorMsg = null
-                        if (email == "agent@pan.com" && password == "password") {
-                            isLoading = false
+            "ATTESTATION" -> {
+                HardwareAttestationBoot(
+                    onUplinkSecured = {
+                        // --- INITIALIZE THE NATIVE AUDIO ENGINE ---
+                        val audio = AudioEngine()
+                        audio.playAlertBeep(100)
+                        audio.speak("Hardware identity verified. Uplink secured.", 1.0f)
+                        // ------------------------------------------
 
-                            // --- INITIALIZE THE NATIVE AUDIO ENGINE ---
-                            val audio = AudioEngine()
-                            audio.playAlertBeep(100)
-                            audio.speak("Uplink secured. Welcome to PAN Command.", 1.0f)
-                            // ------------------------------------------
-
-                            currentScreen = "DASHBOARD"
-                        } else {
-                            isLoading = false
-                            errorMsg = "INVALID CREDENTIALS (try agent@pan.com / password)"
-                        }
+                        currentScreen = "DASHBOARD"
                     }
                 )
             }
@@ -47,5 +39,56 @@ fun App() {
                 com.pan.tactical.ui.AgentDashboardScreen()
             }
         }
+    }
+}
+
+@Composable
+fun HardwareAttestationBoot(onUplinkSecured: () -> Unit) {
+    var bootLog by remember { mutableStateOf("INITIALIZING SECURE ENCLAVE...") }
+
+    // Simulate the Zero-Trust Hardware Handshake
+    LaunchedEffect(Unit) {
+        delay(800)
+        bootLog = "READING TPM 2.0 FINGERPRINT..."
+        delay(1200)
+        bootLog = "GENERATING CRYPTOGRAPHIC SIGNATURE..."
+        delay(1000)
+        bootLog = "AUTHENTICATING WITH PAN COMMAND..."
+        delay(1500)
+        onUplinkSecured()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF050505))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "PAN TACTICAL",
+            color = Color.White,
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 2.sp
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+
+        CircularProgressIndicator(
+            color = Color(0xFF00BCD4),
+            strokeWidth = 3.dp,
+            modifier = Modifier.size(48.dp)
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text = bootLog,
+            color = Color(0xFF00BCD4),
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 1.sp
+        )
     }
 }

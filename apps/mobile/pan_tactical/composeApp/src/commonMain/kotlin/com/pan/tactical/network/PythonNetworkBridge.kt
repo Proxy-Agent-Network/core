@@ -23,7 +23,7 @@ object PythonNetworkBridge {
         }
     }
 
-    private const val BASE_URL = "https://api.proxyagent.network"
+    private const val BASE_URL = "http://10.0.2.2:5000"
 
     // --- THE FIX: A state flag so the server doesn't spam you ---
     private var hasSentMockDispatch = false

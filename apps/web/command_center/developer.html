@@ -1,88 +1,95 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PAN Partner API Portal</title>
-    <link rel="stylesheet" href="css/developer.css">
-    <style>
-        /* View Toggling Logic */
-        .dev-view { display: none; animation: fadeIn 0.3s ease; }
-        .dev-view.active-view { display: block; }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+{% extends "dashboard_base.html" %}
 
-        /* Traffic Log Terminal */
-        .log-terminal {
-            background: #000; color: #cbd5e1; font-family: monospace;
-            padding: 15px; border-radius: 4px; border: 1px solid var(--border);
-            height: 350px; overflow-y: auto; font-size: 13px; line-height: 1.5;
-        }
-        .log-time { color: #888; }
-        .log-method { color: #00BCD4; font-weight: bold; }
-        .log-status-ok { color: #4CAF50; font-weight: bold; }
-        .log-status-err { color: #F44336; font-weight: bold; }
-        .log-payload { color: #555; display: block; margin-left: 170px; margin-bottom: 8px; }
+{% block title %}PAN Partner API Portal{% endblock %}
 
-        /* Algorithm Routing UI */
-        .algo-buttons { display: flex; gap: 10px; margin-bottom: 25px; }
-        .btn-algo { 
-            padding: 10px 20px; 
-            border: 1px solid #444; 
-            background: #111; 
-            color: #ccc; 
-            cursor: pointer; 
-            border-radius: 4px; 
-            font-size: 13px;
-            flex: 1;
-            transition: all 0.2s;
-        }
-        .btn-algo:hover { background: #222; }
-        .btn-algo.active { 
-            background: #00BCD4; 
-            color: #000; 
-            border-color: #00BCD4; 
-            font-weight: bold; 
-        }
+{% block extra_css %}
+<link rel="stylesheet" href="css/developer.css">
 
-        .tier-section { margin-bottom: 25px; padding: 20px; border: 1px solid #333; border-radius: 4px; background: #0a0a0a; }
-        .tier-header { font-size: 16px; font-weight: bold; color: #fff; margin-bottom: 5px; }
-        .tier-tasks { font-size: 13px; color: #888; margin-bottom: 15px; font-style: italic; }
-        .input-row { display: flex; gap: 15px; }
-        .input-group { flex: 1; }
-        
-        .input-field { width: 100%; padding: 10px; background: #000; border: 1px solid #444; color: #fff; border-radius: 4px; box-sizing: border-box; }
-        .input-field:focus { border-color: #00BCD4; outline: none; }
-        
-        /* Larger, bolder numeric inputs */
-        .algo-input {
-            font-size: 24px;
-            font-weight: bold;
-            color: #00BCD4;
-            text-align: center;
-        }
+<style>
+    /* Layout wrapper to replace body flexbox */
+    .dev-layout-wrapper { display: flex; height: 100%; width: 100%; }
+    
+    .sidebar { width: 250px; background: #0a0a0a; border-right: 1px solid #112240; display: flex; flex-direction: column; overflow-y: auto; }
+    .main-content { flex: 1; padding: 40px; overflow-y: auto; background: #000; }
 
-        .warning-msg { color: #F44336; font-size: 13px; margin-top: 10px; display: none; background: rgba(244, 67, 54, 0.1); padding: 8px; border-radius: 4px; border: 1px solid rgba(244, 67, 54, 0.3);}
-    </style>
-</head>
-<body>
+    /* View Toggling Logic */
+    .dev-view { display: none; animation: fadeIn 0.3s ease; }
+    .dev-view.active-view { display: block; }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
 
+    /* Traffic Log Terminal */
+    .log-terminal {
+        background: #000; color: #cbd5e1; font-family: monospace;
+        padding: 15px; border-radius: 4px; border: 1px solid #333;
+        height: 350px; overflow-y: auto; font-size: 13px; line-height: 1.5;
+    }
+    .log-time { color: #888; }
+    .log-method { color: #00BCD4; font-weight: bold; }
+    .log-status-ok { color: #4CAF50; font-weight: bold; }
+    .log-status-err { color: #F44336; font-weight: bold; }
+    .log-payload { color: #555; display: block; margin-left: 170px; margin-bottom: 8px; }
+
+    /* Algorithm Routing UI */
+    .algo-buttons { display: flex; gap: 10px; margin-bottom: 25px; }
+    .btn-algo { 
+        padding: 10px 20px; 
+        border: 1px solid #444; 
+        background: #111; 
+        color: #ccc; 
+        cursor: pointer; 
+        border-radius: 4px; 
+        font-size: 13px;
+        flex: 1;
+        transition: all 0.2s;
+    }
+    .btn-algo:hover { background: #222; }
+    .btn-algo.active { 
+        background: #00BCD4; 
+        color: #000; 
+        border-color: #00BCD4; 
+        font-weight: bold; 
+    }
+
+    .tier-section { margin-bottom: 25px; padding: 20px; border: 1px solid #333; border-radius: 4px; background: #0a0a0a; }
+    .tier-header { font-size: 16px; font-weight: bold; color: #fff; margin-bottom: 5px; }
+    .tier-tasks { font-size: 13px; color: #888; margin-bottom: 15px; font-style: italic; }
+    .input-row { display: flex; gap: 15px; }
+    .input-group { flex: 1; }
+    
+    .input-field { width: 100%; padding: 10px; background: #000; border: 1px solid #444; color: #fff; border-radius: 4px; box-sizing: border-box; }
+    .input-field:focus { border-color: #00BCD4; outline: none; }
+    
+    /* Larger, bolder numeric inputs */
+    .algo-input {
+        font-size: 24px;
+        font-weight: bold;
+        color: #00BCD4;
+        text-align: center;
+    }
+
+    .warning-msg { color: #F44336; font-size: 13px; margin-top: 10px; display: none; background: rgba(244, 67, 54, 0.1); padding: 8px; border-radius: 4px; border: 1px solid rgba(244, 67, 54, 0.3);}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dev-layout-wrapper">
     <div class="sidebar">
-        <div class="sidebar-header">
-            <h2>PAN DEVELOPER</h2>
-            <p style="margin: 5px 0 0 0; font-size: 11px; color: #888;">INFRASTRUCTURE & API</p>
+        <div class="sidebar-header" style="padding: 20px; border-bottom: 1px solid #112240;">
+            <h2 style="margin: 0; color: #fff; font-size: 1.2rem;">PAN DEVELOPER</h2>
+            <p style="margin: 5px 0 0 0; font-size: 11px; color: #888; letter-spacing: 1px;">INFRASTRUCTURE & API</p>
         </div>
-        <div class="nav-menu">
-            <div class="nav-item active" onclick="switchTab('view-keys', this)">🔑 API Keys & Auth</div>
-            <div class="nav-item" onclick="switchTab('view-webhooks', this)">🪝 Webhook Subscriptions</div>
-            <div class="nav-item" onclick="switchTab('view-rules', this)">🤖 Auto-Dispatch Rules</div>
-            <div class="nav-item" onclick="switchTab('view-logs', this)">📡 Traffic Logs</div>
+        <div class="nav-menu" style="flex: 1; padding: 20px 0;">
+            <div class="nav-item" style="padding: 12px 20px; cursor: pointer; color: #8892B0; font-size: 0.9rem; transition: 0.2s;" onclick="switchTab('view-keys', this)" onmouseover="this.style.color='#fff'" onmouseout="if(!this.classList.contains('active')) this.style.color='#8892B0'">🔑 API Keys & Auth</div>
+            <div class="nav-item" style="padding: 12px 20px; cursor: pointer; color: #8892B0; font-size: 0.9rem; transition: 0.2s;" onclick="switchTab('view-webhooks', this)" onmouseover="this.style.color='#fff'" onmouseout="if(!this.classList.contains('active')) this.style.color='#8892B0'">🪝 Webhook Subscriptions</div>
+            <div class="nav-item active" style="padding: 12px 20px; cursor: pointer; color: #00BCD4; background: rgba(0, 188, 212, 0.1); font-size: 0.9rem; font-weight: bold; border-right: 3px solid #00BCD4;" onclick="switchTab('view-rules', this)">🤖 Auto-Dispatch Rules</div>
+            <div class="nav-item" style="padding: 12px 20px; cursor: pointer; color: #8892B0; font-size: 0.9rem; transition: 0.2s;" onclick="switchTab('view-logs', this)" onmouseover="this.style.color='#fff'" onmouseout="if(!this.classList.contains('active')) this.style.color='#8892B0'">📡 Traffic Logs</div>
         </div>
-        <div style="padding: 20px;">
-            <button class="btn-primary" style="width: 100%;" onclick="window.location.href='/'">◀ RETURN TO MAP</button>
+        <div style="padding: 20px; border-top: 1px solid #112240;">
+            <button style="width: 100%; padding: 12px; background: transparent; border: 1px solid #333; color: #888; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: bold; letter-spacing: 1px; transition: 0.2s;" onmouseover="this.style.borderColor='#00BCD4'; this.style.color='#00BCD4';" onmouseout="this.style.borderColor='#333'; this.style.color='#888';" onclick="window.location.href='/'">◀ RETURN TO MAP</button>
         </div>
     </div>
 
@@ -94,54 +101,54 @@
             </div>
         </div>
 
-        <div id="view-keys" class="dev-view active-view">
-            <div class="panel">
-                <h2 style="margin-top: 0; color: var(--accent);">API Authentication Keys</h2>
-                <p style="font-size: 14px; color: #aaa;">Use these keys to authenticate REST requests to <code style="background: #000; padding: 2px 4px;">https://api.proxyagent.network/v1/</code></p>
+        <div id="view-keys" class="dev-view">
+            <div class="panel" style="background: #0a0a0a; border: 1px solid #112240; padding: 30px; border-radius: 6px;">
+                <h2 style="margin-top: 0; color: #00BCD4;">API Authentication Keys</h2>
+                <p style="font-size: 14px; color: #aaa;">Use these keys to authenticate REST requests to <code style="background: #000; padding: 2px 4px; border: 1px solid #333; border-radius: 3px; color: #fff;">https://api.proxyagent.network/v1/</code></p>
                 
-                <div style="margin-bottom: 20px;">
-                    <label style="font-size: 12px; font-weight: bold; color: #888;">TEST SECRET KEY <span class="pill" style="color:#aaa; border-color:#555;">Sandbox</span></label>
-                    <div class="api-key-box" style="margin-top: 5px;">
+                <div style="margin-bottom: 25px; margin-top: 30px;">
+                    <label style="font-size: 12px; font-weight: bold; color: #888; display: flex; align-items: center; gap: 10px;">TEST SECRET KEY <span style="background: #111; color:#aaa; border: 1px solid #555; padding: 2px 8px; border-radius: 12px; font-size: 10px;">Sandbox</span></label>
+                    <div style="margin-top: 10px; background: #000; border: 1px solid #333; padding: 15px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-family: monospace;">
                         <span style="color: #888;">sk_test_51Nx82H...</span>
-                        <span style="cursor: pointer;">📋 Copy</span>
+                        <span style="cursor: pointer; color: #00BCD4; font-size: 12px; font-weight: bold;">📋 Copy</span>
                     </div>
                 </div>
 
                 <div>
-                    <label style="font-size: 12px; font-weight: bold; color: #888;">LIVE SECRET KEY <span class="pill" style="color: var(--danger); border-color: var(--danger);">Production</span></label>
-                    <div class="api-key-box" style="margin-top: 5px; color: var(--text);">
-                        <span>sk_live_***********************************</span>
-                        <span style="cursor: pointer;">🔄 Reveal</span>
+                    <label style="font-size: 12px; font-weight: bold; color: #888; display: flex; align-items: center; gap: 10px;">LIVE SECRET KEY <span style="background: rgba(244, 67, 54, 0.1); color: #F44336; border: 1px solid #F44336; padding: 2px 8px; border-radius: 12px; font-size: 10px;">Production</span></label>
+                    <div style="margin-top: 10px; background: #000; border: 1px solid #333; padding: 15px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-family: monospace;">
+                        <span style="color: #fff;">sk_live_***********************************</span>
+                        <span style="cursor: pointer; color: #00BCD4; font-size: 12px; font-weight: bold;">🔄 Reveal</span>
                     </div>
                 </div>
             </div>
         </div>
 
         <div id="view-webhooks" class="dev-view">
-            <div class="panel">
-                <h2 style="margin-top: 0; color: var(--accent);">Webhook Subscriptions</h2>
+            <div class="panel" style="background: #0a0a0a; border: 1px solid #112240; padding: 30px; border-radius: 6px;">
+                <h2 style="margin-top: 0; color: #00BCD4;">Webhook Subscriptions</h2>
                 <p style="font-size: 14px; color: #aaa;">Where should we push HTTP POST requests when dispatch events occur?</p>
                 
-                <label style="font-size: 12px; font-weight: bold; color: #888;">YOUR ENDPOINT URL</label>
-                <input type="text" class="input-field" style="margin-top: 5px; margin-bottom: 15px;" value="https://internal-api.waymo.com/webhooks/pan-network">
+                <label style="font-size: 12px; font-weight: bold; color: #888; margin-top: 20px; display: block;">YOUR ENDPOINT URL</label>
+                <input type="text" class="input-field" style="margin-top: 5px; margin-bottom: 25px; font-family: monospace; font-size: 13px;" value="https://internal-api.waymo.com/webhooks/pan-network">
                 
-                <label style="font-size: 12px; font-weight: bold; color: #888;">EVENT SUBSCRIPTIONS</label>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 14px;">
-                    <div><input type="checkbox" checked> <code>mission.created</code></div>
-                    <div><input type="checkbox" checked> <code>mission.accepted</code></div>
-                    <div><input type="checkbox" checked> <code>mission.agent_on_site</code></div>
-                    <div><input type="checkbox" checked> <code>mission.resolved</code></div>
-                    <div><input type="checkbox"> <code>escrow.balance_low</code></div>
-                    <div><input type="checkbox"> <code>agent.sl_breach</code></div>
+                <label style="font-size: 12px; font-weight: bold; color: #888; display: block;">EVENT SUBSCRIPTIONS</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; font-size: 14px; background: #000; padding: 20px; border: 1px solid #333; border-radius: 4px;">
+                    <div style="display: flex; align-items: center; gap: 10px;"><input type="checkbox" checked> <code style="color: #fff;">mission.created</code></div>
+                    <div style="display: flex; align-items: center; gap: 10px;"><input type="checkbox" checked> <code style="color: #fff;">mission.accepted</code></div>
+                    <div style="display: flex; align-items: center; gap: 10px;"><input type="checkbox" checked> <code style="color: #fff;">mission.agent_on_site</code></div>
+                    <div style="display: flex; align-items: center; gap: 10px;"><input type="checkbox" checked> <code style="color: #fff;">mission.resolved</code></div>
+                    <div style="display: flex; align-items: center; gap: 10px;"><input type="checkbox"> <code style="color: #888;">escrow.balance_low</code></div>
+                    <div style="display: flex; align-items: center; gap: 10px;"><input type="checkbox"> <code style="color: #888;">agent.sl_breach</code></div>
                 </div>
                 
-                <button class="btn-primary" style="margin-top: 20px;">SAVE WEBHOOKS</button>
+                <button style="margin-top: 30px; background: #00BCD4; color: #000; border: none; padding: 12px 24px; font-weight: bold; border-radius: 4px; cursor: pointer;">SAVE WEBHOOKS</button>
             </div>
         </div>
 
-        <div id="view-rules" class="dev-view">
+        <div id="view-rules" class="dev-view active-view">
             <div class="panel">
-                <h2 style="margin-top: 0; color: var(--accent);">Automated Dispatch Bidding Rules</h2>
+                <h2 style="margin-top: 0; color: #00BCD4;">Automated Dispatch Bidding Rules</h2>
                 <p style="font-size: 14px; color: #aaa;">Configure the reverse-auction logic for when your AVs programmatically request a proxy agent.</p>
                 
                 <div class="algo-buttons">
@@ -211,15 +218,15 @@
                     <div class="warning-msg" id="warn-t3">⚠️ The minimum starting bid for Tier 3 tasks is $50.00</div>
                 </div>
 
-                <button class="btn-primary" style="margin-top: 10px;">UPDATE ROUTING LOGIC</button>
+                <button style="margin-top: 10px; background: #00BCD4; color: #000; border: none; padding: 12px 24px; font-weight: bold; border-radius: 4px; cursor: pointer;">UPDATE ROUTING LOGIC</button>
             </div>
         </div>
 
         <div id="view-logs" class="dev-view">
             <div class="panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h2 style="margin: 0; color: var(--accent);">API Traffic Logs</h2>
-                    <span class="pill" style="border-color: #4CAF50; color: #4CAF50; background: rgba(76, 175, 80, 0.1);">Live Monitoring Active</span>
+                    <h2 style="margin: 0; color: #00BCD4;">API Traffic Logs</h2>
+                    <span style="border: 1px solid #4CAF50; color: #4CAF50; background: rgba(76, 175, 80, 0.1); padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold;">Live Monitoring Active</span>
                 </div>
                 <p style="font-size: 14px; color: #aaa; margin-top: 0;">Real-time inspection of inbound REST requests and outbound webhook payloads.</p>
                 
@@ -242,112 +249,126 @@
         </div>
 
     </div>
+</div>
 
-    <script>
-        // Tab Switching Logic
-        function switchTab(viewId, clickedElement) {
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            clickedElement.classList.add('active');
+<script>
+    // Tab Switching Logic
+    function switchTab(viewId, clickedElement) {
+        // Reset all sidebar links visually
+        document.querySelectorAll('.nav-item').forEach(el => {
+            el.classList.remove('active');
+            el.style.color = '#8892B0';
+            el.style.background = 'transparent';
+            el.style.borderRight = 'none';
+            el.style.fontWeight = 'normal';
+        });
+        
+        // Style the clicked link
+        clickedElement.classList.add('active');
+        clickedElement.style.color = '#00BCD4';
+        clickedElement.style.background = 'rgba(0, 188, 212, 0.1)';
+        clickedElement.style.borderRight = '3px solid #00BCD4';
+        clickedElement.style.fontWeight = 'bold';
 
-            document.querySelectorAll('.dev-view').forEach(el => el.classList.remove('active-view'));
-            document.getElementById(viewId).classList.add('active-view');
+        // Swap the views
+        document.querySelectorAll('.dev-view').forEach(el => el.classList.remove('active-view'));
+        document.getElementById(viewId).classList.add('active-view');
+    }
+
+    // Algorithm Dispatch Logic
+    const algoDefaults = {
+        lowest: {
+            t1: [10, 2, 20],
+            t2: [30, 5, 60],
+            t3: [50, 5, 80]
+        },
+        balanced: {
+            t1: [14, 2, 24],
+            t2: [45, 5, 80],
+            t3: [65, 5, 100]
+        },
+        fastest: {
+            t1: [20, 2, 30],
+            t2: [60, 10, 100],
+            t3: [80, 10, 120]
+        }
+    };
+
+    const minimumBids = {
+        t1: 10,
+        t2: 30,
+        t3: 50
+    };
+
+    function updateFieldsFromAlgo(algoKey) {
+        if(algoKey === 'custom') return;
+        const data = algoDefaults[algoKey];
+        
+        // Tier 1
+        document.getElementById('t1-start').value = data.t1[0];
+        document.getElementById('t1-esc').value = data.t1[1];
+        document.getElementById('t1-max').value = data.t1[2];
+
+        // Tier 2
+        document.getElementById('t2-start').value = data.t2[0];
+        document.getElementById('t2-esc').value = data.t2[1];
+        document.getElementById('t2-max').value = data.t2[2];
+
+        // Tier 3
+        document.getElementById('t3-start').value = data.t3[0];
+        document.getElementById('t3-esc').value = data.t3[1];
+        document.getElementById('t3-max').value = data.t3[2];
+
+        checkMinimums();
+    }
+
+    function checkMinimums() {
+        // Check Tier 1
+        if(parseFloat(document.getElementById('t1-start').value) < minimumBids.t1) {
+            document.getElementById('warn-t1').style.display = 'block';
+        } else {
+            document.getElementById('warn-t1').style.display = 'none';
         }
 
-        // Algorithm Dispatch Logic
-        const algoDefaults = {
-            lowest: {
-                t1: [10, 2, 20],
-                t2: [30, 5, 60],
-                t3: [50, 5, 80]
-            },
-            balanced: {
-                t1: [14, 2, 24],
-                t2: [45, 5, 80],
-                t3: [65, 5, 100]
-            },
-            fastest: {
-                t1: [20, 2, 30],
-                t2: [60, 10, 100],
-                t3: [80, 10, 120]
-            }
-        };
+        // Check Tier 2
+        if(parseFloat(document.getElementById('t2-start').value) < minimumBids.t2) {
+            document.getElementById('warn-t2').style.display = 'block';
+        } else {
+            document.getElementById('warn-t2').style.display = 'none';
+        }
 
-        const minimumBids = {
-            t1: 10,
-            t2: 30,
-            t3: 50
-        };
+        // Check Tier 3
+        if(parseFloat(document.getElementById('t3-start').value) < minimumBids.t3) {
+            document.getElementById('warn-t3').style.display = 'block';
+        } else {
+            document.getElementById('warn-t3').style.display = 'none';
+        }
+    }
 
-        function updateFieldsFromAlgo(algoKey) {
-            if(algoKey === 'custom') return;
-            const data = algoDefaults[algoKey];
+    // Event Listeners for Algorithm Buttons
+    document.querySelectorAll('.btn-algo').forEach(btn => {
+        btn.addEventListener('click', function() {
+            // Update active state
+            document.querySelectorAll('.btn-algo').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+
+            // Update fields if not custom
+            const algo = this.getAttribute('data-algo');
+            updateFieldsFromAlgo(algo);
+        });
+    });
+
+    // Event Listeners for Manual Input Changes
+    document.querySelectorAll('.algo-input').forEach(input => {
+        input.addEventListener('input', function() {
+            // Switch to custom button
+            document.querySelectorAll('.btn-algo').forEach(b => b.classList.remove('active'));
+            document.querySelector('.btn-algo[data-algo="custom"]').classList.add('active');
             
-            // Tier 1
-            document.getElementById('t1-start').value = data.t1[0];
-            document.getElementById('t1-esc').value = data.t1[1];
-            document.getElementById('t1-max').value = data.t1[2];
-
-            // Tier 2
-            document.getElementById('t2-start').value = data.t2[0];
-            document.getElementById('t2-esc').value = data.t2[1];
-            document.getElementById('t2-max').value = data.t2[2];
-
-            // Tier 3
-            document.getElementById('t3-start').value = data.t3[0];
-            document.getElementById('t3-esc').value = data.t3[1];
-            document.getElementById('t3-max').value = data.t3[2];
-
+            // Validate limits
             checkMinimums();
-        }
-
-        function checkMinimums() {
-            // Check Tier 1
-            if(parseFloat(document.getElementById('t1-start').value) < minimumBids.t1) {
-                document.getElementById('warn-t1').style.display = 'block';
-            } else {
-                document.getElementById('warn-t1').style.display = 'none';
-            }
-
-            // Check Tier 2
-            if(parseFloat(document.getElementById('t2-start').value) < minimumBids.t2) {
-                document.getElementById('warn-t2').style.display = 'block';
-            } else {
-                document.getElementById('warn-t2').style.display = 'none';
-            }
-
-            // Check Tier 3
-            if(parseFloat(document.getElementById('t3-start').value) < minimumBids.t3) {
-                document.getElementById('warn-t3').style.display = 'block';
-            } else {
-                document.getElementById('warn-t3').style.display = 'none';
-            }
-        }
-
-        // Event Listeners for Algorithm Buttons
-        document.querySelectorAll('.btn-algo').forEach(btn => {
-            btn.addEventListener('click', function() {
-                // Update active state
-                document.querySelectorAll('.btn-algo').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-
-                // Update fields if not custom
-                const algo = this.getAttribute('data-algo');
-                updateFieldsFromAlgo(algo);
-            });
         });
+    });
 
-        // Event Listeners for Manual Input Changes
-        document.querySelectorAll('.algo-input').forEach(input => {
-            input.addEventListener('input', function() {
-                // Switch to custom button
-                document.querySelectorAll('.btn-algo').forEach(b => b.classList.remove('active'));
-                document.querySelector('.btn-algo[data-algo="custom"]').classList.add('active');
-                
-                // Validate limits
-                checkMinimums();
-            });
-        });
-
-    </script>
-</body>
-</html>
+</script>
+{% endblock %}

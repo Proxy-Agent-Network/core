@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,7 +113,6 @@ fun AgentDashboardScreen() {
             label = "logo_y"
         )
 
-        // --- RESTORED KMP LOGO ---
         Image(
             painter = painterResource(Res.drawable.pan_logo),
             contentDescription = "PAN Command",
@@ -134,33 +134,50 @@ fun MainDashboardContent() {
 
     val uriHandler = LocalUriHandler.current
 
-    var currentScreen by remember { mutableStateOf("DASHBOARD") }
-    var navPreference by remember { mutableStateOf("GOOGLE") }
-    var patrolMode by remember { mutableStateOf("VEHICLE") }
-    var serviceRadiusMiles by remember { mutableStateOf(5f) }
-    var isLoadoutExpanded by remember { mutableStateOf(false) }
-    var isDataLoaded by remember { mutableStateOf(true) }
-    var voiceVolume by remember { mutableFloatStateOf(1f) }
-    var alertVolume by remember { mutableIntStateOf(100) }
+    var currentScreen by rememberSaveable { mutableStateOf("DASHBOARD") }
+    var navPreference by rememberSaveable { mutableStateOf("GOOGLE") }
+    var patrolMode by rememberSaveable { mutableStateOf("VEHICLE") }
+    var serviceRadiusMiles by rememberSaveable { mutableStateOf(5f) }
+    var isLoadoutExpanded by rememberSaveable { mutableStateOf(false) }
+    var isDataLoaded by rememberSaveable { mutableStateOf(true) }
+    var voiceVolume by rememberSaveable { mutableFloatStateOf(1f) }
+    var alertVolume by rememberSaveable { mutableIntStateOf(100) }
 
     var hasSpokenWelcome by rememberSaveable { mutableStateOf(false) }
-    var isOnline by remember { mutableStateOf(false) }
-    var isProcessing by remember { mutableStateOf(false) }
-    var missionState by remember { mutableStateOf("IDLE") }
-    var showAbortDialog by remember { mutableStateOf(false) }
-    var showDevMenu by remember { mutableStateOf(false) }
-    var abortSliderResetKey by remember { mutableIntStateOf(0) }
+    var isOnline by rememberSaveable { mutableStateOf(false) }
+    var isProcessing by rememberSaveable { mutableStateOf(false) }
+    var missionState by rememberSaveable { mutableStateOf("IDLE") }
+    var showAbortDialog by rememberSaveable { mutableStateOf(false) }
+    var showDevMenu by rememberSaveable { mutableStateOf(false) }
+    var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
 
-    var activeMission by remember { mutableStateOf<MissionData?>(null) }
-    var queuedMission by remember { mutableStateOf<MissionData?>(null) }
-    var isMissionControlsExpanded by remember { mutableStateOf(false) }
+    val MissionDataSaver = Saver<MissionData?, String>(
+        save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bounty}|${data.intersection}" } ?: "" },
+        restore = { str ->
+            if (str.isEmpty()) null
+            else {
+                val parts = str.split("|")
+                if (parts.size == 5) MissionData(
+                    lat = parts[0].toDoubleOrNull() ?: 0.0,
+                    lon = parts[1].toDoubleOrNull() ?: 0.0,
+                    errorCode = parts[2],
+                    bounty = parts[3],
+                    intersection = parts[4]
+                ) else null
+            }
+        }
+    )
 
-    var lastPayoutAmount by remember { mutableDoubleStateOf(0.0) }
-    var lastTxHash by remember { mutableStateOf("") }
-    var timeOnSceneMs by remember { mutableLongStateOf(0L) }
-    var totalResponseTimeMs by remember { mutableLongStateOf(0L) }
-    var sceneArrivalTime by remember { mutableLongStateOf(0L) }
-    var missionAcceptTime by remember { mutableLongStateOf(0L) }
+    var activeMission by rememberSaveable(stateSaver = MissionDataSaver) { mutableStateOf(null) }
+    var queuedMission by rememberSaveable(stateSaver = MissionDataSaver) { mutableStateOf(null) }
+    var isMissionControlsExpanded by rememberSaveable { mutableStateOf(false) }
+
+    var lastPayoutAmount by rememberSaveable { mutableDoubleStateOf(0.0) }
+    var lastTxHash by rememberSaveable { mutableStateOf("") }
+    var timeOnSceneMs by rememberSaveable { mutableLongStateOf(0L) }
+    var totalResponseTimeMs by rememberSaveable { mutableLongStateOf(0L) }
+    var sceneArrivalTime by rememberSaveable { mutableLongStateOf(0L) }
+    var missionAcceptTime by rememberSaveable { mutableLongStateOf(0L) }
 
     var agentCapabilities by remember {
         mutableStateOf(
@@ -173,19 +190,15 @@ fun MainDashboardContent() {
     }
 
     LaunchedEffect(isOnline, missionState) {
-        // Only scan the network if the agent is Online and waiting for a job
         if (isOnline && missionState == "IDLE") {
             while (isOnline && missionState == "IDLE") {
                 val incomingMissions = PythonNetworkBridge.fetchActiveMissions()
 
                 if (incomingMissions.isNotEmpty()) {
-                    // We got a hit! Assign it and trigger the alert UI
                     activeMission = incomingMissions.first()
                     missionState = "PENDING"
-                    break // Stop scanning while they handle the alert
+                    break
                 }
-
-                // Wait 5 seconds before asking the server again
                 delay(5000)
             }
         }
@@ -199,25 +212,23 @@ fun MainDashboardContent() {
         }
     }
 
-    // --- TARGET 3: THE LIVE GPS BRIDGE ---
-    var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) } // Defaults to Mesa
+    var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
 
     val locationManager = rememberSharedLocationManager { lat, lon ->
-        // DIAGNOSTIC PING
         println("TACTICAL GPS: Agent is moving! $lat, $lon")
         agentLocation = Pair(lat, lon)
     }
 
     var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
-    var hasCameraPermission by remember { mutableStateOf(false) }
-    var capturedEvidence by remember { mutableStateOf<List<String>>(emptyList()) }
-    var mockEvidenceCounter by remember { mutableIntStateOf(1) }
-    var isUploadingProof by remember { mutableStateOf(false) }
+    var hasCameraPermission by rememberSaveable { mutableStateOf(true) }
+
+    // 🟢 Save the raw ByteArray! ByteArrays serialize natively into rememberSaveable.
+    var capturedEvidence by rememberSaveable { mutableStateOf<List<ByteArray>>(emptyList()) }
+    var isUploadingProof by rememberSaveable { mutableStateOf(false) }
 
     val cameraManager = rememberSharedCameraManager { imageData ->
         if (imageData != null) {
-            capturedEvidence = capturedEvidence + "Real_Evidentiary_Photo_0${mockEvidenceCounter}_[${imageData.size} bytes].jpg"
-            mockEvidenceCounter++
+            capturedEvidence = capturedEvidence + (imageData as ByteArray)
         }
     }
 
@@ -225,7 +236,6 @@ fun MainDashboardContent() {
     var isFlashing by remember { mutableStateOf(false) }
     val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
 
-    // --- MOCKED ESCROW UPLOAD ---
     LaunchedEffect(isUploadingProof) {
         if (!isUploadingProof) return@LaunchedEffect
         val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
@@ -245,7 +255,7 @@ fun MainDashboardContent() {
 
     val distanceMiles = remember(agentLocation, activeMission) {
         if (activeMission == null) return@remember 0.0
-        2.5 // You can eventually replace this with a real Haversine formula using the new agentLocation!
+        2.5
     }
 
     LaunchedEffect(missionState) {
@@ -287,7 +297,6 @@ fun MainDashboardContent() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Invisible Dev Menu Trigger
                 Box(
                     modifier = Modifier
                         .width(200.dp)
@@ -420,8 +429,12 @@ fun MainDashboardContent() {
                         onCapturePhoto = {
                             cameraManager.launchCamera()
                         },
-                        onRemovePhoto = { photo ->
-                            capturedEvidence = capturedEvidence - photo.toString()
+                        onRemovePhoto = { index ->
+                            val mutableList = capturedEvidence.toMutableList()
+                            if (index in mutableList.indices) {
+                                mutableList.removeAt(index)
+                                capturedEvidence = mutableList
+                            }
                         },
                         onSubmitEvidence = { isUploadingProof = true }
                     )
@@ -471,7 +484,6 @@ fun MainDashboardContent() {
             }
         }
 
-        // --- RESTORED MULTIPLATFORM WALLET ---
         AnimatedVisibility(
             visible = currentScreen == "WALLET",
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),

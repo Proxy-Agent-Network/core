@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PAN Command Center{% endblock %}</title>
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com https://cdnjs.cloudflare.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com http://localhost:5000 http://127.0.0.1:5000 ws://localhost:5000 ws://127.0.0.1:5000; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+
+    {% block extra_head %}{% endblock %}
+
+    <style>
+        /* Global Reset for Dashboard App */
+        body, html { margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; background: #000; color: #fff; height: 100vh; overflow: hidden; }
+        
+        /* The Slim Global Top Bar */
+        .global-top-bar {
+            height: 50px;
+            background-color: #050505;
+            border-bottom: 1px solid #112240;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 99999; /* Stay above the map and sidebars */
+        }
+        
+        .gtb-left { display: flex; align-items: center; gap: 40px; }
+        .gtb-logo { height: 28px; object-fit: contain; } /* Scaled slightly to look sharp in a 50px bar */
+        
+        .gtb-nav { display: flex; gap: 20px; }
+        .gtb-nav a {
+            color: #8892B0;
+            text-decoration: none;
+            font-size: 0.8rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: color 0.2s;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .gtb-nav a:hover { color: #64FFDA; background: rgba(100, 255, 218, 0.05); }
+        .gtb-nav a.active { color: #B87333; background: rgba(184, 115, 51, 0.1); border: 1px solid rgba(184, 115, 51, 0.3); }
+
+        .gtb-right { font-size: 0.75rem; color: #8892B0; display: flex; align-items: center; gap: 15px; font-family: monospace; }
+        .gtb-user { color: #fff; background: #112240; padding: 4px 10px; border-radius: 4px; border: 1px solid #233554; }
+
+        /* The App Container (Pushed down 50px to account for the top bar) */
+        .app-container {
+            margin-top: 50px;
+            height: calc(100vh - 50px);
+            position: relative;
+            width: 100vw;
+            overflow: hidden;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+    <div class="global-top-bar">
+        <div class="gtb-left">
+            <img src="/static/images/proxy_agent_network_logo_dark_50.png" alt="PAN Logo" class="gtb-logo">
+            
+            <div class="gtb-nav" id="global-nav-links">
+                <a href="/">[ LIVE MAP ]</a>
+                <a href="/reports">[ EXECUTIVE REPORTS ]</a>
+                <a href="/developers">[ DEVELOPER API ]</a>
+            </div>
+        </div>
+        <div class="gtb-right">
+            <span>NODE: MESA_SEC_1</span>
+            <span class="gtb-user">WAYMO OPS</span>
+        </div>
+    </div>
+
+    <div class="app-container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const currentPath = window.location.pathname;
+            const links = document.querySelectorAll('#global-nav-links a');
+            links.forEach(link => {
+                if (link.getAttribute('href') === currentPath || (currentPath === '' && link.getAttribute('href') === '/')) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
