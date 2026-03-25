@@ -1,13 +1,12 @@
-import hmac
-import hashlib
-import time
 import logging
 from enum import Enum
-from typing import Dict, Optional
-from fastapi import FastAPI, Request, HTTPException, Header
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, Request, HTTPException, Depends
+from pydantic import BaseModel
 
-# PROXY PROTOCOL - LOGISTICS WEBHOOK API (v1.0)
+# Import our centralized security middleware
+from utils.webhook_auth import verify_carrier_hmac, SecurityVault
+
+# PROXY PROTOCOL - LOGISTICS WEBHOOK API (v1.1)
 # "Hardening the physical chain of custody."
 # ----------------------------------------------------
 
@@ -21,14 +20,7 @@ app = FastAPI(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LogisticsWebhook")
 
-# --- Configuration ---
-# In production, these secrets are rotated via the Foundation HSM
-CARRIER_SECRETS = {
-    "DHL": "whsec_dhl_master_88293",
-    "FEDEX": "whsec_fedex_master_99218",
-    "UPS": "whsec_ups_master_42011"
-}
-
+# --- Models ---
 class ShipmentStatus(str, Enum):
     PICKUP = "PICKUP"
     IN_TRANSIT = "IN_TRANSIT"
@@ -55,20 +47,6 @@ class LogisticsWebhookProcessor:
     def __init__(self):
         # Simulation: This would be the internal endpoint for the Hardware Registry
         self.registry_update_url = "http://localhost:8010/v1/hardware/update"
-
-    def verify_hmac(self, carrier: str, body: bytes, signature: str) -> bool:
-        """Verifies the authenticity of the incoming carrier signal."""
-        secret = CARRIER_SECRETS.get(carrier.upper())
-        if not secret:
-            return False
-        
-        expected = hmac.new(
-            secret.encode('utf-8'),
-            body,
-            hashlib.sha256
-        ).hexdigest()
-        
-        return hmac.compare_digest(expected, signature)
 
     async def process_update(self, payload: CarrierPayload):
         """
@@ -98,42 +76,35 @@ class LogisticsWebhookProcessor:
         
         logger.info(f"✅ Registry Synced: {payload.tracking_id} set to {internal_status}")
 
+# Instantiate the processor so it exists in memory for the route to use
 processor = LogisticsWebhookProcessor()
 
 # --- API Endpoints ---
 
 @app.post("/v1/logistics/ingress/{carrier_id}")
 async def carrier_webhook_receiver(
-    carrier_id: str,
     request: Request,
-    x_proxy_logistics_signature: str = Header(...)
+    payload: CarrierPayload,
+    verified_carrier: str = Depends(verify_carrier_hmac) 
 ):
     """
     Universal receiver for authenticated carrier events.
     Secures the hardware distribution pipeline.
     """
-    raw_body = await request.body()
-    
-    # 1. Verify Origin
-    if not processor.verify_hmac(carrier_id, raw_body, x_proxy_logistics_signature):
-        logger.warning(f"🚨 FORGED LOGISTICS SIGNAL: Carrier {carrier_id} signature failed.")
-        raise HTTPException(status_code=401, detail="Logistics attestation failed.")
-
-    # 2. Process
     try:
-        data = CarrierPayload.parse_raw(raw_body)
-        await processor.process_update(data)
-        return {"status": "ACKNOWLEDGED", "tracking_id": data.tracking_id}
+        # The payload is cryptographically sound (verified by Depends), process the state change
+        await processor.process_update(payload)
+        return {"status": "ACKNOWLEDGED", "tracking_id": payload.tracking_id, "carrier": verified_carrier}
     except Exception as e:
         logger.error(f"Logistics Parse Error: {str(e)}")
-        raise HTTPException(status_code=400, detail="Malformed carrier payload.")
+        raise HTTPException(status_code=400, detail="Processing failed.")
 
 @app.get("/health")
 async def health():
     return {
         "status": "online", 
-        "active_connectors": list(CARRIER_SECRETS.keys()),
-        "integrity_mode": "STRICT_HMAC"
+        "active_connectors": list(SecurityVault.CARRIER_SECRETS.keys()),
+        "integrity_mode": "STRICT_HMAC_WITH_REPLAY_PROTECTION"
     }
 
 if __name__ == "__main__":

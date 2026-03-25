@@ -128,7 +128,7 @@ fun AgentDashboardScreen() {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MainDashboardContent() {
+fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
     val coroutineScope = rememberCoroutineScope()
     val audio = remember { AudioEngine() }
 
@@ -491,6 +491,11 @@ fun MainDashboardContent() {
             modifier = Modifier.fillMaxSize().zIndex(10f)
         ) {
             WalletAndProfileScreen(
+                apiClient = apiClient ?: object : WalletNetworkClient {
+                    override suspend fun getWalletData(agentId: String) = WalletResponse(0.0, null, emptyList())
+                    override suspend fun linkDebitCard(agentId: String, cardNumber: String) = true
+                    override suspend fun withdrawFunds(agentId: String, amount: Double) = true
+                },
                 onBack = { currentScreen = "DASHBOARD" },
                 navPreference = navPreference,
                 onNavPrefChange = { navPreference = it },

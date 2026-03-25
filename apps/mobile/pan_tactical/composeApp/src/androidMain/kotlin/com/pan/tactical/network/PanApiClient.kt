@@ -19,6 +19,11 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 
+// 🛠️ THE FIX: Import the data models and interface from the common UI layer
+import com.pan.tactical.ui.WalletNetworkClient
+import com.pan.tactical.ui.WalletResponse
+import com.pan.tactical.ui.TransactionLog
+
 // --- DATA MODELS ---
 @Serializable
 data class StatusUpdateRequest(
@@ -40,19 +45,10 @@ data class LinkCardRequest(val agentId: String, val cardNumber: String)
 @Serializable
 data class WithdrawRequest(val agentId: String, val amount: Double)
 
-@Serializable
-data class TransactionLog(
-    val id: String,
-    val date: String,
-    val amount: String,
-    val description: String,
-    val evidenceUrls: List<String>? = null
-)
+// 🛠️ THE FIX: TransactionLog and WalletResponse removed from here as they live in commonMain now
 
-@Serializable
-data class WalletResponse(val balance: Double, val linkedCard: String? = null, val history: List<TransactionLog>)
-
-class PanApiClient {
+// 🛠️ THE FIX: Implement the WalletNetworkClient interface
+class PanApiClient : WalletNetworkClient {
 
     private val client = HttpClient(OkHttp) {
         engine {
@@ -70,7 +66,6 @@ class PanApiClient {
     private val secureUid: String
         get() = FirebaseAuth.getInstance().currentUser?.uid ?: "VANGUARD-01"
 
-    // --- RESTORED: Main Hardware Attestation Update ---
     suspend fun updateAgentStatus(
         context: android.content.Context,
         isOnline: Boolean,
@@ -116,7 +111,6 @@ class PanApiClient {
         }
     }
 
-    // --- NEW: Lightweight GPS Telemetry Stream ---
     suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -196,11 +190,10 @@ class PanApiClient {
         startLon: Double,
         endLat: Double,
         endLon: Double,
-        mode: String = "driving" // NEW: Defaults to driving, but accepts "foot"
+        mode: String = "driving"
     ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
-                // NEW: Inject the dynamic routing mode into the OSRM URL
                 val urlString = "https://router.project-osrm.org/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
                 val jsonString = response.bodyAsText()
@@ -300,9 +293,21 @@ class PanApiClient {
                     evidenceUrls = evidenceUrls
                 )
 
+                // Note: We use stringification here because Ktor sometimes struggles to serialize
+                // data classes imported from commonMain when interfacing with Firebase RTDB.
+                val txJson = """
+                    {
+                        "id": "${tx.id}",
+                        "date": "${tx.date}",
+                        "amount": "${tx.amount}",
+                        "description": "${tx.description}",
+                        "evidenceUrls": ${if (evidenceUrls.isEmpty()) "null" else "[\"${evidenceUrls.joinToString("\",\"")}\"]"}
+                    }
+                """.trimIndent()
+
                 client.put("$BASE_URL/agents/$secureUid/wallet/history/$txId.json") {
                     contentType(ContentType.Application.Json)
-                    setBody(tx)
+                    setBody(txJson)
                 }
                 true
             } catch (e: Exception) {
@@ -311,7 +316,8 @@ class PanApiClient {
         }
     }
 
-    suspend fun getWalletData(agentId: String = "IGNORED"): WalletResponse? {
+    // 🛠️ THE FIX: Override keyword added to satisfy the WalletNetworkClient interface
+    override suspend fun getWalletData(agentId: String): WalletResponse? {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse = client.get("$BASE_URL/agents/$secureUid/wallet.json") {
@@ -365,7 +371,8 @@ class PanApiClient {
         }
     }
 
-    suspend fun linkDebitCard(agentId: String = "IGNORED", cardNumber: String): Boolean {
+    // 🛠️ THE FIX: Override keyword added to satisfy the WalletNetworkClient interface
+    override suspend fun linkDebitCard(agentId: String, cardNumber: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse =
@@ -378,7 +385,8 @@ class PanApiClient {
         }
     }
 
-    suspend fun withdrawFunds(agentId: String = "IGNORED", amount: Double): Boolean {
+    // 🛠️ THE FIX: Override keyword added to satisfy the WalletNetworkClient interface
+    override suspend fun withdrawFunds(agentId: String, amount: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 client.put("$BASE_URL/agents/$secureUid/wallet/balance.json") {
@@ -387,16 +395,20 @@ class PanApiClient {
                 }
 
                 val txId = "wd_${System.currentTimeMillis()}"
-                val tx = TransactionLog(
-                    txId,
-                    "Today",
-                    String.format("-$%.2f", amount),
-                    "ACH Bank Transfer"
-                )
+
+                val txJson = """
+                    {
+                        "id": "$txId",
+                        "date": "Today",
+                        "amount": "-$${String.format("%.2f", amount)}",
+                        "description": "ACH Bank Transfer",
+                        "evidenceUrls": null
+                    }
+                """.trimIndent()
 
                 client.put("$BASE_URL/agents/$secureUid/wallet/history/$txId.json") {
                     contentType(ContentType.Application.Json)
-                    setBody(tx)
+                    setBody(txJson)
                 }
                 true
             } catch (e: Exception) { false }

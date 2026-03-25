@@ -39,22 +39,24 @@ except ImportError:
     print(" [WARN] ⚠️  lightning_engine.py not found. Running without payment rails.")
     lnd = None
 
+# In app.py
 try:
     from proxy_core import NodeHardware
     print(" [SYSTEM] 🔒 Connecting to Rust TPM Engine...")
     hw_bridge = NodeHardware()
     MY_NODE_ID = hw_bridge.get_fingerprint()
     HW_SECURED = "0x8F9B" in MY_NODE_ID
-    print(f" [SYSTEM] ✅ Identity Confirmed: {MY_NODE_ID}")
 except Exception as e:
-    print(f" [WARN] ⚠️ Rust Enclave not found, using legacy fallback: {e}")
+    print(f" [WARN] ⚠️ Rust Enclave not found, attempting legacy fallback: {e}")
     try:
         from node_legacy.tpm_binding import NodeHardware
         hw_bridge = NodeHardware()
         MY_NODE_ID = hw_bridge.get_fingerprint()
-    except:
-        MY_NODE_ID = "EMERGENCY_SOFTWARE_BOOT"
-    HW_SECURED = False
+        HW_SECURED = True
+    except Exception as legacy_e:
+        # 🛑 THE FIX: Fail loud and fail closed. 
+        print(f" [SECURITY] 🚨 CRITICAL: Hardware Root of Trust totally failed! ({legacy_e})")
+        raise RuntimeError("Cannot boot Agent Node without secure hardware attestation. Aborting.")
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -1610,6 +1612,11 @@ def mock_submit():
 @app.route('/seed-dvr')
 def seed_dvr():
     """Generates realistic street-grid data using Manhattan Distance routing."""
+    # 🛑 THE FIX: Hard block in production
+    if os.environ.get("ENVIRONMENT") == "production":
+        abort(403, "This debugging endpoint is permanently disabled in production environments.")
+        
+    # ... rest of the seed logic ...
     import random
     from datetime import datetime, timedelta
     conn = get_db()
