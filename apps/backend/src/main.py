@@ -2,15 +2,18 @@ import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.wsgi import WSGIMiddleware
+# 🛠️ THE FIX: Commented out the legacy Flask middleware
+# from fastapi.middleware.wsgi import WSGIMiddleware
 import redis.asyncio as redis
 
 # 1. Import our newly hardened async routers
 from api.v2x_bounty_api import router as v2x_router
-from ops.logistics_webhook_api import router as logistics_router # 🛠️ THE FIX: Imported as a router
+from api.telemetry_socket import router as telemetry_router # 🛠️ THE FIX: Wired up the WebSocket!
+from ops.logistics_webhook_api import router as logistics_router
 
 # 2. Import the legacy Flask monolith
-from app import app as flask_app
+# 🛠️ THE FIX: Commented out the missing Flask app import
+# from app import app as flask_app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Panopticon_Master")
@@ -51,13 +54,16 @@ app = FastAPI(
 
 # --- MOUNT ASYNC ROUTERS (V2 Architecture) ---
 app.include_router(v2x_router, prefix="/api")
-app.include_router(logistics_router, prefix="/logistics") # 🛠️ THE FIX: Properly included
+app.include_router(telemetry_router, prefix="/api") # 🛠️ THE FIX: Mounted the WebSocket router
+app.include_router(logistics_router, prefix="/logistics") 
 
 # --- MOUNT LEGACY FLASK APP (The Strangler Fig) ---
 # 🛑 WARNING: Do not move this! The Flask catch-all WSGI middleware MUST be mounted 
 # LAST. If placed above the FastAPI routers, it will intercept and swallow all traffic.
-logger.info("🔗 Wrapping legacy Flask monolith in WSGI Middleware...")
-app.mount("/", WSGIMiddleware(flask_app))
+
+# 🛠️ THE FIX: Commented out the Flask mount command
+# logger.info("🔗 Wrapping legacy Flask monolith in WSGI Middleware...")
+# app.mount("/", WSGIMiddleware(flask_app))
 
 if __name__ == "__main__":
     import uvicorn

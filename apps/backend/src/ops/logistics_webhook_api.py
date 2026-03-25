@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 
 # Import our centralized security middleware
@@ -10,10 +10,9 @@ from utils.webhook_auth import verify_carrier_hmac, SecurityVault
 # "Hardening the physical chain of custody."
 # ----------------------------------------------------
 
-app = FastAPI(
-    title="Proxy Protocol Logistics Webhook",
-    description="Authorized ingress for carrier-signed physical movement data.",
-    version="1.0.0"
+# 🛠️ THE FIX: Replaced the standalone FastAPI app with an APIRouter
+router = APIRouter(
+    tags=["Logistics Webhook"]
 )
 
 # Configure Logging
@@ -81,7 +80,8 @@ processor = LogisticsWebhookProcessor()
 
 # --- API Endpoints ---
 
-@app.post("/v1/logistics/ingress/{carrier_id}")
+# 🛠️ THE FIX: Updated decorators to use @router instead of @app
+@router.post("/v1/logistics/ingress/{carrier_id}")
 async def carrier_webhook_receiver(
     request: Request,
     payload: CarrierPayload,
@@ -99,7 +99,8 @@ async def carrier_webhook_receiver(
         logger.error(f"Logistics Parse Error: {str(e)}")
         raise HTTPException(status_code=400, detail="Processing failed.")
 
-@app.get("/health")
+# 🛠️ THE FIX: Updated decorators to use @router instead of @app
+@router.get("/health")
 async def health():
     return {
         "status": "online", 
@@ -107,8 +108,3 @@ async def health():
         "integrity_mode": "STRICT_HMAC_WITH_REPLAY_PROTECTION"
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    # Launched on internal port 8011 for logistics event processing
-    print("[*] Launching Protocol Logistics Webhook API on port 8011...")
-    uvicorn.run(app, host="0.0.0.0", port=8011)
