@@ -26,12 +26,12 @@ import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
-
-import com.pan.tactical.ui.components.OfflineLoadoutMenu
+import kotlin.math.* import com.pan.tactical.ui.components.OfflineLoadoutMenu
 import com.pan.tactical.ui.components.OnSceneTerminal
 import com.pan.tactical.ui.components.PostMissionOverlays
 import com.pan.tactical.ui.components.MissionAlertOverlay
 import com.pan.tactical.ui.components.SwipeActionSlider
+import com.pan.tactical.ui.components.UwbHomingCompass
 import com.pan.tactical.models.AgentCapability
 import com.pan.tactical.models.MissionData
 import com.pan.tactical.AudioEngine
@@ -44,7 +44,7 @@ import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
 @Composable
-fun AgentDashboardScreen() {
+fun AgentDashboardScreen(apiClient: WalletNetworkClient) {
     var appState by rememberSaveable { mutableStateOf("BOOT") }
 
     BoxWithConstraints(
@@ -58,13 +58,12 @@ fun AgentDashboardScreen() {
         Crossfade(targetState = appState, animationSpec = tween(durationMillis = 2000), label = "app_boot") { state ->
             when (state) {
                 "BOOT" -> {
-                    // Bypassing boot sequence for testing
                     LaunchedEffect(Unit) {
                         delay(500)
                         appState = "RUNNING"
                     }
                 }
-                "RUNNING" -> MainDashboardContent()
+                "RUNNING" -> MainDashboardContent(apiClient = apiClient)
             }
         }
 
@@ -128,10 +127,9 @@ fun AgentDashboardScreen() {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
+fun MainDashboardContent(apiClient: WalletNetworkClient) {
     val coroutineScope = rememberCoroutineScope()
     val audio = remember { AudioEngine() }
-
     val uriHandler = LocalUriHandler.current
 
     var currentScreen by rememberSaveable { mutableStateOf("DASHBOARD") }
@@ -192,12 +190,15 @@ fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
     LaunchedEffect(isOnline, missionState) {
         if (isOnline && missionState == "IDLE") {
             while (isOnline && missionState == "IDLE") {
-                val incomingMissions = PythonNetworkBridge.fetchActiveMissions()
-
-                if (incomingMissions.isNotEmpty()) {
-                    activeMission = incomingMissions.first()
-                    missionState = "PENDING"
-                    break
+                try {
+                    val incomingMissions = PythonNetworkBridge.fetchActiveMissions()
+                    if (incomingMissions.isNotEmpty()) {
+                        activeMission = incomingMissions.first()
+                        missionState = "PENDING"
+                        break
+                    }
+                } catch (e: Exception) {
+                    println("[NETWORK_ERROR] Mission polling failed: ${e.message}")
                 }
                 delay(5000)
             }
@@ -215,14 +216,13 @@ fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
     var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
 
     val locationManager = rememberSharedLocationManager { lat, lon ->
-        println("TACTICAL GPS: Agent is moving! $lat, $lon")
+        println("[TACTICAL_GPS] Agent moving: $lat, $lon")
         agentLocation = Pair(lat, lon)
     }
 
     var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
     var hasCameraPermission by rememberSaveable { mutableStateOf(true) }
 
-    // 🟢 Save the raw ByteArray! ByteArrays serialize natively into rememberSaveable.
     var capturedEvidence by rememberSaveable { mutableStateOf<List<ByteArray>>(emptyList()) }
     var isUploadingProof by rememberSaveable { mutableStateOf(false) }
 
@@ -253,10 +253,25 @@ fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
         capturedEvidence = emptyList()
     }
 
+    // KMP-safe Haversine Math
     val distanceMiles = remember(agentLocation, activeMission) {
         if (activeMission == null) return@remember 0.0
-        2.5
+
+        val lat1 = agentLocation.first * PI / 180.0
+        val lon1 = agentLocation.second * PI / 180.0
+        val lat2 = activeMission!!.lat * PI / 180.0
+        val lon2 = activeMission!!.lon * PI / 180.0
+
+        val dlon = lon2 - lon1
+        val dlat = lat2 - lat1
+        val a = sin(dlat / 2).pow(2.0) + cos(lat1) * cos(lat2) * sin(dlon / 2).pow(2.0)
+        val c = 2 * asin(sqrt(a))
+        val r = 3956.0 // Radius of earth in miles
+        c * r
     }
+
+    val distanceMeters = (distanceMiles * 1609.34).toFloat()
+    val isUwbEngaged = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 15f
 
     LaunchedEffect(missionState) {
         if (missionState == "PENDING" && activeMission != null) {
@@ -268,11 +283,15 @@ fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
             audio.speak("Agent, Mission: $cleanCategory. 2.5 Miles Away. Payout, $cleanBounty dollars.", voiceVolume)
 
             launch {
-                countdownProgress.snapTo(1f); val durationMs = 10000L; val startTime = getCurrentTimeMs(); var elapsed = 0L;
-                while (elapsed < durationMs && missionState == "PENDING") {
-                    elapsed = getCurrentTimeMs() - startTime; countdownProgress.snapTo((1f - (elapsed.toFloat() / durationMs)).coerceIn(0f, 1f)); delay(16L)
+                countdownProgress.snapTo(1f)
+                countdownProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
+                )
+                if (missionState == "PENDING") {
+                    missionState = "IDLE"
+                    activeMission = null
                 }
-                if (missionState == "PENDING") { missionState = "IDLE"; activeMission = null }
             }
         }
     }
@@ -333,12 +352,29 @@ fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
 
             Box(modifier = Modifier.fillMaxWidth().weight(1f).background(Color(0xFF2A2A2A)), contentAlignment = Alignment.Center) {
 
-                com.pan.tactical.ui.components.TacticalMap(
-                    modifier = Modifier.fillMaxSize(),
-                    targetLocation = agentLocation,
-                    mapStyleJson = tacticalMapStyle,
-                    route = tacticalRoute
-                )
+                AnimatedContent(
+                    targetState = isUwbEngaged,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(500)) togetherWith fadeOut(animationSpec = tween(500))
+                    },
+                    label = "map_to_uwb_transition"
+                ) { showUwb ->
+                    if (showUwb) {
+                        UwbHomingCompass(
+                            distanceMeters = distanceMeters,
+                            // TODO: Replace with real UWB bearing from UWB Hardware Ranging API session
+                            bearingDegrees = 45f,
+                            isRanging = true
+                        )
+                    } else {
+                        com.pan.tactical.ui.components.TacticalMap(
+                            modifier = Modifier.fillMaxSize(),
+                            targetLocation = agentLocation,
+                            mapStyleJson = tacticalMapStyle,
+                            route = tacticalRoute
+                        )
+                    }
+                }
 
                 androidx.compose.animation.AnimatedVisibility(visible = missionState == "PENDING" && activeMission != null, enter = slideInVertically(initialOffsetY = { it }) + fadeIn(), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(), modifier = Modifier.fillMaxSize()) {
                     MissionAlertOverlay(
@@ -362,7 +398,7 @@ fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
                             try {
                                 uriHandler.openUri(getNativeMapUrl(targetLat, targetLon))
                             } catch (e: Exception) {
-                                println("Failed to open navigation app: ${e.message}")
+                                println("[NAVIGATION_ERROR] Failed to open native map: ${e.message}")
                             }
                         },
                         onDecline = {
@@ -491,11 +527,7 @@ fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
             modifier = Modifier.fillMaxSize().zIndex(10f)
         ) {
             WalletAndProfileScreen(
-                apiClient = apiClient ?: object : WalletNetworkClient {
-                    override suspend fun getWalletData(agentId: String) = WalletResponse(0.0, null, emptyList())
-                    override suspend fun linkDebitCard(agentId: String, cardNumber: String) = true
-                    override suspend fun withdrawFunds(agentId: String, amount: Double) = true
-                },
+                apiClient = apiClient,
                 onBack = { currentScreen = "DASHBOARD" },
                 navPreference = navPreference,
                 onNavPrefChange = { navPreference = it },
@@ -513,6 +545,7 @@ fun MainDashboardContent(apiClient: WalletNetworkClient? = null) {
                     Button(onClick = { activeMission = MissionData(33.432, -111.865, "SEC-999: Police Stop", "$50.00", "Mesa Riverview"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
                     Button(onClick = { activeMission = MissionData(33.385, -111.683, "REQ-002: Lost Item", "$30.00", "Superstition Springs"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Lost Item (Tier 1)", color = Color.White) }
                     Button(onClick = { activeMission = MissionData(33.415, -111.831, "ERR-DOOR: Latch Fault", "$15.00", "Downtown Mesa"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
+                    Button(onClick = { activeMission = MissionData(agentLocation.first + 0.00009, agentLocation.second, "UWB-TEST: Calibration", "$10.00", "10 Meters Away"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), modifier = Modifier.fillMaxWidth()) { Text("LOC 4: UWB Proximity Test (10m)", color = Color.Black, fontWeight = FontWeight.Bold) }
                 } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showDevMenu = false }) { Text("CLOSE", color = Color.Gray) } }
             )
         }

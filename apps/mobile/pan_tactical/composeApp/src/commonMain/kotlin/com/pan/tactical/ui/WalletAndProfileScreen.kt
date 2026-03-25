@@ -36,10 +36,11 @@ data class TransactionLog(
 data class WalletResponse(val balance: Double, val linkedCard: String? = null, val history: List<TransactionLog>)
 
 // 2. THE INTERFACE (The contract the UI relies on)
+// 🛠️ THE FIX: Cleaned up the interface contract
 interface WalletNetworkClient {
-    suspend fun getWalletData(agentId: String = "IGNORED"): WalletResponse?
-    suspend fun linkDebitCard(agentId: String = "IGNORED", cardNumber: String): Boolean
-    suspend fun withdrawFunds(agentId: String = "IGNORED", amount: Double): Boolean
+    suspend fun getWalletData(): WalletResponse?
+    suspend fun linkDebitCard(cardNumber: String): Boolean
+    suspend fun withdrawFunds(amount: Double): Boolean
 }
 
 // --- KMP-FRIENDLY CURRENCY FORMATTER ---

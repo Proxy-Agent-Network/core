@@ -1,6 +1,7 @@
 package com.pan.tactical.network
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import io.ktor.client.*
 import io.ktor.client.engine.okhttp.*
@@ -19,7 +20,6 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 
-// 🛠️ THE FIX: Import the data models and interface from the common UI layer
 import com.pan.tactical.ui.WalletNetworkClient
 import com.pan.tactical.ui.WalletResponse
 import com.pan.tactical.ui.TransactionLog
@@ -45,10 +45,11 @@ data class LinkCardRequest(val agentId: String, val cardNumber: String)
 @Serializable
 data class WithdrawRequest(val agentId: String, val amount: Double)
 
-// 🛠️ THE FIX: TransactionLog and WalletResponse removed from here as they live in commonMain now
-
-// 🛠️ THE FIX: Implement the WalletNetworkClient interface
 class PanApiClient : WalletNetworkClient {
+
+    companion object {
+        private const val TAG = "PanApiClient"
+    }
 
     private val client = HttpClient(OkHttp) {
         engine {
@@ -61,7 +62,7 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    private val BASE_URL = "https://pan-tactical-default-rtdb.firebaseio.com"
+    private val BASE_URL = com.pan.tactical.BuildConfig.FIREBASE_RTDB_URL
 
     private val secureUid: String
         get() = FirebaseAuth.getInstance().currentUser?.uid ?: "VANGUARD-01"
@@ -76,7 +77,7 @@ class PanApiClient : WalletNetworkClient {
     ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                println("🔑 [IDENTITY] Active Node UID: $secureUid")
+                Log.i(TAG, "🔑 [IDENTITY] Active Node UID: $secureUid")
 
                 val statusString = if (isOnline) "ONLINE" else "OFFLINE"
                 val payloadToSign = "${statusString}_${lat}_${lon}_${radiusMiles}"
@@ -106,6 +107,7 @@ class PanApiClient : WalletNetworkClient {
 
                 response.status.isSuccess()
             } catch (e: Exception) {
+                Log.e(TAG, "Failed to update agent status: ${e.message}", e)
                 false
             }
         }
@@ -128,17 +130,17 @@ class PanApiClient : WalletNetworkClient {
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
+                Log.e(TAG, "Failed to update location telemetry: ${e.message}", e)
                 false
             }
         }
     }
 
     suspend fun openLiveDispatchLine(
-        agentId: String = "IGNORED",
         onMissionReceived: (lat: Double, lon: Double, errorCode: String, bounty: String, intersection: String) -> Unit
     ) {
         withContext(Dispatchers.IO) {
-            println("🟢 DISPATCH LINE OPEN: Listening on Node $secureUid...")
+            Log.i(TAG, "🟢 DISPATCH LINE OPEN: Listening on Node $secureUid...")
 
             while (isActive) {
                 try {
@@ -162,17 +164,22 @@ class PanApiClient : WalletNetworkClient {
                                     onMissionReceived(lat, lon, errorCode, bounty, intersection)
                                 }
 
+                                // TODO: Implement two-phase ACK to prevent duplicate dispatches on crash
                                 client.delete("$BASE_URL/dispatch/$secureUid.json")
                             }
-                        } catch (e: Exception) { }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Malformed dispatch JSON payload: ${e.message}", e)
+                        }
                     }
-                } catch (e: Exception) { }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Dispatch line polling failed: ${e.message}", e)
+                }
                 delay(2000)
             }
         }
     }
 
-    suspend fun acceptMission(agentId: String = "IGNORED"): Boolean {
+    suspend fun acceptMission(): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse =
@@ -181,7 +188,10 @@ class PanApiClient : WalletNetworkClient {
                         setBody("\"ACCEPTED\"")
                     }
                 response.status.isSuccess()
-            } catch (e: Exception) { false }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to accept mission: ${e.message}", e)
+                false
+            }
         }
     }
 
@@ -194,6 +204,7 @@ class PanApiClient : WalletNetworkClient {
     ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
+                // TODO: Replace public OSRM demo server with Maps/Mapbox API before production go-live
                 val urlString = "https://router.project-osrm.org/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
                 val jsonString = response.bodyAsText()
@@ -237,16 +248,19 @@ class PanApiClient : WalletNetworkClient {
                     return@withContext Pair(path, stepsList)
                 }
                 Pair(emptyList(), emptyList())
-            } catch (e: Exception) { Pair(emptyList(), emptyList()) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to retrieve tactical route: ${e.message}", e)
+                Pair(emptyList(), emptyList())
+            }
         }
     }
 
-    suspend fun uploadEvidenceArray(agentId: String = "IGNORED", bitmaps: List<Bitmap>): List<String> {
+    suspend fun uploadEvidenceArray(bitmaps: List<Bitmap>): List<String> {
         return withContext(Dispatchers.IO) {
             val uploadedUrls = mutableListOf<String>()
             val relayApiKey = com.pan.tactical.BuildConfig.IMGBB_API_KEY
 
-            bitmaps.forEachIndexed { index, bitmap ->
+            bitmaps.forEachIndexed { _, bitmap ->
                 try {
                     val stream = ByteArrayOutputStream()
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
@@ -266,18 +280,21 @@ class PanApiClient : WalletNetworkClient {
                         val downloadUrl = dataObj?.optString("url", "") ?: ""
                         if (downloadUrl.isNotEmpty()) uploadedUrls.add(downloadUrl)
                     }
-                } catch (e: Exception) { }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to upload evidence bitmap: ${e.message}", e)
+                }
             }
             uploadedUrls
         }
     }
 
-    suspend fun claimEscrowFunds(agentId: String = "IGNORED", netPayout: Double, evidenceUrls: List<String> = emptyList()): Boolean {
+    suspend fun claimEscrowFunds(netPayout: Double, evidenceUrls: List<String> = emptyList()): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val currentWallet = getWalletData()
                 val newBalance = (currentWallet?.balance ?: 0.0) + netPayout
 
+                // TODO: Migrate balance writes to an atomic backend transaction to prevent race conditions
                 client.put("$BASE_URL/agents/$secureUid/wallet/balance.json") {
                     contentType(ContentType.Application.Json)
                     setBody(newBalance.toString())
@@ -293,17 +310,20 @@ class PanApiClient : WalletNetworkClient {
                     evidenceUrls = evidenceUrls
                 )
 
-                // Note: We use stringification here because Ktor sometimes struggles to serialize
-                // data classes imported from commonMain when interfacing with Firebase RTDB.
-                val txJson = """
-                    {
-                        "id": "${tx.id}",
-                        "date": "${tx.date}",
-                        "amount": "${tx.amount}",
-                        "description": "${tx.description}",
-                        "evidenceUrls": ${if (evidenceUrls.isEmpty()) "null" else "[\"${evidenceUrls.joinToString("\",\"")}\"]"}
+                // 🛠️ THE FIX: Replaced isNullOrEmpty with strict isEmpty
+                val txJson = org.json.JSONObject().apply {
+                    put("id", tx.id)
+                    put("date", tx.date)
+                    put("amount", tx.amount)
+                    put("description", tx.description)
+                    if (evidenceUrls.isEmpty()) {
+                        put("evidenceUrls", org.json.JSONObject.NULL)
+                    } else {
+                        val array = org.json.JSONArray()
+                        evidenceUrls.forEach { array.put(it) }
+                        put("evidenceUrls", array)
                     }
-                """.trimIndent()
+                }.toString()
 
                 client.put("$BASE_URL/agents/$secureUid/wallet/history/$txId.json") {
                     contentType(ContentType.Application.Json)
@@ -311,13 +331,13 @@ class PanApiClient : WalletNetworkClient {
                 }
                 true
             } catch (e: Exception) {
+                Log.e(TAG, "Failed to claim escrow funds: ${e.message}", e)
                 false
             }
         }
     }
 
-    // 🛠️ THE FIX: Override keyword added to satisfy the WalletNetworkClient interface
-    override suspend fun getWalletData(agentId: String): WalletResponse? {
+    override suspend fun getWalletData(): WalletResponse? {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse = client.get("$BASE_URL/agents/$secureUid/wallet.json") {
@@ -366,13 +386,13 @@ class PanApiClient : WalletNetworkClient {
 
                 WalletResponse(balance, linkedCard, historyList)
             } catch (e: Exception) {
+                Log.e(TAG, "Failed to retrieve wallet data: ${e.message}", e)
                 null
             }
         }
     }
 
-    // 🛠️ THE FIX: Override keyword added to satisfy the WalletNetworkClient interface
-    override suspend fun linkDebitCard(agentId: String, cardNumber: String): Boolean {
+    override suspend fun linkDebitCard(cardNumber: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse =
@@ -381,14 +401,17 @@ class PanApiClient : WalletNetworkClient {
                         setBody("\"$cardNumber\"")
                     }
                 response.status.isSuccess()
-            } catch (e: Exception) { false }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to link debit card: ${e.message}", e)
+                false
+            }
         }
     }
 
-    // 🛠️ THE FIX: Override keyword added to satisfy the WalletNetworkClient interface
-    override suspend fun withdrawFunds(agentId: String, amount: Double): Boolean {
+    override suspend fun withdrawFunds(amount: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                // TODO: Migrate balance writes to an atomic backend transaction to prevent race conditions
                 client.put("$BASE_URL/agents/$secureUid/wallet/balance.json") {
                     contentType(ContentType.Application.Json)
                     setBody("0.0")
@@ -396,22 +419,23 @@ class PanApiClient : WalletNetworkClient {
 
                 val txId = "wd_${System.currentTimeMillis()}"
 
-                val txJson = """
-                    {
-                        "id": "$txId",
-                        "date": "Today",
-                        "amount": "-$${String.format("%.2f", amount)}",
-                        "description": "ACH Bank Transfer",
-                        "evidenceUrls": null
-                    }
-                """.trimIndent()
+                val txJson = org.json.JSONObject().apply {
+                    put("id", txId)
+                    put("date", "Today")
+                    put("amount", "-$${String.format("%.2f", amount)}")
+                    put("description", "ACH Bank Transfer")
+                    put("evidenceUrls", org.json.JSONObject.NULL)
+                }.toString()
 
                 client.put("$BASE_URL/agents/$secureUid/wallet/history/$txId.json") {
                     contentType(ContentType.Application.Json)
                     setBody(txJson)
                 }
                 true
-            } catch (e: Exception) { false }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to withdraw funds: ${e.message}", e)
+                false
+            }
         }
     }
 }
