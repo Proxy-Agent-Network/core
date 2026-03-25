@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio # 🛠️ NEW: Added for background task management
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 # 🛠️ THE FIX: Commented out the legacy Flask middleware
@@ -10,6 +11,9 @@ import redis.asyncio as redis
 from api.v2x_bounty_api import router as v2x_router
 from api.telemetry_socket import router as telemetry_router # 🛠️ THE FIX: Wired up the WebSocket!
 from ops.logistics_webhook_api import router as logistics_router
+
+# 🛠️ NEW: Import the background worker
+from matching_engine import run_matching_engine
 
 # 2. Import the legacy Flask monolith
 # 🛠️ THE FIX: Commented out the missing Flask app import
@@ -37,10 +41,22 @@ async def lifespan(app: FastAPI):
         logger.critical(f"🛑 FATAL: Cannot connect to Redis at {redis_host}: {e}")
         raise RuntimeError(f"Redis initialization failed: {e}")
 
+    # 🛠️ IMPROVEMENT 5: Robust Task Registration
+    engine_task = asyncio.create_task(
+        run_matching_engine(app.state.redis_client),
+        name="matching_engine"
+    )
+    app.state.matching_engine_task = engine_task
+
     yield # --- SYSTEM IS LIVE ---
     
     # --- SHUTDOWN SEQUENCE ---
     logger.info("🛑 Initiating Graceful Shutdown...")
+    
+    # Clean up the worker on shutdown
+    engine_task.cancel()
+    await asyncio.gather(engine_task, return_exceptions=True)
+    
     await app.state.redis_client.aclose()
 
 
