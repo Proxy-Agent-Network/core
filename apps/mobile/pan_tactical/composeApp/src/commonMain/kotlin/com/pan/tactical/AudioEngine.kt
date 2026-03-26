@@ -14,4 +14,7 @@ expect class AudioEngine() {
 
     // THE FIX: Adding the 'volume' parameter so App.kt stops crashing!
     fun playAlertBeep(volume: Int)
+
+    // 🛠️ THE FIX: Adding the shutdown method to match the Android implementation
+    fun shutdown()
 }

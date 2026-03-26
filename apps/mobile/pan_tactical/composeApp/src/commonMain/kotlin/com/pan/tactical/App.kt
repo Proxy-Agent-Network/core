@@ -15,8 +15,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
+import com.pan.tactical.ui.WalletNetworkClient
+
 @Composable
-fun App() {
+fun App(apiClient: WalletNetworkClient) {
     MaterialTheme {
         var currentScreen by remember { mutableStateOf("ATTESTATION") }
 
@@ -24,19 +26,15 @@ fun App() {
             "ATTESTATION" -> {
                 HardwareAttestationBoot(
                     onUplinkSecured = {
-                        // --- INITIALIZE THE NATIVE AUDIO ENGINE ---
                         val audio = AudioEngine()
                         audio.playAlertBeep(100)
                         audio.speak("Hardware identity verified. Uplink secured.", 1.0f)
-                        // ------------------------------------------
-
                         currentScreen = "DASHBOARD"
                     }
                 )
             }
             "DASHBOARD" -> {
-                // Call your full tactical dashboard!
-                com.pan.tactical.ui.AgentDashboardScreen()
+                com.pan.tactical.ui.AgentDashboardScreen(apiClient = apiClient)
             }
         }
     }

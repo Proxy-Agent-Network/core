@@ -1,14 +1,17 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.GradleException
 import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
-    // Add the serialization plugin to handle JSON data models
-    kotlin("plugin.serialization") version "2.0.20"
+
+    // Aligned strictly with the 2.3.0 Kotlin compiler from your libs.versions.toml
+    kotlin("plugin.serialization") version "2.3.0"
 
     id("com.github.gmazzo.buildconfig") version "4.1.2"
 }
@@ -19,9 +22,22 @@ val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
-val secureMapsKey = localProperties.getProperty("MAPS_API_KEY") ?: "MISSING_KEY"
-val secureIosMapsKey = localProperties.getProperty("IOS_MAPS_API_KEY") ?: "MISSING_KEY"
-val secureImgbbKey = localProperties.getProperty("IMGBB_API_KEY") ?: "MISSING_KEY"
+
+// 🛠️ THE FIX 1: Hard fail at build time if a secret is missing
+fun requireLocalProperty(key: String): String {
+    return localProperties.getProperty(key)
+        ?: throw GradleException("🛑 FATAL: Missing required local.properties key: '$key'. Cannot build securely.")
+}
+
+val secureMapsKey = requireLocalProperty("MAPS_API_KEY")
+val secureIosMapsKey = requireLocalProperty("IOS_MAPS_API_KEY")
+val secureImgbbKey = requireLocalProperty("IMGBB_API_KEY")
+val firebaseRtdbUrl = requireLocalProperty("FIREBASE_RTDB_URL")
+
+// 🛠️ THE FIX 2: Extracted missing properties for the Network Client and Attestation Engine
+val panApiBaseUrl = requireLocalProperty("PAN_API_BASE_URL")
+val agentDevToken = requireLocalProperty("AGENT_DEV_TOKEN")
+val playIntegrityProjectNum = requireLocalProperty("PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER")
 // -------------------------------------------------
 
 // --- KMP SECRETS BRIDGE ---
@@ -30,6 +46,12 @@ buildConfig {
     buildConfigField("String", "MAPS_API_KEY", "\"$secureMapsKey\"")
     buildConfigField("String", "IOS_MAPS_API_KEY", "\"$secureIosMapsKey\"")
     buildConfigField("String", "IMGBB_API_KEY", "\"$secureImgbbKey\"")
+    buildConfigField("String", "FIREBASE_RTDB_URL", "\"$firebaseRtdbUrl\"")
+
+    // 🛠️ THE FIX 2: Injecting the missing fields into BuildConfig exactly once!
+    buildConfigField("String", "PAN_API_BASE_URL", "\"$panApiBaseUrl\"")
+    buildConfigField("String", "AGENT_DEV_TOKEN", "\"$agentDevToken\"")
+    buildConfigField("String", "PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER", "\"$playIntegrityProjectNum\"")
 }
 // --------------------------
 
@@ -67,7 +89,9 @@ kotlin {
 
             // Hardware Security & Attestation
             implementation("com.google.android.play:integrity:1.4.0")
-            implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+            // 🛠️ MINOR FIX: Replaced unstable alpha with stable release
+            implementation("androidx.security:security-crypto:1.0.0")
 
             // ML Kit (On-Device Face & Text Privacy Redaction)
             implementation("com.google.mlkit:face-detection:16.1.6")
@@ -97,9 +121,9 @@ kotlin {
             implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
             implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
 
-            // Image Loading (To load the Escrow Proof images)
-            implementation("io.coil-kt.coil3:coil-compose:3.0.0-alpha10")
-            implementation("io.coil-kt.coil3:coil-network-ktor2:3.0.0-alpha10")
+            // 🛠️ THE FIX 5: Promoted Coil from unstable alpha to 3.0.4 stable
+            implementation("io.coil-kt.coil3:coil-compose:3.0.4")
+            implementation("io.coil-kt.coil3:coil-network-ktor2:3.0.4")
         }
 
         iosMain.dependencies {
@@ -117,10 +141,7 @@ android {
     namespace = "com.pan.tactical"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    // Turned off the Android-specific BuildConfig to prevent duplicate class crashes
-    buildFeatures {
-        buildConfig = false
-    }
+    // 🛠️ THE FIX: NUKED the conflicting buildFeatures { buildConfig = true }
 
     defaultConfig {
         applicationId = "com.pan.tactical"
@@ -129,8 +150,9 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // 🟢 THE FIX: Safely passing the key we extracted at the very top!
         manifestPlaceholders["MAPS_API_KEY"] = secureMapsKey
+
+        // 🛠️ THE FIX: NUKED the duplicate property loading from here!
     }
 
     packaging {
@@ -138,11 +160,15 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            // 🛠️ THE FIX 4: Enabled R8 minification/obfuscation to protect financial logic & keys
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

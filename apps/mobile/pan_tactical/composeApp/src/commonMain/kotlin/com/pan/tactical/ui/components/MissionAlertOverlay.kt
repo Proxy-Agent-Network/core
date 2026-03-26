@@ -91,7 +91,7 @@ fun MissionAlertOverlay(
             ) {
                 // Hardcoded the distance here so it compiles safely
                 Text(
-                    text = "TARGET DISTANCE: 2.5 MILES",
+                    text = "DISTANCE: 2.5 MILES",
                     color = Color(0xFF00BCD4),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.ExtraBold,

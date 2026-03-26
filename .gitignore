@@ -100,3 +100,14 @@ captures
 !*.xcodeproj/project.xcworkspace/
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
+
+# --- ANDROID SIGNING SECRETS ---
+# NEVER commit your production app signing keys
+*.jks
+*.keystore
+keystore.properties
+
+# --- REDIS LOCAL DUMPS ---
+# Prevents committing the local Redis matching engine database state
+*.rdb
+dump.rdb

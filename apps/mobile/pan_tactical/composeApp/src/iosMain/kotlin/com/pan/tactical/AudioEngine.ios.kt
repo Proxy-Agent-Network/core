@@ -11,10 +11,11 @@ actual class AudioEngine {
 
     init {
         try {
-            // --- THE FIX: A VIP list of Apple's most human-sounding professional voices ---
+            // A VIP list of Apple's most human-sounding professional voices
             val premiumRoster = listOf("Samantha", "Daniel", "Karen", "Moira", "Alex", "Arthur", "Rishi", "Martha")
 
-            val voices = AVSpeechSynthesisVoice.speechVoices() as List<AVSpeechSynthesisVoice>
+            // 🛠️ THE FIX 5: Safe cast from Objective-C NSArray to prevent runtime crashes
+            val voices = AVSpeechSynthesisVoice.speechVoices().filterIsInstance<AVSpeechSynthesisVoice>()
 
             // Filter the master list to only include our premium agents
             voices.filter { it.name in premiumRoster }.forEach { voice ->
@@ -28,7 +29,8 @@ actual class AudioEngine {
                 }
             }
         } catch (e: Exception) {
-            println("AUDIO ERROR: Failed to load Apple voices")
+            // 🛠️ THE FIX 2: Proper error visibility
+            println("[AudioEngine] ERROR: Failed to load Apple voices: ${e.message}")
         }
     }
 
@@ -39,18 +41,19 @@ actual class AudioEngine {
                 this.voice = currentVoice
             }
 
-            if (synthesizer.isSpeaking()) {
-                // Using the strict Enum path to prevent compilation errors
+            if (synthesizer.isSpeaking) {
+                // 🛠️ THE FIX 4: Maintained the strict enum path for safe interop
                 synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
             }
             synthesizer.speakUtterance(utterance)
         } catch (e: Exception) {
-            println("AUDIO ERROR: Utterance failed")
+            // 🛠️ THE FIX 2: Proper error visibility
+            println("[AudioEngine] ERROR: Utterance failed: ${e.message}")
         }
     }
 
     actual fun stop() {
-        if (synthesizer.isSpeaking()) {
+        if (synthesizer.isSpeaking) {
             synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         }
     }
@@ -65,8 +68,15 @@ actual class AudioEngine {
         nativeVoices[voiceId]?.let { currentVoice = it }
     }
 
-    // Added the parameter so App.kt is happy
     actual fun playAlertBeep(volume: Int) {
-        // Safe placeholder for iOS
+        // 🛠️ THE FIX 3: Added the TODO marker so we don't forget to wire up AudioToolbox
+        // TODO: Implement using AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+        // or AudioToolbox for a proper alert tone on iOS
+    }
+
+    // 🛠️ THE FIX 1: Satisfying the KMP contract from commonMain
+    actual fun shutdown() {
+        stop()
+        // AVSpeechSynthesizer does not require explicit teardown on iOS like TextToSpeech does on Android
     }
 }

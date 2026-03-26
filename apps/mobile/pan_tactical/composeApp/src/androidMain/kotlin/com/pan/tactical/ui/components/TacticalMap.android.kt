@@ -27,13 +27,18 @@ actual fun TacticalMap(
 
     // 2. Initial Map State
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(currentLatLng, 16.5f)
+        position = CameraPosition.fromLatLngZoom(
+            LatLng(targetLocation.first, targetLocation.second),
+            16.5f // Restored to 16.5f for tactical street-level visibility
+        )
     }
 
     // 3. Performance Fix: Smooth Camera Tracking
     LaunchedEffect(targetLocation) {
         cameraPositionState.animate(
+            // Use the memoized currentLatLng to pan without destroying user's manual zoom
             update = CameraUpdateFactory.newLatLng(currentLatLng),
+            // 500ms prevents animation queuing when 1Hz GPS pings arrive
             durationMs = 500
         )
     }

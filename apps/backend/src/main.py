@@ -1,13 +1,17 @@
 import os
+from dotenv import load_dotenv
+
+# 🛠️ THE FIX: Load env vars BEFORE any other local modules are imported!
+load_dotenv()
+
 import logging
 import asyncio # 🛠️ NEW: Added for background task management
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
-# 🛠️ THE FIX: Commented out the legacy Flask middleware
-# from fastapi.middleware.wsgi import WSGIMiddleware
 import redis.asyncio as redis
 
 # 1. Import our newly hardened async routers
+from api.wallet_api import router as wallet_router
 from api.v2x_bounty_api import router as v2x_router
 from api.telemetry_socket import router as telemetry_router # 🛠️ THE FIX: Wired up the WebSocket!
 from ops.logistics_webhook_api import router as logistics_router
@@ -31,14 +35,17 @@ async def lifespan(app: FastAPI):
     redis_host = os.environ.get("REDIS_HOST")
     if not redis_host:
         raise RuntimeError("FATAL: REDIS_HOST environment variable is not set.")
+    
+    # 🛠️ THE FIX 2: Dynamically pull the Redis port (with a fallback to standard 6379)
+    redis_port = int(os.environ.get("REDIS_PORT", 6379))
         
-    app.state.redis_client = redis.Redis(host=redis_host, port=6379, db=0, decode_responses=True)
+    app.state.redis_client = redis.Redis(host=redis_host, port=redis_port, db=0, decode_responses=True)
     
     try:
         await app.state.redis_client.ping()
-        logger.info(f"🔌 Redis connection verified at {redis_host}")
+        logger.info(f"🔌 Redis connection verified at {redis_host}:{redis_port}")
     except redis.ConnectionError as e:
-        logger.critical(f"🛑 FATAL: Cannot connect to Redis at {redis_host}: {e}")
+        logger.critical(f"🛑 FATAL: Cannot connect to Redis at {redis_host}:{redis_port}: {e}")
         raise RuntimeError(f"Redis initialization failed: {e}")
 
     # 🛠️ IMPROVEMENT 5: Robust Task Registration
@@ -70,8 +77,9 @@ app = FastAPI(
 
 # --- MOUNT ASYNC ROUTERS (V2 Architecture) ---
 app.include_router(v2x_router, prefix="/api")
-app.include_router(telemetry_router, prefix="/api") # 🛠️ THE FIX: Mounted the WebSocket router
-app.include_router(logistics_router, prefix="/logistics") 
+app.include_router(telemetry_router, prefix="/api") 
+app.include_router(wallet_router, prefix="/api")
+app.include_router(logistics_router, prefix="/logistics")
 
 # --- MOUNT LEGACY FLASK APP (The Strangler Fig) ---
 # 🛑 WARNING: Do not move this! The Flask catch-all WSGI middleware MUST be mounted 

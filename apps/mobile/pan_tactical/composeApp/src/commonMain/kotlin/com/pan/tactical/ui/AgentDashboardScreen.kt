@@ -26,7 +26,8 @@ import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
-import kotlin.math.* import com.pan.tactical.ui.components.OfflineLoadoutMenu
+import kotlin.math.*
+import com.pan.tactical.ui.components.OfflineLoadoutMenu
 import com.pan.tactical.ui.components.OnSceneTerminal
 import com.pan.tactical.ui.components.PostMissionOverlays
 import com.pan.tactical.ui.components.MissionAlertOverlay
@@ -46,6 +47,7 @@ import pantactical.composeapp.generated.resources.pan_logo
 @Composable
 fun AgentDashboardScreen(apiClient: WalletNetworkClient) {
     var appState by rememberSaveable { mutableStateOf("BOOT") }
+    var currentScreen by rememberSaveable { mutableStateOf("DASHBOARD") }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -59,15 +61,19 @@ fun AgentDashboardScreen(apiClient: WalletNetworkClient) {
             when (state) {
                 "BOOT" -> {
                     LaunchedEffect(Unit) {
+                        currentScreen = "DASHBOARD"
                         delay(500)
                         appState = "RUNNING"
                     }
                 }
-                "RUNNING" -> MainDashboardContent(apiClient = apiClient)
+                "RUNNING" -> MainDashboardContent(
+                    apiClient = apiClient,
+                    currentScreen = currentScreen,
+                    onNavigate = { currentScreen = it }
+                )
             }
         }
 
-        // --- THE LOGO ANIMATIONS ---
         val logoWidth by animateDpAsState(
             targetValue = if (isBoot) 280.dp else 200.dp,
             animationSpec = if (!isBoot) keyframes {
@@ -112,27 +118,36 @@ fun AgentDashboardScreen(apiClient: WalletNetworkClient) {
             label = "logo_y"
         )
 
-        Image(
-            painter = painterResource(Res.drawable.pan_logo),
-            contentDescription = "PAN Command",
-            modifier = Modifier
-                .offset(x = offsetX, y = offsetY)
-                .width(logoWidth)
-                .height(logoHeight)
-                .zIndex(100f),
-            contentScale = ContentScale.Fit
-        )
+        if (currentScreen == "DASHBOARD") {
+            Image(
+                painter = painterResource(Res.drawable.pan_logo),
+                contentDescription = "PAN Command",
+                modifier = Modifier
+                    .offset(x = offsetX, y = offsetY)
+                    .width(logoWidth)
+                    .height(logoHeight)
+                    .zIndex(100f),
+                contentScale = ContentScale.Fit
+            )
+        }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MainDashboardContent(apiClient: WalletNetworkClient) {
+fun MainDashboardContent(
+    apiClient: WalletNetworkClient,
+    currentScreen: String,
+    onNavigate: (String) -> Unit
+) {
     val coroutineScope = rememberCoroutineScope()
     val audio = remember { AudioEngine() }
     val uriHandler = LocalUriHandler.current
 
-    var currentScreen by rememberSaveable { mutableStateOf("DASHBOARD") }
+    DisposableEffect(Unit) {
+        onDispose { audio.shutdown() }
+    }
+
     var navPreference by rememberSaveable { mutableStateOf("GOOGLE") }
     var patrolMode by rememberSaveable { mutableStateOf("VEHICLE") }
     var serviceRadiusMiles by rememberSaveable { mutableStateOf(5f) }
@@ -215,9 +230,20 @@ fun MainDashboardContent(apiClient: WalletNetworkClient) {
 
     var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
 
+    // 🛠️ THE FIX 1: Broadcast GPS coordinates to the Backend constantly while online
     val locationManager = rememberSharedLocationManager { lat, lon ->
         println("[TACTICAL_GPS] Agent moving: $lat, $lon")
         agentLocation = Pair(lat, lon)
+
+        if (isOnline) {
+            coroutineScope.launch {
+                try {
+                    apiClient.updateLocationTelemetry(lat, lon)
+                } catch (e: Exception) {
+                    println("[TELEMETRY_ERROR] Failed to push GPS to Backend: ${e.message}")
+                }
+            }
+        }
     }
 
     var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
@@ -253,7 +279,6 @@ fun MainDashboardContent(apiClient: WalletNetworkClient) {
         capturedEvidence = emptyList()
     }
 
-    // KMP-safe Haversine Math
     val distanceMiles = remember(agentLocation, activeMission) {
         if (activeMission == null) return@remember 0.0
 
@@ -266,7 +291,7 @@ fun MainDashboardContent(apiClient: WalletNetworkClient) {
         val dlat = lat2 - lat1
         val a = sin(dlat / 2).pow(2.0) + cos(lat1) * cos(lat2) * sin(dlon / 2).pow(2.0)
         val c = 2 * asin(sqrt(a))
-        val r = 3956.0 // Radius of earth in miles
+        val r = 3956.0
         c * r
     }
 
@@ -342,7 +367,7 @@ fun MainDashboardContent(apiClient: WalletNetworkClient) {
                         modifier = Modifier
                             .size(36.dp)
                             .background(Color(0xFF333333), RoundedCornerShape(18.dp))
-                            .clickable { currentScreen = "WALLET" },
+                            .clickable { onNavigate("WALLET") },
                         contentAlignment = Alignment.Center
                     ) {
                         Text("ID", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -362,7 +387,6 @@ fun MainDashboardContent(apiClient: WalletNetworkClient) {
                     if (showUwb) {
                         UwbHomingCompass(
                             distanceMeters = distanceMeters,
-                            // TODO: Replace with real UWB bearing from UWB Hardware Ranging API session
                             bearingDegrees = 45f,
                             isRanging = true
                         )
@@ -509,6 +533,15 @@ fun MainDashboardContent(apiClient: WalletNetworkClient) {
                                     coroutineScope.launch {
                                         delay(800)
                                         isOnline = true
+
+                                        // 🛠️ THE FIX 2: Blast our location immediately upon going online
+                                        // so the Matching Engine sees us!
+                                        try {
+                                            apiClient.updateLocationTelemetry(agentLocation.first, agentLocation.second)
+                                        } catch (e: Exception) {
+                                            println("[TELEMETRY_ERROR] ${e.message}")
+                                        }
+
                                         isProcessing = false
                                     }
                                 },
@@ -528,7 +561,7 @@ fun MainDashboardContent(apiClient: WalletNetworkClient) {
         ) {
             WalletAndProfileScreen(
                 apiClient = apiClient,
-                onBack = { currentScreen = "DASHBOARD" },
+                onBack = { onNavigate("DASHBOARD") },
                 navPreference = navPreference,
                 onNavPrefChange = { navPreference = it },
                 audioEngine = audio,
@@ -542,10 +575,25 @@ fun MainDashboardContent(apiClient: WalletNetworkClient) {
         if (showDevMenu) {
             AlertDialog(onDismissRequest = { showDevMenu = false }, containerColor = Color(0xFF1E1E1E), title = { Text("DEV: INJECT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { activeMission = MissionData(33.432, -111.865, "SEC-999: Police Stop", "$50.00", "Mesa Riverview"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
-                    Button(onClick = { activeMission = MissionData(33.385, -111.683, "REQ-002: Lost Item", "$30.00", "Superstition Springs"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Lost Item (Tier 1)", color = Color.White) }
-                    Button(onClick = { activeMission = MissionData(33.415, -111.831, "ERR-DOOR: Latch Fault", "$15.00", "Downtown Mesa"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
-                    Button(onClick = { activeMission = MissionData(agentLocation.first + 0.00009, agentLocation.second, "UWB-TEST: Calibration", "$10.00", "10 Meters Away"); missionState = "PENDING"; showDevMenu = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), modifier = Modifier.fillMaxWidth()) { Text("LOC 4: UWB Proximity Test (10m)", color = Color.Black, fontWeight = FontWeight.Bold) }
+                    Button(onClick = {
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.432, -111.865, "scene_securement") }
+                        showDevMenu = false
+                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
+
+                    Button(onClick = {
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.385, -111.683, "spill_remediation") }
+                        showDevMenu = false
+                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Bio/Liquid Remediation (Tier 2)", color = Color.White) }
+
+                    Button(onClick = {
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.415, -111.831, "latch_fault") }
+                        showDevMenu = false
+                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
+
+                    Button(onClick = {
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(agentLocation.first + 0.00009, agentLocation.second, "uwb_calibration") }
+                        showDevMenu = false
+                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), modifier = Modifier.fillMaxWidth()) { Text("LOC 4: UWB Proximity Test (10m)", color = Color.Black, fontWeight = FontWeight.Bold) }
                 } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showDevMenu = false }) { Text("CLOSE", color = Color.Gray) } }
             )
         }

@@ -114,12 +114,25 @@ async def verify_carrier_hmac(
 async def verify_v2x_signature(
     request: Request,
     x_fleet_id: str = Header(...),
-    x_fleet_signature: str = Header(...)
+    x_fleet_signature: str = Header(None) # Optional at the FastAPI routing layer so we can handle the logic inside
 ) -> str:
     """
     FastAPI Dependency: Validates incoming AV telemetry/distress signals.
     Enforces Ed25519 cryptography AND timestamp-based replay protection.
     """
+    # 🟢 DEV BYPASS WITH STRICT ENVIRONMENT GUARD
+    if x_fleet_id == "DEV-FLEET-01":
+        if os.getenv("ENVIRONMENT") == "production":
+            logger.critical("🛑 DEV-FLEET-01 attempted dispatch in production. Rejecting.")
+            raise HTTPException(status_code=401, detail="Dev fleet ID not permitted in production.")
+        logger.info("🟢 Bypassing cryptography for DEV-FLEET-01 (dev environment)")
+        return x_fleet_id
+        
+    # 🛑 STRICT ENFORCEMENT FOR ALL OTHER FLEETS
+    if not x_fleet_signature:
+        logger.warning(f"🚨 MISSING SIGNATURE: Fleet {x_fleet_id} attempted dispatch without cryptography.")
+        raise HTTPException(status_code=422, detail="Missing X-Fleet-Signature header.")
+
     pubkey_hex = SecurityVault.V2X_FLEET_PUBKEYS.get(x_fleet_id.upper())
     if not pubkey_hex:
         logger.warning(f"🚨 UNREGISTERED FLEET ID ATTEMPTED DISPATCH: {x_fleet_id}")

@@ -36,11 +36,14 @@ data class TransactionLog(
 data class WalletResponse(val balance: Double, val linkedCard: String? = null, val history: List<TransactionLog>)
 
 // 2. THE INTERFACE (The contract the UI relies on)
-// 🛠️ THE FIX: Cleaned up the interface contract
 interface WalletNetworkClient {
     suspend fun getWalletData(): WalletResponse?
     suspend fun linkDebitCard(cardNumber: String): Boolean
     suspend fun withdrawFunds(amount: Double): Boolean
+
+    suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean
+
+    suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean
 }
 
 // --- KMP-FRIENDLY CURRENCY FORMATTER ---
