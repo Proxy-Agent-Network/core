@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
@@ -192,6 +193,38 @@ class PanWalletClient : WalletNetworkClient {
             } catch (e: Exception) {
                 Log.e(TAG, "Telemetry update failed: ${e.message}", e)
                 false
+            }
+        }
+    }
+
+    override suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData> {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val response = client.get("$hostUrl/api/v1/agent/missions") {
+                    header("Authorization", "Vanguard-01")
+                }
+
+                if (response.status.isSuccess()) {
+                    // Manually parse the JSON to bypass @Serializable requirement issues
+                    val jsonString = response.bodyAsText()
+                    val jsonArray = kotlinx.serialization.json.Json.parseToJsonElement(jsonString).jsonArray
+
+                    jsonArray.map { element ->
+                        val obj = element.jsonObject
+                        com.pan.tactical.models.MissionData(
+                            lat = obj["lat"]?.jsonPrimitive?.double ?: 0.0,
+                            lon = obj["lon"]?.jsonPrimitive?.double ?: 0.0,
+                            errorCode = obj["errorCode"]?.jsonPrimitive?.content ?: "Unknown",
+                            bounty = obj["bounty"]?.jsonPrimitive?.content ?: "$0.00",
+                            intersection = obj["intersection"]?.jsonPrimitive?.content ?: ""
+                        )
+                    }
+                } else {
+                    emptyList()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PanNetwork", "Failed to parse missions: ${e.message}")
+                emptyList()
             }
         }
     }

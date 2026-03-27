@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.painterResource
 import kotlin.math.*
 import com.pan.tactical.ui.components.OfflineLoadoutMenu
@@ -206,16 +208,22 @@ fun MainDashboardContent(
         if (isOnline && missionState == "IDLE") {
             while (isOnline && missionState == "IDLE") {
                 try {
-                    val incomingMissions = PythonNetworkBridge.fetchActiveMissions()
+                    // 🟢 USE THE NEW WALLET CLIENT FUNCTION!
+                    val incomingMissions = apiClient.fetchActiveMissions()
+
                     if (incomingMissions.isNotEmpty()) {
-                        activeMission = incomingMissions.first()
-                        missionState = "PENDING"
+                        println("[TACTICAL_UI] Mission Received! Triggering Alert...")
+                        // Force recomposition on the main thread
+                        withContext(Dispatchers.Main) {
+                            activeMission = incomingMissions.first()
+                            missionState = "PENDING"
+                        }
                         break
                     }
                 } catch (e: Exception) {
                     println("[NETWORK_ERROR] Mission polling failed: ${e.message}")
                 }
-                delay(5000)
+                delay(3000) // Poll every 3 seconds
             }
         }
     }

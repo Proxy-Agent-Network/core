@@ -33,11 +33,15 @@ actual fun TacticalMap(
         )
     }
 
-    // 3. Performance Fix: Smooth Camera Tracking
+    // 3. Performance & Race Condition Fix: Smooth Camera Tracking
     LaunchedEffect(targetLocation) {
+        // Catch the Map SDK race condition where the map hasn't applied the initial zoom yet
+        val currentZoom = cameraPositionState.position.zoom
+        val zoomToUse = if (currentZoom < 5f) 16.5f else currentZoom
+
         cameraPositionState.animate(
-            // Use the memoized currentLatLng to pan without destroying user's manual zoom
-            update = CameraUpdateFactory.newLatLng(currentLatLng),
+            // Safely pan without destroying the user's manual zoom
+            update = CameraUpdateFactory.newLatLngZoom(currentLatLng, zoomToUse),
             // 500ms prevents animation queuing when 1Hz GPS pings arrive
             durationMs = 500
         )

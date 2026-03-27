@@ -12,6 +12,7 @@ L.Icon.Default.mergeOptions({
     shadowUrl: markerShadow,
 });
 
+// TODO: Ensure azure-dot.svg and red-alert.svg exist in the public/assets directory before pilot deployment
 const agentIcon = new L.Icon({
     iconUrl: '/assets/azure-dot.svg',
     iconSize: [20, 20],
@@ -20,18 +21,26 @@ const agentIcon = new L.Icon({
     className: 'pulsing-agent-marker'
 });
 
-const distressIcon = new L.Icon({
+const distressIconOptions = {
     iconUrl: '/assets/red-alert.svg',
-    iconSize: [30, 30],
-    iconAnchor: [15, 30],   
-    popupAnchor: [0, -30],  
-    className: 'critical-distress-marker'
-});
+    iconSize: [30, 30] as [number, number],
+    iconAnchor: [15, 30] as [number, number],   
+    popupAnchor: [0, -30] as [number, number],
+};
+
+const distressIconOK = new L.Icon({ ...distressIconOptions, className: 'critical-distress-marker' });
+const distressIconWarning = new L.Icon({ ...distressIconOptions, className: 'warning-marker' });
+const distressIconBreach = new L.Icon({ ...distressIconOptions, className: 'breach-marker' });
+
+const getDistressIcon = (status?: 'OK' | 'WARNING' | 'BREACH') => {
+    if (status === 'BREACH') return distressIconBreach;
+    if (status === 'WARNING') return distressIconWarning;
+    return distressIconOK;
+};
 
 const MESA_CENTER: [number, number] = [33.415184, -111.831459];
 
-// Type assertion for Vite's import.meta.env to avoid TS errors without extra config
-const WS_URL = (import.meta as any).env?.VITE_TELEMETRY_WS_URL ?? 'ws://127.0.0.1:8000/api/v1/telemetry/stream?token=dev-token-777';
+const WS_URL = (import.meta as any).env?.VITE_TELEMETRY_WS_URL ?? 'ws://127.0.0.1:5000/api/v1/telemetry/stream?token=dev-token-777';
 
 interface AgentTelemetry {
     agent_id: string;
@@ -49,6 +58,7 @@ interface DistressSignal {
     lat: number;
     lon: number;
     bounty_usd: number;
+    sla_status?: 'OK' | 'WARNING' | 'BREACH';
 }
 
 export const LiveSectorMap: React.FC = () => {
@@ -59,12 +69,15 @@ export const LiveSectorMap: React.FC = () => {
     
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-    
-    // 🛠️ THE FIX 3: Store map reference to invalidate size later
-    const mapRef = useRef<L.Map | null>(null);
+
+    // 🟢 FIX 1: Replaced mapRef with a callback ref for reliable Leaflet sizing
+    const mapCallbackRef = useCallback((map: L.Map | null) => {
+        if (map) {
+            setTimeout(() => map.invalidateSize(), 100);
+        }
+    }, []);
 
     const connectWebSocket = useCallback(() => {
-        // Prevent opening multiple connections if one is already open or connecting
         if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
             return;
         }
@@ -91,13 +104,26 @@ export const LiveSectorMap: React.FC = () => {
                 } else if (data.type === 'DISTRESS_ALERT') {
                     setDistressSignals(prev => {
                         const next = new Map(prev);
-                        next.set(data.payload.task_id, data.payload);
+                        next.set(data.payload.task_id, { ...data.payload, sla_status: 'OK' });
                         return next;
                     });
                 } else if (data.type === 'MISSION_CLEARED') {
                     setDistressSignals(prev => {
                         const next = new Map(prev);
                         next.delete(data.payload.task_id);
+                        return next;
+                    });
+                } else if (data.type === 'SLA_WARNING' || data.type === 'SLA_BREACH') {
+                    setDistressSignals(prev => {
+                        const next = new Map(prev);
+                        const taskId = data.payload.mission_id;
+                        const signal = next.get(taskId);
+                        if (signal) {
+                            next.set(taskId, {
+                                ...signal,
+                                sla_status: data.type === 'SLA_BREACH' ? 'BREACH' : 'WARNING'
+                            });
+                        }
                         return next;
                     });
                 }
@@ -108,12 +134,11 @@ export const LiveSectorMap: React.FC = () => {
 
         ws.onerror = (error) => {
             console.error("WebSocket Error: ", error);
-            // Don't close immediately here; let onclose handle reconnect logic
         };
 
         ws.onclose = () => {
             setConnectionStatus('DISCONNECTED');
-            wsRef.current = null; // Clear the ref
+            wsRef.current = null;
             reconnectTimeout.current = setTimeout(connectWebSocket, 3000);
         };
     }, []);
@@ -122,7 +147,6 @@ export const LiveSectorMap: React.FC = () => {
         connectWebSocket();
         return () => {
             if (wsRef.current) {
-                // Remove listeners before closing to prevent cleanup loops
                 wsRef.current.onclose = null; 
                 wsRef.current.onerror = null;
                 wsRef.current.onmessage = null;
@@ -134,14 +158,14 @@ export const LiveSectorMap: React.FC = () => {
         };
     }, [connectWebSocket]);
 
-    // 🛠️ THE FIX 3: Invalidate map size after a short delay to ensure DOM is fully rendered
+    // 🟢 FIX 4: Quick-escape keyboard handler for the dispatch modal
     useEffect(() => {
-        if (mapRef.current) {
-            setTimeout(() => {
-                mapRef.current?.invalidateSize();
-            }, 100);
-        }
-    }, [mapRef.current]);
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setPendingDispatch(null);
+        };
+        if (pendingDispatch) window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [pendingDispatch]);
 
     const executeDispatch = () => {
         if (!pendingDispatch || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -183,8 +207,15 @@ export const LiveSectorMap: React.FC = () => {
                     50% { opacity: 0.5; filter: drop-shadow(0 0 16px rgba(239, 68, 68, 1)); }
                     100% { opacity: 1; filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.8)); }
                 }
+                @keyframes breachPulse {
+                    0% { opacity: 1; filter: drop-shadow(0 0 10px rgba(255, 0, 0, 1)); transform: scale(1); }
+                    100% { opacity: 0.8; filter: drop-shadow(0 0 35px rgba(255, 0, 0, 1)); transform: scale(1.3); }
+                }
                 .pulsing-agent-marker { animation: mapPulse 2s infinite ease-in-out; }
-                .critical-distress-marker { animation: alertPulse 1s infinite ease-in-out; }
+                .critical-distress-marker { animation: alertPulse 1.5s infinite ease-in-out; }
+                .warning-marker { animation: alertPulse 0.5s infinite ease-in-out; filter: hue-rotate(45deg); }
+                .breach-marker { animation: breachPulse 0.3s infinite alternate; }
+                
                 .animate-pulse { animation: mapPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
                 `}
             </style>
@@ -202,12 +233,21 @@ export const LiveSectorMap: React.FC = () => {
                     <h2 style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#6b7280', letterSpacing: '0.05em', margin: 0 }}>ACTIVE DISTRESS SIGNALS</h2>
                     
                     {Array.from(distressSignals.values()).map((signal: DistressSignal) => (
-                        <div key={signal.task_id} style={{ backgroundColor: 'rgba(127, 29, 29, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)', borderRadius: '4px', padding: '12px' }}>
+                        <div key={signal.task_id} style={{ 
+                            backgroundColor: signal.sla_status === 'BREACH' ? 'rgba(255, 0, 0, 0.25)' : 'rgba(127, 29, 29, 0.2)', 
+                            border: `1px solid ${signal.sla_status === 'BREACH' ? '#ff0000' : 'rgba(239, 68, 68, 0.5)'}`, 
+                            borderRadius: '4px', padding: '12px',
+                            transition: 'all 0.3s ease'
+                        }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ color: '#f87171', fontWeight: 'bold' }}>{signal.fault_code}</span>
+                                <span style={{ color: signal.sla_status === 'BREACH' ? '#ff0000' : '#f87171', fontWeight: 'bold' }}>
+                                    {signal.sla_status === 'BREACH' ? '🚨 BREACH: ' : ''}{signal.fault_code}
+                                </span>
                                 <span style={{ color: '#4ade80', fontFamily: 'monospace' }}>${signal.bounty_usd.toFixed(2)}</span>
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px', marginBottom: '12px', fontFamily: 'monospace' }}>VIN: {signal.vin}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px', marginBottom: '12px', fontFamily: 'monospace' }}>
+                                VIN: {signal.vin}
+                            </div>
                             
                             <button 
                                 onClick={() => setPendingDispatch(signal)}
@@ -225,12 +265,11 @@ export const LiveSectorMap: React.FC = () => {
             </div>
 
             <div style={{ flex: 1, position: 'relative' }}>
-                {/* 🛠️ THE FIX 3: Add ref to MapContainer */}
                 <MapContainer 
                     center={MESA_CENTER} 
                     zoom={13} 
                     style={{ height: '100%', width: '100%', zIndex: 1 }}
-                    ref={mapRef}
+                    ref={mapCallbackRef}
                 >
                     <TileLayer 
                         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" 
@@ -238,8 +277,13 @@ export const LiveSectorMap: React.FC = () => {
                     />
 
                     {Array.from(distressSignals.values()).map((signal) => (
-                        <Marker key={`distress-${signal.task_id}`} position={[signal.lat, signal.lon]} icon={distressIcon}>
-                            <Popup><strong>VIN: {signal.vin}</strong><br/>Fault: {signal.fault_code}<br/>Bounty: ${signal.bounty_usd}</Popup>
+                        <Marker key={`distress-${signal.task_id}`} position={[signal.lat, signal.lon]} icon={getDistressIcon(signal.sla_status)}>
+                            <Popup>
+                                <strong>VIN: {signal.vin}</strong><br/>
+                                Fault: {signal.fault_code}<br/>
+                                Bounty: ${signal.bounty_usd}<br/>
+                                SLA Status: {signal.sla_status || 'OK'}
+                            </Popup>
                         </Marker>
                     ))}
                     

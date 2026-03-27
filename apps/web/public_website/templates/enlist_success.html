@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Transmission Secured | ProxyAgent.Network{% endblock %}
+
+{% block extra_css %}
+<style>
+    .success-wrapper { max-width: 600px; margin: 60px auto; background: var(--bg-dark); border: 1px solid #112240; border-top: 4px solid var(--success); border-radius: 6px; padding: 50px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); text-align: center; }
+    
+    .icon-large { font-size: 4rem; color: var(--success); margin-bottom: 20px; font-family: 'Courier Prime', monospace;}
+    h1 { font-size: 2.2rem; margin: 0 0 15px 0; font-family: 'Inter', sans-serif; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; color: var(--white); }
+    .subtext { color: var(--slate); font-family: 'Inter', sans-serif; font-size: 1rem; margin-bottom: 40px; line-height: 1.6;}
+    
+    .referral-box { background: #061121; border: 1px dashed var(--copper); padding: 30px; border-radius: 4px; margin-bottom: 30px; position: relative; }
+    .referral-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--navy); border: 1px solid var(--copper); color: var(--copper); padding: 4px 12px; font-size: 0.75rem; font-family: 'Courier Prime', monospace; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; }
+    
+    .referral-box h3 { color: var(--white); margin: 0 0 10px 0; font-family: 'Inter', sans-serif; font-weight: 900;}
+    .referral-box p { color: var(--slate); font-size: 0.9rem; margin: 0 0 20px 0; }
+    .bounty-highlight { color: var(--success); font-weight: bold; }
+    
+    .code-display { background: #020c1b; border: 1px solid #233554; padding: 15px; font-family: 'Courier Prime', monospace; font-size: 1.5rem; color: var(--success); font-weight: bold; letter-spacing: 4px; user-select: all; margin-bottom: 20px;}
+    
+    .social-row { display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; }
+    .btn-social { background: rgba(184, 115, 51, 0.1); border: 1px solid var(--copper); color: var(--copper); padding: 10px 20px; font-family: 'Courier Prime', monospace; font-weight: bold; text-decoration: none; border-radius: 4px; transition: 0.2s; font-size: 0.85rem; cursor: pointer;}
+    .btn-social:hover { background: var(--copper); color: var(--navy); }
+    
+    .btn-home { display: inline-block; margin-top: 20px; color: var(--slate); font-family: 'Courier Prime', monospace; text-decoration: none; border-bottom: 1px dashed var(--slate); padding-bottom: 2px; transition: 0.2s;}
+    .btn-home:hover { color: var(--white); border-color: var(--white); }
+
+    @media print {
+        .btn-social, .btn-home, .top-nav, .custom-footer { display: none !important; }
+        .success-wrapper { box-shadow: none; border: 1px solid #000; color: #000; background: #fff;}
+        .code-display, .subtext, h1, h3, p { color: #000 !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="success-wrapper">
+    <div class="icon-large">[✓]</div>
+    <h1>Dossier Secured</h1>
+    <p class="subtext">Your identity and service record have been transmitted to Vanguard Command. Allow up to 48 hours for verification and hardware provisioning.</p>
+    
+    <div class="referral-box">
+        <div class="referral-badge">Operation Overwatch</div>
+        <h3>Expand the Network. Claim Bounties.</h3>
+        <p>Your provisional clearance code has been generated. Share this code with fellow veterans. Once your background check clears and they complete their first Tier 1 mission, <span class="bounty-highlight">a $10.00 fiat bounty will be deposited to your Escrow wallet.</span></p>
+        
+        <div class="code-display" id="refCode">LOADING...</div>
+        
+        <div class="social-row">
+            <button class="btn-social" onclick="copyCode()">[ COPY CODE ]</button>
+            <button class="btn-social" onclick="window.print()">[ VIEW SUBMISSION SUMMARY ]</button>
+        </div>
+    </div>
+    
+    <a href="/" class="btn-home">RETURN TO COMMAND HUB</a>
+</div>
+
+<script>
+    // 🟢 THE FIX: Grab the referral code passed from the enlistment form
+    const urlParams = new URLSearchParams(window.location.search);
+    const ref = urlParams.get('ref') || 'VNG-7777-ALPHA'; // Fallback if navigated directly
+    document.getElementById('refCode').innerText = ref;
+
+    function copyCode() {
+        const code = document.getElementById('refCode').innerText;
+        navigator.clipboard.writeText("Join the Vanguard 50 Network. Use my clearance code: " + code + " at https://proxyagent.network/enlist");
+        const btn = document.querySelector('button.btn-social');
+        btn.innerText = "[ COPIED TO CLIPBOARD ]";
+        btn.style.background = "var(--success)";
+        btn.style.color = "var(--navy)";
+        btn.style.borderColor = "var(--success)";
+        setTimeout(() => {
+            btn.innerText = "[ COPY CODE ]";
+            btn.style.background = "rgba(184, 115, 51, 0.1)";
+            btn.style.color = "var(--copper)";
+            btn.style.borderColor = "var(--copper)";
+        }, 3000);
+    }
+</script>
+{% endblock %}
