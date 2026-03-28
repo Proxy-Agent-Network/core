@@ -11,6 +11,12 @@ core_memories.json
 agency_lore.db
 secrets.js
 
+# --- PROVISIONING SECRETS ---
+# Prevent Vanguard 50 pilot credentials from leaking
+serviceAccountKey.json
+*.csv
+vanguard_50_credentials.csv
+
 # --- TPM 2.0 HARDWARE (VITAL) ---
 # Protecting the Hardware Root of Trust
 *.ctx
