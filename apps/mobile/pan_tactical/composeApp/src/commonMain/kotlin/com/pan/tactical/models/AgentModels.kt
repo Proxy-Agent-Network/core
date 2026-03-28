@@ -3,10 +3,11 @@ package com.pan.tactical.models
 import kotlinx.serialization.Serializable
 
 data class MissionData(
-    val lat: Double,
-    val lon: Double,
-    val errorCode: String,
-    val bounty: String,
+    val taskId: String = "",
+    val lat: Double, 
+    val lon: Double, 
+    val errorCode: String, 
+    val bounty: String, 
     val intersection: String
 )
 

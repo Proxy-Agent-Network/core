@@ -2,7 +2,7 @@ import os
 import logging
 import json
 import asyncio
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException
 
 logger = logging.getLogger("PAN_TelemetryStream")
 router = APIRouter()
@@ -12,6 +12,15 @@ router = APIRouter()
 @router.post("/v1/telemetry/ingest")
 async def ingest_telemetry(request: Request):
     """Receives 1Hz GPS pings from the mobile app and flexibly extracts coordinates."""
+    # 6. Auth Guard for Telemetry Ingest
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    expected = os.getenv("OPS_HUB_TOKEN")
+    if not expected:
+        expected = "dev-token-777"
+        
+    if token != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     try:
         data = await request.json()
     except Exception:
@@ -47,7 +56,14 @@ async def ingest_telemetry(request: Request):
 
 @router.websocket("/v1/telemetry/stream")
 async def websocket_telemetry_endpoint(websocket: WebSocket):
-    expected_token = os.getenv("OPS_HUB_TOKEN", "dev-token-777")
+    # 1. Production Token Fallback Guard
+    expected_token = os.getenv("OPS_HUB_TOKEN")
+    if not expected_token:
+        if os.getenv("ENVIRONMENT") == "production":
+            raise RuntimeError("FATAL: OPS_HUB_TOKEN is not set in production.")
+        expected_token = "dev-token-777"
+        logger.warning("⚠️ Using insecure dev token. Set OPS_HUB_TOKEN for production.")
+        
     token = websocket.query_params.get("token")
     
     if token != expected_token:
@@ -59,39 +75,31 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
     
     redis_client = websocket.app.state.redis_client
     
-    # 🟢 THE FIX: STATE REHYDRATION WITH BYTE-STRING DECODING
-    # If the frontend misses the live broadcast, fetch the current board state on connection.
+    # 🟢 STATE REHYDRATION
     try:
         # Sync Active Agents
         cursor = 0
         while True:
             cursor, keys = await redis_client.scan(cursor=cursor, match="agent:*", count=100)
             for key in keys:
-                # Safely decode the Redis key from bytes to a standard string
-                key_str = key.decode("utf-8") if isinstance(key, bytes) else key
-                
-                if key_str == "agents:locations": continue
+                # 2. & 5. Removed byte decoding and agents:locations check
                 agent = await redis_client.hgetall(key)
                 
                 if agent:
-                    # Safely extract coordinates no matter what they were saved as (string or bytes)
-                    lat = agent.get("lat") or agent.get("latitude") or agent.get(b"lat") or agent.get(b"latitude")
-                    lon = agent.get("lon") or agent.get("longitude") or agent.get(b"lon") or agent.get(b"longitude")
+                    lat = agent.get("lat") or agent.get("latitude")
+                    lon = agent.get("lon") or agent.get("longitude")
                     
                     if lat is not None and lon is not None:
-                        status_val = agent.get("status") or agent.get(b"status", b"ONLINE")
-                        status_str = status_val.decode("utf-8") if isinstance(status_val, bytes) else status_val
-                        
                         await websocket.send_json({
                             "type": "AGENT_LOCATION",
                             "payload": {
-                                "agent_id": key_str.split(":")[-1], 
+                                "agent_id": key.split(":")[-1], 
                                 "lat": float(lat), 
                                 "lon": float(lon), 
-                                "status": status_str
+                                "status": agent.get("status", "ONLINE")
                             }
                         })
-            if cursor == 0: break
+            if int(cursor) == 0: break
             
         # Sync Active Distress Signals
         cursor = 0
@@ -100,33 +108,30 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             for key in keys:
                 task = await redis_client.hgetall(key)
                 if task:
-                    lat = task.get("lat") or task.get("latitude") or task.get(b"lat") or task.get(b"latitude")
-                    lon = task.get("lon") or task.get("longitude") or task.get(b"lon") or task.get(b"longitude")
+                    lat = task.get("lat") or task.get("latitude")
+                    lon = task.get("lon") or task.get("longitude")
                     
                     if lat is not None and lon is not None:
-                        # Safely decode the Redis key from bytes to a standard string
-                        key_str = key.decode("utf-8") if isinstance(key, bytes) else key
-                        task_id = key_str.split("pan:task:")[-1]
+                        task_id = key.split("pan:task:")[-1]
                         
                         sla_status = "OK"
                         mission_data = await redis_client.hgetall(f"mission:active:{task_id}")
                         if mission_data:
-                            sla_status_val = mission_data.get("sla_status", "OK") or mission_data.get(b"sla_status", b"OK")
-                            sla_status = sla_status_val.decode("utf-8") if isinstance(sla_status_val, bytes) else sla_status_val
+                            sla_status = mission_data.get("sla_status", "OK")
                             
                         await websocket.send_json({
                             "type": "DISTRESS_ALERT",
                             "payload": {
                                 "task_id": task_id, 
-                                "vin": (task.get("vin") or task.get(b"vin", b"UNKNOWN")).decode("utf-8") if isinstance(task.get(b"vin"), bytes) else task.get("vin", "UNKNOWN"),
-                                "fault_code": (task.get("fault_code") or task.get(b"fault_code", b"unknown_fault")).decode("utf-8") if isinstance(task.get(b"fault_code"), bytes) else task.get("fault_code", "unknown_fault"),
+                                "vin": task.get("vin", "UNKNOWN"),
+                                "fault_code": task.get("fault_code", "unknown_fault"),
                                 "lat": float(lat), 
                                 "lon": float(lon),
-                                "bounty_usd": float(task.get("bounty_usd") or task.get(b"bounty_usd", 25.0)),
+                                "bounty_usd": float(task.get("bounty_usd", 25.0)),
                                 "sla_status": sla_status
                             }
                         })
-            if cursor == 0: break
+            if int(cursor) == 0: break
     except Exception as e:
         logger.error(f"⚠️ Failed to sync initial state: {e}")
 
@@ -140,8 +145,8 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if message is not None:
-                    payload_str = message["data"] if isinstance(message["data"], str) else message["data"].decode("utf-8")
-                    channel = message["channel"] if isinstance(message["channel"], str) else message["channel"].decode("utf-8")
+                    payload_str = message["data"]
+                    channel = message["channel"]
                     
                     try:
                         parsed_payload = json.loads(payload_str)
@@ -167,8 +172,16 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                 try:
                     data = await websocket.receive_json()
                     if data.get("action") == "DISPATCH_AGENT":
-                        await redis_client.publish("pan:stream:dispatch_commands", json.dumps(data.get("payload", {})))
+                        # 3. Payload and task_id validation
+                        payload = data.get("payload", {})
+                        task_id = payload.get("task_id")
+                        if not task_id or not isinstance(task_id, str) or not task_id.startswith("tsk_"):
+                            logger.warning(f"⚠️ Invalid task_id in dispatch command: {task_id}")
+                            continue
+                        await redis_client.publish("pan:stream:dispatch_commands", json.dumps(payload))
                 except WebSocketDisconnect:
+                    # 4. Graceful disconnect logging
+                    logger.info("🔴 [OPS_HUB] Command Center UI disconnected cleanly.")
                     break
                 except Exception:
                     continue

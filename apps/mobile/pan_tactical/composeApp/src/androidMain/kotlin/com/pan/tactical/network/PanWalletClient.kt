@@ -1,10 +1,10 @@
 package com.pan.tactical.network
 
 import android.util.Log
+import com.pan.tactical.BuildConfig
 import com.pan.tactical.ui.TransactionLog
 import com.pan.tactical.ui.WalletNetworkClient
 import com.pan.tactical.ui.WalletResponse
-import com.pan.tactical.BuildConfig // 🛠️ THE FIX 1: Read the physical IP from Gradle
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
@@ -28,6 +28,24 @@ data class LinkCardPayload(val card_number: String)
 data class WithdrawPayload(val amount: Double)
 
 @Serializable
+data class V2XDistressPayload(
+    val vin: String,
+    val fault_code: String,
+    val latitude: Double,
+    val longitude: Double,
+    val bounty_usd: Double,
+    val timestamp: Long
+)
+
+@Serializable
+data class TelemetryPayload(
+    val agent_id: String,
+    val latitude: Double,
+    val longitude: Double,
+    val status: String
+)
+
+@Serializable
 data class NetworkTransactionLog(
     val id: String,
     val date: String,
@@ -38,9 +56,9 @@ data class NetworkTransactionLog(
 
 @Serializable
 data class NetworkWalletResponse(
-    val balance: Double,
+    val balance: Double = 0.0,
     val linkedCard: String? = null,
-    val history: List<NetworkTransactionLog>
+    val history: List<NetworkTransactionLog> = emptyList()
 )
 
 class PanWalletClient : WalletNetworkClient {
@@ -61,7 +79,6 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    // 🛠️ THE FIX 2: Stop falling back to 10.0.2.2. Use the physical IP configured in local.properties
     private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val baseUrl = "$hostUrl/api/v1/wallet"
 
@@ -73,8 +90,9 @@ class PanWalletClient : WalletNetworkClient {
     override suspend fun getWalletData(): WalletResponse? {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Fetching wallet from: $baseUrl")
-                val response = client.get(baseUrl) {
+                Log.d(TAG, "Fetching wallet from: $baseUrl/")
+                // 7. Added the trailing slash to bypass FastAPI 307 redirects
+                val response = client.get("$baseUrl/") {
                     attachAgentSignature()
                 }
 
@@ -147,25 +165,24 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    // 🛠️ THE FIX 3: Actually fire the V2X Distress Signal since DI bound this class to the UI
-    override suspend fun triggerBackendDispatch(lat: Double, lon: Double, faultCode: String): Boolean {
+    override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 Log.i(TAG, "🚀 Injecting V2X Distress Signal via WalletClient to Python Backend...")
                 val response: HttpResponse = client.post("$hostUrl/api/v1/v2x/distress") {
-                    header("Authorization", "Bearer dev-token-777")
+                    attachAgentSignature() // 8. Standardized auth
                     header("X-Fleet-Id", "DEV-FLEET-01")
                     contentType(ContentType.Application.Json)
-                    setBody("""
-                        {
-                            "vin": "DEV-VIN-777",
-                            "fault_code": "$faultCode",
-                            "latitude": $lat,
-                            "longitude": $lon,
-                            "bounty_usd": 25.00,
-                            "timestamp": ${System.currentTimeMillis() / 1000}
-                        }
-                    """.trimIndent())
+                    
+                    // 1 & 2. Fixed string template bug by using the strongly typed DTO
+                    setBody(V2XDistressPayload(
+                        vin = "DEV-VIN-777",
+                        fault_code = errorCode, 
+                        latitude = lat,
+                        longitude = lon,
+                        bounty_usd = 25.00,
+                        timestamp = System.currentTimeMillis() / 1000
+                    ))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -180,14 +197,15 @@ class PanWalletClient : WalletNetworkClient {
             try {
                 val response: HttpResponse = client.post("$hostUrl/api/v1/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
-                    setBody("""
-                        {
-                            "agent_id": "VANGUARD-01",
-                            "latitude": $lat,
-                            "longitude": $lon,
-                            "status": "ONLINE"
-                        }
-                    """.trimIndent())
+                    attachAgentSignature() // 8. Standardized auth
+                    
+                    // 3. Removed raw string interpolation for the typed DTO
+                    setBody(TelemetryPayload(
+                        agent_id = "VANGUARD-01",
+                        latitude = lat,
+                        longitude = lon,
+                        status = "ONLINE"
+                    ))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -201,17 +219,22 @@ class PanWalletClient : WalletNetworkClient {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val response = client.get("$hostUrl/api/v1/agent/missions") {
-                    header("Authorization", "Vanguard-01")
+                    header("Authorization", "Bearer dev-token-777")
                 }
 
                 if (response.status.isSuccess()) {
-                    // Manually parse the JSON to bypass @Serializable requirement issues
                     val jsonString = response.bodyAsText()
                     val jsonArray = kotlinx.serialization.json.Json.parseToJsonElement(jsonString).jsonArray
 
                     jsonArray.map { element ->
                         val obj = element.jsonObject
+
+                        // 🪤 TRAP 1: Did the phone actually catch the ID from the JSON?
+                        val parsedId = obj["taskId"]?.jsonPrimitive?.content ?: ""
+                        android.util.Log.w("PanNetwork", "🔍 Parsed Mission from Server! Task ID: '$parsedId'")
+
                         com.pan.tactical.models.MissionData(
+                            taskId = parsedId, // Ensure your MissionData.kt model has this variable!
                             lat = obj["lat"]?.jsonPrimitive?.double ?: 0.0,
                             lon = obj["lon"]?.jsonPrimitive?.double ?: 0.0,
                             errorCode = obj["errorCode"]?.jsonPrimitive?.content ?: "Unknown",
@@ -225,6 +248,28 @@ class PanWalletClient : WalletNetworkClient {
             } catch (e: Exception) {
                 android.util.Log.e("PanNetwork", "Failed to parse missions: ${e.message}")
                 emptyList()
+            }
+        }
+    }
+
+    override suspend fun declineMission(taskId: String): Boolean {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            // 🪤 TRAP 2: Did the UI button pass the ID to the network client?
+            android.util.Log.w("PanNetwork", "🔴 UI CLICKED DECLINE! Sending Task ID: '$taskId' to backend...")
+
+            if (taskId.isBlank()) {
+                android.util.Log.e("PanNetwork", "❌ STOPPING NETWORK CALL: taskId is blank! The UI forgot to pass it.")
+                return@withContext false
+            }
+
+            try {
+                val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/decline") {
+                    header("Authorization", "Bearer dev-token-777")
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                android.util.Log.e("PanNetwork", "Failed to decline mission: ${e.message}", e)
+                false
             }
         }
     }

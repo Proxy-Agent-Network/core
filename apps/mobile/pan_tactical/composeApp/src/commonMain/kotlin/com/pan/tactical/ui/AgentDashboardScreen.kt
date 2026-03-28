@@ -42,7 +42,6 @@ import com.pan.tactical.getCurrentTimeMs
 import com.pan.tactical.getNativeMapUrl
 import com.pan.tactical.rememberSharedCameraManager
 import com.pan.tactical.rememberSharedLocationManager
-import com.pan.tactical.network.PythonNetworkBridge
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
@@ -167,17 +166,18 @@ fun MainDashboardContent(
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
 
     val MissionDataSaver = Saver<MissionData?, String>(
-        save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bounty}|${data.intersection}" } ?: "" },
+        save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bounty}|${data.intersection}|${data.taskId}" } ?: "" },
         restore = { str ->
             if (str.isEmpty()) null
             else {
                 val parts = str.split("|")
-                if (parts.size == 5) MissionData(
+                if (parts.size >= 6) MissionData(
                     lat = parts[0].toDoubleOrNull() ?: 0.0,
                     lon = parts[1].toDoubleOrNull() ?: 0.0,
                     errorCode = parts[2],
                     bounty = parts[3],
-                    intersection = parts[4]
+                    intersection = parts[4],
+                    taskId = parts[5] // 🟢 Properly extracting the unique Task ID!
                 ) else null
             }
         }
@@ -237,18 +237,20 @@ fun MainDashboardContent(
     }
 
     var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
+    var lastTelemetryTime by remember { mutableLongStateOf(0L) }
 
-    // 🛠️ THE FIX 1: Broadcast GPS coordinates to the Backend constantly while online
+    // 🟢 THE FIX: Debounced telemetry to prevent coroutine spam
     val locationManager = rememberSharedLocationManager { lat, lon ->
-        println("[TACTICAL_GPS] Agent moving: $lat, $lon")
         agentLocation = Pair(lat, lon)
-
-        if (isOnline) {
+        val now = com.pan.tactical.getCurrentTimeMs()
+        
+        if (isOnline && now - lastTelemetryTime > 3000) {
+            lastTelemetryTime = now
             coroutineScope.launch {
                 try {
                     apiClient.updateLocationTelemetry(lat, lon)
                 } catch (e: Exception) {
-                    println("[TELEMETRY_ERROR] Failed to push GPS to Backend: ${e.message}")
+                    println("[TELEMETRY_ERROR] ${e.message}")
                 }
             }
         }
@@ -322,8 +324,18 @@ fun MainDashboardContent(
                     animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
                 )
                 if (missionState == "PENDING") {
+                    // 🟢 THE FIX: Tell the backend we ignored it!
+                    val expiredTaskId = activeMission?.taskId
                     missionState = "IDLE"
                     activeMission = null
+                    
+                    if (!expiredTaskId.isNullOrBlank()) {
+                        try {
+                            apiClient.declineMission(expiredTaskId)
+                        } catch(e: Exception) {
+                            println("Failed to decline expired mission: ${e.message}")
+                        }
+                    }
                 }
             }
         }
@@ -434,10 +446,18 @@ fun MainDashboardContent(
                             }
                         },
                         onDecline = {
-                            missionState = "IDLE"
-                            activeMission = null
-                            tacticalRoute = emptyList()
-                            audio.stop()
+                            // 🟢 THE FIX: Tell the backend, THEN clear the screen!
+                            coroutineScope.launch {
+                                val currentTaskId = activeMission?.taskId
+                                if (!currentTaskId.isNullOrBlank()) {
+                                    apiClient.declineMission(currentTaskId)
+                                }
+                                
+                                missionState = "IDLE"
+                                activeMission = null
+                                tacticalRoute = emptyList()
+                                audio.stop()
+                            }
                         }
                     )
                 }
@@ -610,9 +630,17 @@ fun MainDashboardContent(
             AlertDialog(onDismissRequest = { showAbortDialog = false; abortSliderResetKey++ }, containerColor = Color(0xFF1E1E1E), title = { Text("ABORT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column { listOf("Too Dangerous", "Changed Mind", "Can't Find AV", "AV Leaving Scene", "Other").forEach { reason ->
                     Button(onClick = {
+                        // 🟢 THE FIX: Cache the ID, clear the screen, tell the backend!
+                        val abortingTaskId = activeMission?.taskId
                         showAbortDialog = false; missionState = "IDLE"; activeMission = null; queuedMission = null; abortSliderResetKey++
                         missionAcceptTime = 0L; sceneArrivalTime = 0L
                         tacticalRoute = emptyList()
+                        
+                        if (!abortingTaskId.isNullOrBlank()) {
+                            coroutineScope.launch { 
+                                apiClient.declineMission(abortingTaskId) 
+                            }
+                        }
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
                 } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }
             )

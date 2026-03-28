@@ -42,6 +42,7 @@ interface WalletNetworkClient {
     suspend fun withdrawFunds(amount: Double): Boolean
     suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean
     suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean
+    suspend fun declineMission(taskId: String): Boolean
 
     suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData>
 }

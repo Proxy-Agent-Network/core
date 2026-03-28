@@ -141,7 +141,7 @@ android {
     namespace = "com.pan.tactical"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    // 🛠️ THE FIX: NUKED the conflicting buildFeatures { buildConfig = true }
+    buildFeatures { buildConfig = false }
 
     defaultConfig {
         applicationId = "com.pan.tactical"
@@ -152,7 +152,6 @@ android {
 
         manifestPlaceholders["MAPS_API_KEY"] = secureMapsKey
 
-        // 🛠️ THE FIX: NUKED the duplicate property loading from here!
     }
 
     packaging {
