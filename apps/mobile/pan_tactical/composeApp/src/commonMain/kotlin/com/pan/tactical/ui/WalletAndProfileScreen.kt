@@ -23,6 +23,7 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 
 import com.pan.tactical.AudioEngine
+import kotlin.math.abs
 
 // 1. DATA MODELS (Now in commonMain so the UI can see them)
 data class TransactionLog(
@@ -43,21 +44,24 @@ interface WalletNetworkClient {
     suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean
     suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean
     suspend fun declineMission(taskId: String): Boolean
-
     suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData>
+    suspend fun completeMission(taskId: String): Boolean
 }
 
 // --- KMP-FRIENDLY CURRENCY FORMATTER ---
 fun Double.toCurrency(): String {
-    val parts = this.toString().split(".")
+    // 🛠️ ISSUE 2 FIX: Handle negative numbers safely
+    val isNegative = this < 0
+    val absoluteValue = abs(this)
+    val parts = absoluteValue.toString().split(".")
     val whole = parts[0]
     val frac = if (parts.size > 1) parts[1].padEnd(2, '0').take(2) else "00"
-    return "$$whole.$frac"
+    return if (isNegative) "-$$whole.$frac" else "$$whole.$frac"
 }
 
 @Composable
 fun WalletAndProfileScreen(
-    apiClient: WalletNetworkClient, // 3. 🛠️ THE FIX: Require the interface, not the Android class
+    apiClient: WalletNetworkClient,
     onBack: () -> Unit,
     navPreference: String,
     onNavPrefChange: (String) -> Unit,
@@ -72,7 +76,6 @@ fun WalletAndProfileScreen(
     var firstName by remember { mutableStateOf("Proxy") }
     var callsign by remember { mutableStateOf("Vanguard-01") }
 
-    // 🛠️ THE FIX: Dynamic Voice Initialization
     val osVoices = remember { audioEngine.getAvailableVoices() }
     var selectedVoice by remember { mutableStateOf(osVoices.firstOrNull()?.id ?: "") }
 
@@ -87,8 +90,8 @@ fun WalletAndProfileScreen(
     var isLinkingCard by remember { mutableStateOf(false) }
     var isWithdrawing by remember { mutableStateOf(false) }
 
-    // --- FETCH WALLET DATA ON LOAD ---
     LaunchedEffect(Unit) {
+        isLoading = true
         val walletData = apiClient.getWalletData()
         if (walletData != null) {
             balance = walletData.balance
@@ -98,7 +101,6 @@ fun WalletAndProfileScreen(
         isLoading = false
     }
 
-    // --- LINK CARD DIALOG UI ---
     if (showLinkCardDialog) {
         Dialog(onDismissRequest = { if (!isLinkingCard) showLinkCardDialog = false }) {
             Surface(
@@ -112,10 +114,8 @@ fun WalletAndProfileScreen(
 
                     OutlinedTextField(
                         value = cardNumber,
-                        // 🛠️ THE FIX: Prevent invalid input lengths mechanically
                         onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) cardNumber = it },
                         label = { Text("Card Number (Last 4)", color = Color.Gray, fontSize = 12.sp) },
-                        // 🛠️ THE FIX: Prevent OS Keyboard Caching
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Color(0xFF1976D2), unfocusedBorderColor = Color(0xFF333333),
@@ -162,7 +162,6 @@ fun WalletAndProfileScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(Color(0xFF121212))) {
 
-        // 🛠️ THE FIX: Dynamic edge-to-edge support instead of hardcoded 70.dp
         Spacer(
             modifier = Modifier
                 .windowInsetsTopHeight(WindowInsets.statusBars)
@@ -205,7 +204,6 @@ fun WalletAndProfileScreen(
                             if (balance > 0) {
                                 isWithdrawing = true
                                 coroutineScope.launch {
-                                    // 🛠️ THE FIX: Proper Idempotency/Refresh Flow
                                     val success = apiClient.withdrawFunds(amount = balance)
                                     if (success) {
                                         audioEngine.speak("Funds withdrawn to your bank.", voiceVolume)
@@ -213,7 +211,6 @@ fun WalletAndProfileScreen(
                                         audioEngine.speak("Withdrawal failed.", voiceVolume)
                                     }
 
-                                    // Always re-sync with the server rather than trusting the local mutation
                                     apiClient.getWalletData()?.let {
                                         balance = it.balance
                                         history = it.history
@@ -224,7 +221,7 @@ fun WalletAndProfileScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                         modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(8.dp),
-                        enabled = !isWithdrawing && balance > 0 // 🛠️ THE FIX: UI Guard
+                        enabled = !isWithdrawing && balance > 0
                     ) {
                         if (isWithdrawing) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
                         else Text("WITHDRAW TO ${linkedCard?.uppercase()}", color = Color.White, fontWeight = FontWeight.Black)
@@ -313,7 +310,8 @@ fun WalletAndProfileScreen(
                     Slider(
                         value = alertVolume.toFloat(),
                         onValueChange = { onAlertVolumeChange(it.toInt()) },
-                        onValueChangeFinished = { audioEngine.speak("Beep.", alertVolume / 100f) },
+                        // 🛠️ ISSUE 4 FIX: Use proper beep sound generator mapping instead of TTS string.
+                        onValueChangeFinished = { audioEngine.playAlertBeep(alertVolume) },
                         valueRange = 0f..100f,
                         colors = SliderDefaults.colors(thumbColor = Color(0xFFF44336), activeTrackColor = Color(0xFFF44336))
                     )
@@ -356,7 +354,6 @@ fun WalletAndProfileScreen(
                         Text("No transaction history available.", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(8.dp))
                     } else {
                         history.forEach { tx ->
-                            // 🛠️ THE FIX: Removed dead click handler on transaction rows
                             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(tx.date, color = Color.Gray, fontSize = 12.sp)
