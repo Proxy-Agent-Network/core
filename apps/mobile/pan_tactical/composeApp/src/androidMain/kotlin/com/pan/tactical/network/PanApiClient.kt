@@ -489,6 +489,21 @@ class PanApiClient : WalletNetworkClient {
         return false
     }
 
-    // 🟢 RESTORED: App lifecycle teardown method
+    override suspend fun completeMission(taskId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$PAN_API_URL/agent/missions/$taskId/complete") {
+                    header("Authorization", "Bearer dev-token-777")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"agent_id": "VANGUARD-01", "netPayout": 22.50, "evidence_urls": [], "hardware_attestation_token": "dev-bypass"}""")
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Failed to complete mission: ${e.message}", e)
+                false
+            }
+        }
+    }
+
     fun close() = client.close()
 }

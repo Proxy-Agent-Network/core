@@ -61,6 +61,14 @@ data class NetworkWalletResponse(
     val history: List<NetworkTransactionLog> = emptyList()
 )
 
+@Serializable
+data class MissionCompletePayload(
+    val agent_id: String,
+    val netPayout: Double,
+    val evidence_urls: List<String>,
+    val hardware_attestation_token: String
+)
+
 class PanWalletClient : WalletNetworkClient {
 
     companion object {
@@ -84,14 +92,14 @@ class PanWalletClient : WalletNetworkClient {
 
     private fun HttpRequestBuilder.attachAgentSignature() {
         header("Authorization", "Bearer dev-token-777")
-        header("X-Agent-ID", "VANGUARD-01")
+        // 🛠️ FIX: Match backend casing exactly
+        header("X-Agent-ID", "Vanguard-01")
     }
 
     override suspend fun getWalletData(): WalletResponse? {
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Fetching wallet from: $baseUrl/")
-                // 7. Added the trailing slash to bypass FastAPI 307 redirects
                 val response = client.get("$baseUrl/") {
                     attachAgentSignature()
                 }
@@ -170,14 +178,13 @@ class PanWalletClient : WalletNetworkClient {
             try {
                 Log.i(TAG, "🚀 Injecting V2X Distress Signal via WalletClient to Python Backend...")
                 val response: HttpResponse = client.post("$hostUrl/api/v1/v2x/distress") {
-                    attachAgentSignature() // 8. Standardized auth
+                    attachAgentSignature()
                     header("X-Fleet-Id", "DEV-FLEET-01")
                     contentType(ContentType.Application.Json)
-                    
-                    // 1 & 2. Fixed string template bug by using the strongly typed DTO
+
                     setBody(V2XDistressPayload(
                         vin = "DEV-VIN-777",
-                        fault_code = errorCode, 
+                        fault_code = errorCode,
                         latitude = lat,
                         longitude = lon,
                         bounty_usd = 25.00,
@@ -197,11 +204,11 @@ class PanWalletClient : WalletNetworkClient {
             try {
                 val response: HttpResponse = client.post("$hostUrl/api/v1/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
-                    attachAgentSignature() // 8. Standardized auth
-                    
-                    // 3. Removed raw string interpolation for the typed DTO
+                    attachAgentSignature()
+
                     setBody(TelemetryPayload(
-                        agent_id = "VANGUARD-01",
+                        // 🛠️ FIX: Match backend casing exactly
+                        agent_id = "Vanguard-01",
                         latitude = lat,
                         longitude = lon,
                         status = "ONLINE"
@@ -216,25 +223,24 @@ class PanWalletClient : WalletNetworkClient {
     }
 
     override suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData> {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
                 val response = client.get("$hostUrl/api/v1/agent/missions") {
-                    header("Authorization", "Bearer dev-token-777")
+                    attachAgentSignature()
                 }
 
                 if (response.status.isSuccess()) {
                     val jsonString = response.bodyAsText()
-                    val jsonArray = kotlinx.serialization.json.Json.parseToJsonElement(jsonString).jsonArray
+                    val jsonArray = Json.parseToJsonElement(jsonString).jsonArray
 
                     jsonArray.map { element ->
                         val obj = element.jsonObject
 
-                        // 🪤 TRAP 1: Did the phone actually catch the ID from the JSON?
-                        val parsedId = obj["taskId"]?.jsonPrimitive?.content ?: ""
-                        android.util.Log.w("PanNetwork", "🔍 Parsed Mission from Server! Task ID: '$parsedId'")
+                        val parsedId = (obj["taskId"] ?: obj["task_id"])?.jsonPrimitive?.content ?: ""
+                        Log.w(TAG, "🔍 Parsed Mission from Server! Task ID: '$parsedId'")
 
                         com.pan.tactical.models.MissionData(
-                            taskId = parsedId, // Ensure your MissionData.kt model has this variable!
+                            taskId = parsedId,
                             lat = obj["lat"]?.jsonPrimitive?.double ?: 0.0,
                             lon = obj["lon"]?.jsonPrimitive?.double ?: 0.0,
                             errorCode = obj["errorCode"]?.jsonPrimitive?.content ?: "Unknown",
@@ -246,29 +252,53 @@ class PanWalletClient : WalletNetworkClient {
                     emptyList()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("PanNetwork", "Failed to parse missions: ${e.message}")
+                Log.e(TAG, "Failed to parse missions: ${e.message}", e)
                 emptyList()
             }
         }
     }
 
     override suspend fun declineMission(taskId: String): Boolean {
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            // 🪤 TRAP 2: Did the UI button pass the ID to the network client?
-            android.util.Log.w("PanNetwork", "🔴 UI CLICKED DECLINE! Sending Task ID: '$taskId' to backend...")
+        return withContext(Dispatchers.IO) {
+            Log.w(TAG, "🔴 UI CLICKED DECLINE! Sending Task ID: '$taskId' to backend...")
 
             if (taskId.isBlank()) {
-                android.util.Log.e("PanNetwork", "❌ STOPPING NETWORK CALL: taskId is blank! The UI forgot to pass it.")
+                Log.e(TAG, "❌ STOPPING NETWORK CALL: taskId is blank! The UI forgot to pass it.")
                 return@withContext false
             }
 
             try {
                 val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/decline") {
-                    header("Authorization", "Bearer dev-token-777")
+                    attachAgentSignature()
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
-                android.util.Log.e("PanNetwork", "Failed to decline mission: ${e.message}", e)
+                Log.e(TAG, "Failed to decline mission: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    override suspend fun completeMission(taskId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/complete") {
+                    attachAgentSignature()
+                    contentType(ContentType.Application.Json)
+
+                    setBody(
+                        MissionCompletePayload(
+                            // 🛠️ FIX: Match backend casing exactly
+                            agent_id = "Vanguard-01",
+                            netPayout = 22.50,
+                            evidence_urls = emptyList(),
+                            hardware_attestation_token = "dev-bypass"
+                        )
+                    )
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to complete mission: ${e.message}", e)
                 false
             }
         }
