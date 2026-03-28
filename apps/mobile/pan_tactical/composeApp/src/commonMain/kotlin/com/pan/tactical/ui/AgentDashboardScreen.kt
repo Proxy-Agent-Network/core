@@ -344,6 +344,13 @@ fun MainDashboardContent(
 
     LaunchedEffect(missionState) {
         if (missionState == "PENDING" && activeMission != null) {
+
+            // 🟢 THE FIX: Fire two-phase ACK immediately when mission UI renders
+            val taskId = activeMission?.taskId
+            if (!taskId.isNullOrBlank()) {
+                launch { apiClient.acknowledgeMission(taskId) }
+            }
+
             val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
             val netPayout = rawBounty * 0.90f
             val cleanBounty = if (netPayout % 1.0f == 0f) netPayout.toInt().toString() else netPayout.toString()
@@ -358,7 +365,6 @@ fun MainDashboardContent(
                     animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
                 )
                 if (missionState == "PENDING") {
-                    // 🟢 THE FIX 2a: Restored timeout decline
                     val currentTaskId = activeMission?.taskId
                     if (!currentTaskId.isNullOrBlank()) {
                         apiClient.declineMission(currentTaskId)
