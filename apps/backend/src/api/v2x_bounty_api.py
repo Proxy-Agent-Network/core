@@ -2,6 +2,7 @@ import logging
 import json
 import time
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -164,6 +165,32 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         # 4. Persist the sealed report to the compliance ledger
         await redis_client.hset("pan:compliance:reports", task_id, json.dumps(sealed_report))
         
+        # --- 5. THE FIX: FINANCIALLY SETTLE THE MISSION ---
+        wallet_key = f"pan:agent:{agent_id}:wallet"
+        wallet_raw = await redis_client.get(wallet_key)
+        
+        if wallet_raw:
+            wallet = json.loads(wallet_raw)
+        else:
+            wallet = {"balance": 0.0, "linkedCard": None, "history": []}
+            
+        # Add the funds to the balance
+        wallet["balance"] += payload.netPayout
+        
+        # Record the transaction
+        tx_record = {
+            "id": f"tx_{int(time.time())}",
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "amount": f"+${payload.netPayout:.2f}",
+            "description": f"Bounty: {fault_code} ({vin})"
+        }
+        wallet["history"].insert(0, tx_record)
+        wallet["history"] = wallet["history"][:50] # Keep history capped at 50
+        
+        await redis_client.set(wallet_key, json.dumps(wallet))
+        logger.info(f"💸 [WALLET] Deposited ${payload.netPayout:.2f} to {agent_id}. New Balance: ${wallet['balance']:.2f}")
+        # ---------------------------------------------------
+
         # Return agent to the available pool
         await redis_client.hset(f"agent:{agent_id}", "status", "ONLINE")
         
