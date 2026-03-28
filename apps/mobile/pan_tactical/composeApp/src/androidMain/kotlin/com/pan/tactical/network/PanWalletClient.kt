@@ -21,6 +21,11 @@ import kotlinx.serialization.json.*
 import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
+
+// 🟢 NEW: Added ErrorPayload to catch FastAPI HTTPExceptions
+@Serializable
+data class ErrorPayload(val detail: String)
+
 @Serializable
 data class LinkCardPayload(val card_number: String)
 
@@ -131,7 +136,8 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    override suspend fun linkDebitCard(cardNumber: String): Boolean {
+    // 🟢 UPDATED: Changed return type to Result<String> to surface specific backend errors
+    override suspend fun linkDebitCard(cardNumber: String): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.post("$baseUrl/link-card") {
@@ -140,19 +146,26 @@ class PanWalletClient : WalletNetworkClient {
                     setBody(LinkCardPayload(card_number = cardNumber))
                 }
 
-                if (!response.status.isSuccess()) {
-                    Log.w(TAG, "Card linking rejected: HTTP ${response.status.value}")
+                if (response.status.isSuccess()) {
+                    Result.success("Card linked successfully.")
+                } else {
+                    val errorDetail = try {
+                        response.body<ErrorPayload>().detail
+                    } catch (e: Exception) {
+                        "Network rejected card linking (HTTP ${response.status.value})"
+                    }
+                    Log.w(TAG, "Card linking rejected: $errorDetail")
+                    Result.failure(Exception(errorDetail))
                 }
-
-                response.status.isSuccess()
             } catch (e: Exception) {
                 Log.e(TAG, "Card linking failed: ${e.message}", e)
-                false
+                Result.failure(Exception("Connection to PAN Network lost."))
             }
         }
     }
 
-    override suspend fun withdrawFunds(amount: Double): Boolean {
+    // 🟢 UPDATED: Changed return type to Result<String> to surface specific backend errors
+    override suspend fun withdrawFunds(amount: Double): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.post("$baseUrl/withdraw") {
@@ -161,14 +174,20 @@ class PanWalletClient : WalletNetworkClient {
                     setBody(WithdrawPayload(amount = amount))
                 }
 
-                if (!response.status.isSuccess()) {
-                    Log.w(TAG, "Withdrawal rejected: HTTP ${response.status.value}")
+                if (response.status.isSuccess()) {
+                    Result.success("Transfer initiated.")
+                } else {
+                    val errorDetail = try {
+                        response.body<ErrorPayload>().detail
+                    } catch (e: Exception) {
+                        "Withdrawal rejected by network (HTTP ${response.status.value})"
+                    }
+                    Log.w(TAG, "Withdrawal rejected: $errorDetail")
+                    Result.failure(Exception(errorDetail))
                 }
-
-                response.status.isSuccess()
             } catch (e: Exception) {
                 Log.e(TAG, "Withdrawal failed: ${e.message}", e)
-                false
+                Result.failure(Exception("Connection to PAN Network lost."))
             }
         }
     }

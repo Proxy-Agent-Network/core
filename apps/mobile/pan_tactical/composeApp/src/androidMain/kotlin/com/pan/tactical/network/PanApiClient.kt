@@ -429,7 +429,8 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    override suspend fun linkDebitCard(cardNumber: String): Boolean {
+    // 🟢 UPDATED: Meaningful user-facing success string
+    override suspend fun linkDebitCard(cardNumber: String): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse =
@@ -437,15 +438,20 @@ class PanApiClient : WalletNetworkClient {
                         contentType(ContentType.Application.Json)
                         setBody("\"$cardNumber\"")
                     }
-                response.status.isSuccess()
+                if (response.status.isSuccess()) {
+                    Result.success("Card linked to legacy wallet.")
+                } else {
+                    Result.failure(Exception("Network rejected card linking (HTTP ${response.status.value})"))
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to link debit card: ${e.message}", e)
-                false
+                Result.failure(Exception("Connection to legacy network lost."))
             }
         }
     }
 
-    override suspend fun withdrawFunds(amount: Double): Boolean {
+    // 🟢 UPDATED: Meaningful user-facing success string
+    override suspend fun withdrawFunds(amount: Double): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
                 client.put("$FIREBASE_URL/agents/$secureUid/wallet/balance.json") {
@@ -467,10 +473,10 @@ class PanApiClient : WalletNetworkClient {
                     contentType(ContentType.Application.Json)
                     setBody(txJson)
                 }
-                true
+                Result.success("Transfer recorded in legacy wallet.")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to withdraw funds: ${e.message}", e)
-                false
+                Result.failure(Exception("Connection to legacy network lost."))
             }
         }
     }
@@ -489,17 +495,26 @@ class PanApiClient : WalletNetworkClient {
         return false
     }
 
+    // 🟢 FIXED: Removed raw string interpolation in favor of type-safe MissionCompletePayload
+    // 🟢 FIXED: Removed redundant fully-qualified android.util.Log
     override suspend fun completeMission(taskId: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/complete") {
                     header("Authorization", "Bearer dev-token-777")
                     contentType(ContentType.Application.Json)
-                    setBody("""{"agent_id": "VANGUARD-01", "netPayout": 22.50, "evidence_urls": [], "hardware_attestation_token": "dev-bypass"}""")
+                    setBody(
+                        MissionCompletePayload(
+                            agent_id = "VANGUARD-01",
+                            netPayout = 22.50,
+                            evidence_urls = emptyList(),
+                            hardware_attestation_token = "dev-bypass"
+                        )
+                    )
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "Failed to complete mission: ${e.message}", e)
+                Log.e(TAG, "Failed to complete mission: ${e.message}", e)
                 false
             }
         }
