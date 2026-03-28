@@ -49,6 +49,9 @@ interface WalletNetworkClient {
 
     // 🟢 UPDATED: Included playIntegrityToken in the interface contract
     suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String>
+
+    // 🟢 NEW: Two-Phase ACK requirement for dispatch reliability
+    suspend fun acknowledgeMission(taskId: String): Boolean
 }
 
 // --- KMP-FRIENDLY CURRENCY FORMATTER ---
