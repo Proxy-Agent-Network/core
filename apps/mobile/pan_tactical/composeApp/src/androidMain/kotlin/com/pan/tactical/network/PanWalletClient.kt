@@ -1,7 +1,9 @@
 package com.pan.tactical.network
 
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
 import com.pan.tactical.BuildConfig
+import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.TransactionLog
 import com.pan.tactical.ui.WalletNetworkClient
 import com.pan.tactical.ui.WalletResponse
@@ -22,7 +24,9 @@ import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
 
-// 🟢 NEW: Added ErrorPayload to catch FastAPI HTTPExceptions
+@Serializable
+data class KeyRegistrationPayload(val agent_id: String, val public_key_b64: String, val play_integrity_token: String)
+
 @Serializable
 data class ErrorPayload(val detail: String)
 
@@ -95,10 +99,56 @@ class PanWalletClient : WalletNetworkClient {
     private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val baseUrl = "$hostUrl/api/v1/wallet"
 
+    private val secureUid: String
+        get() = FirebaseAuth.getInstance().currentUser?.uid
+            ?: throw IllegalStateException("Agent identity missing. Cannot execute network operations.")
+
+    // 🟢 THE FIX 1: In-memory cache for the hardware JWT to prevent TPM thrashing
+    private var cachedJwt: String? = null
+    private var jwtExpiresAt: Long = 0L
+
+    private fun getFreshJwt(): String {
+        val now = System.currentTimeMillis() / 1000
+        // Refresh the token if it doesn't exist or is within 30 seconds of expiring
+        if (cachedJwt == null || now >= jwtExpiresAt - 30) {
+            cachedJwt = StrongBoxManager().generateJwt(secureUid)
+            jwtExpiresAt = now + 300 // Standard 5-minute TTL
+        }
+        return cachedJwt!!
+    }
+
     private fun HttpRequestBuilder.attachAgentSignature() {
-        header("Authorization", "Bearer dev-token-777")
-        // 🛠️ FIX: Match backend casing exactly
-        header("X-Agent-ID", "Vanguard-01")
+        header("Authorization", "Bearer ${getFreshJwt()}")
+    }
+
+    override suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$hostUrl/api/v1/register-key") {
+                    contentType(ContentType.Application.Json)
+                    setBody(KeyRegistrationPayload(
+                        agent_id = agentId,
+                        public_key_b64 = publicKeyB64,
+                        play_integrity_token = playIntegrityToken
+                    ))
+                }
+
+                if (response.status.isSuccess()) {
+                    Result.success("Hardware bound to identity.")
+                } else {
+                    val errorDetail = try {
+                        response.body<ErrorPayload>().detail
+                    } catch(e: Exception) {
+                        "Registry rejected key (HTTP ${response.status.value})"
+                    }
+                    Log.w(TAG, "Key Ceremony rejected: $errorDetail")
+                    Result.failure(Exception(errorDetail))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Key Ceremony failed: ${e.message}", e)
+                Result.failure(Exception("Network connection lost during Key Ceremony."))
+            }
+        }
     }
 
     override suspend fun getWalletData(): WalletResponse? {
@@ -136,7 +186,6 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 UPDATED: Changed return type to Result<String> to surface specific backend errors
     override suspend fun linkDebitCard(cardNumber: String): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
@@ -164,7 +213,6 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 UPDATED: Changed return type to Result<String> to surface specific backend errors
     override suspend fun withdrawFunds(amount: Double): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
@@ -226,8 +274,7 @@ class PanWalletClient : WalletNetworkClient {
                     attachAgentSignature()
 
                     setBody(TelemetryPayload(
-                        // 🛠️ FIX: Match backend casing exactly
-                        agent_id = "Vanguard-01",
+                        agent_id = secureUid,
                         latitude = lat,
                         longitude = lon,
                         status = "ONLINE"
@@ -307,9 +354,8 @@ class PanWalletClient : WalletNetworkClient {
 
                     setBody(
                         MissionCompletePayload(
-                            // 🛠️ FIX: Match backend casing exactly
-                            agent_id = "Vanguard-01",
-                            netPayout = 22.50,
+                            agent_id = secureUid,
+                            netPayout = 0.0, // 🟢 THE FIX 2: Trust boundary enforced. Backend must calculate payout.
                             evidence_urls = emptyList(),
                             hardware_attestation_token = "dev-bypass"
                         )

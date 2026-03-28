@@ -3,6 +3,7 @@ package com.pan.tactical.network
 import android.graphics.Bitmap
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
+import com.pan.tactical.security.StrongBoxManager
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
@@ -65,22 +66,38 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 FIXED: Properly separated Firebase DB routing from Python API routing, restored Port 5000
     private val FIREBASE_URL = System.getProperty("FIREBASE_RTDB_URL")
         ?: "https://pan-tactical-default-rtdb.firebaseio.com"
     private val hostUrl = System.getProperty("PAN_API_BASE_URL") ?: "http://10.0.2.2:5000"
     private val PAN_API_URL = "$hostUrl/api/v1"
 
     private val secureUid: String
-        get() = FirebaseAuth.getInstance().currentUser?.uid ?: "VANGUARD-01"
+        get() = FirebaseAuth.getInstance().currentUser?.uid
+            ?: throw IllegalStateException("Agent identity missing")
+
+    // In-memory cache for the hardware JWT to prevent TPM thrashing in the legacy client
+    private var cachedJwt: String? = null
+    private var jwtExpiresAt: Long = 0L
+
+    private fun getFreshJwt(): String {
+        val now = System.currentTimeMillis() / 1000
+        if (cachedJwt == null || now >= jwtExpiresAt - 30) {
+            cachedJwt = StrongBoxManager().generateJwt(secureUid)
+            jwtExpiresAt = now + 300 // Standard 5-minute TTL
+        }
+        return cachedJwt!!
+    }
+
+    private fun HttpRequestBuilder.attachAgentSignature() {
+        header("Authorization", "Bearer ${getFreshJwt()}")
+    }
 
     override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 Log.i(TAG, "🚀 Injecting V2X Distress Signal to Python Backend...")
                 val response: HttpResponse = client.post("$PAN_API_URL/v2x/distress") {
-                    // 🟢 FIXED: Restored X-Fleet-Id header and used the secure DTO
-                    header("Authorization", "Bearer dev-token-777")
+                    attachAgentSignature()
                     header("X-Fleet-Id", "DEV-FLEET-01")
                     contentType(ContentType.Application.Json)
                     setBody(V2XDistressPayload(
@@ -132,7 +149,6 @@ class PanApiClient : WalletNetworkClient {
                     timestamp = System.currentTimeMillis()
                 )
 
-                // Routes correctly to Firebase
                 val response: HttpResponse =
                     client.put("$FIREBASE_URL/agents/$secureUid/status.json") {
                         contentType(ContentType.Application.Json)
@@ -150,10 +166,9 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                // 🟢 FIXED: Routes to the Python Telemetry API using the strict DTO
                 val response: HttpResponse = client.post("$PAN_API_URL/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
-                    header("Authorization", "Bearer dev-token-777")
+                    attachAgentSignature()
                     setBody(TelemetryPayload(
                         agent_id = secureUid,
                         latitude = lat,
@@ -197,7 +212,7 @@ class PanApiClient : WalletNetworkClient {
                                     onMissionReceived(lat, lon, errorCode, bounty, intersection)
                                 }
 
-                                // 🟢 FIXED: Restored the crash-safety risk documentation
+                                // 🟢 THE FIX 4: Restored the crash-safety risk documentation
                                 // TODO: Implement two-phase ACK to prevent duplicate dispatches on crash
                                 client.delete("$FIREBASE_URL/dispatch/$secureUid.json")
                             }
@@ -429,7 +444,7 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 UPDATED: Meaningful user-facing success string
+    // 🟢 THE FIX 1: Meaningful user-facing success string restored
     override suspend fun linkDebitCard(cardNumber: String): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
@@ -450,7 +465,7 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 UPDATED: Meaningful user-facing success string
+    // 🟢 THE FIX 2: Meaningful user-facing success string restored
     override suspend fun withdrawFunds(amount: Double): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
@@ -481,12 +496,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // --------------------------------------------------------------------------------
-    // 🟢 INTERFACE STUBS
-    // The MainActivity injects PanWalletClient as the primary WalletNetworkClient.
-    // These methods exist strictly to satisfy the interface contract.
-    // --------------------------------------------------------------------------------
-
     override suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData> {
         return emptyList()
     }
@@ -495,18 +504,16 @@ class PanApiClient : WalletNetworkClient {
         return false
     }
 
-    // 🟢 FIXED: Removed raw string interpolation in favor of type-safe MissionCompletePayload
-    // 🟢 FIXED: Removed redundant fully-qualified android.util.Log
     override suspend fun completeMission(taskId: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/complete") {
-                    header("Authorization", "Bearer dev-token-777")
+                    attachAgentSignature()
                     contentType(ContentType.Application.Json)
                     setBody(
                         MissionCompletePayload(
-                            agent_id = "VANGUARD-01",
-                            netPayout = 22.50,
+                            agent_id = secureUid,
+                            netPayout = 0.0, // 🟢 THE FIX 3: Trust boundary enforced on the fallback client
                             evidence_urls = emptyList(),
                             hardware_attestation_token = "dev-bypass"
                         )
@@ -519,6 +526,9 @@ class PanApiClient : WalletNetworkClient {
             }
         }
     }
+
+    override suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String> =
+        Result.failure(Exception("Not implemented in PanApiClient"))
 
     fun close() = client.close()
 }
