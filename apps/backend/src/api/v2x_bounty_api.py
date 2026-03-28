@@ -221,6 +221,36 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         logger.error(f"❌ [V2X] Failed to seal compliance for {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal routing failure.")
 
+@router.post("/v1/agent/missions/{task_id}/ack")
+async def acknowledge_mission(task_id: str, request: Request, agent_id: str = Depends(verify_agent_signature)):
+    """
+    Phase 2 ACK: Fired silently by the mobile app the millisecond the mission UI renders.
+    
+    # TODO: SLA monitor should revoke missions with no ACK within 15 seconds of dispatch
+    """
+    redis_client = request.app.state.redis_client
+    mission_key = f"mission:active:{task_id}"
+
+    mission_data = await redis_client.hgetall(mission_key)
+    
+    # If it's missing, the watchdog already revoked it
+    if not mission_data:
+        raise HTTPException(status_code=404, detail="Mission not found or already revoked.")
+
+    # Prevent IDOR sniping
+    if mission_data.get("agent_id") != agent_id:
+        logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to ACK mission {task_id} assigned to {mission_data.get('agent_id')}.")
+        raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
+
+    # Update the ledger so the watchdog knows the agent successfully received it
+    await redis_client.hset(mission_key, mapping={
+        "ack_status": "ACKNOWLEDGED",
+        "ack_timestamp": int(time.time())
+    })
+
+    logger.info(f"📡 [DISPATCH] Agent {agent_id} ACKed mission {task_id}. Dispatch secure.")
+    return {"status": "success", "message": "Mission acknowledged."}
+
 @router.post("/v1/agent/missions/{task_id}/decline")
 async def decline_mission(task_id: str, request: Request, agent_id: str = Depends(verify_agent_signature)):
     """Allows an agent to reject a mission, placing them on a price-sensitive cooldown."""
