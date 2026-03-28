@@ -25,7 +25,7 @@ class DistressPayload(BaseModel):
 
 class MissionCompletePayload(BaseModel):
     agent_id: str
-    netPayout: float
+    netPayout: float # Kept in schema for backwards compatibility but ignored by backend math
     evidence_urls: list = []
     hardware_attestation_token: str = ""
 
@@ -126,12 +126,26 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         if not task_data:
             raise HTTPException(status_code=404, detail="Task not found.")
             
+        # 🟢 NEW: IDOR Guard - Verify the agent completing the mission actually owns it
+        mission_key = f"mission:active:{task_id}"
+        mission_data = await redis_client.hgetall(mission_key)
+        if mission_data and mission_data.get("agent_id") != agent_id:
+            logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to snipe mission {task_id} assigned to {mission_data.get('agent_id')}.")
+            raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
+
         vin = task_data.get("vin", "UNKNOWN_VIN")
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
         
+        # Trust boundary enforcement. Backend securely calculates the final payout.
+        raw_bounty = float(task_data.get("bounty_usd", 25.0))
+        actual_payout = round(raw_bounty * 0.90, 2) # Agent earns 90% cut of the escrow
+        
+        if payload.netPayout != 0.0:
+            logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to submit a client-side payout of ${payload.netPayout:.2f}. Overriding with server truth: ${actual_payout:.2f}")
+
         # 2. Keep the task record and update status for SB 1417 audit trails
         await redis_client.hset(f"pan:task:{task_id}", "status", "COMPLETED")
-        await redis_client.delete(f"mission:active:{task_id}")
+        await redis_client.delete(mission_key)
         
         # 3. Synchronously generate the Optical Health Report
         token = payload.hardware_attestation_token
@@ -158,7 +172,6 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                 try:
                     await pipe.watch(wallet_key)
                     
-                    # 🟢 ADDED: Educational comment for consistency across endpoints
                     # NOTE FOR FUTURE DEVS: Immediate-execution mode active after watch().
                     # pipe.get() executes directly and returns the value. Do NOT move this inside multi()!
                     wallet_raw = await pipe.get(wallet_key)
@@ -168,12 +181,13 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                     else:
                         wallet = {"balance": 0.0, "linkedCard": None, "history": []}
                         
-                    wallet["balance"] += payload.netPayout
+                    # Securely apply the server-side calculated payout
+                    wallet["balance"] += actual_payout
                     
                     tx_record = {
                         "id": f"tx_{int(time.time())}",
                         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-                        "amount": f"+${payload.netPayout:.2f}",
+                        "amount": f"+${actual_payout:.2f}",
                         "description": f"Bounty: {fault_code} ({vin})"
                     }
                     wallet["history"].insert(0, tx_record)
@@ -188,7 +202,8 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                     if attempt == 9:
                         raise HTTPException(status_code=503, detail="Wallet temporarily unavailable. Payout queued.")
                     continue
-        logger.info(f"💸 [WALLET] Deposited ${payload.netPayout:.2f} to {agent_id}. New Balance: ${wallet['balance']:.2f}")
+                    
+        logger.info(f"💸 [WALLET] Deposited ${actual_payout:.2f} to {agent_id}. New Balance: ${wallet['balance']:.2f}")
         # ---------------------------------------------------
 
         # Return agent to the available pool

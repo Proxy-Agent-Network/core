@@ -1,9 +1,12 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Request
+from pydantic import BaseModel
 import os
 import secrets
 import time
 import re
+import logging
 
+logger = logging.getLogger("PAN_Onboarding")
 router = APIRouter()
 
 # 1. SECURE STORAGE SETUP
@@ -19,6 +22,14 @@ if not os.path.exists(htaccess_path):
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_TYPES = {"application/pdf", "image/jpeg", "image/png"}
+
+# --- DATA MODELS ---
+class KeyRegistrationPayload(BaseModel):
+    agent_id: str
+    public_key_b64: str
+    play_integrity_token: str # Server-side requirement for device attestation
+
+# --- ENDPOINTS ---
 
 @router.post("/enlist")
 async def process_enlistment(
@@ -101,3 +112,33 @@ async def process_enlistment(
     await redis_client.set(email_key, new_agent_id)
     
     return {"status": "success", "agent_id": new_agent_id}
+
+@router.post("/register-key")
+async def register_public_key(payload: KeyRegistrationPayload, request: Request):
+    """
+    The Key Ceremony Endpoint.
+    Pairs the physical TPM public key to the agent's identity after approval.
+    """
+    # Ensure the Play Integrity token was provided by the device
+    if not payload.play_integrity_token:
+        raise HTTPException(status_code=400, detail="Missing Play Integrity attestation token.")
+        
+    redis_client = request.app.state.redis_client
+    
+    # Verify the agent actually exists in the system
+    agent_exists = await redis_client.exists(f"agent:{payload.agent_id}")
+    if not agent_exists:
+        raise HTTPException(status_code=404, detail="Agent identity not found.")
+        
+    # Anti-Hijacking Guard: Do not allow an existing key to be silently overwritten.
+    # If an agent loses their phone, they must go through the /ops/hardware-reset workflow.
+    if await redis_client.exists(f"pan:agent:{payload.agent_id}:pubkey"):
+        raise HTTPException(status_code=409, detail="Hardware key already registered for this identity.")
+        
+    await redis_client.set(f"pan:agent:{payload.agent_id}:pubkey", payload.public_key_b64)
+    
+    # 🟢 THE FIX: Corrected log and documented the technical debt
+    logger.info(f"🔑 Key Ceremony Complete: {payload.agent_id} bound to hardware TPM.") 
+    # TODO: Verify play_integrity_token against Google Play Integrity API before production scale
+    
+    return {"status": "success", "message": "Hardware key successfully bound to identity."}
