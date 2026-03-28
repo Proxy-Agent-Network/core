@@ -13,26 +13,33 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+
+import com.google.firebase.auth.FirebaseAuth // 🟢 IMPORT FIREBASE
 import com.pan.tactical.security.PlayIntegrityManager
 import com.pan.tactical.security.StrongBoxManager
+import com.pan.tactical.ui.WalletNetworkClient
 
 @Composable
 fun KeyCeremonyScreen(
-    onCeremonyComplete: () -> Unit // A callback to tell the app to move to the Dashboard
+    apiClient: WalletNetworkClient,
+    // 🟢 THE FIX 3: Removed the hardcoded Vanguard-01 default parameter
+    onCeremonyComplete: () -> Unit
 ) {
     // --- STATE MANAGEMENT ---
-    // These variables dictate what the UI looks like. When they change, Compose redraws the screen.
     var isProcessing by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("INITIALIZE NODE") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // We need a coroutine scope to run our heavy security checks in the background
     val coroutineScope = rememberCoroutineScope()
-    // We need the Context to pass to PlayIntegrityManager
     val context = LocalContext.current
 
+    LaunchedEffect(errorMessage) {
+        if (errorMessage != null) {
+            statusText = "RETRY INITIALIZATION"
+        }
+    }
+
     // --- UI LAYOUT ---
-    // A Column stacks items vertically. We give it a tactical dark background.
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -43,7 +50,6 @@ fun KeyCeremonyScreen(
         verticalArrangement = Arrangement.Center
     ) {
 
-        // 1. The Branding (We will replace this text with Final_PAN_Logo.png later)
         Text(
             text = "PAN TACTICAL",
             color = Color.White,
@@ -61,37 +67,44 @@ fun KeyCeremonyScreen(
 
         // 2. The Action Area
         if (isProcessing) {
-            // Show a loading spinner while the hardware generates the key
-            CircularProgressIndicator(color = Color(0xFFFF9800)) // Warning Orange
+            CircularProgressIndicator(color = Color(0xFFFF9800))
             Spacer(modifier = Modifier.height(16.dp))
             Text(text = "ATTESTING HARDWARE...", color = Color.Gray, fontSize = 14.sp)
         } else {
-            // Show the main action button
             Button(
                 onClick = {
-                    // Start the loading state
                     isProcessing = true
                     errorMessage = null
 
-                    // Launch background coroutine
                     coroutineScope.launch {
                         try {
+                            // 🟢 THE FIX 3: Strict Identity Enforcement
+                            val agentId = FirebaseAuth.getInstance().currentUser?.uid
+                                ?: throw Exception("Agent identity missing. Please log in.")
+
                             // Step A: Generate the TPM 2.0 Key
                             val strongBox = StrongBoxManager()
                             strongBox.generateHardwareKey()
 
-                            // Step B: Verify device integrity with Google
+                            // Step B: Extract the Public Key Certificate
+                            val publicKeyB64 = strongBox.getPublicKeyBase64()
+
+                            // Step C: Verify device integrity with Google
                             val playIntegrity = PlayIntegrityManager(context)
-                            // Note: In local dev, this might fail if the emulator isn't configured for Play Services.
-                            // We wrap it in a try/catch so you can see how the UI handles the error.
                             val token = playIntegrity.fetchAttestationToken()
 
-                            // If we make it here without throwing an exception, the ceremony is successful!
-                            isProcessing = false
-                            onCeremonyComplete()
+                            // 🟢 THE FIX 2: Transmit the Google Play token to the PAN Backend
+                            val result = apiClient.registerHardwareKey(agentId, publicKeyB64, token)
+
+                            result.onSuccess {
+                                isProcessing = false
+                                onCeremonyComplete()
+                            }.onFailure { error ->
+                                isProcessing = false
+                                errorMessage = error.message ?: "Failed to bind hardware key to backend."
+                            }
 
                         } catch (e: Exception) {
-                            // If anything fails (no TPM, rooted phone, etc.), catch it and show the error.
                             isProcessing = false
                             errorMessage = e.localizedMessage ?: "Hardware Attestation Failed."
                         }
@@ -100,7 +113,7 @@ fun KeyCeremonyScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)) // Tactical Green
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
             ) {
                 Text(
                     text = statusText,

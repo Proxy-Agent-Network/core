@@ -39,21 +39,20 @@ data class WalletResponse(val balance: Double, val linkedCard: String? = null, v
 // 2. THE INTERFACE (The contract the UI relies on)
 interface WalletNetworkClient {
     suspend fun getWalletData(): WalletResponse?
-
-    // 🟢 UPDATED: Contract now expects Result<String> to handle FastAPI backend errors
     suspend fun linkDebitCard(cardNumber: String): Result<String>
     suspend fun withdrawFunds(amount: Double): Result<String>
-
     suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean
     suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean
     suspend fun declineMission(taskId: String): Boolean
     suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData>
     suspend fun completeMission(taskId: String): Boolean
+
+    // 🟢 UPDATED: Included playIntegrityToken in the interface contract
+    suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String>
 }
 
 // --- KMP-FRIENDLY CURRENCY FORMATTER ---
 fun Double.toCurrency(): String {
-    // 🛠️ ISSUE 2 FIX: Handle negative numbers safely
     val isNegative = this < 0
     val absoluteValue = abs(this)
     val parts = absoluteValue.toString().split(".")
@@ -75,8 +74,6 @@ fun WalletAndProfileScreen(
     onAlertVolumeChange: (Int) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
-
-    // 🟢 NEW: Snackbar state to display our robust backend errors
     val snackbarHostState = remember { SnackbarHostState() }
 
     var firstName by remember { mutableStateOf("Proxy") }
@@ -143,7 +140,6 @@ fun WalletAndProfileScreen(
                                     coroutineScope.launch {
                                         val maskedCard = "Visa ending in $cardNumber"
 
-                                        // 🟢 UPDATED: Handling the Result wrapper for linking cards
                                         val result = apiClient.linkDebitCard(cardNumber = maskedCard)
 
                                         result.onSuccess {
@@ -216,7 +212,6 @@ fun WalletAndProfileScreen(
                                 if (balance > 0) {
                                     isWithdrawing = true
                                     coroutineScope.launch {
-                                        // 🟢 UPDATED: Handling the Result wrapper for withdrawals
                                         val result = apiClient.withdrawFunds(amount = balance)
 
                                         result.onSuccess { message ->
@@ -326,7 +321,6 @@ fun WalletAndProfileScreen(
                         Slider(
                             value = alertVolume.toFloat(),
                             onValueChange = { onAlertVolumeChange(it.toInt()) },
-                            // 🛠️ ISSUE 4 FIX: Use proper beep sound generator mapping instead of TTS string.
                             onValueChangeFinished = { audioEngine.playAlertBeep(alertVolume) },
                             valueRange = 0f..100f,
                             colors = SliderDefaults.colors(thumbColor = Color(0xFFF44336), activeTrackColor = Color(0xFFF44336))
@@ -388,7 +382,6 @@ fun WalletAndProfileScreen(
             }
         }
 
-        // 🟢 NEW: Render the SnackbarHost on top of the UI
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),

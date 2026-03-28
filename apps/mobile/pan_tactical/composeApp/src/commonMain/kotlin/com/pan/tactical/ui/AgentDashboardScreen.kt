@@ -42,7 +42,6 @@ import com.pan.tactical.getCurrentTimeMs
 import com.pan.tactical.getNativeMapUrl
 import com.pan.tactical.rememberSharedCameraManager
 import com.pan.tactical.rememberSharedLocationManager
-import com.pan.tactical.network.PythonNetworkBridge
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
@@ -166,19 +165,20 @@ fun MainDashboardContent(
     var showDevMenu by rememberSaveable { mutableStateOf(false) }
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
 
+    // 🟢 THE FIX 1: Restored proper 6-part serialization to preserve taskId
     val MissionDataSaver = Saver<MissionData?, String>(
-        save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bounty}|${data.intersection}" } ?: "" },
+        save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bounty}|${data.intersection}|${data.taskId}" } ?: "" },
         restore = { str ->
             if (str.isEmpty()) null
             else {
                 val parts = str.split("|")
-                if (parts.size == 5) MissionData(
+                if (parts.size >= 6) MissionData(
                     lat = parts[0].toDoubleOrNull() ?: 0.0,
                     lon = parts[1].toDoubleOrNull() ?: 0.0,
                     errorCode = parts[2],
                     bounty = parts[3],
                     intersection = parts[4],
-                    taskId = parts[4]
+                    taskId = parts[5]
                 ) else null
             }
         }
@@ -237,11 +237,16 @@ fun MainDashboardContent(
 
     var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
 
+    // 🟢 THE FIX 4: Restored telemetry debounce
+    var lastTelemetryTime by remember { mutableLongStateOf(0L) }
+
     val locationManager = rememberSharedLocationManager { lat, lon ->
         println("[TACTICAL_GPS] Agent moving: $lat, $lon")
         agentLocation = Pair(lat, lon)
 
-        if (isOnline) {
+        val now = getCurrentTimeMs()
+        if (isOnline && now - lastTelemetryTime > 3000) {
+            lastTelemetryTime = now
             coroutineScope.launch {
                 try {
                     apiClient.updateLocationTelemetry(lat, lon)
@@ -271,25 +276,35 @@ fun MainDashboardContent(
     LaunchedEffect(isUploadingProof) {
         if (!isUploadingProof) return@LaunchedEffect
 
-        // 🛠️ ISSUE 1 FIX: Safely call completeMission and release the backend escrow
         val currentTaskId = activeMission?.taskId
-        if (!currentTaskId.isNullOrBlank()) {
-            apiClient.completeMission(currentTaskId)
+        if (currentTaskId.isNullOrBlank()) {
+            audio.speak("Mission data corrupted. Aborting.", voiceVolume)
+            isUploadingProof = false
+            return@LaunchedEffect
         }
 
-        val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
-        val finalPayout = (rawBounty * 0.90f).toDouble()
+        // Safely block the thread and AWAIT the network response
+        // If this fails, the UI will not proceed, saving the SLA metric.
+        val success = apiClient.completeMission(currentTaskId)
 
-        delay(1500)
-        lastTxHash = "tx_${getCurrentTimeMs()}"
-        lastPayoutAmount = finalPayout
-        timeOnSceneMs = if (sceneArrivalTime > 0) getCurrentTimeMs() - sceneArrivalTime else 252000L
-        totalResponseTimeMs = if (missionAcceptTime > 0) getCurrentTimeMs() - missionAcceptTime else timeOnSceneMs + 300000L
-        missionState = "COMPLETED"
+        if (success) {
+            val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
+            val finalPayout = (rawBounty * 0.90f).toDouble()
 
-        audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
+            lastTxHash = "tx_${getCurrentTimeMs()}"
+            lastPayoutAmount = finalPayout
+            timeOnSceneMs = if (sceneArrivalTime > 0) getCurrentTimeMs() - sceneArrivalTime else 252000L
+            totalResponseTimeMs = if (missionAcceptTime > 0) getCurrentTimeMs() - missionAcceptTime else timeOnSceneMs + 300000L
+            missionState = "COMPLETED"
+
+            audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
+            capturedEvidence = emptyList()
+        } else {
+            audio.speak("Network submission failed. Please retry.", voiceVolume)
+            // Note: We DO NOT change missionState, keeping them safely on the ON_SCENE terminal
+        }
+
         isUploadingProof = false
-        capturedEvidence = emptyList()
     }
 
     val distanceMiles = remember(agentLocation, activeMission) {
@@ -309,6 +324,22 @@ fun MainDashboardContent(
     }
 
     val distanceMeters = (distanceMiles * 1609.34).toFloat()
+
+    val bearingDegrees = remember(agentLocation, activeMission) {
+        if (activeMission == null) return@remember 0f
+        val lat1 = agentLocation.first * PI / 180.0
+        val lon1 = agentLocation.second * PI / 180.0
+        val lat2 = activeMission!!.lat * PI / 180.0
+        val lon2 = activeMission!!.lon * PI / 180.0
+
+        val dLon = lon2 - lon1
+        val y = sin(dLon) * cos(lat2)
+        val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        var brng = atan2(y, x) * 180.0 / PI
+        brng = (brng + 360.0) % 360.0
+        brng.toFloat()
+    }
+
     val isUwbEngaged = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 15f
 
     LaunchedEffect(missionState) {
@@ -327,6 +358,11 @@ fun MainDashboardContent(
                     animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
                 )
                 if (missionState == "PENDING") {
+                    // 🟢 THE FIX 2a: Restored timeout decline
+                    val currentTaskId = activeMission?.taskId
+                    if (!currentTaskId.isNullOrBlank()) {
+                        apiClient.declineMission(currentTaskId)
+                    }
                     missionState = "IDLE"
                     activeMission = null
                 }
@@ -400,7 +436,7 @@ fun MainDashboardContent(
                     if (showUwb) {
                         UwbHomingCompass(
                             distanceMeters = distanceMeters,
-                            bearingDegrees = 45f,
+                            bearingDegrees = bearingDegrees,
                             isRanging = true
                         )
                     } else {
@@ -439,6 +475,11 @@ fun MainDashboardContent(
                             }
                         },
                         onDecline = {
+                            // 🟢 THE FIX 2b: Restored explicit button decline
+                            val currentTaskId = activeMission?.taskId
+                            if (!currentTaskId.isNullOrBlank()) {
+                                coroutineScope.launch { apiClient.declineMission(currentTaskId) }
+                            }
                             missionState = "IDLE"
                             activeMission = null
                             tacticalRoute = emptyList()
@@ -613,6 +654,11 @@ fun MainDashboardContent(
             AlertDialog(onDismissRequest = { showAbortDialog = false; abortSliderResetKey++ }, containerColor = Color(0xFF1E1E1E), title = { Text("ABORT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column { listOf("Too Dangerous", "Changed Mind", "Can't Find AV", "AV Leaving Scene", "Other").forEach { reason ->
                     Button(onClick = {
+                        // 🟢 THE FIX 2c: Restored active abort decline
+                        val currentTaskId = activeMission?.taskId ?: queuedMission?.taskId
+                        if (!currentTaskId.isNullOrBlank()) {
+                            coroutineScope.launch { apiClient.declineMission(currentTaskId) }
+                        }
                         showAbortDialog = false; missionState = "IDLE"; activeMission = null; queuedMission = null; abortSliderResetKey++
                         missionAcceptTime = 0L; sceneArrivalTime = 0L
                         tacticalRoute = emptyList()
