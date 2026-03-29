@@ -1,0 +1,29 @@
+# ==========================================
+# PAN - LEGACY / COGNITIVE NETWORK STACK
+# Dependencies for the Agent Society Layer and Lore Engine.
+# Do not include in the production AV dispatch container.
+# ==========================================
+
+# Agent Orchestration & Tools
+langchain
+langchain-community
+langgraph
+langchain-google-genai
+duckduckgo-search
+ddgs
+
+# Vector Memory & RAG
+faiss-cpu
+pypdf
+
+# Legacy Databases
+psycopg2-binary
+
+# Legacy UI & Web
+streamlit
+flask
+bleach
+
+# Platform / Integrations
+mcp
+qrcode[pil]
