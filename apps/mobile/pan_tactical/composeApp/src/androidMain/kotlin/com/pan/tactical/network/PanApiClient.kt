@@ -11,7 +11,6 @@ import com.pan.tactical.models.MissionData
 import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.WalletNetworkClient
 import com.pan.tactical.ui.WalletResponse
-import com.pan.tactical.ui.TransactionLog
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
@@ -21,14 +20,12 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import com.google.android.gms.maps.model.LatLng
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.delay
 
 // --- DATA MODELS ---
 @Serializable
@@ -41,15 +38,6 @@ data class StatusUpdateRequest(
     val signature: String,
     val timestamp: Long
 )
-
-@Serializable
-data class MissionCompleteRequest(val agentId: String, val netPayout: Double)
-
-@Serializable
-data class LinkCardRequest(val agentId: String, val cardNumber: String)
-
-@Serializable
-data class WithdrawRequest(val agentId: String, val amount: Double)
 
 @Serializable
 data class V2XDistressPayload(
@@ -86,7 +74,9 @@ class PanApiClient : WalletNetworkClient {
     private val client = HttpClient(OkHttp) {
         engine {
             config {
-                readTimeout(0, TimeUnit.MILLISECONDS)
+                // 🟢 THE FIX: Standardized timeout to prevent silent hangs
+                connectTimeout(3, TimeUnit.SECONDS)
+                readTimeout(3, TimeUnit.SECONDS)
             }
         }
         install(ContentNegotiation) {
@@ -208,65 +198,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    suspend fun openLiveDispatchLine(
-        onMissionReceived: (lat: Double, lon: Double, errorCode: String, bounty: String, intersection: String) -> Unit
-    ) {
-        withContext(Dispatchers.IO) {
-            Log.i(TAG, "🟢 DISPATCH LINE OPEN: Listening on Node $secureUid...")
-
-            while (isActive) {
-                try {
-                    val response: HttpResponse = client.get("$FIREBASE_URL/dispatch/$secureUid.json") {
-                        header(HttpHeaders.CacheControl, "no-cache")
-                    }
-
-                    val jsonString = response.bodyAsText()
-
-                    if (jsonString != "null" && jsonString.isNotBlank()) {
-                        try {
-                            val json = org.json.JSONObject(jsonString)
-                            if (json.optString("type") == "MISSION") {
-                                val lat = json.getDouble("lat")
-                                val lon = json.getDouble("lon")
-                                val errorCode = json.optString("errorCode", "UNKNOWN ERROR")
-                                val bounty = json.optString("bounty", "$0.00")
-                                val intersection = json.optString("intersection", "Unknown Coordinates")
-
-                                withContext(Dispatchers.Main) {
-                                    onMissionReceived(lat, lon, errorCode, bounty, intersection)
-                                }
-
-                                // TODO: Implement two-phase ACK to prevent duplicate dispatches on crash
-                                client.delete("$FIREBASE_URL/dispatch/$secureUid.json")
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Malformed dispatch JSON payload: ${e.message}", e)
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Dispatch line polling failed: ${e.message}", e)
-                }
-                delay(2000)
-            }
-        }
-    }
-
-    suspend fun acceptMission(): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val response: HttpResponse =
-                    client.put("$FIREBASE_URL/agents/$secureUid/mission_state.json") {
-                        contentType(ContentType.Application.Json)
-                        setBody("\"ACCEPTED\"")
-                    }
-                response.status.isSuccess()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to accept mission: ${e.message}", e)
-                false
-            }
-        }
-    }
-
     suspend fun getTacticalRoute(
         startLat: Double,
         startLon: Double,
@@ -364,157 +295,24 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    suspend fun claimEscrowFunds(netPayout: Double, evidenceUrls: List<String> = emptyList()): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val currentWallet = getWalletData()
-                val newBalance = (currentWallet?.balance ?: 0.0) + netPayout
-
-                client.put("$FIREBASE_URL/agents/$secureUid/wallet/balance.json") {
-                    contentType(ContentType.Application.Json)
-                    setBody(newBalance.toString())
-                }
-
-                val txId = "tx_${System.currentTimeMillis()}"
-
-                val tx = TransactionLog(
-                    id = txId,
-                    date = "Today",
-                    amount = String.format("+$%.2f", netPayout),
-                    description = "Smart Contract Payout",
-                    evidenceUrls = evidenceUrls
-                )
-
-                val txJson = org.json.JSONObject().apply {
-                    put("id", tx.id)
-                    put("date", tx.date)
-                    put("amount", tx.amount)
-                    put("description", tx.description)
-                    if (evidenceUrls.isEmpty()) {
-                        put("evidenceUrls", org.json.JSONObject.NULL)
-                    } else {
-                        val array = org.json.JSONArray()
-                        evidenceUrls.forEach { array.put(it) }
-                        put("evidenceUrls", array)
-                    }
-                }.toString()
-
-                client.put("$FIREBASE_URL/agents/$secureUid/wallet/history/$txId.json") {
-                    contentType(ContentType.Application.Json)
-                    setBody(txJson)
-                }
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to claim escrow funds: ${e.message}", e)
-                false
-            }
-        }
-    }
-
+    // --- SPLIT-BRAIN GUARDRAILS ---
+    
     override suspend fun getWalletData(): WalletResponse? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val response: HttpResponse = client.get("$FIREBASE_URL/agents/$secureUid/wallet.json") {
-                    header(HttpHeaders.CacheControl, "no-cache")
-                }
-
-                val jsonString = response.bodyAsText()
-                if (jsonString == "null" || jsonString.isBlank()) {
-                    return@withContext WalletResponse(0.0, null, emptyList())
-                }
-
-                val json = org.json.JSONObject(jsonString)
-                val balance = json.optDouble("balance", 0.0)
-                val linkedCard = if (json.isNull("linkedCard")) null else json.optString("linkedCard")
-
-                val historyList = mutableListOf<TransactionLog>()
-                val historyObj = json.optJSONObject("history")
-
-                if (historyObj != null) {
-                    val keys = historyObj.keys()
-                    while (keys.hasNext()) {
-                        val key = keys.next()
-                        val tx = historyObj.getJSONObject(key)
-
-                        val urls = mutableListOf<String>()
-                        val urlArray = tx.optJSONArray("evidenceUrls")
-                        if (urlArray != null) {
-                            for (i in 0 until urlArray.length()) {
-                                urls.add(urlArray.getString(i))
-                            }
-                        }
-
-                        historyList.add(
-                            TransactionLog(
-                                id = tx.optString("id", key),
-                                date = tx.optString("date", "Unknown"),
-                                amount = tx.optString("amount", "$0.00"),
-                                description = tx.optString("description", "Ledger Entry"),
-                                evidenceUrls = if (urls.isEmpty()) null else urls
-                            )
-                        )
-                    }
-                }
-
-                historyList.sortByDescending { it.id }
-
-                WalletResponse(balance, linkedCard, historyList)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to retrieve wallet data: ${e.message}", e)
-                null
-            }
-        }
+        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error: PanApiClient does not support secure ledger operations. Use PanWalletClient.")
+        return null 
     }
 
     override suspend fun linkDebitCard(cardNumber: String): Result<String> {
-        return withContext(Dispatchers.IO) {
-            try {
-                val response: HttpResponse =
-                    client.put("$FIREBASE_URL/agents/$secureUid/wallet/linkedCard.json") {
-                        contentType(ContentType.Application.Json)
-                        setBody("\"$cardNumber\"")
-                    }
-                if (response.status.isSuccess()) {
-                    Result.success("Card linked to legacy wallet.")
-                } else {
-                    Result.failure(Exception("Network rejected card linking (HTTP ${response.status.value})"))
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to link debit card: ${e.message}", e)
-                Result.failure(Exception("Connection to legacy network lost."))
-            }
-        }
+        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
+        return Result.failure(IllegalStateException("MIGRATION_ERROR: Use PanWalletClient for secure ledger operations."))
     }
 
     override suspend fun withdrawFunds(amount: Double): Result<String> {
-        return withContext(Dispatchers.IO) {
-            try {
-                client.put("$FIREBASE_URL/agents/$secureUid/wallet/balance.json") {
-                    contentType(ContentType.Application.Json)
-                    setBody("0.0")
-                }
-
-                val txId = "wd_${System.currentTimeMillis()}"
-
-                val txJson = org.json.JSONObject().apply {
-                    put("id", txId)
-                    put("date", "Today")
-                    put("amount", "-$${String.format("%.2f", amount)}")
-                    put("description", "ACH Bank Transfer")
-                    put("evidenceUrls", org.json.JSONObject.NULL)
-                }.toString()
-
-                client.put("$FIREBASE_URL/agents/$secureUid/wallet/history/$txId.json") {
-                    contentType(ContentType.Application.Json)
-                    setBody(txJson)
-                }
-                Result.success("Transfer recorded in legacy wallet.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to withdraw funds: ${e.message}", e)
-                Result.failure(Exception("Connection to legacy network lost."))
-            }
-        }
+        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
+        return Result.failure(IllegalStateException("MIGRATION_ERROR: Use PanWalletClient for secure ledger operations."))
     }
+
+    // -------------------------------
 
     override suspend fun fetchActiveMissions(): List<MissionData> {
         return withContext(Dispatchers.IO) {
@@ -590,7 +388,8 @@ class PanApiClient : WalletNetworkClient {
                             agent_id = secureUid,
                             netPayout = 0.0,
                             evidence_urls = emptyList(),
-                            hardware_attestation_token = "dev-bypass"
+                            // 🟢 THE FIX: Cryptographically bound to the hardware TPM
+                            hardware_attestation_token = StrongBoxManager().generateJwt(secureUid)
                         )
                     )
                 }

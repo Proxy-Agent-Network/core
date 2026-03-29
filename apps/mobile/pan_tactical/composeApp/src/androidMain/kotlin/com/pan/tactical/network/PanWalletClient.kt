@@ -347,7 +347,8 @@ class PanWalletClient : WalletNetworkClient {
                             agent_id = secureUid,
                             netPayout = 0.0, 
                             evidence_urls = emptyList(),
-                            hardware_attestation_token = "dev-bypass"
+                            // 🟢 THE FIX: Cryptographically bound to the hardware TPM
+                            hardware_attestation_token = StrongBoxManager().generateJwt(secureUid)
                         )
                     )
                 }
