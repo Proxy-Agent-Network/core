@@ -1,34 +1,52 @@
 import logging
 import json
-import requests
-import urllib.parse
+import time
 import uuid
 import os
-import shutil
-import base64
-import time
-import glob 
-import html
-from duckduckgo_search import DDGS
+import redis.asyncio as redis
 from mcp.server.fastmcp import FastMCP
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_community.document_loaders import PyPDFLoader 
 from backend.core.lightning_engine import LightningEngine
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("MCP-Server")
+logger = logging.getLogger("PAN-MCP-Gateway")
 
-mcp = FastMCP("LightningProxyServer")
+# Initialize FastMCP Server
+mcp = FastMCP("PAN_Tactical_Gateway")
 
-lnd = LightningEngine()
+# ---------------------------------------------------------------------------
+# LAZY STATE MANAGEMENT (Test-Safe)
+# ---------------------------------------------------------------------------
+_redis_client = None
+_lnd = None
 LND_CONNECTED = False
 LND_FAILED = False 
 
+def get_redis():
+    """Lazy initialization of Redis to prevent import-time connection errors during testing."""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.Redis(
+            host=os.getenv("REDIS_HOST", "localhost"), 
+            port=int(os.getenv("REDIS_PORT", 6379)), 
+            db=0
+        )
+    return _redis_client
+
+def get_lnd():
+    """Lazy initialization of the Lightning Engine."""
+    global _lnd
+    if _lnd is None:
+        _lnd = LightningEngine()
+    return _lnd
+
 def get_safe_invoice(amount, memo):
     global LND_CONNECTED, LND_FAILED
-    if LND_FAILED: return {"payment_request": f"lnbc1mock{uuid.uuid4().hex}", "r_hash": uuid.uuid4().hex}
+    lnd = get_lnd()
+    
+    if LND_FAILED: 
+        return {"payment_request": f"lnbc1mock{uuid.uuid4().hex}", "r_hash": uuid.uuid4().hex}
+        
     if not LND_CONNECTED:
         try:
             lnd.connect()
@@ -39,8 +57,10 @@ def get_safe_invoice(amount, memo):
             return {"payment_request": f"lnbc1mock{uuid.uuid4().hex}", "r_hash": uuid.uuid4().hex}
 
     try:
+        # NOTE: lightning_engine.py must be updated to include create_invoice() for B2B billing
         invoice_data = lnd.create_invoice(amount, memo)
-        if not invoice_data or 'payment_request' not in invoice_data: return {"payment_request": f"lnbc1mock{uuid.uuid4().hex}", "r_hash": uuid.uuid4().hex}
+        if not invoice_data or 'payment_request' not in invoice_data: 
+            return {"payment_request": f"lnbc1mock{uuid.uuid4().hex}", "r_hash": uuid.uuid4().hex}
         return invoice_data
     except Exception as e:
         logger.error(f"LND Invoice Fallback Triggered: {e}")
@@ -48,12 +68,12 @@ def get_safe_invoice(amount, memo):
         return {"payment_request": f"lnbc1mock{uuid.uuid4().hex}", "r_hash": uuid.uuid4().hex}
 
 def safe_verify_payment(payment_hash):
-    # 🛑 SECURITY FIX: Fail-Closed Architecture enforced. 
-    # Removed the mock bypass vulnerability.
     if not payment_hash: return False
     
     global LND_CONNECTED, LND_FAILED
-    if LND_FAILED: return False # 🛑 Fail Closed
+    lnd = get_lnd()
+    
+    if LND_FAILED: return False # Fail Closed
     
     if not LND_CONNECTED:
         try:
@@ -61,193 +81,125 @@ def safe_verify_payment(payment_hash):
             LND_CONNECTED = True
         except Exception:
             LND_FAILED = True
-            return False # 🛑 Fail Closed
+            return False 
             
     try:
-        # Prevent LND from crashing on malformed input by enforcing exactly 64 chars
         if len(payment_hash) != 64: return False 
-        return lnd.verify_payment(payment_hash)
+        # 🟢 THE FIX: Correct method name mapped to lightning_engine.py
+        return lnd.verify_payment_hash(payment_hash)
     except Exception as e:
         logger.error(f"LND Verification Fallback Triggered: {e}")
         LND_FAILED = True
-        return False # 🛑 Fail Closed
+        return False
+
+# ---------------------------------------------------------------------------
+# PAN TACTICAL B2B TOOLS (For Fleet Partner AIs)
+# ---------------------------------------------------------------------------
 
 @mcp.tool()
-def buy_vip_pass(payment_hash: str = None) -> str:
-    if not payment_hash:
-        invoice_data = get_safe_invoice(10000, "1-Hour VIP All-Access Pass")
-        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
-    if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-    return f"🔓 VIP ACCESS GRANTED. Your pass is active for 1 hour!"
-
-@mcp.tool()
-def get_crypto_spot_price(ticker: str, payment_hash: str = None) -> str:
-    if not payment_hash:
-        invoice_data = get_safe_invoice(15, f"Real-time price lookup for {ticker}")
-        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
-    if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
+async def check_network_surge() -> str:
+    """Queries the PAN Surge Pricing Engine to determine current multiplier and active agent count."""
+    redis_client = get_redis()
     try:
-        response = requests.get(f"https://api.coinbase.com/v2/prices/{ticker.upper()}-USD/spot")
-        return f"🔓 ACCESS GRANTED. The current live spot price of {ticker.upper()} is ${response.json()['data']['amount']} USD."
-    except Exception as e: return f"Error fetching price: {e}"
-
-@mcp.tool()
-def live_web_search(search_query: str, payment_hash: str = None) -> str:
-    if not payment_hash:
-        invoice_data = get_safe_invoice(20, f"Web Search: {search_query}")
-        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
-    if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-    try:
-        results = DDGS().text(search_query, max_results=3)
-        formatted_results = "\n\n".join([f"📰 {res['title']}\n{res['body']}" for res in results])
-        return f"🔓 ACCESS GRANTED.\n--- Top Web Results for '{search_query}' ---\n{formatted_results}"
-    except Exception as e: return f"Search engine failed: {e}"
-
-@mcp.tool()
-def generate_image(prompt: str, cost: int = 100, payment_hash: str = None) -> str:
-    # Notice we now accept the dynamic cost variable!
-    if not payment_hash:
-        invoice_data = get_safe_invoice(cost, f"Generate Image: {prompt[:20]}...")
-        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
-    if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-    
-    try:
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
-        response = requests.post(url, headers={"Content-Type": "application/json"}, json={"instances": [{"prompt": prompt}], "parameters": {"aspectRatio": "1:1"}})
-        if response.status_code == 200:
-            data = response.json()
-            if "predictions" in data and len(data["predictions"]) > 0:
-                filename = f"nano_banana_{uuid.uuid4().hex[:6]}.jpg"
-                os.makedirs("/app/static", exist_ok=True)
-                filepath = f"/app/static/{filename}"
-                with open(filepath, 'wb') as f: f.write(base64.b64decode(data["predictions"][0]["bytesBase64Encoded"]))
-                return f"🔓 ACCESS GRANTED. Masterpiece saved as '{filename}'!"
-        return f"🔓 Image API failed with status {response.status_code}: {response.text}"
-    except Exception as e: return f"Image generation failed: {e}"
-
-# 🌟 FIX: Updated default cost to 500 (for 5 seconds at 100 SATS/sec) 🌟
-@mcp.tool()
-def generate_video(prompt: str, cost: int = 500, payment_hash: str = None) -> str:
-    """PREMIUM TOOL: Generates an AI video using Runway ML Gen-3 via a Silent Seed pipeline."""
-    if not payment_hash:
-        invoice_data = get_safe_invoice(cost, f"Generate Video: {prompt[:20]}...")
-        return f"ERROR: 402 Payment Required\nPlease pay this invoice:\nInvoice: {invoice_data['payment_request']}\nHash to use: {invoice_data['r_hash']}"
-    if not safe_verify_payment(payment_hash): return "ERROR: 401 Unauthorized."
-    
-    try:
-        with open("secrets/runway.key", "r") as f:
-            runway_key = f.read().strip()
-    except FileNotFoundError:
-        return "⚠️ Error: Missing Runway ML API key."
-
-    try:
-        # 🌟 PHASE 1: THE SILENT SEED (GOOGLE IMAGEN) 🌟
-        static_prompt = f"A pristine, high-quality static establishing shot of: {prompt}"
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
+        queue_depth = await redis_client.llen("pan:dispatch:active_tasks")
         
-        img_payload = {"instances": [{"prompt": static_prompt}], "parameters": {"aspectRatio": "16:9"}}
-        res_img = requests.post(url, headers={"Content-Type": "application/json"}, json=img_payload)
-        
-        if res_img.status_code != 200:
-            return f"⚠️ Internal Engine Error: Silent Seed Generation failed. {res_img.text}"
+        cursor = 0
+        online_agents = 0
+        while True:
+            cursor, keys = await redis_client.scan(cursor=cursor, match="agent:*", count=100)
+            for key in keys:
+                status = await redis_client.hget(key, "status")
+                if status and status.decode('utf-8') in ["ONLINE", "EN_ROUTE"]:
+                    online_agents += 1
+            if cursor == 0: break
             
-        img_data = res_img.json()
-        b64_img = img_data["predictions"][0]["bytesBase64Encoded"]
-        prompt_image_data_uri = f"data:image/jpeg;base64,{b64_img}"
+        return f"NETWORK STATUS: {online_agents} Vanguard Agents active. Dispatch Queue Depth: {queue_depth}. (Use this to decide if dispatch is viable)."
+    except Exception as e:
+        return f"Error querying network: {e}"
 
-        # 🌟 PHASE 2: RUNWAY ML ANIMATION 🌟
-        # 🌟 FIX: Updated threshold. If they pay 1000 SATS (or more), give 10s. Otherwise 5s. 🌟
-        video_duration = 10 if cost >= 1000 else 5
+@mcp.tool()
+async def dispatch_vanguard_agent(vin: str, fault_code: str, lat: float, lon: float, osm_color: str = "YELLOW", base_bounty_usd: float = 45.0, payment_hash: str = None) -> str:
+    """Dispatches a physical Vanguard Agent to a stranded autonomous vehicle. Requires L402 API payment."""
+    redis_client = get_redis()
+    
+    # MCP Gateway Fee (1000 Sats) to prevent AI spam
+    if not payment_hash:
+        invoice_data = get_safe_invoice(1000, f"API Dispatch Fee: {vin}")
+        return f"ERROR: 402 Payment Required\nPay this Lightning invoice to execute dispatch:\nInvoice: {invoice_data['payment_request']}\nHash: {invoice_data['r_hash']}"
+    
+    if not safe_verify_payment(payment_hash): 
+        return "ERROR: 401 Unauthorized. Invoice unpaid."
 
-        headers = {
-            "Authorization": f"Bearer {runway_key}",
-            "X-Runway-Version": "2024-11-06",
-            "Content-Type": "application/json"
+    try:
+        task_id = f"tsk_{uuid.uuid4().hex[:12]}"
+        
+        task_record = {
+            "fleet_id": "MCP_API_CLIENT",
+            "vin": vin,
+            "fault_code": fault_code,
+            "lat": lat,
+            "lon": lon,
+            "bounty_usd": base_bounty_usd,
+            "base_bounty_usd": base_bounty_usd, 
+            "osm_color": osm_color.upper(),
+            "timestamp": int(time.time()),
+            "status": "pending",
+            "mcp_payment_hash": payment_hash
         }
         
-        payload = {
-            "model": "gen3a_turbo",
-            "promptImage": prompt_image_data_uri,
-            "promptText": prompt,
-            "ratio": "1280:768",
-            "duration": video_duration
-        }
+        await redis_client.hset(f"pan:task:{task_id}", mapping=task_record)
+        await redis_client.rpush("pan:dispatch:active_tasks", task_id)
         
-        # ... (rest of the polling loop remains exactly the same) ...
-        res = requests.post("https://api.dev.runwayml.com/v1/image_to_video", json=payload, headers=headers)
-        if res.status_code != 200:
-            return f"⚠️ Runway API Error: {res.text}"
-            
-        task_id = res.json().get("id")
-        
-        for _ in range(60): 
-            time.sleep(10)
-            status_res = requests.get(f"https://api.dev.runwayml.com/v1/tasks/{task_id}", headers=headers)
-            status_data = status_res.json()
-            
-            if status_data.get("status") == "SUCCEEDED":
-                video_url = status_data["output"][0]
-                video_bytes = requests.get(video_url).content
-                filename = f"veo_video_{uuid.uuid4().hex[:6]}.mp4"
-                
-                os.makedirs("/app/static", exist_ok=True)
-                filepath = f"/app/static/{filename}"
-                with open(filepath, 'wb') as f: f.write(video_bytes)
-                return f"🔓 ACCESS GRANTED. Runway Gen-3 Video saved as '{filename}'!"
-                
-            elif status_data.get("status") == "FAILED":
-                return f"⚠️ Runway Task Failed: {status_data}"
-                
-        return "⚠️ Error: Runway Generation timed out."
-    except Exception as e: 
-        return f"Video generation failed: {str(e)}"
-
-def layer_5_specialist(task: str, context: str, specialist_name: str, historical_context: str = "") -> str:
-    llm_l5 = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=os.environ.get("GOOGLE_API_KEY"))
-    search_query = f"{context} {task}"
-    raw_data = DuckDuckGoSearchRun().invoke(search_query)
-    pdf_context = ""
-    if specialist_name.upper() == "EVE":
-        # 🛑 SECURITY FIX: Restrict file reading to an isolated sandbox to prevent LFI (Data Poisoning)
-        sandbox_dir = os.path.abspath("/app/sandbox")
-        os.makedirs(sandbox_dir, exist_ok=True)
-        for pdf_file in glob.glob(os.path.join(sandbox_dir, "*.pdf")):
-            try:
-                pages = PyPDFLoader(pdf_file).load_and_split()
-                raw_text = ' '.join([p.page_content for p in pages])[:15000]
-                # 🛑 SECURITY FIX: Sanitize extracted text to prevent Prompt Injection tags
-                safe_text = html.escape(raw_text)
-                pdf_context += f"\n--- EXTRACTED FROM {os.path.basename(pdf_file)} ---\n{safe_text}\n"
-            except Exception: pass
-            
-    l5_prompt = f"You are {specialist_name}, an elite AI Specialist.\nContext: {context}\nTask: {task}\nWeb Data:\n{raw_data}\nPDF Data:\n{pdf_context}\nExecute your task professionally without hallucinating."
-    return llm_l5.invoke(l5_prompt).content
+        return f"✅ SUCCESS: Distress signal injected. Task ID: {task_id}. A Vanguard Agent is being routed via OSRM."
+    except Exception as e:
+        return f"Dispatch injection failed: {e}"
 
 @mcp.tool()
-def deep_market_analysis(primary_topic: str, original_user_intent: str, specific_data_points_required: list[str], specialist_name: str = "Eve", historical_context: str = "", payment_hash: str = "") -> str:
-    dynamic_cost = 75
-    if not payment_hash or not safe_verify_payment(payment_hash):
-        invoice_data = get_safe_invoice(dynamic_cost, f"L5 Deployment ({specialist_name}): {primary_topic}")
-        return f"402 Payment Required: Deploying {specialist_name} requires a {dynamic_cost} sat retainer:\nInvoice: {invoice_data['payment_request']}\nHash: {invoice_data['r_hash']}"
+async def check_mission_status(task_id: str) -> str:
+    """Checks the real-time status and assigned agent for a dispatched task."""
+    redis_client = get_redis()
     try:
-        layer_5_results = [f"{layer_5_specialist(req, primary_topic, specialist_name, historical_context)}\n" for req in specific_data_points_required]
-        llm_alice = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=os.environ.get("GOOGLE_API_KEY"))
-        alice_prompt = f"You are Alice, Layer 4 Manager.\nUser intent: {original_user_intent}\nL5 ({specialist_name}) returned:\n{''.join(layer_5_results)}\nFormat this directly for the user as an executive report."
-        return llm_alice.invoke(alice_prompt).content
-    except Exception as e: return f"Layer 5 Sub-Agent failed during execution: {str(e)}"
+        raw_task = await redis_client.hgetall(f"pan:task:{task_id}")
+        if not raw_task:
+            return f"ERROR: Task {task_id} not found."
+            
+        status = raw_task.get(b"status", b"UNKNOWN").decode('utf-8')
+        
+        mission_key = f"mission:active:{task_id}"
+        raw_mission = await redis_client.hgetall(mission_key)
+        
+        if raw_mission:
+            agent_id = raw_mission.get(b"agent_id", b"Unassigned").decode('utf-8')
+            sla_status = raw_mission.get(b"sla_status", b"OK").decode('utf-8')
+            return f"STATUS: {status} | Agent Assigned: {agent_id} | SLA: {sla_status}"
+            
+        return f"STATUS: {status} | Waiting for Matching Engine to route an agent."
+    except Exception as e:
+        return f"Status lookup failed: {e}"
+
+@mcp.tool()
+async def pull_sb1417_report(task_id: str, payment_hash: str = None) -> str:
+    """Retrieves the sealed SB 1417 Optical Health Report (Photos + Hash) for a completed mission."""
+    redis_client = get_redis()
+    
+    # MCP Report Retrieval Fee (500 Sats)
+    if not payment_hash:
+        invoice_data = get_safe_invoice(500, f"SB1417 Export: {task_id}")
+        return f"ERROR: 402 Payment Required\nPay this Lightning invoice to decrypt report:\nInvoice: {invoice_data['payment_request']}\nHash: {invoice_data['r_hash']}"
+    
+    if not safe_verify_payment(payment_hash): 
+        return "ERROR: 401 Unauthorized. Invoice unpaid."
+        
+    try:
+        report_json = await redis_client.hget("pan:compliance:reports", task_id)
+        if not report_json:
+            return f"ERROR: No SB 1417 report found for {task_id}. Ensure task is COMPLETED."
+            
+        return f"✅ COMPLIANCE REPORT DECRYPTED:\n{report_json.decode('utf-8')}"
+    except Exception as e:
+        return f"Report retrieval failed: {e}"
 
 if __name__ == "__main__":
-    # 🌟 PROVEN FIX: MONKEY-PATCH UVICORN TO FORCE THE 0.0.0.0 DOCKER BRIDGE 🌟
-    import uvicorn
-    _original_config_init = uvicorn.Config.__init__
-
-    def _patched_config_init(self, *args, **kwargs):
-        kwargs['host'] = '0.0.0.0'
-        kwargs['port'] = 8000
-        _original_config_init(self, *args, **kwargs)
-
-    uvicorn.Config.__init__ = _patched_config_init
-    
-    mcp.run(transport="sse")
+    logger.info("🚀 PAN Tactical MCP Gateway Online. Awaiting Fleet AI Connections...")
+    # 🟢 THE FIX: Clean configuration without fragile monkey-patching
+    mcp.run(transport="sse", host="0.0.0.0", port=8000)

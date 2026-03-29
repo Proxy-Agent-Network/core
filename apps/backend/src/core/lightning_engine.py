@@ -47,7 +47,6 @@ class LightningEngine:
 
     def connect(self) -> bool:
         """Establishes secure gRPC channels using TLS and Macaroons."""
-        # 🟢 THE FIX: Explicit guard to prevent confusing NoneType AttributeError logs
         if lnrpc is None or routerrpc is None or ln is None:
             logger.critical("🛑 LND gRPC modules not loaded. Cannot connect.")
             return False
@@ -126,7 +125,7 @@ class LightningEngine:
 
     def check_outbound_liquidity(self, required_sats: int) -> bool:
         """
-        🟢 THE FIX: Checks active channels to ensure we have enough total outbound 
+        Checks active channels to ensure we have enough total outbound 
         capacity across all channels (MPP) to route the payload.
         """
         if not self.connected and not self.connect():
@@ -146,6 +145,34 @@ class LightningEngine:
         except Exception as e:
             logger.error(f"❌ Outbound Liquidity Check Error: {e}")
             return False
+
+    def create_invoice(self, amount_sats: int, memo: str, expiry: int = 3600) -> Optional[Dict]:
+        """
+        🟢 THE FIX: B2B INBOUND PAYMENTS
+        Generates an L402 Lightning Invoice for Fleet AI API fees.
+        """
+        if not self.connected and not self.connect():
+            return None
+            
+        try:
+            req = ln.Invoice(
+                memo=memo,
+                value=amount_sats,
+                expiry=expiry
+            )
+            response = self.stub.AddInvoice(req)
+            
+            # r_hash is required to verify the payment later
+            r_hash_hex = codecs.encode(response.r_hash, 'hex').decode('utf-8')
+            
+            logger.info(f"🧾 Generated Invoice for {amount_sats} sats: {memo}")
+            return {
+                "payment_request": response.payment_request,
+                "r_hash": r_hash_hex
+            }
+        except Exception as e:
+            logger.error(f"❌ Invoice Creation Error: {e}")
+            return None
 
     def pay_invoice(self, payment_request: str, max_fee_sats: int = 50) -> Dict:
         """
@@ -174,7 +201,6 @@ class LightningEngine:
                 fee_limit_sat=max_fee_sats
             )
             
-            # We use the RouterStub for reliable pathfinding in modern LND
             for response in self.router_stub.SendPaymentV2(req):
                 if response.status == ln.Payment.SUCCEEDED:
                     logger.info(f"✅ M2H Payout Settled! Preimage: {response.payment_preimage}")
