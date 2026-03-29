@@ -226,16 +226,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ### Run Background Workers
 
 ```bash
-# In separate terminals:
-
-# SLA Watchdog (Two-phase ACK enforcement)
-python watchdog_worker.py
-
-# Matching Engine (Geospatial dispatch)
-python -c "import asyncio; from matching_engine import run_matching_engine; import redis.asyncio as r; asyncio.run(run_matching_engine(r.Redis()))"
-
-# Surge Pricing Daemon
-python -c "import asyncio; from core.economics.surge_pricing_engine import SurgePricingEngine; import redis.asyncio as r; asyncio.run(SurgePricingEngine(r.Redis()).run_loop())"
+cd apps/backend/src
+python run_workers.py
 ```
 
 ---
@@ -368,17 +360,10 @@ redis-server
 cd apps/backend/src
 uvicorn main:app --reload
 
-# Terminal 3: SLA Watchdog
-python watchdog_worker.py
-
-# Terminal 4: Matching Engine
-python -c "import asyncio; from matching_engine import run_matching_engine; import redis.asyncio as r; asyncio.run(run_matching_engine(r.Redis()))"
-
-# Terminal 5: Surge Pricing Daemon
-python -c "import asyncio; from core.economics.surge_pricing_engine import SurgePricingEngine; import redis.asyncio as r; asyncio.run(SurgePricingEngine(r.Redis()).run_loop())"
+# Terminal 3: All background workers
+cd apps/backend/src
+python run_workers.py
 ```
-
-> 💡 **Tip:** The inline `python -c` commands above are the authoritative way to start the workers until a `run_workers.py` convenience wrapper is built (tracked as a Phase 4 ops task). If you create one locally, it should import and `asyncio.gather()` the matching engine and surge pricing loops together.
 
 ### Health Check
 
@@ -437,8 +422,8 @@ All three pre-Memorial Day blockers are closed.
 | 1 | Semantic Prompt Injection Defense (cosine similarity firewall) | ✅ Shipped |
 | 2 | Async Data Wiring + Redis DI for Proxy-Alpha tools | ✅ Shipped |
 | 3 | `cognitive_vault` containerization via `pyproject.toml` | ✅ Shipped |
-| 4 | OSRM dedicated routing server migration | Open |
-| 5 | MCP Platform Layer for external fleet partners | Open |
+| 4 | OSRM dedicated routing server migration | ✅ Shipped |
+| 5 | MCP Platform Layer for external fleet partners | ✅ Shipped |
 | 6 | Real BLE OOB handshake (replace simulation stub) | Q3 2026 |
 | 7 | Ops Hub live dashboard (Leaflet + WebSocket) | Open |
 | 8 | Aerial dispatch integration (drone visual verification) | Theoretical |
