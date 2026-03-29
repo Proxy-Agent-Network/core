@@ -1,3 +1,4 @@
+import os
 import logging
 from enum import Enum
 from fastapi import APIRouter, Request, HTTPException, Depends
@@ -6,7 +7,7 @@ from pydantic import BaseModel
 # Import our centralized security middleware
 from utils.webhook_auth import verify_carrier_hmac, SecurityVault
 
-# PROXY PROTOCOL - LOGISTICS WEBHOOK API (v1.1)
+# PROXY PROTOCOL - LOGISTICS WEBHOOK API (v1.3)
 # "Hardening the physical chain of custody."
 # ----------------------------------------------------
 
@@ -44,8 +45,9 @@ class LogisticsWebhookProcessor:
     Implements border-crossing logic to ensure jurisdictional compliance.
     """
     def __init__(self):
-        # Simulation: This would be the internal endpoint for the Hardware Registry
-        self.registry_update_url = "http://localhost:8010/v1/hardware/update"
+        # 🟢 THE FIX: Container-safe routing via environment variables
+        registry_host = os.getenv("HARDWARE_REGISTRY_URL", "http://localhost:8010")
+        self.registry_update_url = f"{registry_host}/v1/hardware/update"
 
     async def process_update(self, payload: CarrierPayload):
         """
@@ -102,9 +104,11 @@ async def carrier_webhook_receiver(
 # 🛠️ THE FIX: Updated decorators to use @router instead of @app
 @router.get("/health")
 async def health():
+    # Only report carriers that are actively configured in the environment variables
+    active_connectors = [k for k, v in SecurityVault.CARRIER_SECRETS.items() if v is not None]
+    
     return {
         "status": "online", 
-        "active_connectors": list(SecurityVault.CARRIER_SECRETS.keys()),
+        "active_connectors": active_connectors,
         "integrity_mode": "STRICT_HMAC_WITH_REPLAY_PROTECTION"
     }
-
