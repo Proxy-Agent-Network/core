@@ -19,6 +19,21 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+// 🟢 THE FIX 1: KMP-safe float formatter.
+// Standard String.format is JVM-only and breaks iOS builds.
+fun formatDistanceKmp(distance: Float): String {
+    if (distance.isNaN()) return "---"
+    val isNegative = distance < 0
+    val absolute = abs(distance)
+    val scaled = (absolute * 10.0).roundToInt()
+    val whole = scaled / 10
+    val fraction = scaled % 10
+    val prefix = if (isNegative) "-" else ""
+    return "$prefix$whole.$fraction"
+}
 
 @Composable
 fun UwbHomingCompass(
@@ -26,7 +41,6 @@ fun UwbHomingCompass(
     bearingDegrees: Float?,
     isRanging: Boolean
 ) {
-    // Default 0f is safe — arrow is only rendered when bearingDegrees != null
     val animatedBearing by animateFloatAsState(
         targetValue = bearingDegrees ?: 0f,
         animationSpec = tween(durationMillis = 300, easing = LinearOutSlowInEasing),
@@ -39,7 +53,6 @@ fun UwbHomingCompass(
         label = "distance_anim"
     )
 
-    // A pulsing animation for the outer radar ring
     val infiniteTransition = rememberInfiniteTransition(label = "radar_pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.8f,
@@ -60,7 +73,17 @@ fun UwbHomingCompass(
         label = "alpha_anim"
     )
 
-    // Tactical Color Logic: Turn green when within 1 meter (The Strike Zone)
+    // 🟢 THE FIX 3: Idle searching animation
+    val idleRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(8000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "idle_rotation"
+    )
+
     val isStrikeZone = (distanceMeters != null && !distanceMeters.isNaN() && distanceMeters <= 1.0f)
     val tacticalColor = if (isStrikeZone) Color(0xFF4CAF50) else Color(0xFF00BCD4)
 
@@ -87,39 +110,38 @@ fun UwbHomingCompass(
             modifier = Modifier.size(250.dp),
             contentAlignment = Alignment.Center
         ) {
-            // THE RADAR CANVAS
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val center = Offset(size.width / 2, size.height / 2)
                 val maxRadius = size.width / 2
 
-                // Draw the static tactical grid rings
-                drawCircle(color = Color(0xFF333333), radius = maxRadius, style = Stroke(width = 2f))
-                drawCircle(color = Color(0xFF333333), radius = maxRadius * 0.66f, style = Stroke(width = 2f))
-                drawCircle(color = Color(0xFF333333), radius = maxRadius * 0.33f, style = Stroke(width = 2f))
+                // Rotate the grid slowly if we are searching, or lock it if we have a signal
+                val gridRotation = if (isRanging) 0f else idleRotation
 
-                // Draw crosshairs
-                drawLine(color = Color(0xFF333333), start = Offset(center.x, 0f), end = Offset(center.x, size.height), strokeWidth = 2f)
-                drawLine(color = Color(0xFF333333), start = Offset(0f, center.y), end = Offset(size.width, center.y), strokeWidth = 2f)
+                rotate(degrees = gridRotation, pivot = center) {
+                    drawCircle(color = Color(0xFF333333), radius = maxRadius, style = Stroke(width = 2f))
+                    drawCircle(color = Color(0xFF333333), radius = maxRadius * 0.66f, style = Stroke(width = 2f))
+                    drawCircle(color = Color(0xFF333333), radius = maxRadius * 0.33f, style = Stroke(width = 2f))
+
+                    drawLine(color = Color(0xFF333333), start = Offset(center.x, 0f), end = Offset(center.x, size.height), strokeWidth = 2f)
+                    drawLine(color = Color(0xFF333333), start = Offset(0f, center.y), end = Offset(size.width, center.y), strokeWidth = 2f)
+                }
 
                 if (isRanging && distanceMeters != null && !distanceMeters.isNaN() && bearingDegrees != null) {
-                    // Ensure animatedDistance is used for smooth visual scaling
                     val safeDistance = if (animatedDistance.isNaN()) 15f else animatedDistance
                     drawCircle(
                         color = tacticalColor.copy(alpha = pulseAlpha),
                         radius = maxRadius * pulseScale * (safeDistance / 15f).coerceIn(0.1f, 1f)
                     )
 
-                    // Draw the directional arrow
                     rotate(degrees = animatedBearing, pivot = center) {
-                        // Scaled dynamically relative to the canvas size
                         val arrowWidth = maxRadius * 0.25f
                         val arrowHeight = maxRadius * 0.15f
 
                         val path = Path().apply {
-                            moveTo(center.x, center.y - maxRadius * 0.8f) // Tip
-                            lineTo(center.x + arrowWidth, center.y + arrowHeight) // Bottom Right
-                            lineTo(center.x, center.y) // Inner notch
-                            lineTo(center.x - arrowWidth, center.y + arrowHeight) // Bottom Left
+                            moveTo(center.x, center.y - maxRadius * 0.8f)
+                            lineTo(center.x + arrowWidth, center.y + arrowHeight)
+                            lineTo(center.x, center.y)
+                            lineTo(center.x - arrowWidth, center.y + arrowHeight)
                             close()
                         }
                         drawPath(path = path, color = tacticalColor)
@@ -127,7 +149,6 @@ fun UwbHomingCompass(
                 }
             }
 
-            // Central Readout Hub
             Box(
                 modifier = Modifier
                     .size(90.dp)
@@ -138,15 +159,8 @@ fun UwbHomingCompass(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     if (isRanging && distanceMeters != null) {
-                        // 🛠️ THE FIX: Guard against hardware NaN glitches
-                        val formattedDistance = if (distanceMeters.isNaN()) {
-                            "---"
-                        } else {
-                            ((distanceMeters * 10).toInt() / 10f).toString()
-                        }
-
                         Text(
-                            text = formattedDistance,
+                            text = formatDistanceKmp(distanceMeters),
                             color = tacticalColor,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Black

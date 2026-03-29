@@ -42,6 +42,7 @@ import com.pan.tactical.getCurrentTimeMs
 import com.pan.tactical.getNativeMapUrl
 import com.pan.tactical.rememberSharedCameraManager
 import com.pan.tactical.rememberSharedLocationManager
+import com.pan.tactical.rememberUwbClient
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
@@ -145,8 +146,14 @@ fun MainDashboardContent(
     val audio = remember { AudioEngine() }
     val uriHandler = LocalUriHandler.current
 
+    val uwbClient = rememberUwbClient()
+    val uwbRangingState by uwbClient.rangingState.collectAsState()
+
     DisposableEffect(Unit) {
-        onDispose { audio.shutdown() }
+        onDispose {
+            audio.shutdown()
+            uwbClient.close()
+        }
     }
 
     var navPreference by rememberSaveable { mutableStateOf("GOOGLE") }
@@ -165,7 +172,6 @@ fun MainDashboardContent(
     var showDevMenu by rememberSaveable { mutableStateOf(false) }
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
 
-    // 🟢 THE FIX 1: Restored proper 6-part serialization to preserve taskId
     val MissionDataSaver = Saver<MissionData?, String>(
         save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bounty}|${data.intersection}|${data.taskId}" } ?: "" },
         restore = { str ->
@@ -216,6 +222,7 @@ fun MainDashboardContent(
                         withContext(Dispatchers.Main) {
                             activeMission = incomingMissions.first()
                             missionState = "PENDING"
+                            // TODO: BleHapHatService — Map missionState "PENDING" → CYAN PULSE (new mission incoming)
                         }
                         break
                     }
@@ -237,7 +244,6 @@ fun MainDashboardContent(
 
     var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
 
-    // 🟢 THE FIX 4: Restored telemetry debounce
     var lastTelemetryTime by remember { mutableLongStateOf(0L) }
 
     val locationManager = rememberSharedLocationManager { lat, lon ->
@@ -252,6 +258,7 @@ fun MainDashboardContent(
                     apiClient.updateLocationTelemetry(lat, lon)
                 } catch (e: Exception) {
                     println("[TELEMETRY_ERROR] Failed to push GPS to Backend: ${e.message}")
+                    // TODO: BleHapHatService — Dead zone indicator: AMBER PULSE
                 }
             }
         }
@@ -283,8 +290,6 @@ fun MainDashboardContent(
             return@LaunchedEffect
         }
 
-        // Safely block the thread and AWAIT the network response
-        // If this fails, the UI will not proceed, saving the SLA metric.
         val success = apiClient.completeMission(currentTaskId)
 
         if (success) {
@@ -296,12 +301,13 @@ fun MainDashboardContent(
             timeOnSceneMs = if (sceneArrivalTime > 0) getCurrentTimeMs() - sceneArrivalTime else 252000L
             totalResponseTimeMs = if (missionAcceptTime > 0) getCurrentTimeMs() - missionAcceptTime else timeOnSceneMs + 300000L
             missionState = "COMPLETED"
+            // TODO: BleHapHatService — Map missionState "COMPLETED" → GREEN STROBE 3x then off (celebration/confirmation)
 
             audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
             capturedEvidence = emptyList()
         } else {
             audio.speak("Network submission failed. Please retry.", voiceVolume)
-            // Note: We DO NOT change missionState, keeping them safely on the ON_SCENE terminal
+            // TODO: BleHapHatService — Evidence submission failure → RED DOUBLE PULSE
         }
 
         isUploadingProof = false
@@ -342,10 +348,16 @@ fun MainDashboardContent(
 
     val isUwbEngaged = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 15f
 
+    LaunchedEffect(isUwbEngaged) {
+        if (isUwbEngaged) {
+            uwbClient.startRanging("DEV-MAC-12:34", byteArrayOf(0x01))
+        } else {
+            uwbClient.stopRanging()
+        }
+    }
+
     LaunchedEffect(missionState) {
         if (missionState == "PENDING" && activeMission != null) {
-
-            // 🟢 THE FIX: Fire two-phase ACK immediately when mission UI renders
             val taskId = activeMission?.taskId
             if (!taskId.isNullOrBlank()) {
                 launch { apiClient.acknowledgeMission(taskId) }
@@ -355,6 +367,8 @@ fun MainDashboardContent(
             val netPayout = rawBounty * 0.90f
             val cleanBounty = if (netPayout % 1.0f == 0f) netPayout.toInt().toString() else netPayout.toString()
             val cleanCategory = activeMission?.errorCode?.substringAfter(": ") ?: activeMission?.errorCode ?: "Unknown"
+
+            // TODO: BleHapHatService — Surge pricing signal: if netPayout > threshold, pulse AMBER twice here.
 
             audio.speak("Agent, Mission: $cleanCategory. 2.5 Miles Away. Payout, $cleanBounty dollars.", voiceVolume)
 
@@ -441,9 +455,9 @@ fun MainDashboardContent(
                 ) { showUwb ->
                     if (showUwb) {
                         UwbHomingCompass(
-                            distanceMeters = distanceMeters,
-                            bearingDegrees = bearingDegrees,
-                            isRanging = true
+                            distanceMeters = if (uwbRangingState.isRanging) uwbRangingState.distanceMeters else distanceMeters,
+                            bearingDegrees = if (uwbRangingState.isRanging) uwbRangingState.azimuthDegrees else bearingDegrees,
+                            isRanging = uwbRangingState.isRanging
                         )
                     } else {
                         com.pan.tactical.ui.components.TacticalMap(
@@ -462,6 +476,8 @@ fun MainDashboardContent(
                         flashAlpha = flashAlpha,
                         onAccept = {
                             missionState = "ACTIVE"
+                            // TODO: BleHapHatService — Map missionState "ACTIVE" → WHITE SOLID (task light on, navigating)
+                            // TODO: BleHapHatService — Safety identification at night: Activate brim LED automatically if after sunset.
                             missionAcceptTime = getCurrentTimeMs()
                             audio.stop()
 
@@ -481,7 +497,6 @@ fun MainDashboardContent(
                             }
                         },
                         onDecline = {
-                            // 🟢 THE FIX 2b: Restored explicit button decline
                             val currentTaskId = activeMission?.taskId
                             if (!currentTaskId.isNullOrBlank()) {
                                 coroutineScope.launch { apiClient.declineMission(currentTaskId) }
@@ -505,8 +520,14 @@ fun MainDashboardContent(
                     onReturnToPatrol = {
                         lastPayoutAmount = 0.0; timeOnSceneMs = 0L; totalResponseTimeMs = 0L; lastTxHash = ""; sceneArrivalTime = 0L; missionAcceptTime = 0L
                         tacticalRoute = emptyList()
-                        if (queuedMission != null) { activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE" }
-                        else { missionState = "IDLE"; activeMission = null }
+                        if (queuedMission != null) {
+                            activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
+                            // TODO: BleHapHatService — Map queued activation → WHITE SOLID
+                        }
+                        else {
+                            missionState = "IDLE"; activeMission = null
+                            // TODO: BleHapHatService — Map return to IDLE → LED OFF
+                        }
                     }
                 )
             }
@@ -523,6 +544,8 @@ fun MainDashboardContent(
                                 Button(
                                     onClick = {
                                         missionState = "ON_SCENE";
+                                        // TODO: BleHapHatService — Map missionState "ON_SCENE" → WHITE SOLID (working)
+                                        // TODO: BleHapHatService — If errorCode == "scene_securement", bump to full brightness.
                                         sceneArrivalTime = getCurrentTimeMs()
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(64.dp).padding(bottom = 16.dp)
@@ -660,7 +683,6 @@ fun MainDashboardContent(
             AlertDialog(onDismissRequest = { showAbortDialog = false; abortSliderResetKey++ }, containerColor = Color(0xFF1E1E1E), title = { Text("ABORT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column { listOf("Too Dangerous", "Changed Mind", "Can't Find AV", "AV Leaving Scene", "Other").forEach { reason ->
                     Button(onClick = {
-                        // 🟢 THE FIX 2c: Restored active abort decline
                         val currentTaskId = activeMission?.taskId ?: queuedMission?.taskId
                         if (!currentTaskId.isNullOrBlank()) {
                             coroutineScope.launch { apiClient.declineMission(currentTaskId) }
@@ -668,6 +690,7 @@ fun MainDashboardContent(
                         showAbortDialog = false; missionState = "IDLE"; activeMission = null; queuedMission = null; abortSliderResetKey++
                         missionAcceptTime = 0L; sceneArrivalTime = 0L
                         tacticalRoute = emptyList()
+                        // TODO: BleHapHatService — Map mission abort → LED OFF
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
                 } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }
             )
