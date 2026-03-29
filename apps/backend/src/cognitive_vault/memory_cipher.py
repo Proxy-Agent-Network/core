@@ -1,19 +1,30 @@
 import os
+import logging
 from cryptography.fernet import Fernet, InvalidToken
+
+logger = logging.getLogger("PAN_MemoryCipher")
 
 class MemoryCipher:
     def __init__(self):
-        print("[VAULT] 🔐 Initializing Memory Cipher...")
-        # In production, this MUST come from a secure environment variable.
-        # For our local swarm, we check the environment, or fall back to a dev key.
+        logger.info("🔐 [VAULT] Initializing Memory Cipher...")
+        
         self.encryption_key = os.environ.get("COGNITIVE_ENCRYPTION_KEY")
         
+        # 🟢 THE FIX: Fail-closed architecture for containerized deployments.
+        # Generating a random key on startup causes permanent data loss of all 
+        # stored memories whenever the Docker container restarts.
         if not self.encryption_key:
-            print("[VAULT] ⚠️ WARNING: No COGNITIVE_ENCRYPTION_KEY found.")
-            print("[VAULT] ⚠️ Using volatile development key. Do not use in production!")
-            self.encryption_key = Fernet.generate_key()
+            logger.critical("🛑 [VAULT] FATAL: COGNITIVE_ENCRYPTION_KEY environment variable is missing.")
+            logger.critical("🛑 [VAULT] Cannot initialize memory vault. A static Master Key is required to prevent data loss across container reboots.")
+            raise EnvironmentError("Missing required COGNITIVE_ENCRYPTION_KEY.")
             
-        self.cipher_suite = Fernet(self.encryption_key)
+        try:
+            # Ensure the key is properly encoded to bytes as required by Fernet
+            key_bytes = self.encryption_key.encode('utf-8') if isinstance(self.encryption_key, str) else self.encryption_key
+            self.cipher_suite = Fernet(key_bytes)
+        except ValueError as e:
+            logger.critical(f"🛑 [VAULT] FATAL: Invalid COGNITIVE_ENCRYPTION_KEY format. Must be 32 url-safe base64-encoded bytes. ({e})")
+            raise
 
     def encrypt_memory(self, plaintext: str) -> str:
         """Encrypts a plaintext memory into an AES ciphertext string."""
@@ -34,12 +45,15 @@ class MemoryCipher:
             decrypted_bytes = self.cipher_suite.decrypt(byte_data)
             return decrypted_bytes.decode('utf-8')
         except InvalidToken:
+            logger.error("⚠️ [VAULT] CORRUPTED MEMORY: Decryption failed. Invalid key or tampered data.")
             return "[CORRUPTED MEMORY] Decryption failed. Invalid key or tampered data."
         except Exception as e:
+            logger.error(f"⚠️ [VAULT] ERROR: Memory extraction failed: {str(e)}")
             return f"[ERROR] Memory extraction failed: {str(e)}"
 
 if __name__ == "__main__":
     # --- Local Vault Testing & Key Generation ---
+    # Standard print statements retained for CLI utility mode
     print("\n--- 🛠️ VAULT UTILITY: GENERATING NEW MASTER KEY ---")
     new_key = Fernet.generate_key().decode('utf-8')
     print(f"Your new AES Master Key is: \n{new_key}\n")

@@ -46,6 +46,8 @@ venv/
 .pytest_cache/
 .mypy_cache/
 *.db
+*.egg-info/
+apps/backend/src/cognitive_vault/cognitive_vault.egg-info/
 
 # --- NODE.JS ---
 node_modules/
@@ -116,4 +118,4 @@ keystore.properties
 # --- REDIS LOCAL DUMPS ---
 # Prevents committing the local Redis matching engine database state
 *.rdb
-dump.rdb
+dump.rdbapps/backend/src/cognitive_vault/cognitive_vault.egg-info/
