@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
+import com.pan.tactical.BuildConfig
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.security.MessageDigest
 import kotlin.coroutines.resume
@@ -19,12 +20,13 @@ class PlayIntegrityManager(private val context: Context) {
     suspend fun fetchAttestationToken(agentId: String, publicKeyB64: String): String {
         val integrityManager = IntegrityManagerFactory.create(context)
 
-        // 🟢 THE FIX: Cryptographically bind the device token to the specific agent and key.
+        // Cryptographically bind the device token to the specific agent and key.
         val nonceToUse = generateBoundNonce(agentId, publicKeyB64)
 
         val request = IntegrityTokenRequest.builder()
-            // TODO: Replace with the actual Vanguard Google Cloud Project Number before the Mesa Pilot
-            .setCloudProjectNumber(1234567890L)
+            // 🟢 THE FIX: Shifted to BuildConfig to avoid hardcoding GCP Project Numbers.
+            // Ensure GCP_PROJECT_NUMBER is set in your local.properties or app/build.gradle
+            .setCloudProjectNumber(BuildConfig.GCP_PROJECT_NUMBER)
             .setNonce(nonceToUse)
             .build()
 

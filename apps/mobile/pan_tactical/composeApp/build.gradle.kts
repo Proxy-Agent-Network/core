@@ -10,8 +10,8 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
 
-    // Aligned strictly with the 2.3.0 Kotlin compiler from your libs.versions.toml
-    kotlin("plugin.serialization") version "2.3.0"
+    // 🟢 THE FIX: Strictly aligned with the 2.1.0 Kotlin compiler from libs.versions.toml
+    kotlin("plugin.serialization") version "2.1.0"
 
     id("com.github.gmazzo.buildconfig") version "4.1.2"
 }
@@ -37,7 +37,11 @@ val firebaseRtdbUrl = requireLocalProperty("FIREBASE_RTDB_URL")
 // 🛠️ THE FIX 2: Extracted missing properties for the Network Client and Attestation Engine
 val panApiBaseUrl = requireLocalProperty("PAN_API_BASE_URL")
 val agentDevToken = requireLocalProperty("AGENT_DEV_TOKEN")
-val playIntegrityProjectNum = requireLocalProperty("PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER")
+
+// 🟢 THE FIX: Safely parse the GCP Project Number as a Long, or fail the build if invalid
+val playIntegrityProjectNumStr = requireLocalProperty("PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER")
+val playIntegrityProjectNumLong = playIntegrityProjectNumStr.toLongOrNull()
+    ?: throw GradleException("🛑 FATAL: PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER must be a valid number.")
 // -------------------------------------------------
 
 // --- KMP SECRETS BRIDGE ---
@@ -51,7 +55,9 @@ buildConfig {
     // 🛠️ THE FIX 2: Injecting the missing fields into BuildConfig exactly once!
     buildConfigField("String", "PAN_API_BASE_URL", "\"$panApiBaseUrl\"")
     buildConfigField("String", "AGENT_DEV_TOKEN", "\"$agentDevToken\"")
-    buildConfigField("String", "PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER", "\"$playIntegrityProjectNum\"")
+    
+    // 🟢 THE FIX: Injected as a primitive Long so the Kotlin compiler enforces type safety
+    buildConfigField("Long", "GCP_PROJECT_NUMBER", "${playIntegrityProjectNumLong}L")
 }
 // --------------------------
 
@@ -99,6 +105,10 @@ kotlin {
 
             // Ktor Android Engine (For PanApiClient)
             implementation("io.ktor:ktor-client-okhttp:2.3.11")
+            
+            // 🟢 THE FIX: Re-added UWB dependency required by AndroidUwbClient
+            // TODO (Q3): Required for real BLE OOB handshake and ranging
+            implementation("androidx.core.uwb:uwb:1.0.0-alpha08")
         }
 
         commonMain.dependencies {
