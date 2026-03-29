@@ -1,679 +1,609 @@
-package com.pan.tactical.ui
+// TODO: Remove suppression once KMP BuildConfig visibility is confirmed PUBLIC via gmazzo plugin.
+// Track against build.gradle.kts visibility(BuildConfigVisibility.PUBLIC) fix.
+@file:Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
+package com.pan.tactical.network
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.jetbrains.compose.resources.painterResource
-import kotlin.math.*
-import com.pan.tactical.ui.components.OfflineLoadoutMenu
-import com.pan.tactical.ui.components.OnSceneTerminal
-import com.pan.tactical.ui.components.PostMissionOverlays
-import com.pan.tactical.ui.components.MissionAlertOverlay
-import com.pan.tactical.ui.components.SwipeActionSlider
-import com.pan.tactical.ui.components.UwbHomingCompass
-import com.pan.tactical.models.AgentCapability
+import android.graphics.Bitmap
+import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
+import com.pan.tactical.BuildConfig 
 import com.pan.tactical.models.MissionData
-import com.pan.tactical.AudioEngine
-import com.pan.tactical.getCurrentTimeMs
-import com.pan.tactical.getNativeMapUrl
-import com.pan.tactical.rememberSharedCameraManager
-import com.pan.tactical.rememberSharedLocationManager
-import pantactical.composeapp.generated.resources.Res
-import pantactical.composeapp.generated.resources.pan_logo
+import com.pan.tactical.security.StrongBoxManager
+import com.pan.tactical.ui.WalletNetworkClient
+import com.pan.tactical.ui.WalletResponse
+import com.pan.tactical.ui.TransactionLog
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.okhttp.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import com.google.android.gms.maps.model.LatLng
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 
-@Composable
-fun AgentDashboardScreen(apiClient: WalletNetworkClient) {
-    var appState by rememberSaveable { mutableStateOf("BOOT") }
-    var currentScreen by rememberSaveable { mutableStateOf("DASHBOARD") }
+// --- DATA MODELS ---
+@Serializable
+data class StatusUpdateRequest(
+    val status: String,
+    val latitude: Double,
+    val longitude: Double,
+    val radius: Double,
+    val loadout: Map<String, Float>,
+    val signature: String,
+    val timestamp: Long
+)
 
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .systemBarsPadding()
+@Serializable
+data class MissionCompleteRequest(val agentId: String, val netPayout: Double)
+
+@Serializable
+data class LinkCardRequest(val agentId: String, val cardNumber: String)
+
+@Serializable
+data class WithdrawRequest(val agentId: String, val amount: Double)
+
+@Serializable
+data class V2XDistressPayload(
+    val vin: String,
+    val fault_code: String,
+    val latitude: Double,
+    val longitude: Double,
+    val bounty_usd: Double,
+    val timestamp: Long
+)
+
+@Serializable
+data class TelemetryPayload(
+    val agent_id: String,
+    val latitude: Double,
+    val longitude: Double,
+    val status: String
+)
+
+@Serializable
+data class MissionCompletePayload(
+    val agent_id: String,
+    val netPayout: Double,
+    val evidence_urls: List<String>,
+    val hardware_attestation_token: String
+)
+
+class PanApiClient : WalletNetworkClient {
+
+    companion object {
+        private const val TAG = "PanApiClient"
+    }
+
+    private val client = HttpClient(OkHttp) {
+        engine {
+            config {
+                readTimeout(0, TimeUnit.MILLISECONDS)
+            }
+        }
+        install(ContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true; prettyPrint = true })
+        }
+    }
+
+    private val FIREBASE_URL = BuildConfig.FIREBASE_RTDB_URL
+    private val hostUrl = BuildConfig.PAN_API_BASE_URL
+    private val PAN_API_URL = "$hostUrl/api/v1"
+
+    private val secureUid: String
+        get() = FirebaseAuth.getInstance().currentUser?.uid
+            ?: throw IllegalStateException("Agent identity missing")
+
+    private var cachedJwt: String? = null
+    private var jwtExpiresAt: Long = 0L
+
+    private fun getFreshJwt(): String {
+        val now = System.currentTimeMillis() / 1000
+        if (cachedJwt == null || now >= jwtExpiresAt - 30) {
+            cachedJwt = StrongBoxManager().generateJwt(secureUid)
+            jwtExpiresAt = now + 300 
+        }
+        return cachedJwt!!
+    }
+
+    private fun HttpRequestBuilder.attachAgentSignature() {
+        header("Authorization", "Bearer ${getFreshJwt()}")
+    }
+
+    override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "🚀 Injecting V2X Distress Signal to Python Backend...")
+                val response: HttpResponse = client.post("$PAN_API_URL/v2x/distress") {
+                    attachAgentSignature()
+                    header("X-Fleet-Id", "DEV-FLEET-01")
+                    contentType(ContentType.Application.Json)
+                    setBody(V2XDistressPayload(
+                        vin = "DEV-VIN-777",
+                        fault_code = errorCode,
+                        latitude = lat,
+                        longitude = lon,
+                        bounty_usd = 25.00,
+                        timestamp = System.currentTimeMillis() / 1000
+                    ))
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Backend V2X injection failed: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    suspend fun updateAgentStatus(
+        context: android.content.Context,
+        isOnline: Boolean,
+        lat: Double,
+        lon: Double,
+        radiusMiles: Double,
+        loadout: Map<String, Float>
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val statusString = if (isOnline) "ONLINE" else "OFFLINE"
+                val payloadToSign = "${statusString}_${lat}_${lon}_${radiusMiles}"
+                val nonce = android.util.Base64.encodeToString(
+                    payloadToSign.toByteArray(),
+                    android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
+                )
+
+                val engine = com.pan.tactical.security.AttestationEngine()
+                val hardwareToken = engine.generateHardwareToken(context, nonce)
+
+                val requestBody = StatusUpdateRequest(
+                    status = statusString,
+                    latitude = lat,
+                    longitude = lon,
+                    radius = radiusMiles,
+                    loadout = loadout,
+                    signature = hardwareToken,
+                    timestamp = System.currentTimeMillis()
+                )
+
+                val response: HttpResponse =
+                    client.put("$FIREBASE_URL/agents/$secureUid/status.json") {
+                        contentType(ContentType.Application.Json)
+                        setBody(requestBody)
+                    }
+
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update agent status: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    override suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response: HttpResponse = client.post("$PAN_API_URL/telemetry/ingest") {
+                    contentType(ContentType.Application.Json)
+                    attachAgentSignature()
+                    setBody(TelemetryPayload(
+                        agent_id = secureUid,
+                        latitude = lat,
+                        longitude = lon,
+                        status = "ONLINE"
+                    ))
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update location telemetry: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    suspend fun openLiveDispatchLine(
+        onMissionReceived: (lat: Double, lon: Double, errorCode: String, bounty: String, intersection: String) -> Unit
     ) {
-        val isBoot = appState == "BOOT"
+        withContext(Dispatchers.IO) {
+            Log.i(TAG, "🟢 DISPATCH LINE OPEN: Listening on Node $secureUid...")
 
-        Crossfade(targetState = appState, animationSpec = tween(durationMillis = 2000), label = "app_boot") { state ->
-            when (state) {
-                "BOOT" -> {
-                    LaunchedEffect(Unit) {
-                        currentScreen = "DASHBOARD"
-                        delay(500)
-                        appState = "RUNNING"
-                    }
-                }
-                "RUNNING" -> MainDashboardContent(
-                    apiClient = apiClient,
-                    currentScreen = currentScreen,
-                    onNavigate = { currentScreen = it }
-                )
-            }
-        }
-
-        val logoWidth by animateDpAsState(
-            targetValue = if (isBoot) 280.dp else 200.dp,
-            animationSpec = if (!isBoot) keyframes {
-                durationMillis = 3000
-                280.dp at 0
-                350.dp at 1000 using FastOutSlowInEasing
-                200.dp at 3000 using LinearOutSlowInEasing
-            } else tween(800),
-            label = "logo_width"
-        )
-
-        val logoHeight by animateDpAsState(
-            targetValue = if (isBoot) 120.dp else 70.dp,
-            animationSpec = if (!isBoot) keyframes {
-                durationMillis = 3000
-                120.dp at 0
-                150.dp at 1000 using FastOutSlowInEasing
-                70.dp at 3000 using LinearOutSlowInEasing
-            } else tween(800),
-            label = "logo_height"
-        )
-
-        val offsetX by animateDpAsState(
-            targetValue = if (isBoot) (maxWidth - 280.dp) / 2 else 0.dp,
-            animationSpec = if (!isBoot) keyframes {
-                durationMillis = 3000
-                ((maxWidth - 280.dp) / 2) at 0
-                ((maxWidth - 350.dp) / 2) at 1000 using FastOutSlowInEasing
-                0.dp at 3000 using LinearOutSlowInEasing
-            } else tween(800),
-            label = "logo_x"
-        )
-
-        val offsetY by animateDpAsState(
-            targetValue = if (isBoot) (maxHeight - 120.dp) / 3 else 0.dp,
-            animationSpec = if (!isBoot) keyframes {
-                durationMillis = 3000
-                ((maxHeight - 120.dp) / 3) at 0
-                ((maxHeight - 150.dp) / 3) at 1000 using FastOutSlowInEasing
-                0.dp at 3000 using LinearOutSlowInEasing
-            } else tween(800),
-            label = "logo_y"
-        )
-
-        if (currentScreen == "DASHBOARD") {
-            Image(
-                painter = painterResource(Res.drawable.pan_logo),
-                contentDescription = "PAN Command",
-                modifier = Modifier
-                    .offset(x = offsetX, y = offsetY)
-                    .width(logoWidth)
-                    .height(logoHeight)
-                    .zIndex(100f),
-                contentScale = ContentScale.Fit
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun MainDashboardContent(
-    apiClient: WalletNetworkClient,
-    currentScreen: String,
-    onNavigate: (String) -> Unit
-) {
-    val coroutineScope = rememberCoroutineScope()
-    val audio = remember { AudioEngine() }
-    val uriHandler = LocalUriHandler.current
-
-    DisposableEffect(Unit) {
-        onDispose { audio.shutdown() }
-    }
-
-    var navPreference by rememberSaveable { mutableStateOf("GOOGLE") }
-    var patrolMode by rememberSaveable { mutableStateOf("VEHICLE") }
-    var serviceRadiusMiles by rememberSaveable { mutableStateOf(5f) }
-    var isLoadoutExpanded by rememberSaveable { mutableStateOf(false) }
-    var isDataLoaded by rememberSaveable { mutableStateOf(true) }
-    var voiceVolume by rememberSaveable { mutableFloatStateOf(1f) }
-    var alertVolume by rememberSaveable { mutableIntStateOf(100) }
-
-    var hasSpokenWelcome by rememberSaveable { mutableStateOf(false) }
-    var isOnline by rememberSaveable { mutableStateOf(false) }
-    var isProcessing by rememberSaveable { mutableStateOf(false) }
-    var missionState by rememberSaveable { mutableStateOf("IDLE") }
-    var showAbortDialog by rememberSaveable { mutableStateOf(false) }
-    var showDevMenu by rememberSaveable { mutableStateOf(false) }
-    var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
-
-    // 🟢 THE FIX 1: Restored proper 6-part serialization to preserve taskId
-    val MissionDataSaver = Saver<MissionData?, String>(
-        save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bounty}|${data.intersection}|${data.taskId}" } ?: "" },
-        restore = { str ->
-            if (str.isEmpty()) null
-            else {
-                val parts = str.split("|")
-                if (parts.size >= 6) MissionData(
-                    lat = parts[0].toDoubleOrNull() ?: 0.0,
-                    lon = parts[1].toDoubleOrNull() ?: 0.0,
-                    errorCode = parts[2],
-                    bounty = parts[3],
-                    intersection = parts[4],
-                    taskId = parts[5]
-                ) else null
-            }
-        }
-    )
-
-    var activeMission by rememberSaveable(stateSaver = MissionDataSaver) { mutableStateOf(null) }
-    var queuedMission by rememberSaveable(stateSaver = MissionDataSaver) { mutableStateOf(null) }
-    var isMissionControlsExpanded by rememberSaveable { mutableStateOf(false) }
-
-    var lastPayoutAmount by rememberSaveable { mutableDoubleStateOf(0.0) }
-    var lastTxHash by rememberSaveable { mutableStateOf("") }
-    var timeOnSceneMs by rememberSaveable { mutableLongStateOf(0L) }
-    var totalResponseTimeMs by rememberSaveable { mutableLongStateOf(0L) }
-    var sceneArrivalTime by rememberSaveable { mutableLongStateOf(0L) }
-    var missionAcceptTime by rememberSaveable { mutableLongStateOf(0L) }
-
-    var agentCapabilities by remember {
-        mutableStateOf(
-            listOf(
-                AgentCapability("door_securing", "Door Securing", "Push door completely shut.", null, 1, true, true, 8f, 20f, 1f, 8f),
-                AgentCapability("lost_item", "Lost Item Recovery", "Retrieve and secure item.", null, 1, true, false, 15f, 30f, 5f, 15f),
-                AgentCapability("scene_securement", "First Responder Liaison", "Interact with police/flares.", "Requires safety flares", 3, false, false, 50f, 150f, 10f, 50f)
-            )
-        )
-    }
-
-    LaunchedEffect(isOnline, missionState) {
-        if (isOnline && missionState == "IDLE") {
-            while (isOnline && missionState == "IDLE") {
+            while (isActive) {
                 try {
-                    val incomingMissions = apiClient.fetchActiveMissions()
+                    val response: HttpResponse = client.get("$FIREBASE_URL/dispatch/$secureUid.json") {
+                        header(HttpHeaders.CacheControl, "no-cache")
+                    }
 
-                    if (incomingMissions.isNotEmpty()) {
-                        println("[TACTICAL_UI] Mission Received! Triggering Alert...")
-                        withContext(Dispatchers.Main) {
-                            activeMission = incomingMissions.first()
-                            missionState = "PENDING"
+                    val jsonString = response.bodyAsText()
+
+                    if (jsonString != "null" && jsonString.isNotBlank()) {
+                        try {
+                            val json = org.json.JSONObject(jsonString)
+                            if (json.optString("type") == "MISSION") {
+                                val lat = json.getDouble("lat")
+                                val lon = json.getDouble("lon")
+                                val errorCode = json.optString("errorCode", "UNKNOWN ERROR")
+                                val bounty = json.optString("bounty", "$0.00")
+                                val intersection = json.optString("intersection", "Unknown Coordinates")
+
+                                withContext(Dispatchers.Main) {
+                                    onMissionReceived(lat, lon, errorCode, bounty, intersection)
+                                }
+
+                                // TODO: Implement two-phase ACK to prevent duplicate dispatches on crash
+                                client.delete("$FIREBASE_URL/dispatch/$secureUid.json")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Malformed dispatch JSON payload: ${e.message}", e)
                         }
-                        break
                     }
                 } catch (e: Exception) {
-                    println("[NETWORK_ERROR] Mission polling failed: ${e.message}")
+                    Log.e(TAG, "Dispatch line polling failed: ${e.message}", e)
                 }
-                delay(3000)
+                delay(2000)
             }
         }
     }
 
-    LaunchedEffect(isDataLoaded) {
-        if (isDataLoaded && !hasSpokenWelcome) {
-            delay(500)
-            audio.speak("The command is now yours, Agent.", voiceVolume)
-            hasSpokenWelcome = true
+    suspend fun acceptMission(): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response: HttpResponse =
+                    client.put("$FIREBASE_URL/agents/$secureUid/mission_state.json") {
+                        contentType(ContentType.Application.Json)
+                        setBody("\"ACCEPTED\"")
+                    }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to accept mission: ${e.message}", e)
+                false
+            }
         }
     }
 
-    var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
+    suspend fun getTacticalRoute(
+        startLat: Double,
+        startLon: Double,
+        endLat: Double,
+        endLon: Double,
+        mode: String = "driving"
+    ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val urlString = "https://router.project-osrm.org/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
+                val response: HttpResponse = client.get(urlString)
+                val jsonString = response.bodyAsText()
+                val json = org.json.JSONObject(jsonString)
+                val routes = json.optJSONArray("routes")
 
-    // 🟢 THE FIX 4: Restored telemetry debounce
-    var lastTelemetryTime by remember { mutableLongStateOf(0L) }
+                if (routes != null && routes.length() > 0) {
+                    val routeObj = routes.getJSONObject(0)
+                    val geometry = routeObj.getJSONObject("geometry")
+                    val coordinates = geometry.getJSONArray("coordinates")
+                    val path = mutableListOf<LatLng>()
+                    for (i in 0 until coordinates.length()) {
+                        val point = coordinates.getJSONArray(i)
+                        path.add(LatLng(point.getDouble(1), point.getDouble(0)))
+                    }
 
-    val locationManager = rememberSharedLocationManager { lat, lon ->
-        println("[TACTICAL_GPS] Agent moving: $lat, $lon")
-        agentLocation = Pair(lat, lon)
+                    val stepsList = mutableListOf<Triple<String, Double, Double>>()
+                    val legs = routeObj.optJSONArray("legs")
+                    if (legs != null && legs.length() > 0) {
+                        val steps = legs.getJSONObject(0).optJSONArray("steps")
+                        if (steps != null) {
+                            for (j in 0 until steps.length()) {
+                                val step = steps.getJSONObject(j)
+                                val maneuver = step.optJSONObject("maneuver")
+                                val distanceMiles = step.optDouble("distance", 0.0) / 1609.34
+                                val location = maneuver?.optJSONArray("location")
+                                val stepLon = location?.optDouble(0) ?: 0.0
+                                val stepLat = location?.optDouble(1) ?: 0.0
+                                val type = maneuver?.optString("type", "") ?: ""
+                                val modifier = maneuver?.optString("modifier", "") ?: ""
+                                var name = step.optString("name", "")
+                                if (name.isEmpty()) name = "unnamed road"
+                                val action = if (modifier.isNotEmpty() && modifier != "straight") "$type $modifier" else type
+                                val formattedAction = action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
-        val now = getCurrentTimeMs()
-        if (isOnline && now - lastTelemetryTime > 3000) {
-            lastTelemetryTime = now
-            coroutineScope.launch {
+                                if (type == "arrive") stepsList.add(Triple("Arrive at Destination", stepLat, stepLon))
+                                else if (distanceMiles > 0.0) stepsList.add(Triple("$formattedAction onto $name", stepLat, stepLon))
+                            }
+                        }
+                    }
+                    return@withContext Pair(path, stepsList)
+                }
+                Pair(emptyList(), emptyList())
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to retrieve tactical route: ${e.message}", e)
+                Pair(emptyList(), emptyList())
+            }
+        }
+    }
+
+    suspend fun uploadEvidenceArray(bitmaps: List<Bitmap>): List<String> {
+        return withContext(Dispatchers.IO) {
+            val uploadedUrls = mutableListOf<String>()
+            val relayApiKey = BuildConfig.IMGBB_API_KEY 
+
+            if (relayApiKey.isEmpty()) {
+                Log.e(TAG, "IMGBB_API_KEY not configured. Evidence upload skipped to prevent false-positive compliance checks.")
+                return@withContext uploadedUrls
+            }
+
+            bitmaps.forEachIndexed { _, bitmap ->
                 try {
-                    apiClient.updateLocationTelemetry(lat, lon)
+                    val stream = ByteArrayOutputStream()
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
+                    val byteArray = stream.toByteArray()
+                    val base64Image = android.util.Base64.encodeToString(byteArray, android.util.Base64.DEFAULT)
+
+                    val response: HttpResponse = client.post("https://api.imgbb.com/1/upload?key=$relayApiKey") {
+                        contentType(ContentType.Application.FormUrlEncoded)
+                        setBody("image=${java.net.URLEncoder.encode(base64Image, "UTF-8")}")
+                    }
+
+                    val responseBody = response.bodyAsText()
+
+                    if (response.status.isSuccess()) {
+                        val json = org.json.JSONObject(responseBody)
+                        val dataObj = json.optJSONObject("data")
+                        val downloadUrl = dataObj?.optString("url", "") ?: ""
+                        if (downloadUrl.isNotEmpty()) uploadedUrls.add(downloadUrl)
+                    }
                 } catch (e: Exception) {
-                    println("[TELEMETRY_ERROR] Failed to push GPS to Backend: ${e.message}")
+                    Log.e(TAG, "Failed to upload evidence bitmap: ${e.message}", e)
                 }
             }
+            uploadedUrls
         }
     }
 
-    var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
-    var hasCameraPermission by rememberSaveable { mutableStateOf(true) }
+    suspend fun claimEscrowFunds(netPayout: Double, evidenceUrls: List<String> = emptyList()): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val currentWallet = getWalletData()
+                val newBalance = (currentWallet?.balance ?: 0.0) + netPayout
 
-    var capturedEvidence by rememberSaveable { mutableStateOf<List<ByteArray>>(emptyList()) }
-    var isUploadingProof by rememberSaveable { mutableStateOf(false) }
-
-    val cameraManager = rememberSharedCameraManager { imageData ->
-        if (imageData != null) {
-            capturedEvidence = capturedEvidence + (imageData as ByteArray)
-        }
-    }
-
-    val countdownProgress = remember { Animatable(1f) }
-    var isFlashing by remember { mutableStateOf(false) }
-    val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
-
-    LaunchedEffect(isUploadingProof) {
-        if (!isUploadingProof) return@LaunchedEffect
-
-        val currentTaskId = activeMission?.taskId
-        if (currentTaskId.isNullOrBlank()) {
-            audio.speak("Mission data corrupted. Aborting.", voiceVolume)
-            isUploadingProof = false
-            return@LaunchedEffect
-        }
-
-        // Safely block the thread and AWAIT the network response
-        // If this fails, the UI will not proceed, saving the SLA metric.
-        val success = apiClient.completeMission(currentTaskId)
-
-        if (success) {
-            val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
-            val finalPayout = (rawBounty * 0.90f).toDouble()
-
-            lastTxHash = "tx_${getCurrentTimeMs()}"
-            lastPayoutAmount = finalPayout
-            timeOnSceneMs = if (sceneArrivalTime > 0) getCurrentTimeMs() - sceneArrivalTime else 252000L
-            totalResponseTimeMs = if (missionAcceptTime > 0) getCurrentTimeMs() - missionAcceptTime else timeOnSceneMs + 300000L
-            missionState = "COMPLETED"
-
-            audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
-            capturedEvidence = emptyList()
-        } else {
-            audio.speak("Network submission failed. Please retry.", voiceVolume)
-            // Note: We DO NOT change missionState, keeping them safely on the ON_SCENE terminal
-        }
-
-        isUploadingProof = false
-    }
-
-    val distanceMiles = remember(agentLocation, activeMission) {
-        if (activeMission == null) return@remember 0.0
-
-        val lat1 = agentLocation.first * PI / 180.0
-        val lon1 = agentLocation.second * PI / 180.0
-        val lat2 = activeMission!!.lat * PI / 180.0
-        val lon2 = activeMission!!.lon * PI / 180.0
-
-        val dlon = lon2 - lon1
-        val dlat = lat2 - lat1
-        val a = sin(dlat / 2).pow(2.0) + cos(lat1) * cos(lat2) * sin(dlon / 2).pow(2.0)
-        val c = 2 * asin(sqrt(a))
-        val r = 3956.0
-        c * r
-    }
-
-    val distanceMeters = (distanceMiles * 1609.34).toFloat()
-
-    val bearingDegrees = remember(agentLocation, activeMission) {
-        if (activeMission == null) return@remember 0f
-        val lat1 = agentLocation.first * PI / 180.0
-        val lon1 = agentLocation.second * PI / 180.0
-        val lat2 = activeMission!!.lat * PI / 180.0
-        val lon2 = activeMission!!.lon * PI / 180.0
-
-        val dLon = lon2 - lon1
-        val y = sin(dLon) * cos(lat2)
-        val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-        var brng = atan2(y, x) * 180.0 / PI
-        brng = (brng + 360.0) % 360.0
-        brng.toFloat()
-    }
-
-    val isUwbEngaged = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 15f
-
-    LaunchedEffect(missionState) {
-        if (missionState == "PENDING" && activeMission != null) {
-
-            // 🟢 NEW: Fire the Phase 2 ACK silently in the background
-            launch {
-                val taskId = activeMission?.taskId
-                if (!taskId.isNullOrBlank()) {
-                    apiClient.acknowledgeMission(taskId)
+                client.put("$FIREBASE_URL/agents/$secureUid/wallet/balance.json") {
+                    contentType(ContentType.Application.Json)
+                    setBody(newBalance.toString())
                 }
-            }
 
-            val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
-            val netPayout = rawBounty * 0.90f
-            val cleanBounty = if (netPayout % 1.0f == 0f) netPayout.toInt().toString() else netPayout.toString()
-            val cleanCategory = activeMission?.errorCode?.substringAfter(": ") ?: activeMission?.errorCode ?: "Unknown"
+                val txId = "tx_${System.currentTimeMillis()}"
 
-            audio.speak("Agent, Mission: $cleanCategory. 2.5 Miles Away. Payout, $cleanBounty dollars.", voiceVolume)
-
-            launch {
-                countdownProgress.snapTo(1f)
-                countdownProgress.animateTo(
-                    targetValue = 0f,
-                    animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
-                )
-                if (missionState == "PENDING") {
-                    // 🟢 THE FIX 2a: Restored timeout decline
-                    val currentTaskId = activeMission?.taskId
-                    if (!currentTaskId.isNullOrBlank()) {
-                        apiClient.declineMission(currentTaskId)
-                    }
-                    missionState = "IDLE"
-                    activeMission = null
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(missionState) { if (missionState == "ACTIVE") isMissionControlsExpanded = false }
-    LaunchedEffect(distanceMiles) { if (missionState == "ACTIVE" && distanceMiles <= 0.1) isMissionControlsExpanded = true }
-
-    val tacticalMapStyle = """[{"elementType":"geometry","stylers":[{"color":"#121212"}]},{"elementType":"labels.icon","stylers":[{"visibility":"off"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#EEEEEE"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#000000"},{"weight":3}]},{"featureType":"road","elementType":"geometry","stylers":[{"color":"#555555"}]}]"""
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF121212))
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF000000))
-                    .padding(end = 16.dp)
-                    .zIndex(10f),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(200.dp)
-                        .height(70.dp)
-                        .combinedClickable(onClick = {}, onLongClick = { showDevMenu = true })
+                val tx = TransactionLog(
+                    id = txId,
+                    date = "Today",
+                    amount = String.format("+$%.2f", netPayout),
+                    description = "Smart Contract Payout",
+                    evidenceUrls = evidenceUrls
                 )
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(if (isOnline) Color(0xFF4CAF50) else Color(0xFFF44336), CircleShape)
-                        )
-                        Text(
-                            text = if (isOnline) "ONLINE" else "OFFLINE",
-                            color = if (isOnline) Color(0xFF4CAF50) else Color(0xFFF44336),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(Color(0xFF333333), RoundedCornerShape(18.dp))
-                            .clickable { onNavigate("WALLET") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("ID", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            Box(modifier = Modifier.fillMaxWidth().weight(1f).background(Color(0xFF2A2A2A)), contentAlignment = Alignment.Center) {
-
-                AnimatedContent(
-                    targetState = isUwbEngaged,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(500)) togetherWith fadeOut(animationSpec = tween(500))
-                    },
-                    label = "map_to_uwb_transition"
-                ) { showUwb ->
-                    if (showUwb) {
-                        UwbHomingCompass(
-                            distanceMeters = distanceMeters,
-                            bearingDegrees = bearingDegrees,
-                            isRanging = true
-                        )
+                val txJson = org.json.JSONObject().apply {
+                    put("id", tx.id)
+                    put("date", tx.date)
+                    put("amount", tx.amount)
+                    put("description", tx.description)
+                    if (evidenceUrls.isEmpty()) {
+                        put("evidenceUrls", org.json.JSONObject.NULL)
                     } else {
-                        com.pan.tactical.ui.components.TacticalMap(
-                            modifier = Modifier.fillMaxSize(),
-                            targetLocation = agentLocation,
-                            mapStyleJson = tacticalMapStyle,
-                            route = tacticalRoute
+                        val array = org.json.JSONArray()
+                        evidenceUrls.forEach { array.put(it) }
+                        put("evidenceUrls", array)
+                    }
+                }.toString()
+
+                client.put("$FIREBASE_URL/agents/$secureUid/wallet/history/$txId.json") {
+                    contentType(ContentType.Application.Json)
+                    setBody(txJson)
+                }
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to claim escrow funds: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    override suspend fun getWalletData(): WalletResponse? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response: HttpResponse = client.get("$FIREBASE_URL/agents/$secureUid/wallet.json") {
+                    header(HttpHeaders.CacheControl, "no-cache")
+                }
+
+                val jsonString = response.bodyAsText()
+                if (jsonString == "null" || jsonString.isBlank()) {
+                    return@withContext WalletResponse(0.0, null, emptyList())
+                }
+
+                val json = org.json.JSONObject(jsonString)
+                val balance = json.optDouble("balance", 0.0)
+                val linkedCard = if (json.isNull("linkedCard")) null else json.optString("linkedCard")
+
+                val historyList = mutableListOf<TransactionLog>()
+                val historyObj = json.optJSONObject("history")
+
+                if (historyObj != null) {
+                    val keys = historyObj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val tx = historyObj.getJSONObject(key)
+
+                        val urls = mutableListOf<String>()
+                        val urlArray = tx.optJSONArray("evidenceUrls")
+                        if (urlArray != null) {
+                            for (i in 0 until urlArray.length()) {
+                                urls.add(urlArray.getString(i))
+                            }
+                        }
+
+                        historyList.add(
+                            TransactionLog(
+                                id = tx.optString("id", key),
+                                date = tx.optString("date", "Unknown"),
+                                amount = tx.optString("amount", "$0.00"),
+                                description = tx.optString("description", "Ledger Entry"),
+                                evidenceUrls = if (urls.isEmpty()) null else urls
+                            )
                         )
                     }
                 }
 
-                androidx.compose.animation.AnimatedVisibility(visible = missionState == "PENDING" && activeMission != null, enter = slideInVertically(initialOffsetY = { it }) + fadeIn(), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(), modifier = Modifier.fillMaxSize()) {
-                    MissionAlertOverlay(
-                        activeMission = activeMission,
-                        countdownProgress = countdownProgress.value,
-                        flashAlpha = flashAlpha,
-                        onAccept = {
-                            missionState = "ACTIVE"
-                            missionAcceptTime = getCurrentTimeMs()
-                            audio.stop()
+                historyList.sortByDescending { it.id }
 
-                            val targetLat = activeMission?.lat ?: 0.0
-                            val targetLon = activeMission?.lon ?: 0.0
-
-                            tacticalRoute = listOf(
-                                agentLocation,
-                                Pair(agentLocation.first + 0.015, agentLocation.second - 0.01),
-                                Pair(targetLat, targetLon)
-                            )
-
-                            try {
-                                uriHandler.openUri(getNativeMapUrl(targetLat, targetLon))
-                            } catch (e: Exception) {
-                                println("[NAVIGATION_ERROR] Failed to open native map: ${e.message}")
-                            }
-                        },
-                        onDecline = {
-                            // 🟢 THE FIX 2b: Restored explicit button decline
-                            val currentTaskId = activeMission?.taskId
-                            if (!currentTaskId.isNullOrBlank()) {
-                                coroutineScope.launch { apiClient.declineMission(currentTaskId) }
-                            }
-                            missionState = "IDLE"
-                            activeMission = null
-                            tacticalRoute = emptyList()
-                            audio.stop()
-                        }
-                    )
-                }
-
-                PostMissionOverlays(
-                    isUploadingProof = isUploadingProof,
-                    capturedEvidence = capturedEvidence,
-                    missionState = missionState,
-                    lastPayoutAmount = lastPayoutAmount,
-                    timeOnSceneMs = timeOnSceneMs,
-                    totalResponseTimeMs = totalResponseTimeMs,
-                    lastTxHash = lastTxHash,
-                    onReturnToPatrol = {
-                        lastPayoutAmount = 0.0; timeOnSceneMs = 0L; totalResponseTimeMs = 0L; lastTxHash = ""; sceneArrivalTime = 0L; missionAcceptTime = 0L
-                        tacticalRoute = emptyList()
-                        if (queuedMission != null) { activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE" }
-                        else { missionState = "IDLE"; activeMission = null }
-                    }
-                )
+                WalletResponse(balance, linkedCard, historyList)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to retrieve wallet data: ${e.message}", e)
+                null
             }
-
-            Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)), horizontalAlignment = Alignment.CenterHorizontally) {
-
-                AnimatedVisibility(visible = missionState == "ACTIVE", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                    Column(modifier = Modifier.fillMaxWidth().animateContentSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(modifier = Modifier.fillMaxWidth().clickable { isMissionControlsExpanded = !isMissionControlsExpanded }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) { Text(if (isMissionControlsExpanded) "▼ HIDE MISSION CONTROLS ▼" else "▲ SHOW MISSION CONTROLS ▲", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp) }
-                        if (isMissionControlsExpanded) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("ACTIVE MISSION: EN ROUTE", color = Color(0xFF00BCD4), fontSize = 14.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-                                Spacer(modifier = Modifier.height(8.dp)); Text(activeMission?.intersection ?: "Target Location", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text("Diagnostic: ${activeMission?.errorCode}", color = Color.LightGray, fontSize = 14.sp); Spacer(modifier = Modifier.height(16.dp))
-                                Button(
-                                    onClick = {
-                                        missionState = "ON_SCENE";
-                                        sceneArrivalTime = getCurrentTimeMs()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(64.dp).padding(bottom = 16.dp)
-                                ) { Text("ARRIVED AT SCENE", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp) }
-
-                                key(abortSliderResetKey) {
-                                    SwipeActionSlider(text = "SWIPE TO ABORT >>", trackColor = Color(0xFF2C2C2C), thumbColor = Color(0xFFD32F2F)) {
-                                        showAbortDialog = true
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                AnimatedVisibility(visible = missionState == "ON_SCENE", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                    OnSceneTerminal(
-                        activeMission = activeMission,
-                        capturedEvidence = capturedEvidence,
-                        hasCameraPermission = hasCameraPermission,
-                        onRequestCameraPermission = {
-                            hasCameraPermission = true
-                        },
-                        onCapturePhoto = {
-                            cameraManager.launchCamera()
-                        },
-                        onRemovePhoto = { index ->
-                            val mutableList = capturedEvidence.toMutableList()
-                            if (index in mutableList.indices) {
-                                mutableList.removeAt(index)
-                                capturedEvidence = mutableList
-                            }
-                        },
-                        onSubmitEvidence = { isUploadingProof = true }
-                    )
-                }
-
-                AnimatedVisibility(visible = missionState == "IDLE") {
-                    OfflineLoadoutMenu(
-                        isLoadoutExpanded = isLoadoutExpanded,
-                        onToggleExpand = { isLoadoutExpanded = !isLoadoutExpanded },
-                        patrolMode = patrolMode,
-                        onPatrolModeChange = { patrolMode = it },
-                        serviceRadiusMiles = serviceRadiusMiles,
-                        onRadiusChange = { serviceRadiusMiles = it },
-                        agentCapabilities = agentCapabilities,
-                        onCapabilitiesChange = { agentCapabilities = it }
-                    )
-                }
-
-                AnimatedVisibility(visible = missionState == "IDLE") {
-                    Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-                        if (isOnline) {
-                            SwipeActionSlider(text = "SWIPE TO GO OFFLINE >>", trackColor = Color(0xFF333333), thumbColor = Color(0xFFF44336)) {
-                                isProcessing = true
-                                coroutineScope.launch {
-                                    delay(800)
-                                    isOnline = false
-                                    missionState = "IDLE"
-                                    isProcessing = false
-                                }
-                            }
-                        } else {
-                            Button(
-                                enabled = !isProcessing,
-                                onClick = {
-                                    isProcessing = true
-                                    coroutineScope.launch {
-                                        delay(800)
-                                        isOnline = true
-
-                                        try {
-                                            apiClient.updateLocationTelemetry(agentLocation.first, agentLocation.second)
-                                        } catch (e: Exception) {
-                                            println("[TELEMETRY_ERROR] ${e.message}")
-                                        }
-
-                                        isProcessing = false
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), disabledContainerColor = Color(0xFF555555))
-                            ) { if (isProcessing) CircularProgressIndicator(color = Color.White) else Text("GO ONLINE", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp) }
-                        }
-                    }
-                }
-            }
-        }
-
-        AnimatedVisibility(
-            visible = currentScreen == "WALLET",
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
-            modifier = Modifier.fillMaxSize().zIndex(10f)
-        ) {
-            WalletAndProfileScreen(
-                apiClient = apiClient,
-                onBack = { onNavigate("DASHBOARD") },
-                navPreference = navPreference,
-                onNavPrefChange = { navPreference = it },
-                audioEngine = audio,
-                voiceVolume = voiceVolume,
-                onVoiceVolumeChange = { voiceVolume = it },
-                alertVolume = alertVolume,
-                onAlertVolumeChange = { alertVolume = it }
-            )
-        }
-
-        if (showDevMenu) {
-            AlertDialog(onDismissRequest = { showDevMenu = false }, containerColor = Color(0xFF1E1E1E), title = { Text("DEV: INJECT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
-                text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.432, -111.865, "scene_securement") }
-                        showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
-
-                    Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.385, -111.683, "spill_remediation") }
-                        showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Bio/Liquid Remediation (Tier 2)", color = Color.White) }
-
-                    Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.415, -111.831, "latch_fault") }
-                        showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
-
-                    Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(agentLocation.first + 0.00009, agentLocation.second, "uwb_calibration") }
-                        showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), modifier = Modifier.fillMaxWidth()) { Text("LOC 4: UWB Proximity Test (10m)", color = Color.Black, fontWeight = FontWeight.Bold) }
-                } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showDevMenu = false }) { Text("CLOSE", color = Color.Gray) } }
-            )
-        }
-
-        if (showAbortDialog) {
-            AlertDialog(onDismissRequest = { showAbortDialog = false; abortSliderResetKey++ }, containerColor = Color(0xFF1E1E1E), title = { Text("ABORT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
-                text = { Column { listOf("Too Dangerous", "Changed Mind", "Can't Find AV", "AV Leaving Scene", "Other").forEach { reason ->
-                    Button(onClick = {
-                        // 🟢 THE FIX 2c: Restored active abort decline
-                        val currentTaskId = activeMission?.taskId ?: queuedMission?.taskId
-                        if (!currentTaskId.isNullOrBlank()) {
-                            coroutineScope.launch { apiClient.declineMission(currentTaskId) }
-                        }
-                        showAbortDialog = false; missionState = "IDLE"; activeMission = null; queuedMission = null; abortSliderResetKey++
-                        missionAcceptTime = 0L; sceneArrivalTime = 0L
-                        tacticalRoute = emptyList()
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
-                } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }
-            )
         }
     }
+
+    override suspend fun linkDebitCard(cardNumber: String): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response: HttpResponse =
+                    client.put("$FIREBASE_URL/agents/$secureUid/wallet/linkedCard.json") {
+                        contentType(ContentType.Application.Json)
+                        setBody("\"$cardNumber\"")
+                    }
+                if (response.status.isSuccess()) {
+                    Result.success("Card linked to legacy wallet.")
+                } else {
+                    Result.failure(Exception("Network rejected card linking (HTTP ${response.status.value})"))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to link debit card: ${e.message}", e)
+                Result.failure(Exception("Connection to legacy network lost."))
+            }
+        }
+    }
+
+    override suspend fun withdrawFunds(amount: Double): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                client.put("$FIREBASE_URL/agents/$secureUid/wallet/balance.json") {
+                    contentType(ContentType.Application.Json)
+                    setBody("0.0")
+                }
+
+                val txId = "wd_${System.currentTimeMillis()}"
+
+                val txJson = org.json.JSONObject().apply {
+                    put("id", txId)
+                    put("date", "Today")
+                    put("amount", "-$${String.format("%.2f", amount)}")
+                    put("description", "ACH Bank Transfer")
+                    put("evidenceUrls", org.json.JSONObject.NULL)
+                }.toString()
+
+                client.put("$FIREBASE_URL/agents/$secureUid/wallet/history/$txId.json") {
+                    contentType(ContentType.Application.Json)
+                    setBody(txJson)
+                }
+                Result.success("Transfer recorded in legacy wallet.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to withdraw funds: ${e.message}", e)
+                Result.failure(Exception("Connection to legacy network lost."))
+            }
+        }
+    }
+
+    override suspend fun fetchActiveMissions(): List<MissionData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.get("$PAN_API_URL/agent/missions") {
+                    attachAgentSignature()
+                }
+                if (response.status.isSuccess()) {
+                    val jsonString = response.bodyAsText()
+                    val array = org.json.JSONArray(jsonString)
+                    val list = mutableListOf<MissionData>()
+                    
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        list.add(
+                            MissionData(
+                                lat = obj.optDouble("lat", obj.optDouble("latitude", 0.0)),
+                                lon = obj.optDouble("lon", obj.optDouble("longitude", 0.0)),
+                                errorCode = obj.optString("errorCode", obj.optString("error_code", "")),
+                                bounty = obj.optString("bounty", obj.optString("bounty_usd", "")),
+                                intersection = obj.optString("intersection", ""),
+                                taskId = obj.optString("taskId", obj.optString("task_id", ""))
+                            )
+                        )
+                    }
+                    list
+                } else {
+                    emptyList()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Fetch missions failed: ${e.message}")
+                emptyList()
+            }
+        }
+    }
+
+    override suspend fun acknowledgeMission(taskId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$PAN_API_URL/agent/missions/$taskId/ack") {
+                    attachAgentSignature() 
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "ACK failed: ${e.message}")
+                false
+            }
+        }
+    }
+
+    override suspend fun declineMission(taskId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$PAN_API_URL/agent/missions/$taskId/decline") {
+                    attachAgentSignature() 
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Decline failed: ${e.message}")
+                false
+            }
+        }
+    }
+
+    override suspend fun completeMission(taskId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$PAN_API_URL/agent/missions/$taskId/complete") {
+                    attachAgentSignature()
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        MissionCompletePayload(
+                            agent_id = secureUid,
+                            netPayout = 0.0,
+                            evidence_urls = emptyList(),
+                            hardware_attestation_token = "dev-bypass"
+                        )
+                    )
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to complete mission: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    override suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String> =
+        Result.failure(Exception("Not implemented in PanApiClient"))
+
+    fun close() = client.close()
 }

@@ -1,3 +1,6 @@
+// TODO: Remove suppression once KMP BuildConfig visibility is confirmed PUBLIC via gmazzo plugin.
+// Track against build.gradle.kts visibility(BuildConfigVisibility.PUBLIC) fix.
+@file:Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
 package com.pan.tactical.network
 
 import android.util.Log
@@ -37,24 +40,6 @@ data class LinkCardPayload(val card_number: String)
 data class WithdrawPayload(val amount: Double)
 
 @Serializable
-data class V2XDistressPayload(
-    val vin: String,
-    val fault_code: String,
-    val latitude: Double,
-    val longitude: Double,
-    val bounty_usd: Double,
-    val timestamp: Long
-)
-
-@Serializable
-data class TelemetryPayload(
-    val agent_id: String,
-    val latitude: Double,
-    val longitude: Double,
-    val status: String
-)
-
-@Serializable
 data class NetworkTransactionLog(
     val id: String,
     val date: String,
@@ -68,14 +53,6 @@ data class NetworkWalletResponse(
     val balance: Double = 0.0,
     val linkedCard: String? = null,
     val history: List<NetworkTransactionLog> = emptyList()
-)
-
-@Serializable
-data class MissionCompletePayload(
-    val agent_id: String,
-    val netPayout: Double,
-    val evidence_urls: List<String>,
-    val hardware_attestation_token: String
 )
 
 class PanWalletClient : WalletNetworkClient {
@@ -96,6 +73,7 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
+    // 🟢 THE FIX: Wired securely and directly back to the public BuildConfig
     private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val baseUrl = "$hostUrl/api/v1/wallet"
 
@@ -103,16 +81,14 @@ class PanWalletClient : WalletNetworkClient {
         get() = FirebaseAuth.getInstance().currentUser?.uid
             ?: throw IllegalStateException("Agent identity missing. Cannot execute network operations.")
 
-    // 🟢 THE FIX 1: In-memory cache for the hardware JWT to prevent TPM thrashing
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
 
     private fun getFreshJwt(): String {
         val now = System.currentTimeMillis() / 1000
-        // Refresh the token if it doesn't exist or is within 30 seconds of expiring
         if (cachedJwt == null || now >= jwtExpiresAt - 30) {
             cachedJwt = StrongBoxManager().generateJwt(secureUid)
-            jwtExpiresAt = now + 300 // Standard 5-minute TTL
+            jwtExpiresAt = now + 300 
         }
         return cachedJwt!!
     }
@@ -324,6 +300,20 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
+    override suspend fun acknowledgeMission(taskId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/ack") {
+                    attachAgentSignature()
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to acknowledge mission: ${e.message}", e)
+                false
+            }
+        }
+    }
+
     override suspend fun declineMission(taskId: String): Boolean {
         return withContext(Dispatchers.IO) {
             Log.w(TAG, "🔴 UI CLICKED DECLINE! Sending Task ID: '$taskId' to backend...")
@@ -355,7 +345,7 @@ class PanWalletClient : WalletNetworkClient {
                     setBody(
                         MissionCompletePayload(
                             agent_id = secureUid,
-                            netPayout = 0.0, // 🟢 THE FIX 2: Trust boundary enforced. Backend must calculate payout.
+                            netPayout = 0.0, 
                             evidence_urls = emptyList(),
                             hardware_attestation_token = "dev-bypass"
                         )
