@@ -91,7 +91,9 @@ fun KeyCeremonyScreen(
 
                             // Step C: Verify device integrity with Google
                             val playIntegrity = PlayIntegrityManager(context)
-                            val token = playIntegrity.fetchAttestationToken()
+                            
+                            // 🟢 THE FIX: Pass identity bindings to the attestation request
+                            val token = playIntegrity.fetchAttestationToken(agentId, publicKeyB64)
 
                             // 🟢 THE FIX 2: Transmit the Google Play token to the PAN Backend
                             val result = apiClient.registerHardwareKey(agentId, publicKeyB64, token)

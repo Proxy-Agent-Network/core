@@ -5,6 +5,15 @@ import secrets
 import time
 import re
 import logging
+import base64
+import hashlib
+import asyncio
+from functools import partial
+
+# 🟢 THE FIX: Added Google SDK imports for server-to-server token verification
+import google.auth
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 logger = logging.getLogger("PAN_Onboarding")
 router = APIRouter()
@@ -28,6 +37,64 @@ class KeyRegistrationPayload(BaseModel):
     agent_id: str
     public_key_b64: str
     play_integrity_token: str # Server-side requirement for device attestation
+
+# --- HELPERS ---
+
+def verify_play_integrity_token(token: str, expected_agent_id: str, expected_public_key: str):
+    """
+    Verifies the Play Integrity token with Google's servers and ensures the 
+    cryptographic nonce matches the requested hardware key to prevent replay attacks.
+    """
+    # Recreate the expected nonce exactly as Android generated it: SHA256(agent_id + pub_key)
+    payload_str = f"{expected_agent_id}{expected_public_key}"
+    digest = hashlib.sha256(payload_str.encode('utf-8')).digest()
+    
+    # URL-Safe Base64 encode without newlines (matches Android's NO_WRAP | URL_SAFE)
+    expected_nonce = base64.urlsafe_b64encode(digest).decode('utf-8').replace('\n', '')
+
+    package_name = os.getenv("ANDROID_PACKAGE_NAME", "network.proxyagent.pantactical")
+
+    try:
+        # Assumes Application Default Credentials (ADC) are configured on the server
+        credentials, _ = google.auth.default()
+        service = build('playintegrity', 'v1', credentials=credentials)
+        
+        body = {"integrityToken": token}
+        request = service.v1().decodeIntegrityToken(packageName=package_name, body=body)
+        response = request.execute() # Synchronous, blocking network call
+        
+        token_payload = response.get("tokenPayloadExternal", {})
+        request_details = token_payload.get("requestDetails", {})
+        app_integrity = token_payload.get("appIntegrity", {})
+        device_integrity = token_payload.get("deviceIntegrity", {})
+        
+        # 1. Verify Nonce Binding
+        if request_details.get("nonce") != expected_nonce:
+            logger.critical(f"🛑 REPLAY ATTACK BLOCKED: Nonce mismatch for agent {expected_agent_id}.")
+            raise HTTPException(status_code=401, detail="Cryptographic binding invalid. Replay attack detected.")
+            
+        # 2. Verify App Integrity (Not a spoofed or tampered APK)
+        if app_integrity.get("appRecognitionVerdict") != "PLAY_RECOGNIZED":
+            logger.warning(f"🚨 UNRECOGNIZED APP: Agent {expected_agent_id} attempted registration from an unknown binary.")
+            raise HTTPException(status_code=401, detail="App binary not recognized by Play Protect.")
+            
+        # 3. Verify Device Integrity (Not rooted or emulated)
+        device_verdicts = device_integrity.get("deviceRecognitionVerdict", [])
+        if "MEETS_STRONG_INTEGRITY" not in device_verdicts and "MEETS_DEVICE_INTEGRITY" not in device_verdicts:
+            logger.warning(f"🚨 COMPROMISED DEVICE: Agent {expected_agent_id} failed device integrity checks: {device_verdicts}")
+            raise HTTPException(status_code=401, detail="Device failed hardware integrity checks. Emulators/Rooted devices are banned.")
+            
+        return True
+        
+    except HttpError as e:
+        logger.error(f"Google API Error during Play Integrity verification: {e}")
+        raise HTTPException(status_code=502, detail="Failed to communicate with attestation servers.")
+    except google.auth.exceptions.DefaultCredentialsError:
+        # Dev fallback warning if GCP isn't configured locally
+        if os.getenv("ENVIRONMENT") == "production":
+            raise HTTPException(status_code=500, detail="Server misconfiguration: ADC missing.")
+        logger.warning("⚠️ Bypassing Google Play Integrity check locally. ADC missing.")
+        return True
 
 # --- ENDPOINTS ---
 
@@ -130,6 +197,17 @@ async def register_public_key(payload: KeyRegistrationPayload, request: Request)
     if not agent_exists:
         raise HTTPException(status_code=404, detail="Agent identity not found.")
         
+    # 🟢 THE FIX: Cryptographically verify the device and key binding without blocking the event loop
+    await asyncio.get_event_loop().run_in_executor(
+        None,
+        partial(
+            verify_play_integrity_token,
+            token=payload.play_integrity_token,
+            expected_agent_id=payload.agent_id,
+            expected_public_key=payload.public_key_b64
+        )
+    )
+        
     # Anti-Hijacking Guard: Do not allow an existing key to be silently overwritten.
     # If an agent loses their phone, they must go through the /ops/hardware-reset workflow.
     if await redis_client.exists(f"pan:agent:{payload.agent_id}:pubkey"):
@@ -137,8 +215,6 @@ async def register_public_key(payload: KeyRegistrationPayload, request: Request)
         
     await redis_client.set(f"pan:agent:{payload.agent_id}:pubkey", payload.public_key_b64)
     
-    # 🟢 THE FIX: Corrected log and documented the technical debt
-    logger.info(f"🔑 Key Ceremony Complete: {payload.agent_id} bound to hardware TPM.") 
-    # TODO: Verify play_integrity_token against Google Play Integrity API before production scale
+    logger.info(f"🔑 Key Ceremony Complete: {payload.agent_id} bound to hardware TPM with Google Play verification.") 
     
     return {"status": "success", "message": "Hardware key successfully bound to identity."}

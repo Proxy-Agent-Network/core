@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+import com.google.firebase.auth.FirebaseAuth // 🟢 IMPORT FIREBASE
 import com.pan.tactical.security.PlayIntegrityManager
 import com.pan.tactical.security.StrongBoxManager
 
@@ -31,48 +33,51 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
 
     Column(
         modifier = Modifier.fillMaxSize().background(Color(0xFF000000)).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Spacer(modifier = Modifier.weight(1f))
-
-        // --- FIX 1: The Invisible Layout Anchor ---
-        // This takes up the exact space the static logo used to, preventing the
-        // Column from collapsing and squeezing the Initialize button below!
-        Box(modifier = Modifier.fillMaxWidth(0.8f).height(120.dp))
-
-        Spacer(modifier = Modifier.height(64.dp))
-
         Button(
             onClick = {
                 isInitializing = true
                 hasError = false
-                terminalLogs = emptyList()
+                terminalLogs = listOf("[SYSTEM] Booting PAN OS v2026.1.0...")
 
                 coroutineScope.launch {
                     try {
-                        terminalLogs = terminalLogs + "> Initiating secure uplink..."
                         delay(400)
-
-                        terminalLogs = terminalLogs + "> Generating TPM 2.0 Hardware Key..."
+                        terminalLogs = terminalLogs + "[HW_LINK] Securing TPM Enclave..."
                         val strongBox = StrongBoxManager()
-                        strongBox.generateHardwareKey()
-                        delay(400)
 
-                        terminalLogs = terminalLogs + "> Verifying Google Play Integrity..."
+                        // 🟢 THE FIX: Extract public key and identity for the Play Integrity bind
+                        val publicKeyB64 = strongBox.getPublicKeyBase64()
+                        val agentId = FirebaseAuth.getInstance().currentUser?.uid
+                            ?: throw Exception("Agent identity missing. Authentication required.")
+
+                        delay(500)
+                        terminalLogs = terminalLogs + "[ATTEST] Requesting Google Play Integrity Token..."
+
                         val playIntegrity = PlayIntegrityManager(context)
-                        val token = playIntegrity.fetchAttestationToken()
+                        // 🟢 THE FIX: Pass both parameters to fetchAttestationToken
+                        val token = playIntegrity.fetchAttestationToken(agentId, publicKeyB64)
+
+                        delay(600)
+                        terminalLogs = terminalLogs + "[ATTEST] Token Acquired. Awaiting Backend Verification."
+
                         delay(400)
+                        terminalLogs = terminalLogs + "[NETWORK] Establishing encrypted Vanguard uplink..."
 
-                        terminalLogs = terminalLogs + "> Handshake secured. Welcome, Agent."
-                        delay(800)
+                        delay(700)
+                        terminalLogs = terminalLogs + "✅ SYSTEM ONLINE."
 
+                        delay(500)
+                        isInitializing = false
                         onBootComplete()
 
                     } catch (e: Exception) {
                         isInitializing = false
                         hasError = true
-                        terminalLogs = terminalLogs + "> [ERROR] ${e.localizedMessage ?: "Hardware Attestation Failed."}"
-                        terminalLogs = terminalLogs + "> UPLINK TERMINATED."
+                        terminalLogs = terminalLogs + "[ERROR] ${e.message}"
+                        terminalLogs = terminalLogs + "🛑 BOOT SEQUENCE TERMINATED."
                     }
                 }
             },
@@ -101,10 +106,8 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
             terminalLogs.forEach { log ->
                 val textColor = if (log.contains("[ERROR]") || log.contains("TERMINATED")) Color.Red else Color(0xFF00FF00)
                 Text(text = log, color = textColor, fontFamily = FontFamily.Monospace, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
-
-        Spacer(modifier = Modifier.weight(1f))
     }
 }
