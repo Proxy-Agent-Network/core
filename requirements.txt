@@ -1,23 +1,29 @@
-flask
+# API & Server
+fastapi
+uvicorn
+pydantic
+
+# Redis
+redis>=5.0.0
+
+# HTTP Clients
+aiohttp>=3.9.0
+httpx
 requests
+
+# LND gRPC (Lightning Engine)
 grpcio
 grpcio-tools
 googleapis-common-protos
-mcp
-duckduckgo-search
-ddgs
-uvicorn
-langchain
-langchain-community
-langgraph
-langchain-google-genai
-faiss-cpu
-pypdf
-httpx
-streamlit
-qrcode[pil]==7.4.2
-pillow
-psycopg2-binary==2.9.9
-bleach
+
+# Google APIs (Play Integrity + Gemini)
 google-api-python-client==2.118.0
 google-auth==2.28.0
+google-genai
+
+# Security & Cryptography
+cryptography>=41.0.0
+pynacl
+
+# Imaging (Evidence Upload)
+pillow
