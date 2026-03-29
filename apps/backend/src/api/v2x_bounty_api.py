@@ -23,6 +23,8 @@ class DistressPayload(BaseModel):
     latitude: float
     longitude: float
     bounty_usd: float = 25.0
+    # 🟢 THE FIX: Accept the OSM Color Taxonomy directly from the Fleet Partner
+    osm_color: str = "GREEN" 
 
 class MissionCompletePayload(BaseModel):
     agent_id: str
@@ -61,6 +63,7 @@ async def receive_distress_signal(
             
         task_id = f"tsk_{uuid.uuid4().hex[:12]}"
         
+        # 🟢 THE FIX: Lock the original base bounty and OSM color into the task record
         task_record = {
             "fleet_id": fleet_id,
             "vin": payload.vin,
@@ -68,6 +71,8 @@ async def receive_distress_signal(
             "lat": payload.latitude,
             "lon": payload.longitude,
             "bounty_usd": payload.bounty_usd,
+            "base_bounty_usd": payload.bounty_usd, 
+            "osm_color": payload.osm_color.upper(),
             "timestamp": int(time.time()),
             "status": "pending"
         }
@@ -82,10 +87,11 @@ async def receive_distress_signal(
             "lat": payload.latitude,
             "lon": payload.longitude,
             "bounty_usd": payload.bounty_usd,
+            "osm_color": payload.osm_color.upper(),
             "sla_status": "OK"
         }))
         
-        logger.info(f"🚨 [V2X ALERT] Fleet: {fleet_id} | VIN: {payload.vin} | Fault: {payload.fault_code}")
+        logger.info(f"🚨 [V2X ALERT] Fleet: {fleet_id} | VIN: {payload.vin} | Fault: {payload.fault_code} | OSM: {payload.osm_color.upper()}")
         return {"status": "success", "task_id": task_id}
         
     except HTTPException:
@@ -118,7 +124,8 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
                     "lon": float(mission.get("lon", 0.0)),
                     "errorCode": str(mission.get("fault_code", "Unknown Fault")),
                     "bounty": f"${float(mission.get('bounty_usd', 25.0)):.2f}", 
-                    "intersection": str(mission.get("vin", "Target Location"))
+                    "intersection": str(mission.get("vin", "Target Location")),
+                    "osmColor": str(mission.get("osm_color", "GREEN")).upper()
                 })
         if cursor == 0:
             break
