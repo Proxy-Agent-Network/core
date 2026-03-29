@@ -10,4 +10,7 @@ data class OobHandshakeResult(
 interface BleHomingClient {
     suspend fun executeOobHandshake(missionId: String): OobHandshakeResult
     fun stopScanning()
+    
+    // 🟢 THE FIX: Required for GATT connection and BLE adapter cleanup
+    fun close()
 }
