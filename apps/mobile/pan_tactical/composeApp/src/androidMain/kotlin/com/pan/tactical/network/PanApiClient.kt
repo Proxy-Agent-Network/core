@@ -6,7 +6,7 @@ package com.pan.tactical.network
 import android.graphics.Bitmap
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
-import com.pan.tactical.BuildConfig 
+import com.pan.tactical.BuildConfig
 import com.pan.tactical.models.MissionData
 import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.WalletNetworkClient
@@ -74,7 +74,7 @@ class PanApiClient : WalletNetworkClient {
     private val client = HttpClient(OkHttp) {
         engine {
             config {
-                // 🟢 THE FIX: Standardized timeout to prevent silent hangs
+                // Standardized timeout to prevent silent hangs
                 connectTimeout(3, TimeUnit.SECONDS)
                 readTimeout(3, TimeUnit.SECONDS)
             }
@@ -99,7 +99,7 @@ class PanApiClient : WalletNetworkClient {
         val now = System.currentTimeMillis() / 1000
         if (cachedJwt == null || now >= jwtExpiresAt - 30) {
             cachedJwt = StrongBoxManager().generateJwt(secureUid)
-            jwtExpiresAt = now + 300 
+            jwtExpiresAt = now + 300
         }
         return cachedJwt!!
     }
@@ -260,7 +260,7 @@ class PanApiClient : WalletNetworkClient {
     suspend fun uploadEvidenceArray(bitmaps: List<Bitmap>): List<String> {
         return withContext(Dispatchers.IO) {
             val uploadedUrls = mutableListOf<String>()
-            val relayApiKey = BuildConfig.IMGBB_API_KEY 
+            val relayApiKey = BuildConfig.IMGBB_API_KEY
 
             if (relayApiKey.isEmpty()) {
                 Log.e(TAG, "IMGBB_API_KEY not configured. Evidence upload skipped to prevent false-positive compliance checks.")
@@ -296,10 +296,10 @@ class PanApiClient : WalletNetworkClient {
     }
 
     // --- SPLIT-BRAIN GUARDRAILS ---
-    
+
     override suspend fun getWalletData(): WalletResponse? {
         Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error: PanApiClient does not support secure ledger operations. Use PanWalletClient.")
-        return null 
+        return null
     }
 
     override suspend fun linkDebitCard(cardNumber: String): Result<String> {
@@ -324,7 +324,7 @@ class PanApiClient : WalletNetworkClient {
                     val jsonString = response.bodyAsText()
                     val array = org.json.JSONArray(jsonString)
                     val list = mutableListOf<MissionData>()
-                    
+
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)
                         list.add(
@@ -353,7 +353,7 @@ class PanApiClient : WalletNetworkClient {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/ack") {
-                    attachAgentSignature() 
+                    attachAgentSignature()
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -367,7 +367,7 @@ class PanApiClient : WalletNetworkClient {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/decline") {
-                    attachAgentSignature() 
+                    attachAgentSignature()
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -377,7 +377,8 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    override suspend fun completeMission(taskId: String): Boolean {
+    // 🟢 THE FIX: evidenceUrls parameter properly plumbed into payload
+    override suspend fun completeMission(taskId: String, evidenceUrls: List<String>): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/complete") {
@@ -387,8 +388,7 @@ class PanApiClient : WalletNetworkClient {
                         MissionCompletePayload(
                             agent_id = secureUid,
                             netPayout = 0.0,
-                            evidence_urls = emptyList(),
-                            // 🟢 THE FIX: Cryptographically bound to the hardware TPM
+                            evidence_urls = evidenceUrls,
                             hardware_attestation_token = StrongBoxManager().generateJwt(secureUid)
                         )
                     )

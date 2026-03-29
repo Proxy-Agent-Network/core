@@ -88,7 +88,7 @@ class PanWalletClient : WalletNetworkClient {
         val now = System.currentTimeMillis() / 1000
         if (cachedJwt == null || now >= jwtExpiresAt - 30) {
             cachedJwt = StrongBoxManager().generateJwt(secureUid)
-            jwtExpiresAt = now + 300 
+            jwtExpiresAt = now + 300
         }
         return cachedJwt!!
     }
@@ -335,7 +335,8 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    override suspend fun completeMission(taskId: String): Boolean {
+    // 🟢 THE FIX: evidenceUrls parameter properly plumbed into payload
+    override suspend fun completeMission(taskId: String, evidenceUrls: List<String>): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/complete") {
@@ -345,8 +346,8 @@ class PanWalletClient : WalletNetworkClient {
                     setBody(
                         MissionCompletePayload(
                             agent_id = secureUid,
-                            netPayout = 0.0, 
-                            evidence_urls = emptyList(),
+                            netPayout = 0.0,
+                            evidence_urls = evidenceUrls,
                             // 🟢 THE FIX: Cryptographically bound to the hardware TPM
                             hardware_attestation_token = StrongBoxManager().generateJwt(secureUid)
                         )

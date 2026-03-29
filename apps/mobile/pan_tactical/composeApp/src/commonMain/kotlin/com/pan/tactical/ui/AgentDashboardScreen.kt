@@ -43,11 +43,15 @@ import com.pan.tactical.getNativeMapUrl
 import com.pan.tactical.rememberSharedCameraManager
 import com.pan.tactical.rememberSharedLocationManager
 import com.pan.tactical.rememberUwbClient
+import com.pan.tactical.rememberBleHomingClient // 🟢 NEW KMP HOOK
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
 @Composable
-fun AgentDashboardScreen(apiClient: WalletNetworkClient) {
+fun AgentDashboardScreen(
+    apiClient: WalletNetworkClient,
+    uploadEvidence: suspend (List<ByteArray>) -> List<String> = { emptyList() }
+) {
     var appState by rememberSaveable { mutableStateOf("BOOT") }
     var currentScreen by rememberSaveable { mutableStateOf("DASHBOARD") }
 
@@ -71,7 +75,8 @@ fun AgentDashboardScreen(apiClient: WalletNetworkClient) {
                 "RUNNING" -> MainDashboardContent(
                     apiClient = apiClient,
                     currentScreen = currentScreen,
-                    onNavigate = { currentScreen = it }
+                    onNavigate = { currentScreen = it },
+                    uploadEvidence = uploadEvidence
                 )
             }
         }
@@ -140,7 +145,8 @@ fun AgentDashboardScreen(apiClient: WalletNetworkClient) {
 fun MainDashboardContent(
     apiClient: WalletNetworkClient,
     currentScreen: String,
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    uploadEvidence: suspend (List<ByteArray>) -> List<String>
 ) {
     val coroutineScope = rememberCoroutineScope()
     val audio = remember { AudioEngine() }
@@ -149,10 +155,14 @@ fun MainDashboardContent(
     val uwbClient = rememberUwbClient()
     val uwbRangingState by uwbClient.rangingState.collectAsState()
 
+    // 🟢 NEW: BLE Handshake Client
+    val bleClient = rememberBleHomingClient()
+
     DisposableEffect(Unit) {
         onDispose {
             audio.shutdown()
             uwbClient.close()
+            bleClient.stopScanning()
         }
     }
 
@@ -171,6 +181,12 @@ fun MainDashboardContent(
     var showAbortDialog by rememberSaveable { mutableStateOf(false) }
     var showDevMenu by rememberSaveable { mutableStateOf(false) }
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
+
+    // 🟢 SECURITY: Ephemeral storage. We intentionally avoid rememberSaveable so session keys never hit disk.
+    var avUwbMacAddress by remember { mutableStateOf<String?>(null) }
+    var avUwbSessionKey by remember { mutableStateOf<ByteArray?>(null) }
+    var isBleHandshakeComplete by remember { mutableStateOf(false) }
+    var isBleScanning by remember { mutableStateOf(false) }
 
     val MissionDataSaver = Saver<MissionData?, String>(
         save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bounty}|${data.intersection}|${data.taskId}" } ?: "" },
@@ -290,7 +306,8 @@ fun MainDashboardContent(
             return@LaunchedEffect
         }
 
-        val success = apiClient.completeMission(currentTaskId)
+        val uploadedUrls = uploadEvidence(capturedEvidence)
+        val success = apiClient.completeMission(taskId = currentTaskId, evidenceUrls = uploadedUrls)
 
         if (success) {
             val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
@@ -346,11 +363,51 @@ fun MainDashboardContent(
         brng.toFloat()
     }
 
-    val isUwbEngaged = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 15f
+    // 🟢 NEW: Cryptographic Two-Stage Zones
+    val isBleZone = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 50f
+    val isUwbZone = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 15f
+    val isUwbEngaged = isUwbZone && isBleHandshakeComplete
 
+    // 🟢 STAGE 1: 50-Meter BLE Handshake
+    LaunchedEffect(isBleZone, activeMission?.taskId) {
+        if (isBleZone && !isBleHandshakeComplete && !isBleScanning) {
+            val currentTaskId = activeMission?.taskId
+            if (!currentTaskId.isNullOrBlank()) {
+                isBleScanning = true
+                try {
+                    audio.speak("Approaching target. Initiating secure B L E handshake.", voiceVolume)
+
+                    val result = bleClient.executeOobHandshake(missionId = currentTaskId)
+
+                    if (result.success && result.uwbMacAddress != null && result.secureSessionKey != null) {
+                        avUwbMacAddress = result.uwbMacAddress
+                        avUwbSessionKey = result.secureSessionKey
+                        isBleHandshakeComplete = true
+                        audio.speak("Handshake verified. Micro-homing credentials secured.", voiceVolume)
+                    } else {
+                        audio.speak("Handshake failed. Move closer and re-approach target.", voiceVolume)
+                    }
+                } catch (e: Exception) {
+                    println("[BLE_ERROR] Handshake crashed: ${e.message}")
+                } finally {
+                    isBleScanning = false
+                }
+            }
+        } else if (!isBleZone && isBleHandshakeComplete) {
+            // Agent left the 50m zone, invalidate the session
+            isBleHandshakeComplete = false
+            avUwbMacAddress = null
+            avUwbSessionKey = null
+        }
+    }
+
+    // 🟢 STAGE 2: 15-Meter UWB Ranging
     LaunchedEffect(isUwbEngaged) {
-        if (isUwbEngaged) {
-            uwbClient.startRanging("DEV-MAC-12:34", byteArrayOf(0x01))
+        val mac = avUwbMacAddress
+        val key = avUwbSessionKey
+
+        if (isUwbEngaged && mac != null && key != null) {
+            uwbClient.startRanging(avMacAddress = mac, secureSessionKey = key)
         } else {
             uwbClient.stopRanging()
         }
@@ -520,6 +577,12 @@ fun MainDashboardContent(
                     onReturnToPatrol = {
                         lastPayoutAmount = 0.0; timeOnSceneMs = 0L; totalResponseTimeMs = 0L; lastTxHash = ""; sceneArrivalTime = 0L; missionAcceptTime = 0L
                         tacticalRoute = emptyList()
+
+                        // 🟢 SECURITY RESET: Scrub BLE Keys
+                        isBleHandshakeComplete = false
+                        avUwbMacAddress = null
+                        avUwbSessionKey = null
+
                         if (queuedMission != null) {
                             activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
                             // TODO: BleHapHatService — Map queued activation → WHITE SOLID
@@ -690,6 +753,12 @@ fun MainDashboardContent(
                         showAbortDialog = false; missionState = "IDLE"; activeMission = null; queuedMission = null; abortSliderResetKey++
                         missionAcceptTime = 0L; sceneArrivalTime = 0L
                         tacticalRoute = emptyList()
+
+                        // 🟢 SECURITY RESET: Scrub BLE Keys
+                        isBleHandshakeComplete = false
+                        avUwbMacAddress = null
+                        avUwbSessionKey = null
+
                         // TODO: BleHapHatService — Map mission abort → LED OFF
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
                 } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }

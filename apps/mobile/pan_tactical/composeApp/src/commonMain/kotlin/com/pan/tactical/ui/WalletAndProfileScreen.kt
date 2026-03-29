@@ -45,7 +45,9 @@ interface WalletNetworkClient {
     suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean
     suspend fun declineMission(taskId: String): Boolean
     suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData>
-    suspend fun completeMission(taskId: String): Boolean
+
+    // 🟢 THE FIX: Added evidenceUrls parameter for SB 1417 Compliance
+    suspend fun completeMission(taskId: String, evidenceUrls: List<String> = emptyList()): Boolean
 
     // 🟢 UPDATED: Included playIntegrityToken in the interface contract
     suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String>
