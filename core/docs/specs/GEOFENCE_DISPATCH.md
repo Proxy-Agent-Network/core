@@ -41,7 +41,7 @@ The PAN network is deterministic and unforgiving regarding SLA breaches.
   1. The L402 HODL invoice is automatically cancelled.
   2. The task is instantly re-routed to a secondary Agent (often utilizing Surge Pricing to guarantee immediate pickup).
   3. The at-fault Agent suffers a severe **Reputation Slash**.
-* **Vanguard Revocation:** Agents who drop below a 98% SLA adherence rate are permanently demoted and lose access to Tier-1 Fleet API interventions.
+* **Vanguard Revocation:** Agents who drop below a 50% SLA adherence rate will be temporarily demoted and lose access to some categories.
 
 ## 5. Network Surges & Density Thresholds
 
