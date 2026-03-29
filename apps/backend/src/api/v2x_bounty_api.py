@@ -10,6 +10,7 @@ from redis.exceptions import WatchError
 from utils.webhook_auth import verify_v2x_signature
 from compliance.audit_engine import ComplianceEngine
 from utils.auth import verify_agent_signature
+from core.economics.escrow_oracle import EscrowOracle
 
 logger = logging.getLogger("V2X_Bounty_API")
 router = APIRouter()
@@ -25,9 +26,22 @@ class DistressPayload(BaseModel):
 
 class MissionCompletePayload(BaseModel):
     agent_id: str
-    netPayout: float # Kept in schema for backwards compatibility but ignored by backend math
+    netPayout: float 
     evidence_urls: list = []
     hardware_attestation_token: str = ""
+    av_signature_hex: str = ""
+
+# --- HELPER ---
+
+def decode_redis_hash(raw_hash: dict) -> dict:
+    """Safely decodes Redis byte hashes into strings."""
+    if not raw_hash:
+        return {}
+    return {
+        k.decode('utf-8') if isinstance(k, bytes) else k: 
+        v.decode('utf-8') if isinstance(v, bytes) else v 
+        for k, v in raw_hash.items()
+    }
 
 # --- ENDPOINTS ---
 
@@ -41,7 +55,6 @@ async def receive_distress_signal(
     try:
         redis_client = request.app.state.redis_client
         
-        # Restored Dedup Guard to prevent AV replay attacks
         dedup_key = f"pan:dedup:{payload.vin}:{payload.fault_code}"
         if not await redis_client.set(dedup_key, "active", nx=True, ex=300):
             raise HTTPException(status_code=409, detail="Duplicate task already active.")
@@ -60,11 +73,8 @@ async def receive_distress_signal(
         }
         
         await redis_client.hset(f"pan:task:{task_id}", mapping=task_record)
-        
-        # Maintained rpush for correct FIFO dispatch queueing
         await redis_client.rpush("pan:dispatch:active_tasks", task_id)
         
-        # Broadcast to Ops Hub map
         await redis_client.publish("pan:stream:distress_alerts", json.dumps({
             "task_id": task_id,
             "vin": payload.vin,
@@ -94,10 +104,13 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
     while True:
         cursor, keys = await redis_client.scan(cursor=cursor, match="mission:active:*", count=100)
         for key in keys:
-            mission = await redis_client.hgetall(key)
+            raw_mission = await redis_client.hgetall(key)
+            mission = decode_redis_hash(raw_mission)
+            
             if mission and mission.get("agent_id") == agent_id:
-                
-                task_id = key.split("mission:active:")[-1] 
+                # Handle bytes key splitting just in case
+                key_str = key.decode("utf-8") if isinstance(key, bytes) else key
+                task_id = key_str.split("mission:active:")[-1] 
                 
                 active_missions.append({
                     "taskId": task_id,
@@ -121,50 +134,65 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
     try:
         redis_client = request.app.state.redis_client
         
-        # 1. Grab task details for the compliance report
-        task_data = await redis_client.hgetall(f"pan:task:{task_id}")
-        if not task_data:
+        # 1. Grab task details
+        raw_task_data = await redis_client.hgetall(f"pan:task:{task_id}")
+        if not raw_task_data:
             raise HTTPException(status_code=404, detail="Task not found.")
             
-        # 🟢 NEW: IDOR Guard - Verify the agent completing the mission actually owns it
+        task_data = decode_redis_hash(raw_task_data)
+            
+        # IDOR Guard
         mission_key = f"mission:active:{task_id}"
-        mission_data = await redis_client.hgetall(mission_key)
+        raw_mission_data = await redis_client.hgetall(mission_key)
+        mission_data = decode_redis_hash(raw_mission_data)
+        
         if mission_data and mission_data.get("agent_id") != agent_id:
             logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to snipe mission {task_id} assigned to {mission_data.get('agent_id')}.")
             raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
         vin = task_data.get("vin", "UNKNOWN_VIN")
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
+        payment_hash = task_data.get("payment_hash")
         
-        # Trust boundary enforcement. Backend securely calculates the final payout.
-        raw_bounty = float(task_data.get("bounty_usd", 25.0))
-        actual_payout = round(raw_bounty * 0.90, 2) # Agent earns 90% cut of the escrow
+        if not payment_hash:
+            raise HTTPException(status_code=500, detail="Fatal: Mission lacks escrow payment hash.")
         
-        if payload.netPayout != 0.0:
-            logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to submit a client-side payout of ${payload.netPayout:.2f}. Overriding with server truth: ${actual_payout:.2f}")
+        # Zero-Trust Validation
+        oracle = request.app.state.escrow_oracle
+        oracle_verdict = await oracle.finalize_task(
+            task_id=task_id,
+            payment_hash=payment_hash,
+            proof_payload={
+                "agent_id": agent_id,
+                "hardware_attestation_token": payload.hardware_attestation_token,
+                "evidence_urls": payload.evidence_urls,
+                "av_signature_hex": payload.av_signature_hex
+            }
+        )
+        
+        if oracle_verdict.get("status") != "settled":
+            logger.error(f"🛑 [ORACLE REJECTED] Mission {task_id}: {oracle_verdict.get('message')}")
+            raise HTTPException(status_code=403, detail=oracle_verdict.get("message", "Cryptographic settlement failed."))
 
-        # 2. Keep the task record and update status for SB 1417 audit trails
+        raw_bounty = float(task_data.get("bounty_usd", 25.0))
+        actual_payout = round(raw_bounty * 0.90, 2) 
+
+        # 2. Update status and generate SB 1417 audit trails
         await redis_client.hset(f"pan:task:{task_id}", "status", "COMPLETED")
         await redis_client.delete(mission_key)
         
-        # 3. Synchronously generate the Optical Health Report
-        token = payload.hardware_attestation_token
-        if not token or len(token) < 100:
-            token = "dev_bypass_token_" + ("A" * 90)
-            
         sealed_report = ComplianceEngine.generate_optical_health_report(
             agent_id=agent_id,
             vin=vin,
             mission_id=task_id,
             fault_code=fault_code,
             evidence_urls=payload.evidence_urls, 
-            hardware_attestation_token=token
+            hardware_attestation_token=payload.hardware_attestation_token
         )
         
-        # 4. Persist the sealed report to the compliance ledger
         await redis_client.hset("pan:compliance:reports", task_id, json.dumps(sealed_report))
         
-        # --- 5. ATOMIC FINANCIAL SETTLEMENT ---
+        # --- 3. ATOMIC FINANCIAL SETTLEMENT ---
         wallet_key = f"pan:agent:{agent_id}:wallet"
         
         async with redis_client.pipeline() as pipe:
@@ -172,16 +200,12 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                 try:
                     await pipe.watch(wallet_key)
                     
-                    # NOTE FOR FUTURE DEVS: Immediate-execution mode active after watch().
-                    # pipe.get() executes directly and returns the value. Do NOT move this inside multi()!
                     wallet_raw = await pipe.get(wallet_key)
-                    
                     if wallet_raw:
                         wallet = json.loads(wallet_raw)
                     else:
                         wallet = {"balance": 0.0, "linkedCard": None, "history": []}
                         
-                    # Securely apply the server-side calculated payout
                     wallet["balance"] += actual_payout
                     
                     tx_record = {
@@ -198,51 +222,43 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                     await pipe.execute()
                     break
                 except WatchError:
-                    logger.warning(f"Concurrent collision depositing bounty for {agent_id}. Retry {attempt + 1}/10...")
                     if attempt == 9:
                         raise HTTPException(status_code=503, detail="Wallet temporarily unavailable. Payout queued.")
                     continue
                     
         logger.info(f"💸 [WALLET] Deposited ${actual_payout:.2f} to {agent_id}. New Balance: ${wallet['balance']:.2f}")
-        # ---------------------------------------------------
 
-        # Return agent to the available pool
+        # 4. Return agent to the available pool
         await redis_client.hset(f"agent:{agent_id}", "status", "ONLINE")
         
-        # Broadcast cleared state to the Ops Hub Map
         await redis_client.publish(
             "pan:stream:mission_cleared", 
             json.dumps({"task_id": task_id, "agent_id": agent_id, "reason": "completed"})
         )
         return {"status": "success"}
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ [V2X] Failed to seal compliance for {task_id}: {e}", exc_info=True)
+        logger.error(f"❌ [V2X] Failed to execute settlement for {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal routing failure.")
 
 @router.post("/v1/agent/missions/{task_id}/ack")
 async def acknowledge_mission(task_id: str, request: Request, agent_id: str = Depends(verify_agent_signature)):
-    """
-    Phase 2 ACK: Fired silently by the mobile app the millisecond the mission UI renders.
-    
-    # TODO: SLA monitor should revoke missions with no ACK within 15 seconds of dispatch
-    """
+    """Phase 2 ACK: Fired silently by the mobile app the millisecond the mission UI renders."""
     redis_client = request.app.state.redis_client
     mission_key = f"mission:active:{task_id}"
 
-    mission_data = await redis_client.hgetall(mission_key)
+    raw_mission_data = await redis_client.hgetall(mission_key)
+    mission_data = decode_redis_hash(raw_mission_data)
     
-    # If it's missing, the watchdog already revoked it
     if not mission_data:
         raise HTTPException(status_code=404, detail="Mission not found or already revoked.")
 
-    # Prevent IDOR sniping
     if mission_data.get("agent_id") != agent_id:
         logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to ACK mission {task_id} assigned to {mission_data.get('agent_id')}.")
         raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
-    # Update the ledger so the watchdog knows the agent successfully received it
     await redis_client.hset(mission_key, mapping={
         "ack_status": "ACKNOWLEDGED",
         "ack_timestamp": int(time.time())
@@ -256,8 +272,9 @@ async def decline_mission(task_id: str, request: Request, agent_id: str = Depend
     """Allows an agent to reject a mission, placing them on a price-sensitive cooldown."""
     redis_client = request.app.state.redis_client
     
-    # Fetch the current task to see what bounty they rejected
-    task_data = await redis_client.hgetall(f"pan:task:{task_id}")
+    raw_task_data = await redis_client.hgetall(f"pan:task:{task_id}")
+    task_data = decode_redis_hash(raw_task_data)
+    
     if not task_data:
         return {"status": "ignored", "message": "Task no longer exists."}
         
@@ -267,7 +284,8 @@ async def decline_mission(task_id: str, request: Request, agent_id: str = Depend
     await redis_client.setex(cooldown_key, 900, str(rejected_bounty))
     
     mission_key = f"mission:active:{task_id}"
-    mission_data = await redis_client.hgetall(mission_key)
+    raw_mission_data = await redis_client.hgetall(mission_key)
+    mission_data = decode_redis_hash(raw_mission_data)
     
     if mission_data and mission_data.get("agent_id") == agent_id:
         await redis_client.delete(mission_key)
