@@ -79,9 +79,9 @@ kotlin {
 
             // --- PAN TACTICAL ANDROID-SPECIFIC ENGINES ---
 
-            // Firebase (Auth & Cloud Messaging)
-            implementation("com.google.firebase:firebase-auth-ktx:23.0.0")
-            implementation("com.google.firebase:firebase-messaging-ktx:24.0.0")
+            implementation(project.dependencies.platform("com.google.firebase:firebase-bom:33.0.0"))
+            implementation("com.google.firebase:firebase-auth-ktx")
+            implementation("com.google.firebase:firebase-messaging-ktx")
 
             // Google Maps & Location Telemetry
             implementation("com.google.android.gms:play-services-location:21.2.0")
@@ -141,7 +141,10 @@ android {
     namespace = "com.pan.tactical"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    buildFeatures { buildConfig = false }
+    buildFeatures { 
+        // Disabled: We use the gmazzo BuildConfig plugin instead for KMP compatibility
+        buildConfig = false 
+    }
 
     defaultConfig {
         applicationId = "com.pan.tactical"
