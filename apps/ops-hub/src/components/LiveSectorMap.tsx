@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -12,25 +12,22 @@ L.Icon.Default.mergeOptions({
     shadowUrl: markerShadow,
 });
 
-// TODO: Ensure azure-dot.svg and red-alert.svg exist in the public/assets directory before pilot deployment
-const agentIcon = new L.Icon({
-    iconUrl: '/assets/azure-dot.svg',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],   
-    popupAnchor: [0, -10],  
-    className: 'pulsing-agent-marker'
+// PAN Custom Markers
+const createPulseIcon = (color: string) => L.divIcon({
+    className: 'custom-div-icon',
+    html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 10px ${color};"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9]
 });
 
-const distressIconOptions = {
-    iconUrl: '/assets/red-alert.svg',
-    iconSize: [30, 30] as [number, number],
-    iconAnchor: [15, 30] as [number, number],   
-    popupAnchor: [0, -30] as [number, number],
-};
+const agentIconOnline = createPulseIcon('#00BCD4'); // Cyan
+const agentIconEnRoute = createPulseIcon('#FF9800'); // Orange
+const agentIconOnScene = createPulseIcon('#FFEB3B'); // Yellow
+const agentIconOffline = createPulseIcon('#555555'); // Grey
 
-const distressIconOK = new L.Icon({ ...distressIconOptions, className: 'critical-distress-marker' });
-const distressIconWarning = new L.Icon({ ...distressIconOptions, className: 'warning-marker' });
-const distressIconBreach = new L.Icon({ ...distressIconOptions, className: 'breach-marker' });
+const distressIconOK = createPulseIcon('#F44336'); // Red
+const distressIconWarning = createPulseIcon('#E91E63'); // Pink/Warning
+const distressIconBreach = createPulseIcon('#9C27B0'); // Purple/Breach
 
 const getDistressIcon = (status?: 'OK' | 'WARNING' | 'BREACH') => {
     if (status === 'BREACH') return distressIconBreach;
@@ -39,7 +36,6 @@ const getDistressIcon = (status?: 'OK' | 'WARNING' | 'BREACH') => {
 };
 
 const MESA_CENTER: [number, number] = [33.415184, -111.831459];
-
 const WS_URL = (import.meta as any).env?.VITE_TELEMETRY_WS_URL ?? 'ws://127.0.0.1:5000/api/v1/telemetry/stream?token=dev-token-777';
 
 interface AgentTelemetry {
@@ -48,6 +44,7 @@ interface AgentTelemetry {
     lon: number;
     status: 'ONLINE' | 'EN_ROUTE' | 'ON_SCENE' | 'OFFLINE';
     heading: number; 
+    // TODO: OSRM route streaming pending Phase 5 backend update
     remaining_route?: [number, number][];
 }
 
@@ -62,20 +59,32 @@ interface DistressSignal {
 }
 
 export const LiveSectorMap: React.FC = () => {
+    // Core State
     const [agents, setAgents] = useState<Map<string, AgentTelemetry>>(new Map());
     const [distressSignals, setDistressSignals] = useState<Map<string, DistressSignal>>(new Map());
     const [connectionStatus, setConnectionStatus] = useState<'CONNECTING' | 'LIVE' | 'DISCONNECTED'>('CONNECTING');
+    
+    // Ops Hub UI State
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [showLegend, setShowLegend] = useState(true);
+    
+    // 🟢 THE FIX 1: Zeroed out the cosmetic balance. Needs real LND wiring.
+    const [fleetBalance, setFleetBalance] = useState(0.00);
+    
+    // 🟢 THE FIX 2: Locked to SPEED since matching_engine.py only uses OSRM fastest route.
+    const [routingStrategy, setRoutingStrategy] = useState<'SPEED' | 'BALANCED' | 'COST'>('SPEED');
     const [pendingDispatch, setPendingDispatch] = useState<DistressSignal | null>(null);
+    const [autoPilotActive, setAutoPilotActive] = useState(false);
+
+    // Filters
+    const [filters, setFilters] = useState({ showOnline: true, showEnRoute: true, showOnScene: true });
     
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // 🟢 FIX 1: Replaced mapRef with a callback ref for reliable Leaflet sizing
     const mapCallbackRef = useCallback((map: L.Map | null) => {
-        if (map) {
-            setTimeout(() => map.invalidateSize(), 100);
-        }
-    }, []);
+        if (map) setTimeout(() => map.invalidateSize(), 300);
+    }, [sidebarCollapsed]);
 
     const connectWebSocket = useCallback(() => {
         if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
@@ -94,19 +103,10 @@ export const LiveSectorMap: React.FC = () => {
         ws.onmessage = (event: MessageEvent) => {
             try {
                 const data = JSON.parse(event.data);
-                
                 if (data.type === 'AGENT_LOCATION') {
-                    setAgents(prev => {
-                        const next = new Map(prev);
-                        next.set(data.payload.agent_id, data.payload);
-                        return next;
-                    });
+                    setAgents(prev => new Map(prev).set(data.payload.agent_id, data.payload));
                 } else if (data.type === 'DISTRESS_ALERT') {
-                    setDistressSignals(prev => {
-                        const next = new Map(prev);
-                        next.set(data.payload.task_id, { ...data.payload, sla_status: 'OK' });
-                        return next;
-                    });
+                    setDistressSignals(prev => new Map(prev).set(data.payload.task_id, { ...data.payload, sla_status: 'OK' }));
                 } else if (data.type === 'MISSION_CLEARED') {
                     setDistressSignals(prev => {
                         const next = new Map(prev);
@@ -119,21 +119,12 @@ export const LiveSectorMap: React.FC = () => {
                         const taskId = data.payload.mission_id;
                         const signal = next.get(taskId);
                         if (signal) {
-                            next.set(taskId, {
-                                ...signal,
-                                sla_status: data.type === 'SLA_BREACH' ? 'BREACH' : 'WARNING'
-                            });
+                            next.set(taskId, { ...signal, sla_status: data.type === 'SLA_BREACH' ? 'BREACH' : 'WARNING' });
                         }
                         return next;
                     });
                 }
-            } catch (err) {
-                console.error("Failed to parse telemetry frame:", err);
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error("WebSocket Error: ", error);
+            } catch (err) { console.error("Telemetry parse error:", err); }
         };
 
         ws.onclose = () => {
@@ -146,137 +137,154 @@ export const LiveSectorMap: React.FC = () => {
     useEffect(() => {
         connectWebSocket();
         return () => {
-            if (wsRef.current) {
-                wsRef.current.onclose = null; 
-                wsRef.current.onerror = null;
-                wsRef.current.onmessage = null;
-                wsRef.current.onopen = null;
-                wsRef.current.close();
-                wsRef.current = null;
-            }
+            wsRef.current?.close();
             if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
         };
     }, [connectWebSocket]);
 
-    // 🟢 FIX 4: Quick-escape keyboard handler for the dispatch modal
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setPendingDispatch(null);
-        };
+        const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setPendingDispatch(null); };
         if (pendingDispatch) window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [pendingDispatch]);
 
     const executeDispatch = () => {
-        if (!pendingDispatch || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            console.warn("WebSocket not ready. Cannot dispatch.");
-            return;
-        }
+        if (!pendingDispatch || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
         const payload = {
             action: 'DISPATCH_AGENT',
-            payload: {
-                task_id: pendingDispatch.task_id,
-                routing_strategy: 'BALANCED',
-                lat: pendingDispatch.lat,
-                lon: pendingDispatch.lon
-            }
+            payload: { task_id: pendingDispatch.task_id, routing_strategy: routingStrategy, lat: pendingDispatch.lat, lon: pendingDispatch.lon }
         };
 
         wsRef.current.send(JSON.stringify(payload));
+        
+        // Optimistic UI update for escrow (Displays negative until wallet is synced)
+        setFleetBalance(prev => prev - pendingDispatch.bounty_usd);
         setPendingDispatch(null);
     };
 
+    // Filtered Agents
+    const visibleAgents = useMemo(() => {
+        return Array.from(agents.values()).filter(a => {
+            if (a.status === 'ONLINE' && !filters.showOnline) return false;
+            if (a.status === 'EN_ROUTE' && !filters.showEnRoute) return false;
+            if (a.status === 'ON_SCENE' && !filters.showOnScene) return false;
+            return true;
+        });
+    }, [agents, filters]);
+
+    const formatMoney = (num: number) => {
+        const isNeg = num < 0;
+        const str = '$' + Math.abs(num).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+        return isNeg ? '-' + str : str;
+    };
+
     return (
-        <div style={{ display: 'flex', height: '100vh', width: '100vw', position: 'relative', backgroundColor: '#121212', color: 'white', fontFamily: 'sans-serif' }}>
+        <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#121212', color: '#fff', fontFamily: '"Courier New", Courier, monospace', overflow: 'hidden' }}>
             
             <style>
                 {`
-                body, html {
-                    margin: 0;
-                    padding: 0;
-                    overflow: hidden;
-                }
-                @keyframes mapPulse {
-                    0% { opacity: 1; filter: drop-shadow(0 0 2px rgba(0, 188, 212, 0.5)); }
-                    50% { opacity: 0.6; filter: drop-shadow(0 0 12px rgba(0, 188, 212, 1)); }
-                    100% { opacity: 1; filter: drop-shadow(0 0 2px rgba(0, 188, 212, 0.5)); }
-                }
-                @keyframes alertPulse {
-                    0% { opacity: 1; filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.8)); }
-                    50% { opacity: 0.5; filter: drop-shadow(0 0 16px rgba(239, 68, 68, 1)); }
-                    100% { opacity: 1; filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.8)); }
-                }
-                @keyframes breachPulse {
-                    0% { opacity: 1; filter: drop-shadow(0 0 10px rgba(255, 0, 0, 1)); transform: scale(1); }
-                    100% { opacity: 0.8; filter: drop-shadow(0 0 35px rgba(255, 0, 0, 1)); transform: scale(1.3); }
-                }
-                .pulsing-agent-marker { animation: mapPulse 2s infinite ease-in-out; }
-                .critical-distress-marker { animation: alertPulse 1.5s infinite ease-in-out; }
-                .warning-marker { animation: alertPulse 0.5s infinite ease-in-out; filter: hue-rotate(45deg); }
-                .breach-marker { animation: breachPulse 0.3s infinite alternate; }
-                
-                .animate-pulse { animation: mapPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+                body, html { margin: 0; padding: 0; overflow: hidden; color-scheme: dark; }
+                .btn-routing { flex: 1; background: #222; color: #888; border: none; padding: 8px 0; font-size: 11px; font-family: monospace; font-weight: bold; cursor: pointer; transition: 0.2s; border-right: 1px solid #444; }
+                .btn-routing.active { background: #00BCD4; color: #000; }
+                .btn-routing:disabled { background: #1a1a1a; color: #555; cursor: not-allowed; }
+                .fault-card { background-color: #000; border: 2px solid transparent; border-radius: 8px; padding: 15px; cursor: pointer; transition: 0.2s ease; margin-bottom: 15px; }
+                .fault-card:hover { border-color: #00BCD4; box-shadow: 0 0 10px rgba(0, 188, 212, 0.2); }
+                .sidebar { transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1); flex-shrink: 0; }
+                .sidebar.collapsed { margin-left: -380px; }
+                .legend-item input { margin-right: 10px; cursor: pointer; }
                 `}
             </style>
 
-            <div style={{ width: '320px', borderRight: '1px solid #333', display: 'flex', flexDirection: 'column', backgroundColor: '#000', zIndex: 10 }}>
-                <div style={{ padding: '24px', borderBottom: '1px solid #333' }}>
-                    <h1 style={{ fontSize: '1.25rem', fontWeight: 900, letterSpacing: '0.1em', color: '#00BCD4', margin: 0 }}>PAN COMMAND</h1>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                        <div className="animate-pulse" style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: connectionStatus === 'LIVE' ? '#22c55e' : '#ef4444' }} />
-                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#9ca3af' }}>SECTOR 1: {connectionStatus}</span>
+            {/* SIDEBAR */}
+            <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} style={{ width: '380px', backgroundColor: '#1E1E1E', borderRight: '2px solid #00BCD4', display: 'flex', flexDirection: 'column', zIndex: 10, position: 'relative' }}>
+                <div onClick={() => setSidebarCollapsed(!sidebarCollapsed)} style={{ position: 'absolute', right: '-30px', top: '15px', width: '30px', height: '45px', background: '#1E1E1E', border: '2px solid #00BCD4', borderLeft: 'none', color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '0 6px 6px 0', zIndex: 2000 }}>
+                    {sidebarCollapsed ? '▶' : '◀'}
+                </div>
+
+                <div style={{ padding: '20px', backgroundColor: '#000', borderBottom: '1px solid #333' }}>
+                    <h1 style={{ margin: 0, color: '#00BCD4', fontSize: '24px', fontWeight: 900, letterSpacing: '2px' }}>PAN COMMAND</h1>
+                    <p style={{ margin: '5px 0 0 0', color: connectionStatus === 'LIVE' ? '#4CAF50' : '#F44336', fontSize: '12px', fontWeight: 'bold' }}>
+                        {connectionStatus === 'LIVE' ? '🟢 SATELLITE UPLINK ACTIVE' : '🔴 OFFLINE'}
+                    </p>
+                </div>
+
+                {/* FLEET WALLET */}
+                <div style={{ backgroundColor: '#111', borderBottom: '1px solid #333', padding: '15px 20px' }}>
+                    <div style={{ fontSize: '10px', color: '#F44336', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>
+                        FLEET RETAINER BALANCE (WALLET OFFLINE)
+                    </div>
+                    {/* 🟢 THE FIX 1: Displaying offline state */}
+                    <div style={{ fontSize: '28px', fontWeight: 900, color: '#888', margin: '2px 0', letterSpacing: '1px' }}>
+                        {formatMoney(fleetBalance)}
                     </div>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <h2 style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#6b7280', letterSpacing: '0.05em', margin: 0 }}>ACTIVE DISTRESS SIGNALS</h2>
-                    
-                    {Array.from(distressSignals.values()).map((signal: DistressSignal) => (
-                        <div key={signal.task_id} style={{ 
-                            backgroundColor: signal.sla_status === 'BREACH' ? 'rgba(255, 0, 0, 0.25)' : 'rgba(127, 29, 29, 0.2)', 
-                            border: `1px solid ${signal.sla_status === 'BREACH' ? '#ff0000' : 'rgba(239, 68, 68, 0.5)'}`, 
-                            borderRadius: '4px', padding: '12px',
-                            transition: 'all 0.3s ease'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ color: signal.sla_status === 'BREACH' ? '#ff0000' : '#f87171', fontWeight: 'bold' }}>
-                                    {signal.sla_status === 'BREACH' ? '🚨 BREACH: ' : ''}{signal.fault_code}
-                                </span>
-                                <span style={{ color: '#4ade80', fontFamily: 'monospace' }}>${signal.bounty_usd.toFixed(2)}</span>
+                {/* ROUTING MODULE */}
+                <div style={{ padding: '15px 20px', background: '#1E1E1E', borderBottom: '1px solid #333' }}>
+                    <span style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>ROUTING ALGORITHM:</span>
+                    <div style={{ display: 'flex', border: '1px solid #444', borderRadius: '4px', overflow: 'hidden' }}>
+                        <button className={`btn-routing ${routingStrategy === 'SPEED' ? 'active' : ''}`} onClick={() => setRoutingStrategy('SPEED')}>⚡ FASTEST</button>
+                        {/* 🟢 THE FIX 2: Visually disabled placebo buttons until backend support is added */}
+                        <button className="btn-routing" disabled title="Requires Phase 5 Backend Update">⚖️ BALANCED</button>
+                        <button className="btn-routing" disabled title="Requires Phase 5 Backend Update">💰 LOWEST COST</button>
+                    </div>
+                </div>
+
+                {/* AUTO PILOT TOGGLE */}
+                <div style={{ padding: '15px 20px', display: 'flex', gap: '10px' }}>
+                    <button onClick={() => setAutoPilotActive(!autoPilotActive)} style={{ flex: 1, padding: '12px', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px', fontFamily: 'monospace', fontSize: '12px', transition: '0.2s', background: autoPilotActive ? '#4CAF50' : 'rgba(76, 175, 80, 0.1)', color: autoPilotActive ? '#000' : '#4CAF50', border: '2px solid #4CAF50' }}>
+                        {autoPilotActive ? '🟢 AUTO-PILOT ACTIVE' : 'AUTO-PILOT OFF'}
+                    </button>
+                </div>
+
+                {/* FAULT LIST */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px 20px' }}>
+                    {distressSignals.size === 0 ? (
+                        <p style={{ textAlign: 'center', color: '#666', fontSize: '12px', marginTop: '20px' }}>AWAITING SATELLITE UPLINK...</p>
+                    ) : (
+                        Array.from(distressSignals.values()).map(signal => (
+                            <div key={signal.task_id} className="fault-card" style={{ borderColor: signal.sla_status === 'BREACH' ? '#F44336' : '#333' }}>
+                                <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', letterSpacing: '0.5px', color: signal.sla_status === 'BREACH' ? '#F44336' : '#fff' }}>
+                                    {signal.sla_status === 'BREACH' ? '🚨 SLA BREACH ' : ''}{signal.task_id.substring(0, 12)}...
+                                </h4>
+                                <div style={{ color: '#00BCD4', fontSize: '12px', marginBottom: '12px', fontWeight: 'bold' }}>CODE: {signal.fault_code.toUpperCase()}</div>
+                                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#4CAF50' }}>BOUNTY: ${signal.bounty_usd.toFixed(2)}</div>
+                                
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                                    <button onClick={() => setPendingDispatch(signal)} style={{ flex: 1, padding: '8px', background: 'transparent', border: '1px solid #00BCD4', color: '#00BCD4', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>DEPLOY AGENT</button>
+                                </div>
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px', marginBottom: '12px', fontFamily: 'monospace' }}>
-                                VIN: {signal.vin}
-                            </div>
-                            
-                            <button 
-                                onClick={() => setPendingDispatch(signal)}
-                                style={{ width: '100%', padding: '8px', backgroundColor: '#00BCD4', color: '#000', border: 'none', borderRadius: '2px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '0.05em' }}
-                            >
-                                DEPLOY PROXY AGENT
-                            </button>
-                        </div>
-                    ))}
-                    
-                    {distressSignals.size === 0 && (
-                        <div style={{ fontSize: '0.875rem', color: '#4b5563', fontStyle: 'italic' }}>No active faults in sector.</div>
+                        ))
                     )}
                 </div>
             </div>
 
-            <div style={{ flex: 1, position: 'relative' }}>
-                <MapContainer 
-                    center={MESA_CENTER} 
-                    zoom={13} 
-                    style={{ height: '100%', width: '100%', zIndex: 1 }}
-                    ref={mapCallbackRef}
-                >
-                    <TileLayer 
-                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" 
-                        attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                    />
+            {/* MAP AREA */}
+            <div style={{ flex: 1, position: 'relative', display: 'flex' }}>
+                {/* MAP LEGEND */}
+                <div style={{ position: 'absolute', top: '20px', right: '20px', background: 'rgba(18, 18, 18, 0.9)', border: '1px solid #333', borderRadius: '6px', padding: '15px', boxShadow: '0 4px 15px rgba(0,0,0,0.5)', zIndex: 1000, minWidth: '220px' }}>
+                    <div onClick={() => setShowLegend(!showLegend)} style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer', borderBottom: '1px solid #444', paddingBottom: '10px', marginBottom: '10px' }}>
+                        <h4 style={{ margin: 0, fontSize: '12px', letterSpacing: '1px' }}>LIVE MAP FILTERS</h4>
+                        <span>{showLegend ? '▼' : '▲'}</span>
+                    </div>
+                    {showLegend && (
+                        <div style={{ fontSize: '12px', color: '#ccc' }}>
+                            <label className="legend-item" style={{ display: 'block', margin: '8px 0' }}><input type="checkbox" checked={filters.showOnline} onChange={(e) => setFilters({...filters, showOnline: e.target.checked})} /> <span style={{ color: '#00BCD4' }}>●</span> Online Agents</label>
+                            <label className="legend-item" style={{ display: 'block', margin: '8px 0' }}><input type="checkbox" checked={filters.showEnRoute} onChange={(e) => setFilters({...filters, showEnRoute: e.target.checked})} /> <span style={{ color: '#FF9800' }}>●</span> Agents En Route</label>
+                            <label className="legend-item" style={{ display: 'block', margin: '8px 0' }}><input type="checkbox" checked={filters.showOnScene} onChange={(e) => setFilters({...filters, showOnScene: e.target.checked})} /> <span style={{ color: '#FFEB3B' }}>●</span> Agents On Scene</label>
+                            <hr style={{ borderColor: '#333', margin: '10px 0' }}/>
+                            <div style={{ margin: '8px 0' }}><span style={{ color: '#F44336' }}>●</span> Active Distress Signal</div>
+                            <div style={{ margin: '8px 0' }}><span style={{ color: '#9C27B0' }}>●</span> SLA Breach Fault</div>
+                        </div>
+                    )}
+                </div>
 
-                    {Array.from(distressSignals.values()).map((signal) => (
+                <MapContainer center={MESA_CENTER} zoom={12} style={{ height: '100%', width: '100%', zIndex: 1 }} ref={mapCallbackRef}>
+                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CARTO' />
+
+                    {/* Render Distress Signals */}
+                    {Array.from(distressSignals.values()).map(signal => (
                         <Marker key={`distress-${signal.task_id}`} position={[signal.lat, signal.lon]} icon={getDistressIcon(signal.sla_status)}>
                             <Popup>
                                 <strong>VIN: {signal.vin}</strong><br/>
@@ -287,48 +295,54 @@ export const LiveSectorMap: React.FC = () => {
                         </Marker>
                     ))}
                     
-                    {Array.from(agents.values()).map((agent) => (
-                        <React.Fragment key={`agent-group-${agent.agent_id}`}>
-                            <Marker position={[agent.lat, agent.lon]} icon={agentIcon}>
-                                <Popup><strong>{agent.agent_id}</strong><br/>Status: {agent.status}</Popup>
-                            </Marker>
-                            
-                            {agent.status === 'EN_ROUTE' && agent.remaining_route && agent.remaining_route.length > 0 && (
-                                <Polyline 
-                                    positions={agent.remaining_route} 
-                                    color="#eab308" 
-                                    dashArray="8, 8" 
-                                    weight={3} 
-                                    opacity={0.8} 
-                                />
-                            )}
-                        </React.Fragment>
-                    ))}
+                    {/* Render Filtered Agents */}
+                    {visibleAgents.map(agent => {
+                        let icon = agentIconOnline;
+                        if (agent.status === 'EN_ROUTE') icon = agentIconEnRoute;
+                        else if (agent.status === 'ON_SCENE') icon = agentIconOnScene;
+                        else if (agent.status === 'OFFLINE') icon = agentIconOffline;
+
+                        return (
+                            <React.Fragment key={`agent-group-${agent.agent_id}`}>
+                                <Marker position={[agent.lat, agent.lon]} icon={icon}>
+                                    <Popup><strong>{agent.agent_id}</strong><br/>Status: {agent.status}</Popup>
+                                </Marker>
+                                
+                                {/* 🟢 THE FIX 3: Defensive render for future OSRM streaming integration */}
+                                {agent.status === 'EN_ROUTE' && agent.remaining_route && agent.remaining_route.length > 0 && (
+                                    <Polyline positions={agent.remaining_route} color="#FF9800" dashArray="8, 8" weight={3} opacity={0.8} />
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
                 </MapContainer>
             </div>
 
+            {/* DISPATCH MODAL OVERLAY */}
             {pendingDispatch && (
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                    <div style={{ backgroundColor: '#1A1A1A', border: '1px solid #333', borderRadius: '4px', padding: '24px', width: '400px' }}>
-                        <h2 style={{ color: '#fff', margin: '0 0 20px 0', fontSize: '1.25rem' }}>DISPATCH ESCROW</h2>
+                <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+                    <div style={{ background: '#121212', border: '2px solid #00BCD4', borderRadius: '8px', padding: '30px', width: '500px', boxShadow: '0 10px 40px rgba(0, 188, 212, 0.4)' }}>
+                        <h2 style={{ margin: '0 0 20px 0', color: '#00BCD4', textAlign: 'center', letterSpacing: '1px' }}>DISPATCH ESCROW</h2>
                         
-                        <div style={{ color: '#ccc', marginBottom: '8px', fontSize: '0.875rem' }}>Target: {pendingDispatch.vin}</div>
-                        <div style={{ color: '#ccc', marginBottom: '24px', fontSize: '0.875rem' }}>Fault: {pendingDispatch.fault_code}</div>
+                        <div style={{ background: '#000', border: '1px solid #333', padding: '15px', borderRadius: '4px', marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', color: '#ccc', fontSize: '14px' }}>
+                                <span>TARGET ASSET:</span> <span style={{ color: '#fff', fontWeight: 'bold' }}>{pendingDispatch.vin}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ccc', fontSize: '14px' }}>
+                                <span>FAULT DETECTED:</span> <span style={{ color: '#00BCD4', fontWeight: 'bold' }}>{pendingDispatch.fault_code}</span>
+                            </div>
+                        </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#000', padding: '15px', borderRadius: '4px', border: '1px solid #4CAF50', marginBottom: '24px' }}>
-                            <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff' }}>MAX AUTHORIZATION:</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1A1A1A', padding: '15px', borderRadius: '4px', marginBottom: '25px', border: '1px solid #4CAF50' }}>
+                            <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff' }}>MAX AUTHORIZATION:</span>
                             <span style={{ fontSize: '24px', fontWeight: 900, color: '#4CAF50' }}>${pendingDispatch.bounty_usd.toFixed(2)}</span>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '12px' }}>
-                            <button 
-                                onClick={executeDispatch}
-                                style={{ flex: 1, padding: '12px', backgroundColor: '#00BCD4', color: '#000', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', gap: '15px' }}>
+                            <button onClick={executeDispatch} style={{ flex: 2, background: '#00BCD4', color: '#000', fontSize: '16px', border: 'none', cursor: 'pointer', borderRadius: '4px', fontWeight: 'bold', padding: '12px' }}>
                                 AUTHORIZE & DEPLOY
                             </button>
-                            <button 
-                                onClick={() => setPendingDispatch(null)}
-                                style={{ flex: 1, padding: '12px', backgroundColor: 'transparent', color: '#fff', border: '1px solid #555', fontWeight: 'bold', cursor: 'pointer' }}>
+                            <button onClick={() => setPendingDispatch(null)} style={{ flex: 1, background: '#333', color: '#fff', border: 'none', cursor: 'pointer', borderRadius: '4px', fontWeight: 'bold', padding: '12px' }}>
                                 CANCEL
                             </button>
                         </div>
