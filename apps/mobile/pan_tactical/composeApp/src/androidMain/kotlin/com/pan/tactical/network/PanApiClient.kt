@@ -1,6 +1,3 @@
-// TODO: Remove suppression once KMP BuildConfig visibility is confirmed PUBLIC via gmazzo plugin.
-// Track against build.gradle.kts visibility(BuildConfigVisibility.PUBLIC) fix.
-@file:Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
 package com.pan.tactical.network
 
 import android.graphics.Bitmap
@@ -207,7 +204,9 @@ class PanApiClient : WalletNetworkClient {
     ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
-                val urlString = "https://router.project-osrm.org/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
+                // 🟢 THE FIX: Wired route generation to the dedicated OSRM base URL
+                val osrmBase = BuildConfig.OSRM_BASE_URL
+                val urlString = "$osrmBase/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
                 val jsonString = response.bodyAsText()
                 val json = org.json.JSONObject(jsonString)

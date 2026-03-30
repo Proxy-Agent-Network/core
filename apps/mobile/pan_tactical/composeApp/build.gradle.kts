@@ -42,11 +42,18 @@ val agentDevToken = requireLocalProperty("AGENT_DEV_TOKEN")
 val playIntegrityProjectNumStr = requireLocalProperty("PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER")
 val playIntegrityProjectNumLong = playIntegrityProjectNumStr.toLongOrNull()
     ?: throw GradleException("🛑 FATAL: PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER must be a valid number.")
+
+// 🟢 THE FIX: Add the dedicated routing server URL
+val osrmBaseUrl = requireLocalProperty("OSRM_BASE_URL")
 // -------------------------------------------------
 
 // --- KMP SECRETS BRIDGE ---
 buildConfig {
     packageName("com.pan.tactical")
+    
+    // Ensure the generated object is public so we don't need @file:Suppress in our network clients
+    useKotlinOutput { internalVisibility = false }
+
     buildConfigField("String", "MAPS_API_KEY", "\"$secureMapsKey\"")
     buildConfigField("String", "IOS_MAPS_API_KEY", "\"$secureIosMapsKey\"")
     buildConfigField("String", "IMGBB_API_KEY", "\"$secureImgbbKey\"")
@@ -56,8 +63,11 @@ buildConfig {
     buildConfigField("String", "PAN_API_BASE_URL", "\"$panApiBaseUrl\"")
     buildConfigField("String", "AGENT_DEV_TOKEN", "\"$agentDevToken\"")
     
-    // 🟢 THE FIX: Injected as a primitive Long so the Kotlin compiler enforces type safety
-    buildConfigField("Long", "GCP_PROJECT_NUMBER", "${playIntegrityProjectNumLong}L")
+    // 🟢 THE FIX: Route tactical navigation to our dedicated server
+    buildConfigField("String", "OSRM_BASE_URL", "\"$osrmBaseUrl\"")
+    
+    // 🟢 THE FIX: Injected as a primitive kotlin.Long so the Kotlin compiler enforces type safety without broken imports
+    buildConfigField("kotlin.Long", "PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER", "${playIntegrityProjectNumLong}L")
 }
 // --------------------------
 

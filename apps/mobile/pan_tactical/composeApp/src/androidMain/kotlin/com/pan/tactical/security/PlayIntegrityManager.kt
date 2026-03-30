@@ -26,7 +26,7 @@ class PlayIntegrityManager(private val context: Context) {
         val request = IntegrityTokenRequest.builder()
             // 🟢 THE FIX: Shifted to BuildConfig to avoid hardcoding GCP Project Numbers.
             // Ensure GCP_PROJECT_NUMBER is set in your local.properties or app/build.gradle
-            .setCloudProjectNumber(BuildConfig.GCP_PROJECT_NUMBER)
+            .setCloudProjectNumber(BuildConfig.PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER)
             .setNonce(nonceToUse)
             .build()
 

@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.pan.tactical.network.PanWalletClient
+import com.pan.tactical.ui.permissions.HardwarePermissionsGuard
 
 class MainActivity : ComponentActivity() {
 
@@ -19,9 +20,13 @@ class MainActivity : ComponentActivity() {
         // Consumers will now use PanApplication.instance
 
         setContent {
-            // 🛠️ MINOR FIX: Corrected the comment to reflect our actual flow
-            // Launching the shared KMP App (which starts at HardwareAttestationBoot)
-            App(apiClient = walletClient)
+            // 🟢 NEW: Wrapped the root entry point in the Hardware Permissions Guard.
+            // This ensures GPS, BLE, and UWB access is granted before the shared KMP app boots.
+            HardwarePermissionsGuard {
+                // 🛠️ MINOR FIX: Corrected the comment to reflect our actual flow
+                // Launching the shared KMP App (which starts at HardwareAttestationBoot)
+                App(apiClient = walletClient)
+            }
         }
     }
 
