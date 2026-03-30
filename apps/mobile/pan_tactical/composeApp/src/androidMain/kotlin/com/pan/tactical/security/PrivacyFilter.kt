@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.util.Log
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -14,6 +15,8 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 object PrivacyFilter {
+
+    private const val TAG = "PrivacyFilter"
 
     // 1. Keep ML Kit clients as singletons in memory so they don't cold-boot on every photo
     private val faceOptions = FaceDetectorOptions.Builder()
@@ -63,9 +66,13 @@ object PrivacyFilter {
 
                 sanitizedBitmap
             } catch (e: Exception) {
-                println("🛡️ ML REDACTION ERROR: ${e.message}")
-                // Fail secure: If ML crashes, return original but log the failure
-                originalBitmap
+                Log.e(TAG, "🛡️ ML REDACTION FAILED: ${e.message}. Returning fully redacted frame.")
+                
+                // True fail-secure: Black out the entire frame rather than leak PII
+                val blackout = originalBitmap.copy(Bitmap.Config.ARGB_8888, true)
+                val canvas = Canvas(blackout)
+                canvas.drawColor(Color.BLACK)
+                blackout
             }
         }
     }

@@ -268,8 +268,13 @@ class PanApiClient : WalletNetworkClient {
 
             bitmaps.forEachIndexed { _, bitmap ->
                 try {
+                    // 🟢 THE FIX: Intercept the raw image and redact it securely on-device
+                    val redactedBitmap = com.pan.tactical.security.PrivacyFilter.sanitizeImage(bitmap)
+
                     val stream = ByteArrayOutputStream()
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
+                    
+                    // 🟢 THE FIX: Compress and upload the redacted image, not the original
+                    redactedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
                     val byteArray = stream.toByteArray()
                     val base64Image = android.util.Base64.encodeToString(byteArray, android.util.Base64.DEFAULT)
 
