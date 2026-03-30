@@ -10,7 +10,7 @@ import hashlib
 import asyncio
 from functools import partial
 
-# 🟢 THE FIX: Added Google SDK imports for server-to-server token verification
+# Added Google SDK imports for server-to-server token verification
 import google.auth
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -52,7 +52,15 @@ def verify_play_integrity_token(token: str, expected_agent_id: str, expected_pub
     # URL-Safe Base64 encode without newlines (matches Android's NO_WRAP | URL_SAFE)
     expected_nonce = base64.urlsafe_b64encode(digest).decode('utf-8').replace('\n', '')
 
-    package_name = os.getenv("ANDROID_PACKAGE_NAME", "network.proxyagent.pantactical")
+    # 🟢 THE FIX: Strict enforcement of the package name in production
+    package_name = os.getenv("ANDROID_PACKAGE_NAME")
+    if not package_name:
+        if os.getenv("ENVIRONMENT") == "production":
+            logger.critical("🚨 FATAL: ANDROID_PACKAGE_NAME is missing in production environment!")
+            raise RuntimeError("Missing required environment variable for Play Integrity.")
+        else:
+            package_name = "network.proxyagent.pantactical"
+            logger.warning("⚠️ Using fallback Android Package Name for local development.")
 
     try:
         # Assumes Application Default Credentials (ADC) are configured on the server
@@ -197,7 +205,7 @@ async def register_public_key(payload: KeyRegistrationPayload, request: Request)
     if not agent_exists:
         raise HTTPException(status_code=404, detail="Agent identity not found.")
         
-    # 🟢 THE FIX: Cryptographically verify the device and key binding without blocking the event loop
+    # Cryptographically verify the device and key binding without blocking the event loop
     await asyncio.get_event_loop().run_in_executor(
         None,
         partial(

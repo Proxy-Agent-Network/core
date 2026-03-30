@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from core.economics.hodl_escrow import EscrowManager
 from core.reputation.slashing_engine import SlashingEngine
 
-# 🟢 THE FIX: Import the actual verification logic from Phase 1
+# Import the actual verification logic from Phase 1
 from api.onboarding_api import verify_play_integrity_token
 
 # PROXY PROTOCOL - ESCROW ORACLE MIDDLEWARE (v2.0)
@@ -24,7 +24,6 @@ class EscrowOracle:
     compliance (SB 1417), and physical proof (AV Signature) meet 
     the protocol's strict requirements.
     """
-    # 🟢 THE FIX: Inject redis_client to fetch the agent's registered public key
     def __init__(self, escrow_manager: EscrowManager, slashing_engine: SlashingEngine, redis_client):
         self.escrow = escrow_manager
         self.slasher = slashing_engine
@@ -50,7 +49,7 @@ class EscrowOracle:
         if not all([agent_id, hardware_token, av_signature_hex]):
             return {"status": "error", "code": "PX_301", "message": "Malformed payload. Missing cryptographic proofs."}
 
-        # 🟢 THE FIX: Fetch the public key from Redis that was bound during Key Ceremony
+        # Fetch the public key from Redis that was bound during Key Ceremony
         public_key_b64 = await self.redis_client.get(f"pan:agent:{agent_id}:pubkey")
         if not public_key_b64:
             self.logger.error(f"🚨 Unregistered Agent: {agent_id} attempted settlement.")
@@ -61,7 +60,7 @@ class EscrowOracle:
             public_key_b64 = public_key_b64.decode('utf-8')
 
         # --- STAGE 1: HARDWARE ROOT OF TRUST ---
-        # 🟢 THE FIX: Await the actual Play Integrity verification, offloaded to a thread pool
+        # Await the actual Play Integrity verification, offloaded to a thread pool
         is_hw_valid = await self._verify_hardware_token(hardware_token, agent_id, public_key_b64)
 
         if not is_hw_valid:
@@ -143,6 +142,7 @@ class EscrowOracle:
 # --- Backend Integration Example ---
 if __name__ == "__main__":
     import asyncio
+    import os
     print("--- ESCROW ORACLE SETTLEMENT SIMULATION ---")
     
     # Mock implementations for local testing
@@ -167,9 +167,9 @@ if __name__ == "__main__":
             payment_hash = "mock_hash_abc123"
             amount = 25000
             
-            # 🟢 THE FIX: Explicitly tagged the RFC test vector
-            # ⚠️ RFC 8037 test vector. Never use in production — blocked by SecurityVault.
-            mock_av_pubkey = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a" 
+            # 🟢 THE FIX: Replaced the static RFC 8037 vector with an environment variable lookup
+            # This ensures no hardcoded cryptographic material exists in the source code.
+            mock_av_pubkey = os.getenv("MOCK_AV_PUBKEY_SIMULATION", "0000000000000000000000000000000000000000000000000000000000000000")
             
             escrow.create_contract(contract_id, payment_hash, amount, mock_av_pubkey)
             escrow.accept_contract(payment_hash)

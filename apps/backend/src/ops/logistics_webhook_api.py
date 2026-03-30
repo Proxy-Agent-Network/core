@@ -11,7 +11,7 @@ from utils.webhook_auth import verify_carrier_hmac, SecurityVault
 # "Hardening the physical chain of custody."
 # ----------------------------------------------------
 
-# 🛠️ THE FIX: Replaced the standalone FastAPI app with an APIRouter
+# Replaced the standalone FastAPI app with an APIRouter
 router = APIRouter(
     tags=["Logistics Webhook"]
 )
@@ -45,8 +45,17 @@ class LogisticsWebhookProcessor:
     Implements border-crossing logic to ensure jurisdictional compliance.
     """
     def __init__(self):
-        # 🟢 THE FIX: Container-safe routing via environment variables
-        registry_host = os.getenv("HARDWARE_REGISTRY_URL", "http://localhost:8010")
+        # 🟢 THE FIX: Strict enforcement of the hardware registry URL in production
+        registry_host = os.getenv("HARDWARE_REGISTRY_URL")
+        
+        if not registry_host:
+            if os.getenv("ENVIRONMENT") == "production":
+                logger.critical("🚨 FATAL: HARDWARE_REGISTRY_URL is missing in production environment!")
+                raise RuntimeError("Missing required environment variable for Hardware Registry routing.")
+            else:
+                registry_host = "http://localhost:8010"
+                logger.warning("⚠️ Using fallback HARDWARE_REGISTRY_URL for local development.")
+                
         self.registry_update_url = f"{registry_host}/v1/hardware/update"
 
     async def process_update(self, payload: CarrierPayload):
@@ -82,7 +91,7 @@ processor = LogisticsWebhookProcessor()
 
 # --- API Endpoints ---
 
-# 🛠️ THE FIX: Updated decorators to use @router instead of @app
+# Updated decorators to use @router instead of @app
 @router.post("/v1/logistics/ingress/{carrier_id}")
 async def carrier_webhook_receiver(
     request: Request,
@@ -101,7 +110,7 @@ async def carrier_webhook_receiver(
         logger.error(f"Logistics Parse Error: {str(e)}")
         raise HTTPException(status_code=400, detail="Processing failed.")
 
-# 🛠️ THE FIX: Updated decorators to use @router instead of @app
+# Updated decorators to use @router instead of @app
 @router.get("/health")
 async def health():
     # Only report carriers that are actively configured in the environment variables
