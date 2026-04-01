@@ -40,16 +40,16 @@ data class StatusUpdateRequest(
 @Serializable
 data class V2XDistressPayload(
     val vin: String,
-    
+
     @SerialName("fault_code")
     val faultCode: String,
-    
+
     val latitude: Double,
     val longitude: Double,
-    
+
     @SerialName("bounty_usd")
     val bountyUsd: Double,
-    
+
     val timestamp: Long
 )
 
@@ -57,7 +57,7 @@ data class V2XDistressPayload(
 data class TelemetryPayload(
     @SerialName("agent_id")
     val agentId: String,
-    
+
     val latitude: Double,
     val longitude: Double,
     val status: String
@@ -67,13 +67,13 @@ data class TelemetryPayload(
 data class MissionCompletePayload(
     @SerialName("agent_id")
     val agentId: String,
-    
+
     @SerialName("net_payout")
     val netPayout: Double,
-    
+
     @SerialName("evidence_urls")
     val evidenceUrls: List<String>,
-    
+
     @SerialName("hardware_attestation_token")
     val hardwareAttestationToken: String
 )
@@ -82,12 +82,22 @@ data class MissionCompletePayload(
 data class SentryExtensionPayload(
     @SerialName("task_id")
     val taskId: String,
-    
+
     @SerialName("extension_minutes")
     val extensionMinutes: Int,
-    
+
     @SerialName("accepted_bounty_usd")
     val acceptedBountyUsd: Double
+)
+
+// 🛡️ NEW: Payload for device token registration
+@Serializable
+data class FcmTokenPayload(
+    @SerialName("agent_id")
+    val agentId: String,
+
+    @SerialName("fcm_token")
+    val fcmToken: String
 )
 
 class PanApiClient : WalletNetworkClient {
@@ -135,6 +145,28 @@ class PanApiClient : WalletNetworkClient {
 
     private fun HttpRequestBuilder.attachAgentSignature() {
         header("Authorization", "Bearer ${getFreshJwt()}")
+    }
+
+    // 🛡️ NEW: FCM Token Registration Endpoint
+    suspend fun registerFcmToken(token: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$PAN_API_URL/agent/fcm-token") {
+                    attachAgentSignature()
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        FcmTokenPayload(
+                            agentId = secureUid,
+                            fcmToken = token
+                        )
+                    )
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to register FCM token: ${e.message}", e)
+                false
+            }
+        }
     }
 
     override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean {
@@ -205,7 +237,7 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    override suspend fun updateLocationTelemetry(lat: Double, lon: Double, status: String = "ONLINE"): Boolean {
+    override suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse = client.post("$PAN_API_URL/telemetry/ingest") {
@@ -215,7 +247,7 @@ class PanApiClient : WalletNetworkClient {
                         agentId = secureUid,
                         latitude = lat,
                         longitude = lon,
-                        status = status
+                        status = "ONLINE" // Hardcoded to maintain previous default behavior
                     ))
                 }
                 response.status.isSuccess()
@@ -235,13 +267,10 @@ class PanApiClient : WalletNetworkClient {
     ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
-                // 🟢 THE FIX: Wired route generation to the dedicated OSRM base URL
                 val osrmBase = BuildConfig.OSRM_BASE_URL
                 val urlString = "$osrmBase/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
-                
-                // Manual JSON parsing used here — OSRM geometry response is deeply nested
-                // and the step extraction logic benefits from imperative traversal.
+
                 val jsonString = response.bodyAsText()
                 val json = org.json.JSONObject(jsonString)
                 val routes = json.optJSONArray("routes")
@@ -302,12 +331,10 @@ class PanApiClient : WalletNetworkClient {
 
             bitmaps.forEach { bitmap ->
                 try {
-                    // 🟢 THE FIX: Intercept the raw image and redact it securely on-device
                     val redactedBitmap = com.pan.tactical.security.PrivacyFilter.sanitizeImage(bitmap)
 
                     val stream = ByteArrayOutputStream()
-                    
-                    // 🟢 THE FIX: Compress and upload the redacted image, not the original
+
                     redactedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
                     val byteArray = stream.toByteArray()
                     Log.d(TAG, "Uploading evidence: ${byteArray.size / 1024}KB")
@@ -359,10 +386,8 @@ class PanApiClient : WalletNetworkClient {
                 val response = client.get("$PAN_API_URL/agent/missions") {
                     attachAgentSignature()
                 }
-                
+
                 if (response.status.isSuccess()) {
-                    // Leveraging Ktor + Kotlinx Serialization to parse natively 
-                    // using the @SerialName annotations in AgentModels.kt
                     response.body<List<MissionData>>()
                 } else {
                     Log.w(TAG, "Fetch missions returned HTTP ${response.status.value}")
@@ -403,7 +428,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 THE FIX: evidenceUrls parameter properly plumbed into payload
     override suspend fun completeMission(taskId: String, evidenceUrls: List<String>): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -426,9 +450,9 @@ class PanApiClient : WalletNetworkClient {
             }
         }
     }
-    
+
     // --- SENTRY OPERATIONS ---
-    
+
     suspend fun acceptSentryExtension(taskId: String, extensionMinutes: Int, bountyUsd: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {

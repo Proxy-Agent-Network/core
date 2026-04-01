@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pan.tactical.models.AgentCapability
+import com.pan.tactical.models.AgentCapabilityUiModel // 🛡️ FIXED: Point to UI Model
 
 // Make sure your TacticalComponents.kt file has been moved to this same folder
 // so CapabilityCard can be properly resolved!
@@ -35,8 +35,10 @@ fun OfflineLoadoutMenu(
     onPatrolModeChange: (String) -> Unit,
     serviceRadiusMiles: Float,
     onRadiusChange: (Float) -> Unit,
-    agentCapabilities: List<AgentCapability>,
-    onCapabilitiesChange: (List<AgentCapability>) -> Unit
+
+    // 🛡️ FIXED: Expect the UiModel that contains the 'isPinned' and 'isEnabled' state
+    agentCapabilities: List<AgentCapabilityUiModel>,
+    onCapabilitiesChange: (List<AgentCapabilityUiModel>) -> Unit
 ) {
     Column(modifier = Modifier.padding(16.dp).animateContentSize(), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
@@ -90,6 +92,7 @@ fun OfflineLoadoutMenu(
                 )
 
                 Column(modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(rememberScrollState()).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // 🛡️ FIXED: The filter logic now perfectly matches the UiModel properties
                     val pinned = agentCapabilities.filter { it.isPinned }
                     val tier1 = agentCapabilities.filter { it.tier == 1 && !it.isPinned }
                     val tier2 = agentCapabilities.filter { it.tier == 2 && !it.isPinned }

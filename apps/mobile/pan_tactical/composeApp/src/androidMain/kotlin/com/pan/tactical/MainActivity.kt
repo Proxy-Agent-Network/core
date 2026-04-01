@@ -4,13 +4,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.pan.tactical.network.PanWalletClient
+// 🛡️ FIXED: Swap the legacy wallet import for the tactical API client
+import com.pan.tactical.network.PanApiClient 
 import com.pan.tactical.ui.permissions.HardwarePermissionsGuard
 
 class MainActivity : ComponentActivity() {
 
-    // 🛠️ THE FIX 2: Lazy instantiation to prevent duplicate creations on screen rotation
-    private val walletClient by lazy { PanWalletClient() }
+    // 🛡️ FIXED: Instantiate the hardware-capable PanApiClient
+    private val tacticalClient by lazy { PanApiClient() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -25,7 +26,8 @@ class MainActivity : ComponentActivity() {
             HardwarePermissionsGuard {
                 // 🛠️ MINOR FIX: Corrected the comment to reflect our actual flow
                 // Launching the shared KMP App (which starts at HardwareAttestationBoot)
-                App(apiClient = walletClient)
+                // 🛡️ FIXED: Pass the tactical client into the shared KMP App
+                App(apiClient = tacticalClient)
             }
         }
     }
@@ -36,7 +38,7 @@ class MainActivity : ComponentActivity() {
         // Only close clients if the app is actually exiting, not just rotating.
         if (isFinishing) {
             // If you implement a close() method on a NON-SINGLETON client, call it here:
-            // walletClient.close()
+            // tacticalClient.close()
         }
     }
 }

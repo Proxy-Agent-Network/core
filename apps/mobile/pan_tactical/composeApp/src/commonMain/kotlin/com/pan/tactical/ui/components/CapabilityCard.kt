@@ -22,45 +22,78 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pan.tactical.models.AgentCapability
+import com.pan.tactical.models.AgentCapabilityUiModel
+import com.pan.tactical.ui.theme.PanColors
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CapabilityCard(
-    cap: AgentCapability,
-    agentCapabilities: List<AgentCapability>,
-    onUpdate: (List<AgentCapability>) -> Unit
+    capUi: AgentCapabilityUiModel,
+    agentCapabilities: List<AgentCapabilityUiModel>,
+    onUpdate: (List<AgentCapabilityUiModel>) -> Unit
 ) {
-    val originalIndex = agentCapabilities.indexOfFirst { it.id == cap.id }
-    var isDetailsExpanded by remember { mutableStateOf(false) }
+    var isDetailsExpanded by remember(capUi.id) { mutableStateOf(false) }
 
     val rotationAngle by animateFloatAsState(
         targetValue = if (isDetailsExpanded) 180f else 0f,
         label = "arrow_rotation"
     )
 
+    val safeMin = capUi.minPrice
+    val safeMax = capUi.maxPrice
+    val safeStep = capUi.step
+
+    // 🛡️ [PHASE 5] Guard validates range and step to prevent Slider math crashes
+    if (safeMin >= safeMax || safeStep <= 0f) return
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (!cap.isQualified) Color(0xFF121212) else if (cap.isEnabled) Color(0xFF4CAF50).copy(alpha = 0.1f) else Color(0xFF2A2A2A), RoundedCornerShape(8.dp))
-            .border(1.dp, if (!cap.isQualified) Color(0xFF2A2A2A) else if (cap.isEnabled) Color(0xFF4CAF50) else Color(0xFF444444), RoundedCornerShape(8.dp))
             .clip(RoundedCornerShape(8.dp))
+            .background(
+                when {
+                    !capUi.isQualified -> PanColors.SurfaceDark // 🛡️ FIXED: Added PanColors prefix
+                    capUi.isEnabled -> PanColors.QualifiedGreen.copy(alpha = 0.1f)
+                    else -> PanColors.SurfaceMid // 🛡️ FIXED
+                }
+            )
+            .border(
+                width = 1.dp,
+                color = when {
+                    !capUi.isQualified -> PanColors.SurfaceMid // 🛡️ FIXED
+                    capUi.isEnabled -> PanColors.QualifiedGreen
+                    else -> PanColors.SurfaceLight // 🛡️ FIXED
+                },
+                shape = RoundedCornerShape(8.dp)
+            )
             .combinedClickable(
                 onLongClick = {
-                    val n = agentCapabilities.toMutableList()
-                    n[originalIndex] = cap.copy(isPinned = !cap.isPinned)
-                    onUpdate(n)
+                    val idx = agentCapabilities.indexOfFirst { it.id == capUi.id }
+                    if (idx != -1) {
+                        val n = agentCapabilities.toMutableList()
+                        n[idx] = capUi.copy(isPinned = !capUi.isPinned)
+                        onUpdate(n)
+                    }
                 },
                 onClick = { isDetailsExpanded = !isDetailsExpanded }
             )
             .padding(12.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (cap.isPinned) Text("📌 ", fontSize = 14.sp)
-                if (!cap.isQualified) Text("🔒 ", fontSize = 14.sp)
-                Text(cap.title, color = if (!cap.isQualified) Color.DarkGray else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                if (capUi.isPinned) Text("📌 ", fontSize = 14.sp)
+                if (!capUi.isQualified) Text("🔒 ", fontSize = 14.sp)
+                Text(
+                    text = capUi.title,
+                    color = if (!capUi.isQualified) Color.DarkGray else Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
 
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -70,47 +103,67 @@ fun CapabilityCard(
                     modifier = Modifier.rotate(rotationAngle)
                 )
             }
-            if (cap.isQualified) {
-                Switch(checked = cap.isEnabled, onCheckedChange = { val n = agentCapabilities.toMutableList(); n[originalIndex] = cap.copy(isEnabled = it); onUpdate(n) }, colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF4CAF50)))
+            if (capUi.isQualified) {
+                Switch(
+                    checked = capUi.isEnabled,
+                    onCheckedChange = { isChecked ->
+                        val idx = agentCapabilities.indexOfFirst { it.id == capUi.id }
+                        if (idx != -1) {
+                            val n = agentCapabilities.toMutableList()
+                            n[idx] = capUi.copy(isEnabled = isChecked)
+                            onUpdate(n)
+                        }
+                    },
+                    colors = SwitchDefaults.colors(checkedTrackColor = PanColors.QualifiedGreen)
+                )
             }
         }
 
         AnimatedVisibility(visible = isDetailsExpanded) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                Text(cap.description, color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp)
-                if (!cap.isQualified && cap.requiredTraining != null) {
+                Text(capUi.description, color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp)
+                if (!capUi.isQualified && capUi.requiredTraining != null) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("⚠️ ${cap.requiredTraining}", color = Color(0xFFFF9800), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                } else if (cap.isQualified && cap.requiredTraining != null) {
+                    Text("⚠️ ${capUi.requiredTraining}", color = PanColors.WarningOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                } else if (capUi.isQualified && capUi.requiredTraining != null) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("🛡️ Authorized: ${cap.requiredTraining}", color = Color(0xFF4CAF50), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("🛡️ Authorized: ${capUi.requiredTraining}", color = PanColors.QualifiedGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
-        AnimatedVisibility(visible = cap.isEnabled && cap.isQualified) {
+        AnimatedVisibility(visible = capUi.isEnabled && capUi.isQualified) {
             Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("YOUR MINIMUM BID", color = Color(0xFF00BCD4), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    Text("$${cap.currentBid.toInt()}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                    Text("YOUR MINIMUM BID", color = PanColors.CyanAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("$${capUi.currentBid.roundToInt()}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black)
                 }
-                val stepsCount = ((cap.maxPrice - cap.minPrice) / cap.step).roundToInt() - 1
+
+                val safeBid = capUi.currentBid.coerceIn(safeMin, safeMax)
+                val stepsCount = ((safeMax - safeMin) / safeStep).roundToInt() - 1
+
                 Slider(
-                    value = cap.currentBid,
+                    value = safeBid,
                     onValueChange = { newBid ->
-                        // --- SWAPPED JAVA Math.round FOR PURE KOTLIN .roundToInt() ---
-                        val snapped = (((newBid - cap.minPrice) / cap.step).roundToInt() * cap.step) + cap.minPrice
-                        val n = agentCapabilities.toMutableList()
-                        n[originalIndex] = cap.copy(currentBid = snapped.coerceIn(cap.minPrice, cap.maxPrice))
-                        onUpdate(n)
+                        val idx = agentCapabilities.indexOfFirst { it.id == capUi.id }
+                        if (idx != -1) {
+                            val snapped = (((newBid - safeMin) / safeStep).roundToInt() * safeStep) + safeMin
+                            val n = agentCapabilities.toMutableList()
+                            n[idx] = capUi.copy(currentBid = snapped.coerceIn(safeMin, safeMax))
+                            onUpdate(n)
+                        }
                     },
-                    valueRange = cap.minPrice..cap.maxPrice,
+                    valueRange = safeMin..safeMax,
                     steps = if (stepsCount > 0) stepsCount else 0,
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFF00BCD4), activeTrackColor = Color(0xFF00BCD4), inactiveTrackColor = Color.DarkGray)
+                    colors = SliderDefaults.colors(
+                        thumbColor = PanColors.CyanAccent,
+                        activeTrackColor = PanColors.CyanAccent,
+                        inactiveTrackColor = Color.DarkGray
+                    )
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("$${cap.minPrice.toInt()}", color = Color.Gray, fontSize = 10.sp)
-                    Text("$${cap.maxPrice.toInt()}", color = Color.Gray, fontSize = 10.sp)
+                    Text("$${safeMin.toInt()}", color = Color.Gray, fontSize = 10.sp)
+                    Text("$${safeMax.toInt()}", color = Color.Gray, fontSize = 10.sp)
                 }
             }
         }

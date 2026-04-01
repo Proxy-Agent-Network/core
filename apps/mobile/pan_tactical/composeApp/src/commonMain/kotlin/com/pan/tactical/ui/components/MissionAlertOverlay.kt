@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pan.tactical.models.MissionData
+import com.pan.tactical.ui.theme.PanColors
 
 @Composable
 fun MissionAlertOverlay(
@@ -32,7 +33,7 @@ fun MissionAlertOverlay(
         modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF4CAF50).copy(alpha = flashAlpha)))
+        Box(modifier = Modifier.fillMaxSize().background(PanColors.QualifiedGreen.copy(alpha = flashAlpha)))
 
         Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
@@ -63,36 +64,37 @@ fun MissionAlertOverlay(
             }
 
             Box(
-                modifier = Modifier.fillMaxWidth().height(12.dp).background(Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp)),
+                modifier = Modifier.fillMaxWidth().height(12.dp).background(PanColors.SurfaceMid, shape = RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.CenterStart
             ) {
-                Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(countdownProgress).background(Color(0xFF4CAF50), shape = RoundedCornerShape(8.dp)))
+                Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(countdownProgress).background(PanColors.QualifiedGreen, shape = RoundedCornerShape(8.dp)))
             }
 
-            val rawBounty = activeMission?.bounty?.replace("$", "")?.toFloatOrNull() ?: 0f
-            val netPayout = rawBounty * 0.90f
+            // 🛡️ FIXED: Type-safe math utilizing the Double from the hardened API contract
+            val rawBounty = activeMission?.bountyUsd ?: 0.0
+            val netPayout = rawBounty * 0.90
             val wholePart = netPayout.toInt()
             val fractionalPart = ((netPayout - wholePart) * 100).toInt()
             val formattedBounty = "$$wholePart.${fractionalPart.toString().padStart(2, '0')}"
 
             Text("GUARANTEED NET PAYOUT", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Text(formattedBounty, color = Color(0xFF4CAF50), fontSize = 48.sp, fontWeight = FontWeight.Black)
-            Text(activeMission?.intersection ?: "Unknown", color = Color(0xFFFF9800), fontSize = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+            Text(formattedBounty, color = PanColors.QualifiedGreen, fontSize = 48.sp, fontWeight = FontWeight.Black)
+            Text(activeMission?.intersection ?: "Unknown", color = PanColors.WarningOrange, fontSize = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
             Text(activeMission?.errorCode ?: "Unknown Error", color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
 
             Spacer(modifier = Modifier.height(8.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp))
-                    .border(2.dp, Color(0xFF00BCD4), shape = RoundedCornerShape(8.dp))
+                    .background(PanColors.SurfaceMid, shape = RoundedCornerShape(8.dp))
+                    .border(2.dp, PanColors.CyanAccent, shape = RoundedCornerShape(8.dp))
                     .padding(vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
                 // Hardcoded the distance here so it compiles safely
                 Text(
                     text = "DISTANCE: 2.5 MILES",
-                    color = Color(0xFF00BCD4),
+                    color = PanColors.CyanAccent,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 1.sp
@@ -103,7 +105,7 @@ fun MissionAlertOverlay(
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = onDecline,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
+                    colors = ButtonDefaults.buttonColors(containerColor = PanColors.SurfaceLight),
                     modifier = Modifier.weight(1f).height(64.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -112,7 +114,7 @@ fun MissionAlertOverlay(
 
                 Button(
                     onClick = onAccept,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                    colors = ButtonDefaults.buttonColors(containerColor = PanColors.QualifiedGreen),
                     modifier = Modifier.weight(1f).height(64.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {

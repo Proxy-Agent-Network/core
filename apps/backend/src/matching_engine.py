@@ -56,7 +56,7 @@ async def _fetch_osrm_duration(session: aiohttp.ClientSession, agent_id: str, pa
     return agent_id, float('inf')
 
 async def find_best_agent(redis_client, session: aiohttp.ClientSession, lat: float, lon: float, 
-                          zone_id: str, required_tier: int = 1) -> Tuple[Optional[str], Optional[str]]:
+                          zone_id: str, required_tier: int = 1, exclude_agent_id: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
     """
     Finds best agent using 'Last Resort' hierarchy.
     Returns: (agent_id, status_at_selection)
@@ -75,6 +75,10 @@ async def find_best_agent(redis_client, session: aiohttp.ClientSession, lat: flo
 
     for agent_record in nearby_agents:
         agent_id = agent_record[0].decode("utf-8")
+        
+        if agent_id == exclude_agent_id:
+            continue
+            
         a_lon, a_lat = agent_record[2]
         
         agent_data = await redis_client.hmget(f"agent:{agent_id}", "status", "patrol_mode", "tier")
@@ -108,7 +112,25 @@ async def find_best_agent(redis_client, session: aiohttp.ClientSession, lat: flo
 
     return None, None
 
-async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession):
+async def _process_delayed_retries(redis_client):
+    """
+    Checks the delayed retry queue for expired tasks and moves them back 
+    to the active dispatch queue, preventing the 'Poison Pill' loop.
+    """
+    now = time.time()
+    ready_tasks = await redis_client.zrangebyscore("pan:dispatch:delayed_tasks", "-inf", now)
+    
+    if ready_tasks:
+        for task_bytes in ready_tasks:
+            task_id = task_bytes.decode("utf-8")
+            # TODO: Make atomic with a Lua script for production hardening
+            await redis_client.rpush("pan:dispatch:active_tasks", task_id)
+            await redis_client.zrem("pan:dispatch:delayed_tasks", task_id)
+
+async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, insurtech_client):
+    
+    await _process_delayed_retries(redis_client)
+    
     task_pop = await redis_client.blpop("pan:dispatch:active_tasks", timeout=1.0)
     if not task_pop: return
 
@@ -121,13 +143,25 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession):
     zone_id = task_data.get("zone_id", "mesa_az")
     
     required_tier = int(task_data.get("required_tier", 1))
+    
     is_sentry_subtask = task_data.get("role") == "sentry"
+    exclude_agent = None
+    
+    if is_sentry_subtask:
+        parent_incident_id = task_data.get("incident_id")
+        if parent_incident_id:
+            primary_id_bytes = await redis_client.hget(f"incident:{parent_incident_id}", "primary_agent_id")
+            if primary_id_bytes:
+                exclude_agent = primary_id_bytes.decode("utf-8")
 
-    assigned_id, selection_status = await find_best_agent(redis_client, session, t_lat, t_lon, zone_id, required_tier)
+    assigned_id, selection_status = await find_best_agent(
+        redis_client, session, t_lat, t_lon, zone_id, required_tier, exclude_agent
+    )
 
     if not assigned_id:
-        await asyncio.sleep(2.0)
-        await redis_client.rpush("pan:dispatch:active_tasks", task_id)
+        retry_timestamp = time.time() + 2.0
+        await redis_client.zadd("pan:dispatch:delayed_tasks", {task_id: retry_timestamp})
+        logger.info(f"⏳ No agents available for {task_id}. Delaying retry.")
         return
 
     if selection_status == "ONLINE":
@@ -137,7 +171,16 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession):
             "dispatched_at": int(time.time()), "is_sentry": str(is_sentry_subtask)
         })
         await redis_client.hset(f"agent:{assigned_id}", "status", "EN_ROUTE")
-        # TODO: Wire insurance micro-coverage webhook - see issue #142
+        
+        # Fire-and-forget Insurance Coverage webhook
+        role_type = "SENTRY" if is_sentry_subtask else "PRIMARY"
+        asyncio.create_task(insurtech_client.bind_hnoa_policy(session, task_id, assigned_id, role_type))
+        
+        if not is_sentry_subtask and "incident_id" in task_data:
+            incident_key = f"incident:{task_data['incident_id']}"
+            await redis_client.hset(incident_key, "primary_agent_id", assigned_id)
+            await redis_client.expire(incident_key, 3600)  # 1hr TTL
+            
         logger.info(f"✅ Dispatched {task_id} to {assigned_id}")
     else:
         # Append to Agent's sticky queue
@@ -145,23 +188,21 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession):
         await redis_client.hset(f"pan:task:{task_id}", "status", "QUEUED")
         logger.info(f"📌 Queued {task_id} for busy agent {assigned_id}")
 
-async def run_matching_engine(redis_client):
+async def run_matching_engine(redis_client, insurtech_client):
     logger.info("⚙️ [PHASE 5] Orchestration Engine Online...")
     
     consecutive_errors = 0
     
-    # Initialize a long-lived session for connection pooling
     async with aiohttp.ClientSession() as session:
         while True:
             try:
-                await _matching_engine_loop(redis_client, session)
+                await _matching_engine_loop(redis_client, session, insurtech_client)
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 logger.info("🛑 [MATCHING_ENGINE] Shutting down gracefully.")
                 raise
             except Exception as e:
                 consecutive_errors += 1
-                # Escalating backoff to protect resources during outages
                 backoff = min(5.0 * consecutive_errors, 60.0)
                 logger.error(f"⚠️ [MATCHING_ENGINE] Error #{consecutive_errors}: {e}")
                 await asyncio.sleep(backoff)

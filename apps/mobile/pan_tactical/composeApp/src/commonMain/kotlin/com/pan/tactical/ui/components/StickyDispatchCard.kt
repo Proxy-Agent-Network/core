@@ -15,22 +15,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pan.tactical.models.MissionData
 import com.pan.tactical.models.TaskRole
-import com.pan.tactical.ui.theme.PanColors // Injected Theme Colors
+import com.pan.tactical.ui.theme.PanColors
 
 @Composable
 fun StickyDispatchCard(
     queuedMission: MissionData,
     modifier: Modifier = Modifier
 ) {
-    val formattedBounty = "$%.2f".format(queuedMission.bountyUsd)
+    // 🛡️ FIXED: Cross-platform safe currency formatting (Replaces JVM-only .format)
+    val wholePart = queuedMission.bountyUsd.toInt()
+    val fractionalPart = ((queuedMission.bountyUsd - wholePart) * 100).toInt()
+    val formattedBounty = "$$wholePart.${fractionalPart.toString().padStart(2, '0')}"
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp) 
+            .padding(16.dp)
             .background(PanColors.CardBackgroundTransparent, shape = RoundedCornerShape(12.dp))
             .border(1.dp, PanColors.Green, shape = RoundedCornerShape(12.dp))
-            .padding(16.dp) 
+            .padding(16.dp)
     ) {
         Column {
             Row(
@@ -51,7 +54,7 @@ fun StickyDispatchCard(
                         letterSpacing = 1.sp
                     )
                 }
-                
+
                 Text(
                     text = formattedBounty,
                     color = Color.White,
@@ -59,18 +62,19 @@ fun StickyDispatchCard(
                     fontWeight = FontWeight.Bold
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             Text(
                 text = queuedMission.intersection,
                 color = Color.LightGray,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
-            
+
             Text(
-                text = queuedMission.errorCode,
+                // 🛡️ FIXED: Handle the new nullable errorCode from our API contract
+                text = queuedMission.errorCode ?: "UNKNOWN FAULT",
                 color = PanColors.WarningOrange,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
@@ -86,6 +90,9 @@ fun StickyDispatchCardPreview() {
         queuedMission = MissionData(
             incidentId = "INC-999",
             taskId = "TSK-1024",
+            // 🛡️ FIXED: Added required coordinates (No longer defaults to 0.0)
+            lat = 33.415,
+            lon = -111.831,
             intersection = "Mesa Dr & University",
             errorCode = "LIDAR_CRITICAL_FAULT",
             bountyUsd = 47.50,
