@@ -18,6 +18,7 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import com.google.android.gms.maps.model.LatLng
@@ -39,16 +40,24 @@ data class StatusUpdateRequest(
 @Serializable
 data class V2XDistressPayload(
     val vin: String,
-    val fault_code: String,
+    
+    @SerialName("fault_code")
+    val faultCode: String,
+    
     val latitude: Double,
     val longitude: Double,
-    val bounty_usd: Double,
+    
+    @SerialName("bounty_usd")
+    val bountyUsd: Double,
+    
     val timestamp: Long
 )
 
 @Serializable
 data class TelemetryPayload(
-    val agent_id: String,
+    @SerialName("agent_id")
+    val agentId: String,
+    
     val latitude: Double,
     val longitude: Double,
     val status: String
@@ -56,10 +65,29 @@ data class TelemetryPayload(
 
 @Serializable
 data class MissionCompletePayload(
-    val agent_id: String,
+    @SerialName("agent_id")
+    val agentId: String,
+    
+    @SerialName("net_payout")
     val netPayout: Double,
-    val evidence_urls: List<String>,
-    val hardware_attestation_token: String
+    
+    @SerialName("evidence_urls")
+    val evidenceUrls: List<String>,
+    
+    @SerialName("hardware_attestation_token")
+    val hardwareAttestationToken: String
+)
+
+@Serializable
+data class SentryExtensionPayload(
+    @SerialName("task_id")
+    val taskId: String,
+    
+    @SerialName("extension_minutes")
+    val extensionMinutes: Int,
+    
+    @SerialName("accepted_bounty_usd")
+    val acceptedBountyUsd: Double
 )
 
 class PanApiClient : WalletNetworkClient {
@@ -85,6 +113,10 @@ class PanApiClient : WalletNetworkClient {
     private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val PAN_API_URL = "$hostUrl/api/v1"
 
+    // Hardware security managers hoisted to singletons to prevent keystore operation overhead
+    private val strongBoxManager = StrongBoxManager()
+    private val attestationEngine = com.pan.tactical.security.AttestationEngine()
+
     private val secureUid: String
         get() = FirebaseAuth.getInstance().currentUser?.uid
             ?: throw IllegalStateException("Agent identity missing")
@@ -95,7 +127,7 @@ class PanApiClient : WalletNetworkClient {
     private fun getFreshJwt(): String {
         val now = System.currentTimeMillis() / 1000
         if (cachedJwt == null || now >= jwtExpiresAt - 30) {
-            cachedJwt = StrongBoxManager().generateJwt(secureUid)
+            cachedJwt = strongBoxManager.generateJwt(secureUid)
             jwtExpiresAt = now + 300
         }
         return cachedJwt!!
@@ -115,10 +147,10 @@ class PanApiClient : WalletNetworkClient {
                     contentType(ContentType.Application.Json)
                     setBody(V2XDistressPayload(
                         vin = "DEV-VIN-777",
-                        fault_code = errorCode,
+                        faultCode = errorCode,
                         latitude = lat,
                         longitude = lon,
-                        bounty_usd = 25.00,
+                        bountyUsd = 25.00,
                         timestamp = System.currentTimeMillis() / 1000
                     ))
                 }
@@ -147,8 +179,7 @@ class PanApiClient : WalletNetworkClient {
                     android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP
                 )
 
-                val engine = com.pan.tactical.security.AttestationEngine()
-                val hardwareToken = engine.generateHardwareToken(context, nonce)
+                val hardwareToken = attestationEngine.generateHardwareToken(context, nonce)
 
                 val requestBody = StatusUpdateRequest(
                     status = statusString,
@@ -157,7 +188,7 @@ class PanApiClient : WalletNetworkClient {
                     radius = radiusMiles,
                     loadout = loadout,
                     signature = hardwareToken,
-                    timestamp = System.currentTimeMillis()
+                    timestamp = System.currentTimeMillis() / 1000 // Fixed: Unix epoch seconds
                 )
 
                 val response: HttpResponse =
@@ -174,17 +205,17 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    override suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean {
+    override suspend fun updateLocationTelemetry(lat: Double, lon: Double, status: String = "ONLINE"): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val response: HttpResponse = client.post("$PAN_API_URL/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
                     attachAgentSignature()
                     setBody(TelemetryPayload(
-                        agent_id = secureUid,
+                        agentId = secureUid,
                         latitude = lat,
                         longitude = lon,
-                        status = "ONLINE"
+                        status = status
                     ))
                 }
                 response.status.isSuccess()
@@ -208,6 +239,9 @@ class PanApiClient : WalletNetworkClient {
                 val osrmBase = BuildConfig.OSRM_BASE_URL
                 val urlString = "$osrmBase/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
+                
+                // Manual JSON parsing used here — OSRM geometry response is deeply nested
+                // and the step extraction logic benefits from imperative traversal.
                 val jsonString = response.bodyAsText()
                 val json = org.json.JSONObject(jsonString)
                 val routes = json.optJSONArray("routes")
@@ -266,7 +300,7 @@ class PanApiClient : WalletNetworkClient {
                 return@withContext uploadedUrls
             }
 
-            bitmaps.forEachIndexed { _, bitmap ->
+            bitmaps.forEach { bitmap ->
                 try {
                     // 🟢 THE FIX: Intercept the raw image and redact it securely on-device
                     val redactedBitmap = com.pan.tactical.security.PrivacyFilter.sanitizeImage(bitmap)
@@ -276,6 +310,7 @@ class PanApiClient : WalletNetworkClient {
                     // 🟢 THE FIX: Compress and upload the redacted image, not the original
                     redactedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
                     val byteArray = stream.toByteArray()
+                    Log.d(TAG, "Uploading evidence: ${byteArray.size / 1024}KB")
                     val base64Image = android.util.Base64.encodeToString(byteArray, android.util.Base64.DEFAULT)
 
                     val response: HttpResponse = client.post("https://api.imgbb.com/1/upload?key=$relayApiKey") {
@@ -324,30 +359,17 @@ class PanApiClient : WalletNetworkClient {
                 val response = client.get("$PAN_API_URL/agent/missions") {
                     attachAgentSignature()
                 }
+                
                 if (response.status.isSuccess()) {
-                    val jsonString = response.bodyAsText()
-                    val array = org.json.JSONArray(jsonString)
-                    val list = mutableListOf<MissionData>()
-
-                    for (i in 0 until array.length()) {
-                        val obj = array.getJSONObject(i)
-                        list.add(
-                            MissionData(
-                                lat = obj.optDouble("lat", obj.optDouble("latitude", 0.0)),
-                                lon = obj.optDouble("lon", obj.optDouble("longitude", 0.0)),
-                                errorCode = obj.optString("errorCode", obj.optString("error_code", "")),
-                                bounty = obj.optString("bounty", obj.optString("bounty_usd", "")),
-                                intersection = obj.optString("intersection", ""),
-                                taskId = obj.optString("taskId", obj.optString("task_id", ""))
-                            )
-                        )
-                    }
-                    list
+                    // Leveraging Ktor + Kotlinx Serialization to parse natively 
+                    // using the @SerialName annotations in AgentModels.kt
+                    response.body<List<MissionData>>()
                 } else {
+                    Log.w(TAG, "Fetch missions returned HTTP ${response.status.value}")
                     emptyList()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Fetch missions failed: ${e.message}")
+                Log.e(TAG, "Fetch missions failed: ${e.message}", e)
                 emptyList()
             }
         }
@@ -361,7 +383,7 @@ class PanApiClient : WalletNetworkClient {
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
-                Log.e(TAG, "ACK failed: ${e.message}")
+                Log.e(TAG, "ACK failed: ${e.message}", e)
                 false
             }
         }
@@ -375,7 +397,7 @@ class PanApiClient : WalletNetworkClient {
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
-                Log.e(TAG, "Decline failed: ${e.message}")
+                Log.e(TAG, "Decline failed: ${e.message}", e)
                 false
             }
         }
@@ -390,10 +412,10 @@ class PanApiClient : WalletNetworkClient {
                     contentType(ContentType.Application.Json)
                     setBody(
                         MissionCompletePayload(
-                            agent_id = secureUid,
+                            agentId = secureUid,
                             netPayout = 0.0,
-                            evidence_urls = evidenceUrls,
-                            hardware_attestation_token = StrongBoxManager().generateJwt(secureUid)
+                            evidenceUrls = evidenceUrls,
+                            hardwareAttestationToken = strongBoxManager.generateJwt(secureUid)
                         )
                     )
                 }
@@ -404,9 +426,33 @@ class PanApiClient : WalletNetworkClient {
             }
         }
     }
+    
+    // --- SENTRY OPERATIONS ---
+    
+    suspend fun acceptSentryExtension(taskId: String, extensionMinutes: Int, bountyUsd: Double): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.post("$PAN_API_URL/agent/missions/$taskId/extend") {
+                    attachAgentSignature()
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        SentryExtensionPayload(
+                            taskId = taskId,
+                            extensionMinutes = extensionMinutes,
+                            acceptedBountyUsd = bountyUsd
+                        )
+                    )
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to accept Sentry extension: ${e.message}", e)
+                false
+            }
+        }
+    }
 
     override suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String> =
-        Result.failure(Exception("Not implemented in PanApiClient"))
+        Result.failure(UnsupportedOperationException("Not implemented in PanApiClient"))
 
     fun close() = client.close()
 }
