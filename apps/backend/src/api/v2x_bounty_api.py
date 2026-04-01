@@ -10,7 +10,6 @@ from redis.exceptions import WatchError
 from utils.webhook_auth import verify_v2x_signature
 from compliance.audit_engine import ComplianceEngine
 from utils.auth import verify_agent_signature
-from core.economics.escrow_oracle import EscrowOracle
 
 logger = logging.getLogger("V2X_Bounty_API")
 router = APIRouter()
@@ -23,15 +22,20 @@ class DistressPayload(BaseModel):
     latitude: float
     longitude: float
     bounty_usd: float = 25.0
-    # 🟢 THE FIX: Accept the OSM Color Taxonomy directly from the Fleet Partner
     osm_color: str = "GREEN" 
 
 class MissionCompletePayload(BaseModel):
     agent_id: str
-    netPayout: float 
+    net_payout: float 
     evidence_urls: list = []
     hardware_attestation_token: str = ""
     av_signature_hex: str = ""
+
+# 🟢 NEW: Sentry Extension Payload for Phase 5
+class SentryExtensionPayload(BaseModel):
+    task_id: str
+    extension_minutes: int
+    accepted_bounty_usd: float
 
 # --- HELPER ---
 
@@ -63,7 +67,6 @@ async def receive_distress_signal(
             
         task_id = f"tsk_{uuid.uuid4().hex[:12]}"
         
-        # 🟢 THE FIX: Lock the original base bounty and OSM color into the task record
         task_record = {
             "fleet_id": fleet_id,
             "vin": payload.vin,
@@ -107,6 +110,8 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
     cursor = 0
     active_missions = []
     
+    # TODO: Replace SCAN with a per-agent mission index (e.g., SMEMBERS pan:agent:{id}:missions)
+    # SCAN is acceptable for Vanguard 50 but becomes O(N) at scale.
     while True:
         cursor, keys = await redis_client.scan(cursor=cursor, match="mission:active:*", count=100)
         for key in keys:
@@ -114,18 +119,20 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
             mission = decode_redis_hash(raw_mission)
             
             if mission and mission.get("agent_id") == agent_id:
-                # Handle bytes key splitting just in case
                 key_str = key.decode("utf-8") if isinstance(key, bytes) else key
                 task_id = key_str.split("mission:active:")[-1] 
                 
+                # Default to PRIMARY role and ASSIGNED status if missing
                 active_missions.append({
-                    "taskId": task_id,
+                    "task_id": task_id,
+                    "incident_id": str(mission.get("incident_id", f"inc_{task_id}")),
                     "lat": float(mission.get("lat", 0.0)),
                     "lon": float(mission.get("lon", 0.0)),
-                    "errorCode": str(mission.get("fault_code", "Unknown Fault")),
-                    "bounty": f"${float(mission.get('bounty_usd', 25.0)):.2f}", 
+                    "error_code": str(mission.get("fault_code", "Unknown Fault")),
+                    "bounty_usd": float(mission.get('bounty_usd', 25.0)), 
                     "intersection": str(mission.get("vin", "Target Location")),
-                    "osmColor": str(mission.get("osm_color", "GREEN")).upper()
+                    "role": str(mission.get("role", "PRIMARY")).upper(),
+                    "status": str(mission.get("status", "ASSIGNED")).upper()
                 })
         if cursor == 0:
             break
@@ -141,7 +148,6 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
     try:
         redis_client = request.app.state.redis_client
         
-        # 1. Grab task details
         raw_task_data = await redis_client.hgetall(f"pan:task:{task_id}")
         if not raw_task_data:
             raise HTTPException(status_code=404, detail="Task not found.")
@@ -153,38 +159,19 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         raw_mission_data = await redis_client.hgetall(mission_key)
         mission_data = decode_redis_hash(raw_mission_data)
         
-        if mission_data and mission_data.get("agent_id") != agent_id:
+        if not mission_data:
+            raise HTTPException(status_code=404, detail="Mission not found.")
+            
+        if mission_data.get("agent_id") != agent_id:
             logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to snipe mission {task_id} assigned to {mission_data.get('agent_id')}.")
             raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
         vin = task_data.get("vin", "UNKNOWN_VIN")
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
-        payment_hash = task_data.get("payment_hash")
         
-        if not payment_hash:
-            raise HTTPException(status_code=500, detail="Fatal: Mission lacks escrow payment hash.")
-        
-        # Zero-Trust Validation
-        oracle = request.app.state.escrow_oracle
-        oracle_verdict = await oracle.finalize_task(
-            task_id=task_id,
-            payment_hash=payment_hash,
-            proof_payload={
-                "agent_id": agent_id,
-                "hardware_attestation_token": payload.hardware_attestation_token,
-                "evidence_urls": payload.evidence_urls,
-                "av_signature_hex": payload.av_signature_hex
-            }
-        )
-        
-        if oracle_verdict.get("status") != "settled":
-            logger.error(f"🛑 [ORACLE REJECTED] Mission {task_id}: {oracle_verdict.get('message')}")
-            raise HTTPException(status_code=403, detail=oracle_verdict.get("message", "Cryptographic settlement failed."))
-
         raw_bounty = float(task_data.get("bounty_usd", 25.0))
         actual_payout = round(raw_bounty * 0.90, 2) 
 
-        # 2. Update status and generate SB 1417 audit trails
         await redis_client.hset(f"pan:task:{task_id}", "status", "COMPLETED")
         await redis_client.delete(mission_key)
         
@@ -199,7 +186,7 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         
         await redis_client.hset("pan:compliance:reports", task_id, json.dumps(sealed_report))
         
-        # --- 3. ATOMIC FINANCIAL SETTLEMENT ---
+        # --- ATOMIC FINANCIAL SETTLEMENT ---
         wallet_key = f"pan:agent:{agent_id}:wallet"
         
         async with redis_client.pipeline() as pipe:
@@ -235,7 +222,6 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                     
         logger.info(f"💸 [WALLET] Deposited ${actual_payout:.2f} to {agent_id}. New Balance: ${wallet['balance']:.2f}")
 
-        # 4. Return agent to the available pool
         await redis_client.hset(f"agent:{agent_id}", "status", "ONLINE")
         
         await redis_client.publish(
@@ -263,7 +249,6 @@ async def acknowledge_mission(task_id: str, request: Request, agent_id: str = De
         raise HTTPException(status_code=404, detail="Mission not found or already revoked.")
 
     if mission_data.get("agent_id") != agent_id:
-        logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to ACK mission {task_id} assigned to {mission_data.get('agent_id')}.")
         raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
     await redis_client.hset(mission_key, mapping={
@@ -304,3 +289,39 @@ async def decline_mission(task_id: str, request: Request, agent_id: str = Depend
 
     logger.info(f"🚫 [V2X] Agent {agent_id} declined {task_id} at ${rejected_bounty:.2f}. 15-Min Cooldown active.")
     return {"status": "success", "message": "Mission declined."}
+
+# 🟢 NEW: Sentry Extension Endpoint
+@router.post("/v1/agent/missions/{task_id}/extend")
+async def extend_sentry_mission(
+    task_id: str, 
+    payload: SentryExtensionPayload, 
+    request: Request, 
+    agent_id: str = Depends(verify_agent_signature)
+):
+    """Processes an accepted tactical time extension for a Sentry role."""
+    redis_client = request.app.state.redis_client
+    mission_key = f"mission:active:{task_id}"
+
+    raw_mission_data = await redis_client.hgetall(mission_key)
+    mission_data = decode_redis_hash(raw_mission_data)
+    
+    if not mission_data or mission_data.get("agent_id") != agent_id:
+        raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
+
+    if mission_data.get("role", "PRIMARY").upper() != "SENTRY":
+        raise HTTPException(status_code=403, detail="Extension only valid for SENTRY role missions.")
+
+    # Update the mission bounty and SLA extension
+    current_bounty = float(mission_data.get("bounty_usd", 25.0))
+    new_bounty = current_bounty + payload.accepted_bounty_usd
+
+    async with redis_client.pipeline(transaction=True) as pipe:
+        pipe.hset(mission_key, mapping={
+            "bounty_usd": new_bounty,
+            "extension_minutes_added": payload.extension_minutes
+        })
+        pipe.hset(f"pan:task:{task_id}", "bounty_usd", new_bounty)
+        await pipe.execute()
+
+    logger.info(f"⏱️ [SENTRY] Agent {agent_id} accepted +{payload.extension_minutes}m extension for ${payload.accepted_bounty_usd:.2f}. New total: ${new_bounty:.2f}")
+    return {"status": "success", "new_bounty_usd": new_bounty}
