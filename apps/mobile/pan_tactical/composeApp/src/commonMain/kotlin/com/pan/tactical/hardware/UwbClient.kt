@@ -11,15 +11,6 @@ data class UwbRangingResult(
     val vehicleHeadingDegrees: Float? = null 
 )
 
-// TODO: BleHapHatService — Add sendHapHatCommand(command: HapHatCommand) to this interface
-// data class HapHatCommand(
-//     val motorId: Byte,       // FRONT_LEFT, FRONT_RIGHT, BACK_LEFT, BACK_RIGHT, ALL
-//     val pulseSpeed: Byte,    // 0-255 maps to 0Hz-10Hz
-//     val ledMode: Byte,       // OFF, SOLID, PULSE, STROBE
-//     val ledColor: Byte,      // WHITE, CYAN, GREEN, RED, AMBER
-//     val durationMs: Int      // 0 = indefinite
-// )
-
 // --- INTERFACE ---
 interface UwbClient {
     val rangingState: StateFlow<UwbRangingResult>

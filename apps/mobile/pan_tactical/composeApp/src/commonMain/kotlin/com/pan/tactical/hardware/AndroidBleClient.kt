@@ -18,7 +18,10 @@ class AndroidBleClient(private val context: Context) : BleHomingClient {
     private val bluetoothAdapter = bluetoothManager?.adapter
     private val bleScanner = bluetoothAdapter?.bluetoothLeScanner
     
+    // 🛡️ FIXED: Bug 1 - Added @Volatile to guarantee thread-safe visibility across coroutines and BLE callbacks
+    @Volatile
     private var gattConnection: BluetoothGatt? = null
+    
     private var scanCallback: ScanCallback? = null
     
     // Thread-safe atomic flag retained from Phase 3
@@ -141,7 +144,14 @@ class AndroidBleClient(private val context: Context) : BleHomingClient {
                         // Chain the next read
                         val service = gatt.getService(PAN_AV_SERVICE_UUID)
                         val keyChar = service?.getCharacteristic(SESSION_KEY_CHAR_UUID)
-                        if (keyChar != null) gatt.readCharacteristic(keyChar)
+                        
+                        // 🛡️ FIXED: Bug 2 - Prevented a silent coroutine hang if the AV doesn't expose the session key characteristic
+                        if (keyChar != null) {
+                            gatt.readCharacteristic(keyChar)
+                        } else {
+                            deferredResult.complete(OobHandshakeResult(false, errorMessage = "Session key characteristic not found on AV"))
+                            close()
+                        }
                     }
                     SESSION_KEY_CHAR_UUID -> {
                         sessionKey = characteristic.value
@@ -171,6 +181,8 @@ class AndroidBleClient(private val context: Context) : BleHomingClient {
         if (isScanning.compareAndSet(true, false)) {
             try {
                 scanCallback?.let { bleScanner?.stopScan(it) }
+                // 🛡️ FIXED: Issue 3 - Properly cleared the callback reference after stopping to prevent memory leaks
+                scanCallback = null
             } catch (e: Exception) {
                 Log.e(TAG, "Error stopping BLE scan: ${e.message}")
             }

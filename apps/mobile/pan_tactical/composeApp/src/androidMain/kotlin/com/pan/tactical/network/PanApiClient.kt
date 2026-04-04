@@ -18,6 +18,8 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -90,7 +92,6 @@ data class SentryExtensionPayload(
     val acceptedBountyUsd: Double
 )
 
-// 🛡️ NEW: Payload for device token registration
 @Serializable
 data class FcmTokenPayload(
     @SerialName("agent_id")
@@ -109,9 +110,10 @@ class PanApiClient : WalletNetworkClient {
     private val client = HttpClient(OkHttp) {
         engine {
             config {
-                // Standardized timeout to prevent silent hangs
                 connectTimeout(3, TimeUnit.SECONDS)
                 readTimeout(3, TimeUnit.SECONDS)
+                // 🛡️ FIXED: Arch 6 - Added writeTimeout for large evidence payload uploads on degraded LTE
+                writeTimeout(30, TimeUnit.SECONDS)
             }
         }
         install(ContentNegotiation) {
@@ -119,44 +121,47 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    private val FIREBASE_URL = BuildConfig.FIREBASE_RTDB_URL
     private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val PAN_API_URL = "$hostUrl/api/v1"
 
-    // Hardware security managers hoisted to singletons to prevent keystore operation overhead
     private val strongBoxManager = StrongBoxManager()
     private val attestationEngine = com.pan.tactical.security.AttestationEngine()
 
-    private val secureUid: String
+    // 🛡️ FIXED: Bug 3 - Removed the uncatchable throw exception; handled gracefully
+    private val secureUid: String?
         get() = FirebaseAuth.getInstance().currentUser?.uid
-            ?: throw IllegalStateException("Agent identity missing")
 
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
+    
+    // 🛡️ FIXED: Arch 5 - Mutex to prevent multi-threading StrongBox collisions
+    private val jwtMutex = Mutex()
 
-    private fun getFreshJwt(): String {
-        val now = System.currentTimeMillis() / 1000
-        if (cachedJwt == null || now >= jwtExpiresAt - 30) {
-            cachedJwt = strongBoxManager.generateJwt(secureUid)
-            jwtExpiresAt = now + 300
+    private suspend fun getFreshJwt(): String? {
+        val uid = secureUid ?: run { Log.e(TAG, "Agent identity missing"); return null }
+        
+        jwtMutex.withLock {
+            val now = System.currentTimeMillis() / 1000
+            if (cachedJwt == null || now >= jwtExpiresAt - 30) {
+                cachedJwt = strongBoxManager.generateJwt(uid)
+                jwtExpiresAt = now + 300
+            }
+            return cachedJwt
         }
-        return cachedJwt!!
     }
 
-    private fun HttpRequestBuilder.attachAgentSignature() {
-        header("Authorization", "Bearer ${getFreshJwt()}")
-    }
-
-    // 🛡️ NEW: FCM Token Registration Endpoint
     suspend fun registerFcmToken(token: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                val uid = secureUid ?: run { Log.e(TAG, "Agent identity missing"); return@withContext false }
+                val jwt = getFreshJwt() ?: return@withContext false
+                
                 val response = client.post("$PAN_API_URL/agent/fcm-token") {
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
                     setBody(
                         FcmTokenPayload(
-                            agentId = secureUid,
+                            agentId = uid,
                             fcmToken = token
                         )
                     )
@@ -172,9 +177,11 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                val jwt = getFreshJwt() ?: return@withContext false
+                
                 Log.i(TAG, "🚀 Injecting V2X Distress Signal to Python Backend...")
                 val response: HttpResponse = client.post("$PAN_API_URL/v2x/distress") {
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                     header("X-Fleet-Id", "DEV-FLEET-01")
                     contentType(ContentType.Application.Json)
                     setBody(V2XDistressPayload(
@@ -204,6 +211,9 @@ class PanApiClient : WalletNetworkClient {
     ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                secureUid ?: run { Log.e(TAG, "Agent identity missing"); return@withContext false }
+                val jwt = getFreshJwt() ?: return@withContext false
+
                 val statusString = if (isOnline) "ONLINE" else "OFFLINE"
                 val payloadToSign = "${statusString}_${lat}_${lon}_${radiusMiles}"
                 val nonce = android.util.Base64.encodeToString(
@@ -220,11 +230,13 @@ class PanApiClient : WalletNetworkClient {
                     radius = radiusMiles,
                     loadout = loadout,
                     signature = hardwareToken,
-                    timestamp = System.currentTimeMillis() / 1000 // Fixed: Unix epoch seconds
+                    timestamp = System.currentTimeMillis() / 1000
                 )
 
+                // 🛡️ FIXED: Bug 1 - Writes to Python backend instead of Firebase RTDB so the engine can geofence
                 val response: HttpResponse =
-                    client.put("$FIREBASE_URL/agents/$secureUid/status.json") {
+                    client.post("$PAN_API_URL/agent/status") {
+                        header("Authorization", "Bearer $jwt")
                         contentType(ContentType.Application.Json)
                         setBody(requestBody)
                     }
@@ -240,14 +252,17 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                val uid = secureUid ?: run { Log.e(TAG, "Agent identity missing"); return@withContext false }
+                val jwt = getFreshJwt() ?: return@withContext false
+                
                 val response: HttpResponse = client.post("$PAN_API_URL/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                     setBody(TelemetryPayload(
-                        agentId = secureUid,
+                        agentId = uid,
                         latitude = lat,
                         longitude = lon,
-                        status = "ONLINE" // Hardcoded to maintain previous default behavior
+                        status = "ONLINE" 
                     ))
                 }
                 response.status.isSuccess()
@@ -329,6 +344,9 @@ class PanApiClient : WalletNetworkClient {
                 return@withContext uploadedUrls
             }
 
+            // ⚠️ ARCHITECTURAL CONCERN (Phase 4): imgbb has no SLA or SB 1417 compliance certifications.
+            // MUST migrate to AWS S3 or GCP Cloud Storage prior to final Fleet Partner sign-off to prevent
+            // data leakage and liability exposure.
             bitmaps.forEach { bitmap ->
                 try {
                     val redactedBitmap = com.pan.tactical.security.PrivacyFilter.sanitizeImage(bitmap)
@@ -383,8 +401,9 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun fetchActiveMissions(): List<MissionData> {
         return withContext(Dispatchers.IO) {
             try {
+                val jwt = getFreshJwt() ?: return@withContext emptyList()
                 val response = client.get("$PAN_API_URL/agent/missions") {
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                 }
 
                 if (response.status.isSuccess()) {
@@ -403,8 +422,9 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun acknowledgeMission(taskId: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                val jwt = getFreshJwt() ?: return@withContext false
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/ack") {
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -417,8 +437,9 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun declineMission(taskId: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                val jwt = getFreshJwt() ?: return@withContext false
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/decline") {
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -431,15 +452,19 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun completeMission(taskId: String, evidenceUrls: List<String>): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                val uid = secureUid ?: run { Log.e(TAG, "Agent identity missing"); return@withContext false }
+                val jwt = getFreshJwt() ?: return@withContext false
+                
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/complete") {
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
                     setBody(
                         MissionCompletePayload(
-                            agentId = secureUid,
+                            agentId = uid,
+                            // FIXME: Ensure backend ignores this and calculates from Redis config to prevent $0 payouts
                             netPayout = 0.0,
                             evidenceUrls = evidenceUrls,
-                            hardwareAttestationToken = strongBoxManager.generateJwt(secureUid)
+                            hardwareAttestationToken = strongBoxManager.generateJwt(uid)
                         )
                     )
                 }
@@ -456,8 +481,9 @@ class PanApiClient : WalletNetworkClient {
     suspend fun acceptSentryExtension(taskId: String, extensionMinutes: Int, bountyUsd: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
+                val jwt = getFreshJwt() ?: return@withContext false
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/extend") {
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
                     setBody(
                         SentryExtensionPayload(

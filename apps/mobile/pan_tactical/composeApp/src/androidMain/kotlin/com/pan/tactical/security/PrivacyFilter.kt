@@ -31,11 +31,6 @@ object PrivacyFilter {
     private val faceDetector = FaceDetection.getClient(faceOptions)
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
-    private val redactionPaint = Paint().apply {
-        color = Color.BLACK
-        style = Paint.Style.FILL
-    }
-
     /**
      * Sanitizes a frame by redacting PII (faces/text).
      * 🛡️ STRICT CONTRACT: This function takes absolute ownership of [originalBitmap].
@@ -44,6 +39,13 @@ object PrivacyFilter {
     suspend fun sanitizeImage(originalBitmap: Bitmap): Bitmap {
         return withContext(Dispatchers.Default) {
             try {
+                // 🛡️ FIXED: Moved Paint instantiation inside the function to prevent shared mutable state issues
+                // if this is ever called concurrently from multiple coroutines.
+                val redactionPaint = Paint().apply {
+                    color = Color.BLACK
+                    style = Paint.Style.FILL
+                }
+
                 val scale = minOf(
                     MAX_DIMENSION.toFloat() / originalBitmap.width,
                     MAX_DIMENSION.toFloat() / originalBitmap.height,
@@ -86,13 +88,29 @@ object PrivacyFilter {
 
                 for (face in faces) {
                     val rect = face.boundingBox
-                    rect.inset(-FACE_EXPANSION_PX, -FACE_EXPANSION_PX) 
+                    // 🛡️ FIXED: Negative inset intentionally EXPANDS the bounding box outward
+                    rect.inset(-FACE_EXPANSION_PX, -FACE_EXPANSION_PX)
+                    
+                    // 🛡️ FIXED: Clamp to bounds to prevent negative coordinates or exceeding bitmap dimensions
+                    rect.left = rect.left.coerceAtLeast(0)
+                    rect.top = rect.top.coerceAtLeast(0)
+                    rect.right = rect.right.coerceAtMost(sanitizedBitmap.width)
+                    rect.bottom = rect.bottom.coerceAtMost(sanitizedBitmap.height)
+                    
                     canvas.drawRect(rect, redactionPaint)
                 }
 
                 for (block in visionText.textBlocks) {
                     block.boundingBox?.let { rect ->
-                        rect.inset(-TEXT_EXPANSION_PX, -TEXT_EXPANSION_PX) 
+                        // 🛡️ FIXED: Negative inset intentionally EXPANDS the bounding box outward
+                        rect.inset(-TEXT_EXPANSION_PX, -TEXT_EXPANSION_PX)
+                        
+                        // 🛡️ FIXED: Clamp to bounds to prevent negative coordinates or exceeding bitmap dimensions
+                        rect.left = rect.left.coerceAtLeast(0)
+                        rect.top = rect.top.coerceAtLeast(0)
+                        rect.right = rect.right.coerceAtMost(sanitizedBitmap.width)
+                        rect.bottom = rect.bottom.coerceAtMost(sanitizedBitmap.height)
+                        
                         canvas.drawRect(rect, redactionPaint)
                     }
                 }

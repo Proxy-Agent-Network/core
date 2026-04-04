@@ -1,6 +1,11 @@
 package com.pan.tactical.ui
 
 import android.graphics.BitmapFactory
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -24,13 +29,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.lifecycle.viewmodel.compose.viewModel // 🛡️ FIXED: Required for surviving config changes
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.painterResource
 import kotlin.math.*
+import kotlin.math.roundToInt // 🛡️ FIXED: Explicit import for KMP
+import com.pan.tactical.BuildConfig // 🛡️ FIXED: Required for environment check
 import com.pan.tactical.ui.components.OfflineLoadoutMenu
 import com.pan.tactical.ui.components.OnSceneTerminal
 import com.pan.tactical.ui.components.PostMissionOverlays
@@ -47,6 +54,11 @@ import com.pan.tactical.rememberSharedCameraManager
 import com.pan.tactical.rememberSharedLocationManager
 import com.pan.tactical.rememberUwbClient
 import com.pan.tactical.rememberBleHomingClient
+import com.pan.tactical.hardware.rememberBleHapHatService
+import com.pan.tactical.hardware.HapHatCommand           
+import com.pan.tactical.hardware.LedColor                
+import com.pan.tactical.hardware.LedMode                 
+import com.pan.tactical.hardware.MotorId                 
 import com.pan.tactical.network.PanApiClient
 import com.pan.tactical.ui.homing.HomingViewModel
 import com.pan.tactical.ui.homing.HomingViewModelFactory
@@ -54,11 +66,26 @@ import com.pan.tactical.ui.homing.MissionResult
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
-// 🛡️ FIXED: Removed dead code uploadEvidence parameter
+// 🛡️ FIXED: Wired directly to build environment to prevent production sandbox leaks
+private val IS_DEBUG_MODE = BuildConfig.DEBUG
+
 @Composable
 actual fun AgentDashboardScreen(
     apiClient: WalletNetworkClient
 ) {
+    val panClient = apiClient as? PanApiClient
+    if (panClient == null) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Text(
+                text = "CRITICAL ARCHITECTURE ERROR:\nPanApiClient required for Tactical Dashboard.\nCurrent client is incompatible.",
+                color = Color.Red,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+        return
+    }
+
     var appState by rememberSaveable { mutableStateOf("BOOT") }
     var currentScreen by rememberSaveable { mutableStateOf("DASHBOARD") }
 
@@ -80,7 +107,7 @@ actual fun AgentDashboardScreen(
                     }
                 }
                 "RUNNING" -> MainDashboardContent(
-                    apiClient = apiClient,
+                    apiClient = panClient,
                     currentScreen = currentScreen,
                     onNavigate = { currentScreen = it }
                 )
@@ -149,10 +176,11 @@ actual fun AgentDashboardScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MainDashboardContent(
-    apiClient: WalletNetworkClient,
+    apiClient: PanApiClient,
     currentScreen: String,
     onNavigate: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val audio = remember { AudioEngine() }
     val uriHandler = LocalUriHandler.current
@@ -161,19 +189,20 @@ fun MainDashboardContent(
     val uwbRangingState by uwbClient.rangingState.collectAsState()
 
     val bleClient = rememberBleHomingClient()
+    val hapHat = rememberBleHapHatService() 
 
-    // 🛡️ FIXED: Type-safe explicit crash protection and proper lifecycle binding via viewModel()
-    val panClient = apiClient as? PanApiClient ?: error("PanApiClient required for HomingViewModel")
     val homingViewModel: HomingViewModel = viewModel(
-        factory = HomingViewModelFactory(bleClient, uwbClient, panClient)
+        factory = HomingViewModelFactory(bleClient, uwbClient, apiClient)
     )
     val homingState by homingViewModel.uiState.collectAsState()
 
     DisposableEffect(Unit) {
+        coroutineScope.launch { hapHat.connect() }
         onDispose {
             audio.shutdown()
             uwbClient.close()
             bleClient.stopScanning()
+            hapHat.close() 
         }
     }
 
@@ -199,14 +228,13 @@ fun MainDashboardContent(
     var isBleHandshakeComplete by remember { mutableStateOf(false) }
     var isBleScanning by remember { mutableStateOf(false) }
 
-    // 🛡️ FIXED: MissionDataSaver correctly maps bountyUsd as a Double
     val MissionDataSaver = Saver<MissionData?, String>(
         save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bountyUsd}|${data.intersection}|${data.taskId}|${data.incidentId}" } ?: "" },
         restore = { str ->
             if (str.isEmpty()) null
             else {
                 val parts = str.split("|")
-                if (parts.size >= 6) MissionData(
+                if (parts.size >= 7) MissionData(
                     lat = parts[0].toDoubleOrNull() ?: 0.0,
                     lon = parts[1].toDoubleOrNull() ?: 0.0,
                     errorCode = parts[2],
@@ -230,7 +258,6 @@ fun MainDashboardContent(
     var sceneArrivalTime by rememberSaveable { mutableLongStateOf(0L) }
     var missionAcceptTime by rememberSaveable { mutableLongStateOf(0L) }
 
-    // 🛡️ FIXED: Wrapped base API capabilities in the new UI Model to support slider/switch state
     var agentCapabilities by remember {
         mutableStateOf(
             listOf(
@@ -246,37 +273,6 @@ fun MainDashboardContent(
                 )
             )
         )
-    }
-
-    LaunchedEffect(isOnline, missionState) {
-        if (isOnline && missionState == "IDLE") {
-            while (isOnline && missionState == "IDLE") {
-                try {
-                    val incomingMissions = apiClient.fetchActiveMissions()
-
-                    if (incomingMissions.isNotEmpty()) {
-                        println("[TACTICAL_UI] Mission Received! Triggering Alert...")
-                        withContext(Dispatchers.Main) {
-                            activeMission = incomingMissions.first()
-                            missionState = "PENDING"
-                            // TODO: BleHapHatService — Map missionState "PENDING" → CYAN PULSE (new mission incoming)
-                        }
-                        break
-                    }
-                } catch (e: Exception) {
-                    println("[NETWORK_ERROR] Mission polling failed: ${e.message}")
-                }
-                delay(3000)
-            }
-        }
-    }
-
-    LaunchedEffect(isDataLoaded) {
-        if (isDataLoaded && !hasSpokenWelcome) {
-            delay(500)
-            audio.speak("The command is now yours, Agent.", voiceVolume)
-            hasSpokenWelcome = true
-        }
     }
 
     var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
@@ -300,6 +296,97 @@ fun MainDashboardContent(
 
     val distanceMeters = (distanceMiles * 1609.34).toFloat()
 
+    val countdownProgress = remember { Animatable(1f) }
+    var isFlashing by remember { mutableStateOf(false) }
+    val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
+
+    LaunchedEffect(missionState, isOnline) {
+        when (missionState) {
+            "IDLE" -> {
+                isFlashing = false
+                if (isOnline) {
+                    while (isOnline && missionState == "IDLE") {
+                        try {
+                            val incomingMissions = apiClient.fetchActiveMissions()
+                            if (incomingMissions.isNotEmpty()) {
+                                println("[TACTICAL_UI] Mission Received! Triggering Alert...")
+                                withContext(Dispatchers.Main) {
+                                    activeMission = incomingMissions.first()
+                                    missionState = "PENDING"
+                                    
+                                    hapHat.sendCommand(
+                                        HapHatCommand(
+                                            motorId = MotorId.M3_CENTER,
+                                            intensityPwm = 200.toByte(), 
+                                            ledMode = LedMode.PULSE,
+                                            ledColor = LedColor.PURPLE,
+                                            durationMs = 15000 
+                                        )
+                                    )
+                                }
+                                break
+                            }
+                        } catch (e: Exception) {
+                            println("[NETWORK_ERROR] Mission polling failed: ${e.message}")
+                        }
+                        delay(3000)
+                    }
+                }
+            }
+            "PENDING" -> {
+                launch {
+                    while (true) {
+                        isFlashing = !isFlashing
+                        delay(500)
+                    }
+                }
+                
+                val taskId = activeMission?.taskId
+                if (!taskId.isNullOrBlank()) {
+                    launch { apiClient.acknowledgeMission(taskId) }
+                }
+
+                val rawBounty = activeMission?.bountyUsd ?: 0.0
+                val netPayout = rawBounty * 0.90
+                val cleanBounty = if (netPayout % 1.0 == 0.0) netPayout.toInt().toString() else netPayout.toString()
+                val cleanCategory = activeMission?.errorCode?.substringAfter(": ") ?: activeMission?.errorCode ?: "Unknown"
+
+                val cleanDistance = ((distanceMiles * 10.0).roundToInt() / 10.0).toString()
+                audio.speak("Agent, Mission: $cleanCategory. $cleanDistance Miles Away. Payout, $cleanBounty dollars.", voiceVolume)
+
+                countdownProgress.snapTo(1f)
+                countdownProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
+                )
+                
+                if (missionState == "PENDING") {
+                    if (!taskId.isNullOrBlank()) {
+                        apiClient.declineMission(taskId)
+                    }
+                    hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
+                    missionState = "IDLE"
+                    activeMission = null
+                }
+            }
+            "ACTIVE" -> {
+                isFlashing = false
+                isMissionControlsExpanded = false
+            }
+            "ON_SCENE", "COMPLETED" -> {
+                isFlashing = false
+            }
+        }
+    }
+
+    LaunchedEffect(isDataLoaded) {
+        if (isDataLoaded && !hasSpokenWelcome) {
+            delay(500)
+            audio.speak("The command is now yours, Agent.", voiceVolume)
+            hasSpokenWelcome = true
+        }
+    }
+
     val locationManager = rememberSharedLocationManager { lat, lon ->
         println("[TACTICAL_GPS] Agent moving: $lat, $lon")
         agentLocation = Pair(lat, lon)
@@ -322,7 +409,7 @@ fun MainDashboardContent(
     var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
     var hasCameraPermission by rememberSaveable { mutableStateOf(true) }
 
-    var capturedEvidence by rememberSaveable { mutableStateOf<List<ByteArray>>(emptyList()) }
+    var capturedEvidence by remember { mutableStateOf<List<ByteArray>>(emptyList()) }
 
     val cameraManager = rememberSharedCameraManager { imageData ->
         if (imageData != null) {
@@ -330,11 +417,6 @@ fun MainDashboardContent(
         }
     }
 
-    val countdownProgress = remember { Animatable(1f) }
-    var isFlashing by remember { mutableStateOf(false) }
-    val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
-
-    // 🛡️ FIXED: Safe observation of the type-safe state rather than brittle string matching
     LaunchedEffect(homingState.missionResult) {
         when (homingState.missionResult) {
             MissionResult.SUCCESS -> {
@@ -347,16 +429,33 @@ fun MainDashboardContent(
                 totalResponseTimeMs = if (missionAcceptTime > 0) getCurrentTimeMs() - missionAcceptTime else timeOnSceneMs + 300000L
                 missionState = "COMPLETED"
 
-                // TODO: BleHapHatService — Map missionState "COMPLETED" → GREEN STROBE 3x then off
+                hapHat.sendCommand(
+                    HapHatCommand(
+                        motorId = MotorId.ALL, 
+                        intensityPwm = 255.toByte(), 
+                        ledMode = LedMode.STROBE,
+                        ledColor = LedColor.GREEN,
+                        durationMs = 3000 
+                    )
+                )
+
                 audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
                 capturedEvidence = emptyList()
 
-                // Clear the state so returning to patrol doesn't instantly refire
                 homingViewModel.clearMissionResult()
             }
             MissionResult.FAILED -> {
                 audio.speak("Network submission failed. Please retry.", voiceVolume)
-                // TODO: BleHapHatService — Evidence submission failure → RED DOUBLE PULSE
+                
+                hapHat.sendCommand(
+                    HapHatCommand(
+                        motorId = MotorId.ALL, 
+                        intensityPwm = 255.toByte(),
+                        ledMode = LedMode.STROBE,
+                        ledColor = LedColor.RED,
+                        durationMs = 3000
+                    )
+                )
 
                 homingViewModel.clearMissionResult()
             }
@@ -397,6 +496,15 @@ fun MainDashboardContent(
                         avUwbMacAddress = result.uwbMacAddress
                         avUwbSessionKey = result.secureSessionKey
                         isBleHandshakeComplete = true
+                        
+                        hapHat.sendCommand(
+                            HapHatCommand(
+                                ledMode = LedMode.SOLID,
+                                ledColor = LedColor.CYAN,
+                                durationMs = 0
+                            )
+                        )
+                        
                         audio.speak("Handshake verified. Micro-homing credentials secured.", voiceVolume)
                     } else {
                         audio.speak("Handshake failed. Move closer and re-approach target.", voiceVolume)
@@ -425,39 +533,6 @@ fun MainDashboardContent(
         }
     }
 
-    LaunchedEffect(missionState) {
-        if (missionState == "PENDING" && activeMission != null) {
-            val taskId = activeMission?.taskId
-            if (!taskId.isNullOrBlank()) {
-                launch { apiClient.acknowledgeMission(taskId) }
-            }
-
-            val rawBounty = activeMission?.bountyUsd ?: 0.0
-            val netPayout = rawBounty * 0.90
-            val cleanBounty = if (netPayout % 1.0 == 0.0) netPayout.toInt().toString() else netPayout.toString()
-            val cleanCategory = activeMission?.errorCode?.substringAfter(": ") ?: activeMission?.errorCode ?: "Unknown"
-
-            audio.speak("Agent, Mission: $cleanCategory. 2.5 Miles Away. Payout, $cleanBounty dollars.", voiceVolume)
-
-            launch {
-                countdownProgress.snapTo(1f)
-                countdownProgress.animateTo(
-                    targetValue = 0f,
-                    animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
-                )
-                if (missionState == "PENDING") {
-                    val currentTaskId = activeMission?.taskId
-                    if (!currentTaskId.isNullOrBlank()) {
-                        apiClient.declineMission(currentTaskId)
-                    }
-                    missionState = "IDLE"
-                    activeMission = null
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(missionState) { if (missionState == "ACTIVE") isMissionControlsExpanded = false }
     LaunchedEffect(distanceMiles) { if (missionState == "ACTIVE" && distanceMiles <= 0.1) isMissionControlsExpanded = true }
 
     val tacticalMapStyle = """[{"elementType":"geometry","stylers":[{"color":"#121212"}]},{"elementType":"labels.icon","stylers":[{"visibility":"off"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#EEEEEE"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#000000"},{"weight":3}]},{"featureType":"road","elementType":"geometry","stylers":[{"color":"#555555"}]}]"""
@@ -481,7 +556,13 @@ fun MainDashboardContent(
                     modifier = Modifier
                         .width(200.dp)
                         .height(70.dp)
-                        .combinedClickable(onClick = {}, onLongClick = { showDevMenu = true })
+                        .let {
+                            if (IS_DEBUG_MODE) {
+                                it.combinedClickable(onClick = {}, onLongClick = { showDevMenu = true })
+                            } else {
+                                it.clickable(enabled = false) {}
+                            }
+                        }
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -548,13 +629,34 @@ fun MainDashboardContent(
                             }
 
                             missionState = "ACTIVE"
-                            // TODO: BleHapHatService — Map missionState "ACTIVE" → WHITE SOLID (task light on, navigating)
+                            
+                            coroutineScope.launch {
+                                hapHat.sendCommand(
+                                    HapHatCommand(
+                                        motorId = MotorId.M3_CENTER, 
+                                        intensityPwm = 200.toByte(), 
+                                        ledMode = LedMode.SOLID,     
+                                        ledColor = LedColor.WHITE,
+                                        durationMs = 500             
+                                    )
+                                )
+                                delay(500)
+                                hapHat.sendCommand(
+                                    HapHatCommand(
+                                        ledMode = LedMode.SOLID,
+                                        ledColor = LedColor.ORANGE,
+                                        durationMs = 0
+                                    )
+                                )
+                            }
+                            
                             missionAcceptTime = getCurrentTimeMs()
                             audio.stop()
 
                             val targetLat = activeMission?.lat ?: 0.0
                             val targetLon = activeMission?.lon ?: 0.0
 
+                            // TODO (Phase 6): Fetch actual OSRM geospatial route from matching_engine
                             tacticalRoute = listOf(
                                 agentLocation,
                                 Pair(agentLocation.first + 0.015, agentLocation.second - 0.01),
@@ -573,6 +675,11 @@ fun MainDashboardContent(
                                 coroutineScope.launch { apiClient.declineMission(currentTaskId) }
                             }
                             missionState = "IDLE"
+                            
+                            coroutineScope.launch {
+                                hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
+                            }
+                            
                             activeMission = null
                             tacticalRoute = emptyList()
                             audio.stop()
@@ -581,7 +688,7 @@ fun MainDashboardContent(
                 }
 
                 PostMissionOverlays(
-                    isUploadingProof = homingState.isResolving, // 🛡️ FIXED: Correctly reflects ViewModel upload status
+                    isUploadingProof = homingState.isResolving,
                     capturedEvidence = capturedEvidence,
                     missionState = missionState,
                     lastPayoutAmount = lastPayoutAmount,
@@ -592,18 +699,28 @@ fun MainDashboardContent(
                         lastPayoutAmount = 0.0; timeOnSceneMs = 0L; totalResponseTimeMs = 0L; lastTxHash = ""; sceneArrivalTime = 0L; missionAcceptTime = 0L
                         tacticalRoute = emptyList()
 
-                        // 🟢 SECURITY RESET: Scrub BLE Keys
                         isBleHandshakeComplete = false
                         avUwbMacAddress = null
                         avUwbSessionKey = null
 
                         if (queuedMission != null) {
                             activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
-                            // TODO: BleHapHatService — Map queued activation → WHITE SOLID
+                            
+                            coroutineScope.launch {
+                                hapHat.sendCommand(
+                                    HapHatCommand(
+                                        ledMode = LedMode.SOLID,
+                                        ledColor = LedColor.ORANGE
+                                    )
+                                )
+                            }
                         }
                         else {
                             missionState = "IDLE"; activeMission = null
-                            // TODO: BleHapHatService — Map return to IDLE → LED OFF
+                            
+                            coroutineScope.launch {
+                                hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
+                            }
                         }
                     }
                 )
@@ -620,8 +737,20 @@ fun MainDashboardContent(
                                 Spacer(modifier = Modifier.height(8.dp)); Text(activeMission?.intersection ?: "Target Location", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text("Diagnostic: ${activeMission?.errorCode}", color = Color.LightGray, fontSize = 14.sp); Spacer(modifier = Modifier.height(16.dp))
                                 Button(
                                     onClick = {
-                                        missionState = "ON_SCENE";
+                                        missionState = "ON_SCENE"
                                         sceneArrivalTime = getCurrentTimeMs()
+                                        
+                                        coroutineScope.launch {
+                                            hapHat.sendCommand(
+                                                HapHatCommand(
+                                                    motorId = MotorId.ALL,
+                                                    intensityPwm = 255.toByte(),
+                                                    ledMode = LedMode.SOLID,
+                                                    ledColor = LedColor.YELLOW,
+                                                    durationMs = 0 
+                                                )
+                                            )
+                                        }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(64.dp).padding(bottom = 16.dp)
                                 ) { Text("ARRIVED AT SCENE", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp) }
@@ -637,7 +766,6 @@ fun MainDashboardContent(
                 }
 
                 AnimatedVisibility(visible = missionState == "ON_SCENE", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                    // 🛡️ FIXED: Re-wired to updated OnSceneTerminal contract via ViewModel
                     OnSceneTerminal(
                         activeMission = activeMission,
                         capturedEvidence = capturedEvidence,
@@ -647,7 +775,6 @@ fun MainDashboardContent(
                         extensionRequest = homingState.extensionRequest,
                         hasCameraPermission = hasCameraPermission,
                         onRequestCameraPermission = {
-                            // TODO: Replace with real ActivityResultContracts.RequestPermission launcher for production
                             hasCameraPermission = true
                         },
                         onCapturePhoto = {
@@ -661,7 +788,6 @@ fun MainDashboardContent(
                             }
                         },
                         onSubmitEvidence = {
-                            // 🛡️ FIXED: Decode ByteArray directly to Bitmap before sending to API
                             val bitmaps = capturedEvidence.mapNotNull { bytes ->
                                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                             }
@@ -674,9 +800,44 @@ fun MainDashboardContent(
                             homingViewModel.declineExtension()
                         },
                         onVerifyIdentity = { onResult ->
-                            coroutineScope.launch {
-                                delay(1500)
-                                onResult(true) // Mocked positive StrongBox Attestation
+                            val fragmentActivity = context as? FragmentActivity
+                            if (fragmentActivity != null) {
+                                val executor = ContextCompat.getMainExecutor(context)
+                                val biometricPrompt = BiometricPrompt(
+                                    fragmentActivity,
+                                    executor,
+                                    object : BiometricPrompt.AuthenticationCallback() {
+                                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                            super.onAuthenticationError(errorCode, errString)
+                                            println("[ATTESTATION] Biometric error: $errString")
+                                            onResult(false)
+                                        }
+
+                                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                                            super.onAuthenticationSucceeded(result)
+                                            println("[ATTESTATION] ✅ Agent Verified. StrongBox Signature Authorized.")
+                                            onResult(true) 
+                                        }
+
+                                        override fun onAuthenticationFailed() {
+                                            super.onAuthenticationFailed()
+                                            println("[ATTESTATION] ❌ Biometric rejection.")
+                                            onResult(false)
+                                        }
+                                    }
+                                )
+
+                                val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                                    .setTitle("Agent Attestation Required")
+                                    .setSubtitle("Authenticate to cryptographically sign mission evidence")
+                                    .setNegativeButtonText("Cancel")
+                                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                                    .build()
+
+                                biometricPrompt.authenticate(promptInfo)
+                            } else {
+                                println("[ATTESTATION_ERROR] LocalContext is not a FragmentActivity")
+                                onResult(false)
                             }
                         },
                         onLogEntry = { log ->
@@ -793,12 +954,18 @@ fun MainDashboardContent(
                         missionAcceptTime = 0L; sceneArrivalTime = 0L
                         tacticalRoute = emptyList()
 
+                        // 🛡️ FIXED: Clear captured evidence to prevent cross-mission contamination
+                        capturedEvidence = emptyList()
+
                         // 🟢 SECURITY RESET: Scrub BLE Keys
                         isBleHandshakeComplete = false
                         avUwbMacAddress = null
                         avUwbSessionKey = null
 
-                        // TODO: BleHapHatService — Map mission abort → LED OFF
+                        coroutineScope.launch {
+                            hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
+                        }
+                        
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
                 } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }
             )
