@@ -91,13 +91,13 @@ PAN uses a standardized color taxonomy for task classification, pricing, and das
   ┌─────────────────────────────────────────────────────────────────┐
   │                   VANGUARD FIELD SYSTEM                         │
   │                                                                 │
-  │  🧢 HapHat v2.3          🦺 PANOPLY Vest v1.1                  │
+  │  🧢 HapHat v2.3          🦺 PANOPLY Vest v1.2                  │
   │  Identity · Mission       Situational awareness · RATS          │
   │  alerting · Proximity     Rear threat detection · LED           │
   │  Haptic navigation        back panel · Spine haptics            │
   │  Cryptographic TPM        SB 1417 logging                       │
   │                                                                 │
-  │  👕 Aegis Polo VFP-1      🧤 Gauntlets VFG-1                   │
+  │  👕 Aegis Polo VFP-1 v1.2  🧤 Gauntlets VFG-1 v1.2            │
   │  Biometric monitoring     Gesture control · Culture             │
   │  Voice AI (Proxy-Alpha)   Tool NFC · Multi-agent                │
   │  Thermal management       bonuses · Easter egg                  │
@@ -108,13 +108,13 @@ PAN uses a standardized color taxonomy for task classification, pricing, and das
 ### 🧢 HapHat v2.3
 An intelligent trucker hat housing five haptic motors in the sweatband, a full RGB NeoPixel brim strip, and a passive NFC identity panel. The hat communicates mission state and directional navigation through haptic patterns without the agent looking at their phone. NFC brim-tap provides instant agent identity verification to fleet managers and AV panels — no app installation required. PCM cooling liner maintains forehead temperature during 115°F Mesa summer operations.
 
-### 🦺 PANOPLY Vest v1.1
+### 🦺 PANOPLY Vest v1.2
 An ANSI/ISEA 107-2020 Class 3 hi-vis vest with active intelligence. The Rear Awareness & Threat Detection System (RATS) uses layered mmWave radar, wide-angle camera, and ultrasonic sensors to warn the agent of approaching vehicles through haptic spine strip and LED back panel — before they turn around. The 16×24 flexible LED back panel dynamically displays OSM mission status to fleet managers and first responders at 50+ meter range. A five-motor haptic spine strip communicates navigation direction and proximity without requiring agent attention. Available in three tiers, unlocked by mission milestones.
 
-### 👕 Aegis Polo VFP-1
+### 👕 Aegis Polo VFP-1 v1.2
 The innermost and most intimate component — worn directly against the skin. The Aegis Polo monitors the agent's biometrics (heart rate, SpO₂, skin temperature, galvanic skin response), reads their personal breathing zone air quality, and listens for their voice via the chest-mounted Communicator Pin. When vest RATS detects a Zone 2 threat and polo biometrics simultaneously detect a stress spike, the system recognizes the agent already knows — and escalates directly to Zone 1 maximum response, skipping the redundant warning. D3O rib impact panels protect against vehicle sideswipe. Bioluminescent collar stripe ensures passive nighttime visibility even when all electronics fail. Available at Tier 3 (200 missions completed).
 
-### 🧤 Gauntlets VFG-1
+### 🧤 Gauntlets VFG-1 v1.2
 Cut-resistant HPPE field gloves with embedded IMU, NFC, haptic motor, and PCM back-of-hand cooling. A snap gesture toggles the hat brim light — hands-free, both hands on the work. Multi-agent bonuses reward verified physical interactions between agents on the same incident: handshake, fist bump, or high five earns both agents $5; flourish upgrades (Secret Handshake, BOOM Explosion, Double Down) earn $7. The gesture system includes an undisclosed number of hidden easter eggs discovered naturally through use. Sold at cost — no PAN margin. Single-glove purchase always available. Unlock: 10 completed missions.
 
 ### Composite Threat Response
@@ -274,9 +274,9 @@ PAN is built for regulatory compliance from the ground up.
 - **Zero-Knowledge Agent Privacy:** Vanguard Agents' personal data is stored with AES-256 encryption. Fleet partners see only task outcomes, never agent identities. Companion Mode voice transcripts are never shared with fleet partners in full — compliance-flagged excerpts only.
 - **IDOR Protection:** All mission assignments are cryptographically bound — agents can only complete missions assigned to them.
 - **On-Device Privacy Filtering:** All photographic and video evidence is processed through an on-device ML redaction pipeline before leaving the agent's phone. Faces and license plates are redacted locally — raw PII never touches the network.
-- **NARCAN-Certified Agents:** Agents holding medical response certification can carry Narcan emergency supplies in the Aegis Polo's sealed emergency pocket. All Good Samaritan administrations are automatically documented with voice transcript, GPS, and timestamp via Companion Mode. *(Pending legal review.)*
+- **NARCAN-Certified Agents:** Agents holding medical response certification can carry Narcan emergency supplies in the Aegis Polo's sealed emergency pocket. All Good Samaritan administrations are automatically documented with voice transcript, GPS, and timestamp via Companion Mode. *(Awaiting final Arizona Good Samaritan statutory review prior to Vanguard 50 deployment)*
 
-See [COMPLIANCE.md](COMPLIANCE.md) for full details.
+See [COMPLIANCE.md](docs/legal/COMPLIANCE.md) for full details.
 
 ---
 
@@ -331,7 +331,7 @@ We are building the bridge between digital intelligence and physical reality. We
 
 To apply, cryptographically sign a message with your GitHub handle and email [rob@proxyagent.network](mailto:rob@proxyagent.network).
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines.
 
 ---
 
@@ -347,9 +347,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 | SB 1417 compliance pipeline | ✅ Complete |
 | Checkr background verification | 🔧 Integration in progress |
 | HapHat v2.3 | 🔧 Mock → real BLE implementation |
-| PANOPLY Vest v1.1 | 📐 Spec complete · prototype pending |
-| Aegis Polo VFP-1 | 📐 Spec complete · prototype pending |
-| Gauntlets VFG-1 | 📐 Spec complete · prototype pending |
+| PANOPLY Vest v1.2 | 📐 Spec complete · prototype pending |
+| Aegis Polo VFP-1 v1.2 | 📐 Spec complete · prototype pending |
+| Gauntlets VFG-1 v1.2 | 📐 Spec complete · prototype pending |
 | OSRM tactical routing | 🔧 Phase 6 wiring in progress |
 | iOS client | 📋 Planned |
 

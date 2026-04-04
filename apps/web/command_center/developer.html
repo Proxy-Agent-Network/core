@@ -72,6 +72,39 @@
     }
 
     .warning-msg { color: #F44336; font-size: 13px; margin-top: 10px; display: none; background: rgba(244, 67, 54, 0.1); padding: 8px; border-radius: 4px; border: 1px solid rgba(244, 67, 54, 0.3);}
+
+    /* Toggle Switch */
+    .toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+        position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+        background: #333; border-radius: 26px; transition: 0.3s;
+        border: 1px solid #555;
+    }
+    .toggle-slider:before {
+        position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+        background: #888; border-radius: 50%; transition: 0.3s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: rgba(0, 188, 212, 0.25); border-color: #00BCD4; }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); background: #00BCD4; }
+
+    /* Secondary section */
+    .secondary-section { 
+        margin-bottom: 25px; padding: 20px; 
+        border: 1px solid #1a3a4a; border-radius: 4px; background: #050f14; 
+    }
+    .secondary-section.enabled { border-color: #00BCD4; }
+    .secondary-inherit-preview { 
+        margin-top: 12px; padding: 12px; background: #000; 
+        border: 1px solid #1a3a4a; border-radius: 4px; font-size: 12px; color: #666; 
+        line-height: 1.8;
+    }
+    .secondary-badge {
+        display: inline-block; font-size: 10px; font-weight: bold; letter-spacing: 1px;
+        padding: 2px 8px; border-radius: 12px; margin-left: 8px;
+        background: rgba(0, 188, 212, 0.1); color: #00BCD4; border: 1px solid #00BCD4;
+        vertical-align: middle;
+    }
 </style>
 {% endblock %}
 
@@ -218,7 +251,80 @@
                     <div class="warning-msg" id="warn-t3">⚠️ The minimum starting bid for Tier 3 tasks is $50.00</div>
                 </div>
 
-                <button style="margin-top: 10px; background: #00BCD4; color: #000; border: none; padding: 12px 24px; font-weight: bold; border-radius: 4px; cursor: pointer;">UPDATE ROUTING LOGIC</button>
+                <!-- ============================================================ -->
+                <!-- SECONDARY AGENT DISPATCH                                     -->
+                <!-- ============================================================ -->
+                <div class="secondary-section" id="secondary-section">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                        <div style="flex: 1; padding-right: 20px;">
+                            <div class="tier-header">
+                                Secondary Agent Dispatch
+                                <span class="secondary-badge">TIER 1 SENTRY</span>
+                            </div>
+                            <div class="tier-tasks" style="margin-bottom: 0;">
+                                When dispatching a Tier 2 or Tier 3 primary agent, automatically queue a
+                                secondary Tier 1 agent to the same incident for traffic direction and scene
+                                support. The secondary agent operates independently under their own HNOA
+                                binding with role <code style="color: #00BCD4; font-size: 11px;">SENTRY</code>.
+                            </div>
+                        </div>
+                        <label class="toggle-switch" title="Enable secondary agent dispatch">
+                            <input type="checkbox" id="secondary-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Secondary config — hidden until toggle is on -->
+                    <div id="secondary-config" style="display: none; margin-top: 18px; padding-top: 18px; border-top: 1px solid #1a3a4a;">
+                        <div style="margin-bottom: 14px;">
+                            <label style="font-size: 12px; font-weight: bold; color: #888; display: block; margin-bottom: 8px;">SECONDARY BID PARAMETERS</label>
+                            <div style="display: flex; gap: 10px;">
+                                <button class="btn-algo active" id="sec-inherit-btn" onclick="setSecondaryMode('inherit')">Use T1 Parameters</button>
+                                <button class="btn-algo" id="sec-custom-btn" onclick="setSecondaryMode('custom')">Custom</button>
+                            </div>
+                        </div>
+
+                        <!-- Inherit mode: live preview of T1 values -->
+                        <div id="secondary-inherit-preview" class="secondary-inherit-preview">
+                            Inheriting T1 parameters &mdash;
+                            Start: <span id="preview-start" style="color: #00BCD4; font-weight: bold;">$14</span>
+                            &nbsp;·&nbsp;
+                            Escalate: <span id="preview-esc" style="color: #00BCD4; font-weight: bold;">$2/min</span>
+                            &nbsp;·&nbsp;
+                            Max: <span id="preview-max" style="color: #00BCD4; font-weight: bold;">$24</span>
+                            <br>
+                            <span style="color: #444; font-size: 11px;">
+                                Change your Tier 1 parameters above to adjust the secondary bid.
+                            </span>
+                        </div>
+
+                        <!-- Custom mode: independent input fields -->
+                        <div id="secondary-custom-fields" style="display: none;">
+                            <div class="input-row">
+                                <div class="input-group">
+                                    <label style="font-size: 12px; font-weight: bold; color: #888;">STARTING BID ($)</label>
+                                    <input type="number" class="input-field algo-input" id="sec-start" value="14" oninput="checkSecondaryMinimum()">
+                                </div>
+                                <div class="input-group">
+                                    <label style="font-size: 12px; font-weight: bold; color: #888;">ESCALATION ($ / MIN)</label>
+                                    <input type="number" class="input-field algo-input" id="sec-esc" value="2">
+                                </div>
+                                <div class="input-group">
+                                    <label style="font-size: 12px; font-weight: bold; color: #888;">MAXIMUM BID ($)</label>
+                                    <input type="number" class="input-field algo-input" id="sec-max" value="24">
+                                </div>
+                            </div>
+                            <div class="warning-msg" id="warn-sec">⚠️ The minimum starting bid for Secondary agents is $10.00</div>
+                        </div>
+
+                        <p style="font-size: 12px; color: #555; margin-top: 14px; margin-bottom: 0; line-height: 1.6;">
+                            The secondary agent earns 90% of the settled secondary bounty, independent of the primary agent's payout.
+                            Gesture collaboration bonuses between both agents are applied on top of both bounties if earned on scene.
+                        </p>
+                    </div>
+                </div>
+
+                <button style="margin-top: 10px; background: #00BCD4; color: #000; border: none; padding: 12px 24px; font-weight: bold; border-radius: 4px; cursor: pointer;" onclick="saveRules()">UPDATE ROUTING LOGIC</button>
             </div>
         </div>
 
@@ -252,9 +358,10 @@
 </div>
 
 <script>
-    // Tab Switching Logic
+    // ============================================================
+    // Tab Switching
+    // ============================================================
     function switchTab(viewId, clickedElement) {
-        // Reset all sidebar links visually
         document.querySelectorAll('.nav-item').forEach(el => {
             el.classList.remove('active');
             el.style.color = '#8892B0';
@@ -262,113 +369,160 @@
             el.style.borderRight = 'none';
             el.style.fontWeight = 'normal';
         });
-        
-        // Style the clicked link
         clickedElement.classList.add('active');
         clickedElement.style.color = '#00BCD4';
         clickedElement.style.background = 'rgba(0, 188, 212, 0.1)';
         clickedElement.style.borderRight = '3px solid #00BCD4';
         clickedElement.style.fontWeight = 'bold';
-
-        // Swap the views
         document.querySelectorAll('.dev-view').forEach(el => el.classList.remove('active-view'));
         document.getElementById(viewId).classList.add('active-view');
     }
 
-    // Algorithm Dispatch Logic
+    // ============================================================
+    // Algorithm Presets
+    // ============================================================
     const algoDefaults = {
-        lowest: {
-            t1: [10, 2, 20],
-            t2: [30, 5, 60],
-            t3: [50, 5, 80]
-        },
-        balanced: {
-            t1: [14, 2, 24],
-            t2: [45, 5, 80],
-            t3: [65, 5, 100]
-        },
-        fastest: {
-            t1: [20, 2, 30],
-            t2: [60, 10, 100],
-            t3: [80, 10, 120]
-        }
+        lowest:   { t1: [10, 2, 20], t2: [30, 5, 60],  t3: [50, 5, 80]  },
+        balanced: { t1: [14, 2, 24], t2: [45, 5, 80],  t3: [65, 5, 100] },
+        fastest:  { t1: [20, 2, 30], t2: [60, 10, 100], t3: [80, 10, 120] }
     };
 
-    const minimumBids = {
-        t1: 10,
-        t2: 30,
-        t3: 50
-    };
+    const minimumBids = { t1: 10, t2: 30, t3: 50, sec: 10 };
 
     function updateFieldsFromAlgo(algoKey) {
-        if(algoKey === 'custom') return;
+        if (algoKey === 'custom') return;
         const data = algoDefaults[algoKey];
-        
-        // Tier 1
         document.getElementById('t1-start').value = data.t1[0];
-        document.getElementById('t1-esc').value = data.t1[1];
-        document.getElementById('t1-max').value = data.t1[2];
-
-        // Tier 2
+        document.getElementById('t1-esc').value   = data.t1[1];
+        document.getElementById('t1-max').value   = data.t1[2];
         document.getElementById('t2-start').value = data.t2[0];
-        document.getElementById('t2-esc').value = data.t2[1];
-        document.getElementById('t2-max').value = data.t2[2];
-
-        // Tier 3
+        document.getElementById('t2-esc').value   = data.t2[1];
+        document.getElementById('t2-max').value   = data.t2[2];
         document.getElementById('t3-start').value = data.t3[0];
-        document.getElementById('t3-esc').value = data.t3[1];
-        document.getElementById('t3-max').value = data.t3[2];
-
+        document.getElementById('t3-esc').value   = data.t3[1];
+        document.getElementById('t3-max').value   = data.t3[2];
         checkMinimums();
+        updateSecondaryPreview();
     }
 
     function checkMinimums() {
-        // Check Tier 1
-        if(parseFloat(document.getElementById('t1-start').value) < minimumBids.t1) {
-            document.getElementById('warn-t1').style.display = 'block';
-        } else {
-            document.getElementById('warn-t1').style.display = 'none';
-        }
-
-        // Check Tier 2
-        if(parseFloat(document.getElementById('t2-start').value) < minimumBids.t2) {
-            document.getElementById('warn-t2').style.display = 'block';
-        } else {
-            document.getElementById('warn-t2').style.display = 'none';
-        }
-
-        // Check Tier 3
-        if(parseFloat(document.getElementById('t3-start').value) < minimumBids.t3) {
-            document.getElementById('warn-t3').style.display = 'block';
-        } else {
-            document.getElementById('warn-t3').style.display = 'none';
-        }
+        const checks = [
+            { inputId: 't1-start', warnId: 'warn-t1', min: minimumBids.t1 },
+            { inputId: 't2-start', warnId: 'warn-t2', min: minimumBids.t2 },
+            { inputId: 't3-start', warnId: 'warn-t3', min: minimumBids.t3 },
+        ];
+        checks.forEach(({ inputId, warnId, min }) => {
+            const val = parseFloat(document.getElementById(inputId).value);
+            document.getElementById(warnId).style.display = val < min ? 'block' : 'none';
+        });
     }
 
-    // Event Listeners for Algorithm Buttons
+    function checkSecondaryMinimum() {
+        const val = parseFloat(document.getElementById('sec-start').value);
+        document.getElementById('warn-sec').style.display = val < minimumBids.sec ? 'block' : 'none';
+    }
+
     document.querySelectorAll('.btn-algo').forEach(btn => {
         btn.addEventListener('click', function() {
-            // Update active state
             document.querySelectorAll('.btn-algo').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
-
-            // Update fields if not custom
-            const algo = this.getAttribute('data-algo');
-            updateFieldsFromAlgo(algo);
+            updateFieldsFromAlgo(this.getAttribute('data-algo'));
         });
     });
 
-    // Event Listeners for Manual Input Changes
     document.querySelectorAll('.algo-input').forEach(input => {
         input.addEventListener('input', function() {
-            // Switch to custom button
             document.querySelectorAll('.btn-algo').forEach(b => b.classList.remove('active'));
             document.querySelector('.btn-algo[data-algo="custom"]').classList.add('active');
-            
-            // Validate limits
             checkMinimums();
+            updateSecondaryPreview();  // keep inherit preview live
         });
     });
 
+    // ============================================================
+    // Secondary Agent Toggle
+    // ============================================================
+    document.getElementById('secondary-enabled').addEventListener('change', function() {
+        const config = document.getElementById('secondary-config');
+        const section = document.getElementById('secondary-section');
+        config.style.display = this.checked ? 'block' : 'none';
+        section.classList.toggle('enabled', this.checked);
+        if (this.checked) updateSecondaryPreview();
+    });
+
+    // ============================================================
+    // Secondary Bid Mode: Inherit T1 vs Custom
+    // ============================================================
+    let secondaryMode = 'inherit';
+
+    function setSecondaryMode(mode) {
+        secondaryMode = mode;
+        document.getElementById('sec-inherit-btn').classList.toggle('active', mode === 'inherit');
+        document.getElementById('sec-custom-btn').classList.toggle('active', mode === 'custom');
+        document.getElementById('secondary-inherit-preview').style.display = mode === 'inherit' ? 'block' : 'none';
+        document.getElementById('secondary-custom-fields').style.display = mode === 'custom' ? 'block' : 'none';
+        if (mode === 'inherit') updateSecondaryPreview();
+    }
+
+    // Keeps the inherit preview in sync with live T1 field changes
+    function updateSecondaryPreview() {
+        if (secondaryMode !== 'inherit') return;
+        const start = document.getElementById('t1-start').value || '—';
+        const esc   = document.getElementById('t1-esc').value   || '—';
+        const max   = document.getElementById('t1-max').value   || '—';
+        document.getElementById('preview-start').textContent = `$${start}`;
+        document.getElementById('preview-esc').textContent   = `$${esc}/min`;
+        document.getElementById('preview-max').textContent   = `$${max}`;
+    }
+
+    // ============================================================
+    // Save — assembles final payload including secondary params
+    // ============================================================
+    function saveRules() {
+        const secondaryEnabled = document.getElementById('secondary-enabled').checked;
+
+        const rules = {
+            t1: {
+                start_bid:   parseFloat(document.getElementById('t1-start').value),
+                escalation:  parseFloat(document.getElementById('t1-esc').value),
+                max_bid:     parseFloat(document.getElementById('t1-max').value),
+            },
+            t2: {
+                start_bid:   parseFloat(document.getElementById('t2-start').value),
+                escalation:  parseFloat(document.getElementById('t2-esc').value),
+                max_bid:     parseFloat(document.getElementById('t2-max').value),
+            },
+            t3: {
+                start_bid:   parseFloat(document.getElementById('t3-start').value),
+                escalation:  parseFloat(document.getElementById('t3-esc').value),
+                max_bid:     parseFloat(document.getElementById('t3-max').value),
+            },
+            secondary: {
+                enabled: secondaryEnabled,
+                // When inheriting T1, secondary bid params mirror T1 exactly.
+                // The distress signal sender reads these values and passes them
+                // as secondary_start_bid_usd / secondary_max_bid_usd /
+                // secondary_escalation_usd_per_min in the DistressPayload.
+                start_bid:  secondaryEnabled && secondaryMode === 'custom'
+                                ? parseFloat(document.getElementById('sec-start').value)
+                                : parseFloat(document.getElementById('t1-start').value),
+                escalation: secondaryEnabled && secondaryMode === 'custom'
+                                ? parseFloat(document.getElementById('sec-esc').value)
+                                : parseFloat(document.getElementById('t1-esc').value),
+                max_bid:    secondaryEnabled && secondaryMode === 'custom'
+                                ? parseFloat(document.getElementById('sec-max').value)
+                                : parseFloat(document.getElementById('t1-max').value),
+            }
+        };
+
+        // TODO: POST rules to /api/v1/fleet/dispatch-config
+        console.log('[PAN] Saving dispatch rules:', JSON.stringify(rules, null, 2));
+        alert('Routing logic updated successfully.');
+    }
+
+    // ============================================================
+    // Init
+    // ============================================================
+    updateSecondaryPreview();
 </script>
 {% endblock %}

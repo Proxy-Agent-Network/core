@@ -22,7 +22,16 @@ class DistressPayload(BaseModel):
     latitude: float
     longitude: float
     bounty_usd: float = 25.0
-    osm_color: str = "GREEN" 
+    osm_color: str = "GREEN"
+    # --- Secondary Agent Dispatch ---
+    # Set request_secondary=True when dispatching a T2 or T3 primary agent
+    # to simultaneously queue a T1 sentry for traffic direction or scene support.
+    # Secondary bid parameters default to the fleet manager's configured T1 values.
+    # If not provided, the system uses T1 balanced defaults ($14 start, $2/min, $24 max).
+    request_secondary: bool = False
+    secondary_start_bid_usd: float = 14.0   # Fleet Manager's T1 starting bid (from Auto-Dispatch Rules)
+    secondary_max_bid_usd: float = 24.0     # Fleet Manager's T1 max bid
+    secondary_escalation_usd_per_min: float = 2.0  # Fleet Manager's T1 escalation rate
 
 class MissionCompletePayload(BaseModel):
     agent_id: str
@@ -31,7 +40,6 @@ class MissionCompletePayload(BaseModel):
     hardware_attestation_token: str = ""
     av_signature_hex: str = ""
 
-# 🟢 NEW: Sentry Extension Payload for Phase 5
 class SentryExtensionPayload(BaseModel):
     task_id: str
     extension_minutes: int
@@ -57,15 +65,29 @@ async def receive_distress_signal(
     request: Request,
     fleet_id: str = Depends(verify_v2x_signature)
 ):
-    """Receives V2X distress signals from autonomous fleets."""
+    """
+    Receives V2X distress signals from autonomous fleets.
+
+    For T2/T3 incidents, fleet managers may optionally set request_secondary=True
+    to simultaneously queue a T1 sentry agent for traffic direction or scene support.
+    The sentry is dispatched as a separate task linked to the same incident_id,
+    with its own bid parameters and HNOA policy binding (role=SENTRY).
+    """
     try:
         redis_client = request.app.state.redis_client
         
         dedup_key = f"pan:dedup:{payload.vin}:{payload.fault_code}"
         if not await redis_client.set(dedup_key, "active", nx=True, ex=300):
             raise HTTPException(status_code=409, detail="Duplicate task already active.")
-            
+
         task_id = f"tsk_{uuid.uuid4().hex[:12]}"
+
+        # Generate incident_id at receipt time — not at primary dispatch.
+        # This is required so that:
+        # (a) the sentry task can reference the incident before any agent is assigned, and
+        # (b) the matching engine can write incident:{id}:primary_agent_id immediately
+        #     on primary dispatch without needing a separate ID generation step.
+        incident_id = f"inc_{uuid.uuid4().hex[:10]}"
         
         task_record = {
             "fleet_id": fleet_id,
@@ -74,28 +96,77 @@ async def receive_distress_signal(
             "lat": payload.latitude,
             "lon": payload.longitude,
             "bounty_usd": payload.bounty_usd,
-            "base_bounty_usd": payload.bounty_usd, 
+            "base_bounty_usd": payload.bounty_usd,
             "osm_color": payload.osm_color.upper(),
             "timestamp": int(time.time()),
-            "status": "pending"
+            "status": "pending",
+            "role": "PRIMARY",
+            "incident_id": incident_id,
         }
         
         await redis_client.hset(f"pan:task:{task_id}", mapping=task_record)
         await redis_client.rpush("pan:dispatch:active_tasks", task_id)
-        
+
+        # --- Optional Secondary Agent (Sentry) Dispatch ---
+        sentry_task_id = None
+        if payload.request_secondary:
+            sentry_task_id = f"tsk_{uuid.uuid4().hex[:12]}"
+            sentry_record = {
+                "fleet_id": fleet_id,
+                "vin": payload.vin,
+                # Fault code is always SENTRY_TRAFFIC_DIRECTION regardless of the primary fault.
+                # The sentry's job is scene support — they don't resolve the primary fault.
+                "fault_code": "SENTRY_TRAFFIC_DIRECTION",
+                "lat": payload.latitude,
+                "lon": payload.longitude,
+                "bounty_usd": payload.secondary_start_bid_usd,
+                "base_bounty_usd": payload.secondary_start_bid_usd,
+                "max_bounty_usd": payload.secondary_max_bid_usd,
+                "escalation_usd_per_min": payload.secondary_escalation_usd_per_min,
+                "osm_color": payload.osm_color.upper(),
+                "timestamp": int(time.time()),
+                "status": "pending",
+                "role": "sentry",       # matching_engine.py reads this to set exclude_agent_id
+                "required_tier": 1,     # Sentry is always a T1 agent
+                "incident_id": incident_id,  # Links to primary for exclusion and joint SB 1417 report
+            }
+            await redis_client.hset(f"pan:task:{sentry_task_id}", mapping=sentry_record)
+            await redis_client.rpush("pan:dispatch:active_tasks", sentry_task_id)
+            logger.info(
+                f"🚨 [SENTRY] Secondary T1 agent queued for incident {incident_id}. "
+                f"Task: {sentry_task_id} | Starting bid: ${payload.secondary_start_bid_usd:.2f} "
+                f"| Max: ${payload.secondary_max_bid_usd:.2f}"
+            )
+
         await redis_client.publish("pan:stream:distress_alerts", json.dumps({
             "task_id": task_id,
+            "incident_id": incident_id,
             "vin": payload.vin,
             "fault_code": payload.fault_code,
             "lat": payload.latitude,
             "lon": payload.longitude,
             "bounty_usd": payload.bounty_usd,
             "osm_color": payload.osm_color.upper(),
-            "sla_status": "OK"
+            "sla_status": "OK",
+            "sentry_task_id": sentry_task_id,    # None if no secondary requested
+            "secondary_requested": payload.request_secondary,
         }))
         
-        logger.info(f"🚨 [V2X ALERT] Fleet: {fleet_id} | VIN: {payload.vin} | Fault: {payload.fault_code} | OSM: {payload.osm_color.upper()}")
-        return {"status": "success", "task_id": task_id}
+        logger.info(
+            f"🚨 [V2X ALERT] Fleet: {fleet_id} | VIN: {payload.vin} | "
+            f"Fault: {payload.fault_code} | OSM: {payload.osm_color.upper()} | "
+            f"Incident: {incident_id} | Secondary: {payload.request_secondary}"
+        )
+
+        response = {
+            "status": "success",
+            "task_id": task_id,
+            "incident_id": incident_id,
+        }
+        if sentry_task_id:
+            response["sentry_task_id"] = sentry_task_id
+
+        return response
         
     except HTTPException:
         raise
@@ -122,7 +193,6 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
                 key_str = key.decode("utf-8") if isinstance(key, bytes) else key
                 task_id = key_str.split("mission:active:")[-1] 
                 
-                # Default to PRIMARY role and ASSIGNED status if missing
                 active_missions.append({
                     "task_id": task_id,
                     "incident_id": str(mission.get("incident_id", f"inc_{task_id}")),
@@ -202,11 +272,14 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                         
                     wallet["balance"] += actual_payout
                     
+                    role = task_data.get("role", "PRIMARY").upper()
+                    role_label = "Sentry Assist" if role == "SENTRY" else "Bounty"
+
                     tx_record = {
                         "id": f"tx_{int(time.time())}",
                         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                         "amount": f"+${actual_payout:.2f}",
-                        "description": f"Bounty: {fault_code} ({vin})"
+                        "description": f"{role_label}: {fault_code} ({vin})"
                     }
                     wallet["history"].insert(0, tx_record)
                     wallet["history"] = wallet["history"][:50]
@@ -290,7 +363,6 @@ async def decline_mission(task_id: str, request: Request, agent_id: str = Depend
     logger.info(f"🚫 [V2X] Agent {agent_id} declined {task_id} at ${rejected_bounty:.2f}. 15-Min Cooldown active.")
     return {"status": "success", "message": "Mission declined."}
 
-# 🟢 NEW: Sentry Extension Endpoint
 @router.post("/v1/agent/missions/{task_id}/extend")
 async def extend_sentry_mission(
     task_id: str, 
@@ -311,9 +383,19 @@ async def extend_sentry_mission(
     if mission_data.get("role", "PRIMARY").upper() != "SENTRY":
         raise HTTPException(status_code=403, detail="Extension only valid for SENTRY role missions.")
 
-    # Update the mission bounty and SLA extension
-    current_bounty = float(mission_data.get("bounty_usd", 25.0))
+    # Guard against exceeding the fleet manager's configured max bid for this sentry task
+    raw_task_data = await redis_client.hgetall(f"pan:task:{task_id}")
+    task_data = decode_redis_hash(raw_task_data)
+    max_bounty = float(task_data.get("max_bounty_usd", float('inf')))
+
+    current_bounty = float(mission_data.get("bounty_usd", 0.0))
     new_bounty = current_bounty + payload.accepted_bounty_usd
+
+    if new_bounty > max_bounty:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Extension would exceed fleet max bid of ${max_bounty:.2f} for this sentry task."
+        )
 
     async with redis_client.pipeline(transaction=True) as pipe:
         pipe.hset(mission_key, mapping={
@@ -323,5 +405,9 @@ async def extend_sentry_mission(
         pipe.hset(f"pan:task:{task_id}", "bounty_usd", new_bounty)
         await pipe.execute()
 
-    logger.info(f"⏱️ [SENTRY] Agent {agent_id} accepted +{payload.extension_minutes}m extension for ${payload.accepted_bounty_usd:.2f}. New total: ${new_bounty:.2f}")
+    logger.info(
+        f"⏱️ [SENTRY] Agent {agent_id} accepted +{payload.extension_minutes}m extension "
+        f"for ${payload.accepted_bounty_usd:.2f}. New total: ${new_bounty:.2f} "
+        f"(fleet max: ${max_bounty:.2f})"
+    )
     return {"status": "success", "new_bounty_usd": new_bounty}
