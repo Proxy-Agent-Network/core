@@ -145,14 +145,18 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, in
     required_tier = int(task_data.get("required_tier", 1))
     
     is_sentry_subtask = task_data.get("role") == "sentry"
-    exclude_agent = None
     
-    if is_sentry_subtask:
-        parent_incident_id = task_data.get("incident_id")
-        if parent_incident_id:
-            primary_id_bytes = await redis_client.hget(f"incident:{parent_incident_id}", "primary_agent_id")
-            if primary_id_bytes:
-                exclude_agent = primary_id_bytes.decode("utf-8")
+    # --- BIDIRECTIONAL DUAL-DISPATCH EXCLUSION ---
+    exclude_agent = None
+    incident_id = task_data.get("incident_id")
+    
+    if incident_id:
+        # Check if ANY agent is already assigned to this incident (Primary OR Sentry)
+        existing_agents = await redis_client.smembers(f"incident:{incident_id}:assigned_agents")
+        if existing_agents:
+            # For Vanguard 50, there's max 1 other agent. Grab the first one to exclude.
+            exclude_agent = list(existing_agents)[0].decode("utf-8")
+            logger.info(f"🛡️ Excluding Agent {exclude_agent} from task {task_id} to prevent dual-dispatch collision.")
 
     assigned_id, selection_status = await find_best_agent(
         redis_client, session, t_lat, t_lon, zone_id, required_tier, exclude_agent
@@ -176,10 +180,11 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, in
         role_type = "SENTRY" if is_sentry_subtask else "PRIMARY"
         asyncio.create_task(insurtech_client.bind_hnoa_policy(session, task_id, assigned_id, role_type))
         
-        if not is_sentry_subtask and "incident_id" in task_data:
-            incident_key = f"incident:{task_data['incident_id']}"
-            await redis_client.hset(incident_key, "primary_agent_id", assigned_id)
-            await redis_client.expire(incident_key, 3600)  # 1hr TTL
+        # Add the newly assigned agent to the incident's exclusion set
+        if incident_id:
+            incident_agents_key = f"incident:{incident_id}:assigned_agents"
+            await redis_client.sadd(incident_agents_key, assigned_id)
+            await redis_client.expire(incident_agents_key, 3600) # 1 hr TTL
             
         logger.info(f"✅ Dispatched {task_id} to {assigned_id}")
     else:

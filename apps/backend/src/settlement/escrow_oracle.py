@@ -7,8 +7,16 @@ from typing import Dict, Tuple
 from fastapi import HTTPException
 
 # Proxy Protocol Internal Modules (Rust FFI & Python Services)
-from core.economics.hodl_escrow import EscrowManager
-from core.reputation.slashing_engine import SlashingEngine
+# Wrapped in a try/except so the file can be executed standalone for testing
+try:
+    from core.economics.hodl_escrow import EscrowManager
+except ImportError:
+    EscrowManager = None
+    
+try:
+    from core.reputation.slashing_engine import SlashingEngine
+except ImportError:
+    SlashingEngine = None
 
 # Import the actual verification logic from Phase 1
 from api.onboarding_api import verify_play_integrity_token
@@ -24,7 +32,7 @@ class EscrowOracle:
     compliance (SB 1417), and physical proof (AV Signature) meet 
     the protocol's strict requirements.
     """
-    def __init__(self, escrow_manager: EscrowManager, slashing_engine: SlashingEngine, redis_client):
+    def __init__(self, escrow_manager, slashing_engine, redis_client):
         self.escrow = escrow_manager
         self.slasher = slashing_engine
         self.redis_client = redis_client
@@ -65,17 +73,22 @@ class EscrowOracle:
 
         if not is_hw_valid:
             self.logger.error(f"🚨 Hardware Fraud Detected for Agent {agent_id}.")
-            # Trigger Slashing (burn reputation/bonds for spoofing attempts)
-            slash_report = self.slasher.execute_slash(
-                agent_id, 
-                2000000, 
-                "PX_400: Hardware Spoofing - Invalid Play Integrity Token"
-            )
-            # Cancel Escrow securely via Rust API
+            
+            # Safely attempt slashing, but never allow fall-through to Stage 2
+            try:
+                slash_report = self.slasher.execute_slash(
+                    agent_id, 
+                    2000000, 
+                    "PX_400: Hardware Spoofing - Invalid Play Integrity Token"
+                )
+            except Exception as e:
+                self.logger.error(f"Slashing engine failed: {e}")
+                slash_report = {"error": "slashing_engine_unavailable"}
+                
             try:
                 self.escrow.cancel_contract(payment_hash)
             except Exception as e:
-                self.logger.error(f"Failed to cancel contract: {e}")
+                self.logger.error(f"Failed to cancel contract {payment_hash}: {e}")
                 
             return {"status": "slashed", "report": slash_report}
 
@@ -121,7 +134,7 @@ class EscrowOracle:
         Calls the Play Integrity verification logic from Phase 1.
         Runs in a thread executor to prevent blocking the async event loop.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             return await loop.run_in_executor(
                 None,
@@ -141,8 +154,14 @@ class EscrowOracle:
 
 # --- Backend Integration Example ---
 if __name__ == "__main__":
-    import asyncio
     import os
+    import sys
+    
+    # Prevent execution in production environments
+    if os.getenv("ENVIRONMENT") == "production":
+        print("⛔ Simulation block disabled in production.")
+        sys.exit(1)
+        
     print("--- ESCROW ORACLE SETTLEMENT SIMULATION ---")
     
     # Mock implementations for local testing
@@ -156,26 +175,72 @@ if __name__ == "__main__":
                 return b"mock_base64_public_key=="
             return None
             
+    # Pure-Python Mock to allow simulation without the Rust FFI library built
+    class MockEscrowManager:
+        def __init__(self):
+            self.contracts = {}
+            
+        def create_contract(self, cid, phash, amt, pubkey):
+            self.contracts[phash] = "CREATED"
+            
+        def accept_contract(self, phash):
+            self.contracts[phash] = "ACCEPTED"
+            
+        def begin_contract(self, phash):
+            self.contracts[phash] = "ACTIVE"
+            
+        def get_contract_state(self, phash):
+            return self.contracts.get(phash, "UNKNOWN")
+            
+        def cancel_contract(self, phash):
+            self.contracts[phash] = "CANCELLED"
+            return True
+            
+        def settle_contract(self, phash, payload, sig):
+            self.contracts[phash] = "SETTLED"
+            return True
+
+    # Override the Oracle to bypass the actual Google API network call during simulation
+    class MockEscrowOracle(EscrowOracle):
+        async def _verify_hardware_token(self, token: str, agent_id: str, public_key_b64: str) -> bool:
+            self.logger.info("🛠️ [SIMULATION] Bypassing Google Play Integrity API check (Returns True)")
+            return True
+
     async def run_sim():
         try:
-            escrow = EscrowManager()
+            escrow = MockEscrowManager()
             slasher = MockSlashingEngine()
             redis_client = MockRedisClient()
-            oracle = EscrowOracle(escrow, slasher, redis_client)
+            oracle = MockEscrowOracle(escrow, slasher, redis_client)
             
             contract_id = "TASK-777"
             payment_hash = "mock_hash_abc123"
             amount = 25000
             
-            # 🟢 THE FIX: Replaced the static RFC 8037 vector with an environment variable lookup
-            # This ensures no hardcoded cryptographic material exists in the source code.
             mock_av_pubkey = os.getenv("MOCK_AV_PUBKEY_SIMULATION", "0000000000000000000000000000000000000000000000000000000000000000")
             
+            # Setup the contract
             escrow.create_contract(contract_id, payment_hash, amount, mock_av_pubkey)
             escrow.accept_contract(payment_hash)
             escrow.begin_contract(payment_hash)
             
-            print(f"Contract state: {escrow.get_contract_state(payment_hash)}")
+            print(f"Contract state before finalize: {escrow.get_contract_state(payment_hash)}")
+            
+            # Run the 3-Stage Verification Pipeline
+            mock_proof_payload = {
+                "agent_id": "VNG-001-ALPHA",
+                "hardware_attestation_token": "mock_jwt_token_12345",
+                "evidence_urls": ["https://pan-storage.s3.amazonaws.com/mock_photo.jpg"],
+                "av_signature_hex": "abcd1234efgh5678",
+                "security": {"duress_signal": False}
+            }
+            
+            result = await oracle.finalize_task(contract_id, payment_hash, mock_proof_payload)
+            
+            print("\n--- SIMULATION RESULT ---")
+            print(json.dumps(result, indent=2))
+            print(f"Contract state after finalize: {escrow.get_contract_state(payment_hash)}")
+            
         except Exception as e:
             print(f"Simulation failed: {e}")
             

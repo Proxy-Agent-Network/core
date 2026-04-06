@@ -45,7 +45,8 @@ class LogisticsWebhookProcessor:
     Implements border-crossing logic to ensure jurisdictional compliance.
     """
     def __init__(self):
-        # 🟢 THE FIX: Strict enforcement of the hardware registry URL in production
+        # Strict enforcement of the hardware registry URL in production
+        # Note: Fires at import time. Missing env var fails fast before FastAPI startup.
         registry_host = os.getenv("HARDWARE_REGISTRY_URL")
         
         if not registry_host:
@@ -81,17 +82,17 @@ class LogisticsWebhookProcessor:
         
         internal_status = status_map.get(payload.status, "IN_TRANSIT")
         
-        # In production:
-        # requests.patch(f"{self.registry_update_url}/{payload.tracking_id}", json={"status": internal_status})
+        # In production (use aiohttp to avoid blocking the event loop):
+        # async with aiohttp.ClientSession() as session:
+        #     await session.patch(f"{self.registry_update_url}/{payload.tracking_id}", json={"status": internal_status})
         
-        logger.info(f"✅ Registry Synced: {payload.tracking_id} set to {internal_status}")
+        logger.info(f"📋 Registry sync pending implementation: {payload.tracking_id} → {internal_status}")
 
 # Instantiate the processor so it exists in memory for the route to use
 processor = LogisticsWebhookProcessor()
 
 # --- API Endpoints ---
 
-# Updated decorators to use @router instead of @app
 @router.post("/v1/logistics/ingress/{carrier_id}")
 async def carrier_webhook_receiver(
     request: Request,
@@ -110,7 +111,6 @@ async def carrier_webhook_receiver(
         logger.error(f"Logistics Parse Error: {str(e)}")
         raise HTTPException(status_code=400, detail="Processing failed.")
 
-# Updated decorators to use @router instead of @app
 @router.get("/health")
 async def health():
     # Only report carriers that are actively configured in the environment variables
