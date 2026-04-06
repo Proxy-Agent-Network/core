@@ -1,3 +1,4 @@
+@file:Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER", "CANNOT_OVERRIDE_INVISIBLE_MEMBER")
 package com.pan.tactical.network
 
 import android.util.Log
@@ -17,6 +18,8 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.*
@@ -77,10 +80,11 @@ class PanWalletClient : WalletNetworkClient {
         get() = FirebaseAuth.getInstance().currentUser?.uid
             ?: throw IllegalStateException("Agent identity missing. Cannot execute network operations.")
 
+    private val jwtMutex = Mutex()
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
 
-    private fun getFreshJwt(): String {
+    private suspend fun getFreshJwt(): String = jwtMutex.withLock {
         val now = System.currentTimeMillis() / 1000
         if (cachedJwt == null || now >= jwtExpiresAt - 30) {
             cachedJwt = StrongBoxManager().generateJwt(secureUid)
@@ -89,7 +93,7 @@ class PanWalletClient : WalletNetworkClient {
         return cachedJwt!!
     }
 
-    private fun HttpRequestBuilder.attachAgentSignature() {
+    private suspend fun HttpRequestBuilder.attachAgentSignature() {
         header("Authorization", "Bearer ${getFreshJwt()}")
     }
 
@@ -150,6 +154,7 @@ class PanWalletClient : WalletNetworkClient {
                     }
                 )
             } catch (e: Exception) {
+                Log.e(TAG, "getWalletData failed: ${e.message}", e)
                 null
             }
         }
