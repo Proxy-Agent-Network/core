@@ -97,7 +97,7 @@ PAN uses a standardized color taxonomy for task classification, pricing, and das
   │  Haptic navigation        back panel · Spine haptics            │
   │  Cryptographic TPM        SB 1417 logging                       │
   │                                                                 │
-  │  👕 Aegis Polo VFP-1 v1.2  🧤 Gauntlets VFG-1 v1.2            │
+  │  👕 Aegis Polo VFP-1 v1.2  🧤 Gauntlets VFG-1 v1.3            │
   │  Biometric monitoring     Gesture control · Culture             │
   │  Voice AI (Proxy-Alpha)   Tool NFC · Multi-agent                │
   │  Thermal management       bonuses · Easter egg                  │
@@ -114,8 +114,8 @@ An ANSI/ISEA 107-2020 Class 3 hi-vis vest with active intelligence. The Rear Awa
 ### 👕 Aegis Polo VFP-1 v1.2
 The innermost and most intimate component — worn directly against the skin. The Aegis Polo monitors the agent's biometrics (heart rate, SpO₂, skin temperature, galvanic skin response), reads their personal breathing zone air quality, and listens for their voice via the chest-mounted Communicator Pin. When vest RATS detects a Zone 2 threat and polo biometrics simultaneously detect a stress spike, the system recognizes the agent already knows — and escalates directly to Zone 1 maximum response, skipping the redundant warning. D3O rib impact panels protect against vehicle sideswipe. Bioluminescent collar stripe ensures passive nighttime visibility even when all electronics fail. Available at Tier 3 (200 missions completed).
 
-### 🧤 Gauntlets VFG-1 v1.2
-Cut-resistant HPPE field gloves with embedded IMU, NFC, haptic motor, and PCM back-of-hand cooling. A snap gesture toggles the hat brim light — hands-free, both hands on the work. Multi-agent bonuses reward verified physical interactions between agents on the same incident: handshake, fist bump, or high five earns both agents $5; flourish upgrades (Secret Handshake, BOOM Explosion, Double Down) earn $7. The gesture system includes an undisclosed number of hidden easter eggs discovered naturally through use. Sold at cost — no PAN margin. Single-glove purchase always available. Unlock: 10 completed missions.
+### 🧤 Gauntlets VFG-1 v1.3
+Cut-resistant HPPE field gloves with embedded IMU, NFC, haptic motor, and PCM back-of-hand cooling. A snap gesture toggles the hat brim light — hands-free, both hands on the work. Multi-agent bonuses reward verified physical interactions between agents on the same incident. First to the scene with Gauntlets? Earn a $2 Solo Glove Welcome bonus for greeting un-equipped agents. When both agents are gloved, base greetings (handshake, fist bump) earn $5 each, while flourish upgrades (Secret Handshake, BOOM Explosion) earn $7. The gesture system includes an undisclosed number of hidden easter eggs discovered naturally through use. Sold at cost — no PAN margin. Single-glove purchase always available. Unlock: 10 completed missions.
 
 ### Composite Threat Response
 The polo and vest together enable a capability unavailable from any single component. When the vest's RATS radar classifies an approaching vehicle at Zone 2 range and the polo's biometric patch simultaneously detects the agent's stress response spiking — the system knows the agent has already perceived the threat. The Zone 2 warning sequence is redundant. The system skips directly to Zone 1 maximum response across all channels simultaneously: hat, spine strip, LED panel, gloves, and phone alarm. The agent's own physiology becomes an input to the threat escalation algorithm.
@@ -133,7 +133,7 @@ Contact us at [rob@proxyagent.network](mailto:rob@proxyagent.network) to registe
 ### 2. Send a Distress Signal
 
 ```bash
-POST https://api.proxy-protocol.com/api/v1/v2x/distress
+POST [https://api.proxy-protocol.com/api/v1/v2x/distress](https://api.proxy-protocol.com/api/v1/v2x/distress)
 X-Fleet-Id: WAYMO_MESA_01
 X-Fleet-Signature: <ed25519_hex_signature>
 Content-Type: application/json
@@ -189,7 +189,7 @@ PAN is actively recruiting its founding Vanguard 50 — the first cohort of fiel
 - **Tier 3 tasks** (bio remediation, defleeting): $65.00 base
 - **Surge multiplier** up to 3x during high-demand periods
 - **Instant Lightning payout** — funds in your wallet within seconds of mission completion
-- **Multi-agent bonuses** — earn additional rewards for verified partner interactions on shared incidents
+- **Collaboration bonuses** — earn $2 for greeting un-equipped agents, or up to $7 each for verified bilateral gestures on shared incidents
 
 ### Tier Progression
 Vanguard Agents unlock expanded capabilities and equipment as they complete missions:
@@ -212,10 +212,10 @@ Official client libraries for fleet integration:
 
 | Language | Package | Install |
 |---|---|---|
-| **Python** | `proxy-agent` | `pip install proxy-agent` |
-| **Node.js** | `@proxy-protocol/node` | `npm install @proxy-protocol/node` |
+| **Python** | \`proxy-agent\` | \`pip install proxy-agent\` |
+| **Node.js** | \`@proxy-protocol/node\` | \`npm install @proxy-protocol/node\` |
 
-Full API reference and integration guides are available in the [`/docs`](docs/) directory.
+Full API reference and integration guides are available in the [\`/docs\`](docs/) directory.
 
 ---
 
@@ -274,7 +274,7 @@ PAN is built for regulatory compliance from the ground up.
 - **Zero-Knowledge Agent Privacy:** Vanguard Agents' personal data is stored with AES-256 encryption. Fleet partners see only task outcomes, never agent identities. Companion Mode voice transcripts are never shared with fleet partners in full — compliance-flagged excerpts only.
 - **IDOR Protection:** All mission assignments are cryptographically bound — agents can only complete missions assigned to them.
 - **On-Device Privacy Filtering:** All photographic and video evidence is processed through an on-device ML redaction pipeline before leaving the agent's phone. Faces and license plates are redacted locally — raw PII never touches the network.
-- **NARCAN-Certified Agents:** Agents holding medical response certification can carry Narcan emergency supplies in the Aegis Polo's sealed emergency pocket. All Good Samaritan administrations are automatically documented with voice transcript, GPS, and timestamp via Companion Mode. *(Awaiting final Arizona Good Samaritan statutory review prior to Vanguard 50 deployment)*
+- **NARCAN-Certified Agents:** Agents holding medical response certification can carry Narcan emergency supplies in the Aegis Polo's sealed emergency pocket. All Good Samaritan administrations are automatically documented with voice transcript, GPS, and timestamp via Companion Mode. *(Awaiting final Arizona Good Samaritan statutory review prior to Vanguard 50 deployment).*
 
 See [COMPLIANCE.md](docs/legal/COMPLIANCE.md) for full details.
 
@@ -312,7 +312,7 @@ For technical partners and contributors, the core stack:
 | NFC | PN532 passive brim tag (hat) · PN532 active/passive (gloves) · vest back panel tag |
 | PCM Thermal | Shared sodium sulfate decahydrate system · 45-min freeze cycle · all four garments |
 
-Full architecture documentation is available in [`/docs/architecture`](docs/architecture/).
+Full architecture documentation is available in [\`/docs/architecture\`](docs/architecture/).
 
 ---
 
@@ -349,7 +349,7 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines.
 | HapHat v2.3 | 🔧 Mock → real BLE implementation |
 | PANOPLY Vest v1.2 | 📐 Spec complete · prototype pending |
 | Aegis Polo VFP-1 v1.2 | 📐 Spec complete · prototype pending |
-| Gauntlets VFG-1 v1.2 | 📐 Spec complete · prototype pending |
+| Gauntlets VFG-1 v1.3 | 📐 Spec complete · prototype pending |
 | OSRM tactical routing | 🔧 Phase 6 wiring in progress |
 | iOS client | 📋 Planned |
 
