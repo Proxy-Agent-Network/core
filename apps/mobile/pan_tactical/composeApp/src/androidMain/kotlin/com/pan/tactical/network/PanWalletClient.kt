@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
@@ -51,10 +52,11 @@ data class NetworkTransactionLog(
 data class NetworkWalletResponse(
     val balance: Double = 0.0,
     val linkedCard: String? = null,
-    val history: List<NetworkTransactionLog> = emptyList()
+    val history: List<NetworkTransactionLog> = emptyList(),
+    val missionsCompleted: Int = 0,
+    val vanguardTrustScore: Double = 100.0
 )
 
-// NEW: Feedback DTO matching the Python backend Pydantic model
 @Serializable
 data class FeedbackPayload(
     val is_positive: Boolean,
@@ -159,7 +161,9 @@ class PanWalletClient : WalletNetworkClient {
                             description = it.description,
                             evidenceUrls = it.evidenceUrls
                         )
-                    }
+                    },
+                    missionsCompleted = data.missionsCompleted,
+                    vanguardTrustScore = data.vanguardTrustScore
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "getWalletData failed: ${e.message}", e)
@@ -208,7 +212,6 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    // NEW: Network request corresponding to POST /v1/agent/missions/{task_id}/feedback
     suspend fun submitMissionFeedback(taskId: String, isPositive: Boolean, category: String, label: String, ventText: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -217,7 +220,7 @@ class PanWalletClient : WalletNetworkClient {
                 
                 val response = client.post(targetUrl) {
                     contentType(ContentType.Application.Json)
-                    attachAgentSignature() // Generates TPM-backed JWT for IDOR protection
+                    attachAgentSignature()
                     setBody(FeedbackPayload(
                         is_positive = isPositive,
                         category = category,
@@ -241,7 +244,6 @@ class PanWalletClient : WalletNetworkClient {
     }
 
     override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean {
-        // ... (Remaining stubs omitted for brevity, keeping original PanWalletClient structure)
         return false
     }
 
