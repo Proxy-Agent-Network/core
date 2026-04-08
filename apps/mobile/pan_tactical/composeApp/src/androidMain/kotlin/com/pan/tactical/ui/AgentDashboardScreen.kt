@@ -44,6 +44,8 @@ import com.pan.tactical.ui.components.PostMissionOverlays
 import com.pan.tactical.ui.components.MissionAlertOverlay
 import com.pan.tactical.ui.components.SwipeActionSlider
 import com.pan.tactical.ui.components.UwbHomingCompass
+import com.pan.tactical.ui.components.FeedbackScreen
+import com.pan.tactical.ui.components.FeedbackIssueChip
 import com.pan.tactical.models.AgentCapability
 import com.pan.tactical.models.AgentCapabilityUiModel
 import com.pan.tactical.models.MissionData
@@ -60,6 +62,7 @@ import com.pan.tactical.hardware.LedColor
 import com.pan.tactical.hardware.LedMode                 
 import com.pan.tactical.hardware.MotorId                 
 import com.pan.tactical.network.PanApiClient
+import com.pan.tactical.network.PanWalletClient
 import com.pan.tactical.ui.homing.HomingViewModel
 import com.pan.tactical.ui.homing.HomingViewModelFactory
 import com.pan.tactical.ui.homing.MissionResult
@@ -108,6 +111,7 @@ actual fun AgentDashboardScreen(
                 }
                 "RUNNING" -> MainDashboardContent(
                     apiClient = panClient,
+                    rawWalletClient = apiClient,
                     currentScreen = currentScreen,
                     onNavigate = { currentScreen = it }
                 )
@@ -177,6 +181,7 @@ actual fun AgentDashboardScreen(
 @Composable
 fun MainDashboardContent(
     apiClient: PanApiClient,
+    rawWalletClient: WalletNetworkClient,
     currentScreen: String,
     onNavigate: (String) -> Unit
 ) {
@@ -221,6 +226,11 @@ fun MainDashboardContent(
     var showAbortDialog by rememberSaveable { mutableStateOf(false) }
     var showDevMenu by rememberSaveable { mutableStateOf(false) }
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
+    
+    // State to trigger the Feedback flow safely decoupled from activeMission
+    var showFeedbackScreen by rememberSaveable { mutableStateOf(false) }
+    var feedbackTaskId by rememberSaveable { mutableStateOf("") }
+    var feedbackFleetId by rememberSaveable { mutableStateOf("") }
 
     // Ephemeral security storage
     var avUwbMacAddress by remember { mutableStateOf<String?>(null) }
@@ -696,32 +706,11 @@ fun MainDashboardContent(
                     totalResponseTimeMs = totalResponseTimeMs,
                     lastTxHash = lastTxHash,
                     onReturnToPatrol = {
-                        lastPayoutAmount = 0.0; timeOnSceneMs = 0L; totalResponseTimeMs = 0L; lastTxHash = ""; sceneArrivalTime = 0L; missionAcceptTime = 0L
-                        tacticalRoute = emptyList()
-
-                        isBleHandshakeComplete = false
-                        avUwbMacAddress = null
-                        avUwbSessionKey = null
-
-                        if (queuedMission != null) {
-                            activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
-                            
-                            coroutineScope.launch {
-                                hapHat.sendCommand(
-                                    HapHatCommand(
-                                        ledMode = LedMode.SOLID,
-                                        ledColor = LedColor.ORANGE
-                                    )
-                                )
-                            }
-                        }
-                        else {
-                            missionState = "IDLE"; activeMission = null
-                            
-                            coroutineScope.launch {
-                                hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
-                            }
-                        }
+                        // 🛡️ Safely snapshot the mission data BEFORE opening the overlay
+                        // This prevents recomposition crashes when activeMission becomes null mid-animation
+                        feedbackTaskId = activeMission?.taskId ?: ""
+                        feedbackFleetId = "Vanguard Network Partner" // To be pulled from activeMission?.fleetId in next iteration
+                        showFeedbackScreen = true
                     }
                 )
             }
@@ -968,6 +957,68 @@ fun MainDashboardContent(
                         
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
                 } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }
+            )
+        }
+
+        // 🟢 FEEDBACK SCREEN INJECTION
+        AnimatedVisibility(
+            visible = showFeedbackScreen,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize().zIndex(20f)
+        ) {
+            FeedbackScreen(
+                taskId = feedbackTaskId,
+                fleetId = feedbackFleetId,
+                payoutAmount = lastPayoutAmount,
+                issueChips = listOf(
+                    FeedbackIssueChip("Biohazard Unreported", "SAFETY"),
+                    FeedbackIssueChip("Hardware Defect", "SAFETY"),
+                    FeedbackIssueChip("Incorrect Fault Code", "COMPLIANCE"),
+                    FeedbackIssueChip("Bounty Dispute", "CONDUCT"),
+                    FeedbackIssueChip("API Timeout", "LOGISTICS"),
+                    FeedbackIssueChip("Vehicle Not at Pin", "LOGISTICS")
+                ),
+                onSubmit = { isPositive, category, label, ventText ->
+                    // Cast safely assuming PanWalletClient implementation is provided
+                    (rawWalletClient as? PanWalletClient)?.submitMissionFeedback(
+                        taskId = feedbackTaskId,
+                        isPositive = isPositive,
+                        category = category,
+                        label = label,
+                        ventText = ventText
+                    ) ?: false
+                },
+                onDismiss = {
+                    showFeedbackScreen = false
+                    
+                    // --- DELEGATED POST-MISSION RESET LOGIC ---
+                    lastPayoutAmount = 0.0; timeOnSceneMs = 0L; totalResponseTimeMs = 0L; lastTxHash = ""; sceneArrivalTime = 0L; missionAcceptTime = 0L
+                    tacticalRoute = emptyList()
+
+                    isBleHandshakeComplete = false
+                    avUwbMacAddress = null
+                    avUwbSessionKey = null
+
+                    if (queuedMission != null) {
+                        activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
+                        
+                        coroutineScope.launch {
+                            hapHat.sendCommand(
+                                HapHatCommand(
+                                    ledMode = LedMode.SOLID,
+                                    ledColor = LedColor.ORANGE
+                                )
+                            )
+                        }
+                    } else {
+                        missionState = "IDLE"; activeMission = null
+                        
+                        coroutineScope.launch {
+                            hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
+                        }
+                    }
+                }
             )
         }
     }

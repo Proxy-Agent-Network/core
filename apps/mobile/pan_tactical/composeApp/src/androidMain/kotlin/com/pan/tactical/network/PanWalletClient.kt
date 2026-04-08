@@ -22,7 +22,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.*
 import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
@@ -53,6 +52,15 @@ data class NetworkWalletResponse(
     val balance: Double = 0.0,
     val linkedCard: String? = null,
     val history: List<NetworkTransactionLog> = emptyList()
+)
+
+// NEW: Feedback DTO matching the Python backend Pydantic model
+@Serializable
+data class FeedbackPayload(
+    val is_positive: Boolean,
+    val category: String,
+    val label: String,
+    val vent_text: String
 )
 
 class PanWalletClient : WalletNetworkClient {
@@ -196,6 +204,38 @@ class PanWalletClient : WalletNetworkClient {
                 }
             } catch (e: Exception) {
                 Result.failure(Exception("Connection to PAN Network lost."))
+            }
+        }
+    }
+
+    // NEW: Network request corresponding to POST /v1/agent/missions/{task_id}/feedback
+    suspend fun submitMissionFeedback(taskId: String, isPositive: Boolean, category: String, label: String, ventText: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val targetUrl = "$hostUrl/api/v1/agent/missions/$taskId/feedback"
+                Log.i(TAG, "Transmitting feedback for $taskId (Positive: $isPositive) to $targetUrl")
+                
+                val response = client.post(targetUrl) {
+                    contentType(ContentType.Application.Json)
+                    attachAgentSignature() // Generates TPM-backed JWT for IDOR protection
+                    setBody(FeedbackPayload(
+                        is_positive = isPositive,
+                        category = category,
+                        label = label,
+                        vent_text = ventText
+                    ))
+                }
+
+                if (response.status.isSuccess()) {
+                    Log.i(TAG, "Feedback for $taskId successfully logged on PAN Network.")
+                    true
+                } else {
+                    Log.e(TAG, "Feedback rejected by server. HTTP Status: ${response.status.value}")
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Network connection lost during feedback submission: ${e.message}", e)
+                false
             }
         }
     }
