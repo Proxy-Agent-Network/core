@@ -46,6 +46,9 @@ import com.pan.tactical.ui.components.SwipeActionSlider
 import com.pan.tactical.ui.components.UwbHomingCompass
 import com.pan.tactical.ui.components.FeedbackScreen
 import com.pan.tactical.ui.components.FeedbackIssueChip
+import com.pan.tactical.ui.components.AgentRank
+import com.pan.tactical.ui.components.RankUpOverlay
+import com.pan.tactical.ui.components.rankForMissions
 import com.pan.tactical.models.AgentCapability
 import com.pan.tactical.models.AgentCapabilityUiModel
 import com.pan.tactical.models.MissionData
@@ -227,16 +230,40 @@ fun MainDashboardContent(
     var showDevMenu by rememberSaveable { mutableStateOf(false) }
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
     
-    // State to trigger the Feedback flow safely decoupled from activeMission
+    // Feedback State
     var showFeedbackScreen by rememberSaveable { mutableStateOf(false) }
     var feedbackTaskId by rememberSaveable { mutableStateOf("") }
     var feedbackFleetId by rememberSaveable { mutableStateOf("") }
+
+    // 🟢 RANK PROGRESSION STATE
+    var missionsCompleted by rememberSaveable { mutableIntStateOf(0) }
+    var currentRank by rememberSaveable { mutableStateOf<AgentRank?>(null) }
+    var showRankUp by rememberSaveable { mutableStateOf(false) }
+    var rankUpTo by rememberSaveable { mutableStateOf(AgentRank.RECRUIT) }
 
     // Ephemeral security storage
     var avUwbMacAddress by remember { mutableStateOf<String?>(null) }
     var avUwbSessionKey by remember { mutableStateOf<ByteArray?>(null) }
     var isBleHandshakeComplete by remember { mutableStateOf(false) }
     var isBleScanning by remember { mutableStateOf(false) }
+
+    // On boot, fetch initial missions completed so we don't trigger a rank-up
+    LaunchedEffect(Unit) {
+        val data = rawWalletClient.getWalletData()
+        if (data != null) {
+            missionsCompleted = data.missionsCompleted
+        }
+    }
+
+    // Trigger overlay safely when crossing a threshold
+    LaunchedEffect(missionsCompleted) {
+        val newRank = rankForMissions(missionsCompleted)
+        if (currentRank != null && newRank > currentRank!!) {
+            rankUpTo = newRank
+            showRankUp = true
+        }
+        currentRank = newRank
+    }
 
     val MissionDataSaver = Saver<MissionData?, String>(
         save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bountyUsd}|${data.intersection}|${data.taskId}|${data.incidentId}" } ?: "" },
@@ -451,6 +478,12 @@ fun MainDashboardContent(
 
                 audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
                 capturedEvidence = emptyList()
+
+                // Refresh wallet data after payout to fetch updated missionsCompleted count
+                val updatedWallet = rawWalletClient.getWalletData()
+                if (updatedWallet != null) {
+                    missionsCompleted = updatedWallet.missionsCompleted
+                }
 
                 homingViewModel.clearMissionResult()
             }
@@ -1019,6 +1052,21 @@ fun MainDashboardContent(
                         }
                     }
                 }
+            )
+        }
+
+        // 🟢 RANK UP OVERLAY
+        AnimatedVisibility(
+            visible = showRankUp,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize().zIndex(25f)
+        ) {
+            RankUpOverlay(
+                newRank = rankUpTo,
+                ownsHapHat = false, // Will wire to real hardware inventory in Q3
+                ownsGauntlets = false,
+                onDismiss = { showRankUp = false }
             )
         }
     }

@@ -26,6 +26,7 @@ import kotlinx.serialization.Serializable
 
 import com.pan.tactical.AudioEngine
 import com.pan.tactical.ui.theme.PanColors
+import com.pan.tactical.ui.components.AgentRankCard
 import kotlin.math.abs
 
 // 1. DATA MODELS (Now in commonMain so the UI can see them)
@@ -42,7 +43,9 @@ data class TransactionLog(
 data class WalletResponse(
     val balance: Double,
     val linkedCard: String? = null,
-    val history: List<TransactionLog>
+    val history: List<TransactionLog>,
+    val missionsCompleted: Int = 0,
+    val vanguardTrustScore: Double = 100.0
 )
 
 // 2. THE INTERFACE (The contract the UI relies on)
@@ -99,6 +102,8 @@ fun WalletAndProfileScreen(
     var balance by remember { mutableDoubleStateOf(0.00) }
     var linkedCard by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf<List<TransactionLog>>(emptyList()) }
+    var missionsCompleted by remember { mutableIntStateOf(0) }
+    var vtsScore by remember { mutableDoubleStateOf(100.0) }
 
     var showLinkCardDialog by remember { mutableStateOf(false) }
     var cardNumber by rememberSaveable { mutableStateOf("") } // 🛡️ FIXED: Survive rotation
@@ -113,6 +118,8 @@ fun WalletAndProfileScreen(
                 balance = walletData.balance
                 linkedCard = walletData.linkedCard
                 history = walletData.history
+                missionsCompleted = walletData.missionsCompleted
+                vtsScore = walletData.vanguardTrustScore
             }
         } catch (e: Exception) {
             snackbarHostState.showSnackbar("ERROR: Failed to load wallet data.")
@@ -258,6 +265,8 @@ fun WalletAndProfileScreen(
                                             apiClient.getWalletData()?.let {
                                                 balance = it.balance
                                                 history = it.history
+                                                missionsCompleted = it.missionsCompleted
+                                                vtsScore = it.vanguardTrustScore
                                             }
                                         } catch (e: Exception) {
                                             snackbarHostState.showSnackbar("ERROR: Network failure refreshing ledger.")
@@ -278,6 +287,14 @@ fun WalletAndProfileScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         TextButton(onClick = { showLinkCardDialog = true }) { Text("UPDATE LINKED CARD", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                     }
+                }
+
+                // 🟢 NEW: DOSSIER INSERTION POINT
+                if (!isLoading) {
+                    AgentRankCard(
+                        missionsCompleted = missionsCompleted
+                    )
+                    HorizontalDivider(color = PanColors.ButtonSecondary, thickness = 1.dp)
                 }
 
                 Column(modifier = Modifier.fillMaxWidth().background(PanColors.SurfaceMid).padding(vertical = 16.dp)) {
