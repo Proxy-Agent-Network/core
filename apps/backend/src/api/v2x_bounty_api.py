@@ -4,12 +4,13 @@ import time
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from redis.exceptions import WatchError
 
 from utils.webhook_auth import verify_v2x_signature
 from compliance.audit_engine import ComplianceEngine
 from utils.auth import verify_agent_signature
+from reputation.reputation_engine import ReputationEngine
 
 logger = logging.getLogger("V2X_Bounty_API")
 router = APIRouter()
@@ -44,6 +45,12 @@ class SentryExtensionPayload(BaseModel):
     task_id: str
     extension_minutes: int
     accepted_bounty_usd: float
+
+class FeedbackPayload(BaseModel):
+    is_positive: bool
+    category: str = ""
+    label: str = ""
+    vent_text: str = Field(default="", max_length=280)
 
 # --- HELPER ---
 
@@ -242,7 +249,12 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         raw_bounty = float(task_data.get("bounty_usd", 25.0))
         actual_payout = round(raw_bounty * 0.90, 2) 
 
-        await redis_client.hset(f"pan:task:{task_id}", "status", "COMPLETED")
+        # Update the master task hash securely, stamping the assigned agent_id into the record for IDOR checks on feedback
+        await redis_client.hset(f"pan:task:{task_id}", mapping={
+            "status": "COMPLETED",
+            "agent_id": agent_id
+        })
+        
         await redis_client.delete(mission_key)
         
         sealed_report = ComplianceEngine.generate_optical_health_report(
@@ -411,3 +423,69 @@ async def extend_sentry_mission(
         f"(fleet max: ${max_bounty:.2f})"
     )
     return {"status": "success", "new_bounty_usd": new_bounty}
+
+@router.post("/v1/agent/missions/{task_id}/feedback")
+async def submit_mission_feedback(
+    task_id: str,
+    payload: FeedbackPayload,
+    request: Request,
+    agent_id: str = Depends(verify_agent_signature)
+):
+    """
+    Submits post-mission feedback. 
+    Enforces IDOR (Agent must have been assigned) and Task State (Must be COMPLETED).
+    """
+    redis_client = request.app.state.redis_client
+    
+    # 1. Verify task exists and is COMPLETED
+    raw_task_data = await redis_client.hgetall(f"pan:task:{task_id}")
+    if not raw_task_data:
+        raise HTTPException(status_code=404, detail="Task not found.")
+        
+    task_data = decode_redis_hash(raw_task_data)
+    
+    if task_data.get("status", "").upper() != "COMPLETED":
+        raise HTTPException(status_code=400, detail="Feedback can only be submitted for COMPLETED tasks.")
+        
+    # 2. Verify submitter was assigned to this task (IDOR protection)
+    assigned_agent = task_data.get("agent_id")
+    incident_id = task_data.get("incident_id")
+    
+    is_assigned = False
+    if incident_id:
+        is_assigned = await redis_client.sismember(f"incident:{incident_id}:assigned_agents", agent_id)
+        if not is_assigned and not assigned_agent:
+            logger.warning(f"⚠️ Incident set for {incident_id} may have expired. IDOR check relying on task hash only.")
+            
+    # Unified IDOR check: agent must appear in either the task's direct assignment
+    # or the incident's assigned agent set
+    is_authorized = (assigned_agent == agent_id) or bool(is_assigned)
+        
+    if not is_authorized:
+        logger.error(f"🚨 [SECURITY] IDOR Attempt: Agent {agent_id} tried to rate task {task_id}")
+        raise HTTPException(status_code=403, detail="IDOR Blocked: Mission not assigned to this agent.")
+        
+    # 3. Fetch Reputation Engine from Application State
+    # (Instantiated once at startup in main.py to prevent synchronous disk I/O)
+    engine = request.app.state.reputation_engine
+    
+    target_entity_id = task_data.get("fleet_id")
+    if not target_entity_id:
+        raise HTTPException(status_code=500, detail="Task is missing fleet_id target.")
+        
+    # 4. Submit Feedback via Engine (Agent rating Fleet = BUYER pool)
+    result = await engine.submit_feedback(
+        task_id=task_id,
+        submitter_entity_id=agent_id,
+        target_entity_id=target_entity_id,
+        is_positive=payload.is_positive,
+        feedback_direction="BUYER",  # Explicitly defined to prevent client-side spoofing
+        category=payload.category,
+        label=payload.label,
+        vent_text=payload.vent_text
+    )
+    
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("reason"))
+        
+    return result

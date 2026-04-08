@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "published_at": "2026-04-07",
+  "agent_rating_fleet": [
+    {
+      "id": "FLT_ERR_001",
+      "label": "Vehicle Not at Pin",
+      "category": "LOGISTICS"
+    },
+    {
+      "id": "FLT_ERR_002",
+      "label": "API Timeout / Unresponsive",
+      "category": "TECHNICAL"
+    },
+    {
+      "id": "FLT_ERR_003",
+      "label": "Unreported Biohazard",
+      "category": "SAFETY"
+    },
+    {
+      "id": "FLT_ERR_004",
+      "label": "Hardware Defect",
+      "category": "TECHNICAL"
+    }
+  ],
+  "fleet_rating_agent": [
+    {
+      "id": "AGT_ERR_001",
+      "label": "SLA Breach (Late Arrival)",
+      "category": "OPERATIONAL"
+    },
+    {
+      "id": "AGT_ERR_002",
+      "label": "Improper Attire / No Hi-Vis",
+      "category": "COMPLIANCE"
+    },
+    {
+      "id": "AGT_ERR_003",
+      "label": "Incomplete Task",
+      "category": "OPERATIONAL"
+    },
+    {
+      "id": "AGT_ERR_004",
+      "label": "Unprofessional Conduct",
+      "category": "SAFETY"
+    }
+  ]
+}

@@ -24,8 +24,18 @@ from api.onboarding_api import router as onboarding_router
 from matching_engine import run_matching_engine
 from ops.sla_monitor import run_sla_monitor
 
+# 🛠️ NEW: Import missing dependencies for Lifespan initialization
+from reputation.reputation_engine import ReputationEngine
+from integrations.insurtech_client import InsurTechClient
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Panopticon_Master")
+
+# --- GLOBAL PATH RESOLUTION ---
+# Establish absolute paths dynamically so the app is immune to how uvicorn is invoked
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # e.g., .../apps/backend/src
+PUBLIC_WEBSITE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../web/public_website"))
+WEB_DIR = os.path.join(PUBLIC_WEBSITE_DIR, "templates")
 
 # --- LIFESPAN MANAGER ---
 @asynccontextmanager
@@ -38,7 +48,8 @@ async def lifespan(app: FastAPI):
     
     redis_port = int(os.environ.get("REDIS_PORT", 6379))
         
-    app.state.redis_client = redis.Redis(host=redis_host, port=redis_port, db=0, decode_responses=True)
+    # BUG 1 FIX: Removed decode_responses=True to preserve byte-handling logic downstream
+    app.state.redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
     
     try:
         await app.state.redis_client.ping()
@@ -47,8 +58,22 @@ async def lifespan(app: FastAPI):
         logger.critical(f"🛑 FATAL: Cannot connect to Redis at {redis_host}:{redis_port}: {e}")
         raise RuntimeError(f"Redis initialization failed: {e}")
 
+    # BUG 2 FIX: Instantiate Reputation Engine safely at startup using an absolute path
+    taxonomy_path = os.path.join(BASE_DIR, "reputation", "schemas", "feedback_taxonomy.json")
+    app.state.reputation_engine = ReputationEngine(
+        app.state.redis_client,
+        taxonomy_path=taxonomy_path
+    )
+    logger.info(f"✅ Reputation Engine initialized with taxonomy: {taxonomy_path}")
+
+    # BUG 3 FIX: Instantiate the InsurTech Client to bind micro-policies during dispatch
+    insurtech_client = InsurTechClient()
+    app.state.insurtech_client = insurtech_client
+    logger.info("🛡️ InsurTech Client initialized.")
+
+    # Pass both redis and insurtech_client to the matching engine
     engine_task = asyncio.create_task(
-        run_matching_engine(app.state.redis_client),
+        run_matching_engine(app.state.redis_client, insurtech_client),
         name="matching_engine"
     )
     app.state.matching_engine_task = engine_task
@@ -92,11 +117,6 @@ app.include_router(onboarding_router, prefix="/api/v1")
 # --- FASTAPI NATIVE TEMPLATING ---
 logger.info("🔗 Initializing Native UI Template Engine...")
 
-# 1. Resolve exact absolute paths based on your workspace
-BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # C:\Coding\proxy\apps\backend\src
-PUBLIC_WEBSITE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../web/public_website"))
-WEB_DIR = os.path.join(PUBLIC_WEBSITE_DIR, "templates")
-
 # Fail fast if templates are missing
 if not os.path.exists(WEB_DIR):
     logger.error(f"🛑 CRITICAL: Could not find templates directory at {WEB_DIR}!")
@@ -105,7 +125,7 @@ if not os.path.exists(WEB_DIR):
 logger.info(f"✅ Found web templates directory at: {WEB_DIR}")
 templates = Jinja2Templates(directory=WEB_DIR)
 
-# 2. Mount Static Files (CSS, JS, Images)
+# Mount Static Files (CSS, JS, Images)
 # Mounts the root public_website folder so /css, /images, etc. all resolve natively
 if os.path.exists(PUBLIC_WEBSITE_DIR):
     app.mount("/static", StaticFiles(directory=PUBLIC_WEBSITE_DIR), name="static")
@@ -113,7 +133,7 @@ if os.path.exists(PUBLIC_WEBSITE_DIR):
 else:
     logger.warning(f"⚠️ Static directory not found at {PUBLIC_WEBSITE_DIR}. Assets may fail to load.")
 
-# 3. UI Routes
+# --- UI ROUTES ---
 @app.get("/enlist", response_class=HTMLResponse)
 async def view_enlist_portal(request: Request):
     """Renders the Vanguard 50 Onboarding Portal"""
