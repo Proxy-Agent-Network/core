@@ -8,6 +8,7 @@ import logging
 import base64
 import hashlib
 import asyncio
+import aioboto3
 import aiohttp
 import hmac
 from functools import partial
@@ -20,18 +21,15 @@ from googleapiclient.errors import HttpError
 logger = logging.getLogger("PAN_Onboarding")
 router = APIRouter()
 
-# 1. SECURE STORAGE SETUP
-SECURE_STORAGE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../secrets/dossiers"))
-os.makedirs(SECURE_STORAGE, exist_ok=True)
-
-# Automatically generate an .htaccess file to block direct web server access
-htaccess_path = os.path.join(SECURE_STORAGE, ".htaccess")
-if not os.path.exists(htaccess_path):
-    with open(htaccess_path, "w") as f:
-        f.write("Order Deny,Allow\nDeny from all\n")
-
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_TYPES = {"application/pdf", "image/jpeg", "image/png"}
+
+# 1. AWS S3 CONFIGURATION (Replacing local secure storage)
+S3_BUCKET_NAME = os.getenv("S3_PII_BUCKET_NAME")
+AWS_REGION = os.getenv("AWS_REGION", "us-west-2")
+
+if not S3_BUCKET_NAME and os.getenv("ENVIRONMENT") == "production":
+    raise RuntimeError("🚨 FATAL: S3_PII_BUCKET_NAME missing in production. Refusing to boot without secure PII storage.")
 
 # 2. CHECKR API CONFIGURATION
 CHECKR_API_KEY = os.getenv("CHECKR_TEST_SECRET_KEY")
@@ -197,14 +195,35 @@ async def process_enlistment(
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum 5MB.")
 
-    # 5. SECURE PII STORAGE & SANITIZATION
+    # 5. SECURE PII S3 UPLOAD (Replaced local disk storage)
     raw_filename = veteran_credential.filename or "upload"
     safe_original = re.sub(r'[^\w\-.]', '_', raw_filename)
-    safe_filename = f"{secrets.token_hex(16)}_{safe_original}"
-    file_path = os.path.join(SECURE_STORAGE, safe_filename)
+    
+    # 🛡️ SB 1417 COMPLIANCE: Opaque prefix to prevent enumeration. 
+    # TODO (Ops): Ensure S3 Bucket Policy explicitly DENIES s3:ListBucket on v1/credentials/*
+    safe_filename = f"v1/credentials/{secrets.token_hex(16)}_{safe_original}"
     
     new_agent_id = f"VNG-{secrets.token_hex(3).upper()}-ALPHA"
     valid_referral = "ORGANIC"
+    upload_success = False
+
+    # 🛡️ BUG FIXED: Single shared aioboto3 session for both upload and potential rollback
+    boto_session = aioboto3.Session()
+
+    # Perform the S3 upload
+    try:
+        async with boto_session.client('s3', region_name=AWS_REGION) as s3_client:
+            await s3_client.put_object(
+                Bucket=S3_BUCKET_NAME,
+                Key=safe_filename,
+                Body=contents,
+                ContentType=veteran_credential.content_type,
+                ServerSideEncryption='AES256'  # Enforce at-rest encryption for PII
+            )
+            upload_success = True
+    except Exception as e:
+        logger.error(f"S3 Upload failed for {clean_email}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to securely store credential. Please try again.")
 
     # 6. ATOMIC WRITE & ROLLBACK GUARD
     try:
@@ -214,10 +233,6 @@ async def process_enlistment(
             if await redis_client.exists(f"agent:{clean_ref}"):
                 valid_referral = clean_ref
                 await redis_client.hincrby(f"agent:{clean_ref}", "referrals_pending", 1)
-
-        # TODO: use aioboto3 for async file I/O during S3 migration
-        with open(file_path, "wb") as buffer:
-            buffer.write(contents)
             
         await redis_client.hset(f"agent:{new_agent_id}", mapping={
             "name": full_name,
@@ -228,7 +243,7 @@ async def process_enlistment(
             "vehicle_class": vehicle_class,
             "referred_by": valid_referral,
             "status": "PENDING_VERIFICATION",
-            "credential_filename": safe_filename,
+            "credential_s3_key": safe_filename, # Store the S3 key, not local path
             "enlisted_at": int(time.time()),
             "referrals_pending": 0,
             "referrals_cleared": 0
@@ -242,10 +257,14 @@ async def process_enlistment(
         return {"status": "success", "agent_id": new_agent_id}
 
     except Exception as e:
-        # Clean up orphaned file if Redis write failed
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            
+        # 🛡️ ROLLBACK: Delete the orphaned PII file from S3 using the shared session
+        if upload_success:
+            try:
+                async with boto_session.client('s3', region_name=AWS_REGION) as s3_client:
+                    await s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=safe_filename)
+            except Exception as s3_err:
+                logger.critical(f"ORPHANED PII ALERT: Failed to delete {safe_filename} from S3 during rollback! {s3_err}")
+                
         # Decrement referral counter if it was incremented
         if valid_referral != "ORGANIC":
             await redis_client.hincrby(f"agent:{valid_referral}", "referrals_pending", -1)

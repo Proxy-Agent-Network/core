@@ -4,58 +4,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class TaskRole {
-    PRIMARY,
-    SENTRY
-}
-
-@Serializable
-enum class TaskStatus {
-    OPEN,
-    QUEUED,
-    ASSIGNED,
-    ACTIVE,
-    PENDING_VERIFICATION,
-    SETTLED,
-    CANCELLED
-}
-
-@Serializable
-data class MissionData(
-    @SerialName("task_id")
-    val taskId: String,
-
-    @SerialName("incident_id")
-    val incidentId: String,
-
-    val lat: Double,
-    val lon: Double,
-
-    @SerialName("error_code")
-    val errorCode: String? = null,
-
-    @SerialName("bounty_usd")
-    val bountyUsd: Double,
-
-    val intersection: String,
-
-    val role: TaskRole = TaskRole.PRIMARY,
-    val status: TaskStatus = TaskStatus.OPEN,
-
-    // Phase 5: Security & Compliance
-    @SerialName("requires_attestation")
-    val requiresAttestation: Boolean = false,
-
-    // 🛡️ Phase 5: Sentry Extension Logic
-    // Defaults to 0 (not null) to prevent phantom offer display on incorrect null checks
-    @SerialName("extension_minutes")
-    val extensionMinutes: Int = 0,
-
-    @SerialName("extension_bounty_usd")
-    val extensionBountyUsd: Double = 0.0
-)
-
-@Serializable
 data class AgentCapability(
     val id: String,
     val title: String,

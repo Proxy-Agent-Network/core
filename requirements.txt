@@ -11,6 +11,9 @@ aiohttp>=3.9.0
 httpx
 requests
 
+# AWS / Cloud Storage
+aioboto3>=12.3.0
+
 # LND gRPC (Lightning Engine)
 grpcio
 grpcio-tools

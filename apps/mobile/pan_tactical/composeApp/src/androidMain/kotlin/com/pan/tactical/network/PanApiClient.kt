@@ -101,6 +101,19 @@ data class FcmTokenPayload(
     val fcmToken: String
 )
 
+// 🛡️ REFACTOR: Added DeclinePayload for abort analytics
+@Serializable
+data class DeclinePayload(
+    val reason: String
+)
+
+// 🛡️ REFACTOR: Added PresencePayload for dynamic dispatch routing
+@Serializable
+data class PresencePayload(
+    @SerialName("is_online")
+    val isOnline: Boolean
+)
+
 class PanApiClient : WalletNetworkClient {
 
     companion object {
@@ -133,13 +146,13 @@ class PanApiClient : WalletNetworkClient {
 
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
-    
+
     // 🛡️ FIXED: Arch 5 - Mutex to prevent multi-threading StrongBox collisions
     private val jwtMutex = Mutex()
 
     private suspend fun getFreshJwt(): String? {
         val uid = secureUid ?: run { Log.e(TAG, "Agent identity missing"); return null }
-        
+
         jwtMutex.withLock {
             val now = System.currentTimeMillis() / 1000
             if (cachedJwt == null || now >= jwtExpiresAt - 30) {
@@ -155,7 +168,7 @@ class PanApiClient : WalletNetworkClient {
             try {
                 val uid = secureUid ?: run { Log.e(TAG, "Agent identity missing"); return@withContext false }
                 val jwt = getFreshJwt() ?: return@withContext false
-                
+
                 val response = client.post("$PAN_API_URL/agent/fcm-token") {
                     header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
@@ -178,7 +191,7 @@ class PanApiClient : WalletNetworkClient {
         return withContext(Dispatchers.IO) {
             try {
                 val jwt = getFreshJwt() ?: return@withContext false
-                
+
                 Log.i(TAG, "🚀 Injecting V2X Distress Signal to Python Backend...")
                 val response: HttpResponse = client.post("$PAN_API_URL/v2x/distress") {
                     header("Authorization", "Bearer $jwt")
@@ -249,12 +262,30 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
+    // 🛡️ REFACTOR: Added new endpoint targeting dispatch routing
+    suspend fun updatePresence(isOnline: Boolean): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val jwt = getFreshJwt() ?: return@withContext false
+                val response: HttpResponse = client.post("$PAN_API_URL/agent/presence") {
+                    contentType(ContentType.Application.Json)
+                    header("Authorization", "Bearer $jwt")
+                    setBody(PresencePayload(isOnline = isOnline))
+                }
+                response.status.isSuccess()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update presence: ${e.message}", e)
+                false
+            }
+        }
+    }
+
     override suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val uid = secureUid ?: run { Log.e(TAG, "Agent identity missing"); return@withContext false }
                 val jwt = getFreshJwt() ?: return@withContext false
-                
+
                 val response: HttpResponse = client.post("$PAN_API_URL/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
                     header("Authorization", "Bearer $jwt")
@@ -262,7 +293,7 @@ class PanApiClient : WalletNetworkClient {
                         agentId = uid,
                         latitude = lat,
                         longitude = lon,
-                        status = "ONLINE" 
+                        status = "ONLINE"
                     ))
                 }
                 response.status.isSuccess()
@@ -434,12 +465,20 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
+    // Overloads the interface to preserve compliance while enabling reason-based declines
     override suspend fun declineMission(taskId: String): Boolean {
+        return declineMission(taskId, "No reason provided")
+    }
+
+    // 🛡️ REFACTOR: Added overloaded decline method mapping to DeclinePayload
+    suspend fun declineMission(taskId: String, reason: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val jwt = getFreshJwt() ?: return@withContext false
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/decline") {
                     header("Authorization", "Bearer $jwt")
+                    contentType(ContentType.Application.Json)
+                    setBody(DeclinePayload(reason))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -454,7 +493,7 @@ class PanApiClient : WalletNetworkClient {
             try {
                 val uid = secureUid ?: run { Log.e(TAG, "Agent identity missing"); return@withContext false }
                 val jwt = getFreshJwt() ?: return@withContext false
-                
+
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/complete") {
                     header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)

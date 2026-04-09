@@ -24,15 +24,10 @@ class DistressPayload(BaseModel):
     longitude: float
     bounty_usd: float = 25.0
     osm_color: str = "GREEN"
-    # --- Secondary Agent Dispatch ---
-    # Set request_secondary=True when dispatching a T2 or T3 primary agent
-    # to simultaneously queue a T1 sentry for traffic direction or scene support.
-    # Secondary bid parameters default to the fleet manager's configured T1 values.
-    # If not provided, the system uses T1 balanced defaults ($14 start, $2/min, $24 max).
     request_secondary: bool = False
-    secondary_start_bid_usd: float = 14.0   # Fleet Manager's T1 starting bid (from Auto-Dispatch Rules)
-    secondary_max_bid_usd: float = 24.0     # Fleet Manager's T1 max bid
-    secondary_escalation_usd_per_min: float = 2.0  # Fleet Manager's T1 escalation rate
+    secondary_start_bid_usd: float = 14.0   
+    secondary_max_bid_usd: float = 24.0     
+    secondary_escalation_usd_per_min: float = 2.0  
 
 class MissionCompletePayload(BaseModel):
     agent_id: str
@@ -51,6 +46,12 @@ class FeedbackPayload(BaseModel):
     category: str = ""
     label: str = ""
     vent_text: str = Field(default="", max_length=280)
+
+class DeclinePayload(BaseModel):
+    reason: str = Field(default="No reason provided", description="Agent's selected reason for aborting/declining")
+
+class PresencePayload(BaseModel):
+    is_online: bool = Field(..., description="True to enter the dispatch pool, False to exit")
 
 # --- HELPER ---
 
@@ -72,14 +73,6 @@ async def receive_distress_signal(
     request: Request,
     fleet_id: str = Depends(verify_v2x_signature)
 ):
-    """
-    Receives V2X distress signals from autonomous fleets.
-
-    For T2/T3 incidents, fleet managers may optionally set request_secondary=True
-    to simultaneously queue a T1 sentry agent for traffic direction or scene support.
-    The sentry is dispatched as a separate task linked to the same incident_id,
-    with its own bid parameters and HNOA policy binding (role=SENTRY).
-    """
     try:
         redis_client = request.app.state.redis_client
         
@@ -88,12 +81,6 @@ async def receive_distress_signal(
             raise HTTPException(status_code=409, detail="Duplicate task already active.")
 
         task_id = f"tsk_{uuid.uuid4().hex[:12]}"
-
-        # Generate incident_id at receipt time — not at primary dispatch.
-        # This is required so that:
-        # (a) the sentry task can reference the incident before any agent is assigned, and
-        # (b) the matching engine can write incident:{id}:primary_agent_id immediately
-        #     on primary dispatch without needing a separate ID generation step.
         incident_id = f"inc_{uuid.uuid4().hex[:10]}"
         
         task_record = {
@@ -114,15 +101,12 @@ async def receive_distress_signal(
         await redis_client.hset(f"pan:task:{task_id}", mapping=task_record)
         await redis_client.rpush("pan:dispatch:active_tasks", task_id)
 
-        # --- Optional Secondary Agent (Sentry) Dispatch ---
         sentry_task_id = None
         if payload.request_secondary:
             sentry_task_id = f"tsk_{uuid.uuid4().hex[:12]}"
             sentry_record = {
                 "fleet_id": fleet_id,
                 "vin": payload.vin,
-                # Fault code is always SENTRY_TRAFFIC_DIRECTION regardless of the primary fault.
-                # The sentry's job is scene support — they don't resolve the primary fault.
                 "fault_code": "SENTRY_TRAFFIC_DIRECTION",
                 "lat": payload.latitude,
                 "lon": payload.longitude,
@@ -133,17 +117,13 @@ async def receive_distress_signal(
                 "osm_color": payload.osm_color.upper(),
                 "timestamp": int(time.time()),
                 "status": "pending",
-                "role": "sentry",       # matching_engine.py reads this to set exclude_agent_id
-                "required_tier": 1,     # Sentry is always a T1 agent
-                "incident_id": incident_id,  # Links to primary for exclusion and joint SB 1417 report
+                "role": "SENTRY",       # 🛡️ BUG FIXED: Uppercase to match Kotlin TaskRole enum
+                "required_tier": 1,     
+                "incident_id": incident_id,  
             }
             await redis_client.hset(f"pan:task:{sentry_task_id}", mapping=sentry_record)
             await redis_client.rpush("pan:dispatch:active_tasks", sentry_task_id)
-            logger.info(
-                f"🚨 [SENTRY] Secondary T1 agent queued for incident {incident_id}. "
-                f"Task: {sentry_task_id} | Starting bid: ${payload.secondary_start_bid_usd:.2f} "
-                f"| Max: ${payload.secondary_max_bid_usd:.2f}"
-            )
+            logger.info(f"🚨 [SENTRY] Secondary T1 agent queued for incident {incident_id}.")
 
         await redis_client.publish("pan:stream:distress_alerts", json.dumps({
             "task_id": task_id,
@@ -155,15 +135,11 @@ async def receive_distress_signal(
             "bounty_usd": payload.bounty_usd,
             "osm_color": payload.osm_color.upper(),
             "sla_status": "OK",
-            "sentry_task_id": sentry_task_id,    # None if no secondary requested
+            "sentry_task_id": sentry_task_id,    
             "secondary_requested": payload.request_secondary,
         }))
         
-        logger.info(
-            f"🚨 [V2X ALERT] Fleet: {fleet_id} | VIN: {payload.vin} | "
-            f"Fault: {payload.fault_code} | OSM: {payload.osm_color.upper()} | "
-            f"Incident: {incident_id} | Secondary: {payload.request_secondary}"
-        )
+        logger.info(f"🚨 [V2X ALERT] Fleet: {fleet_id} | VIN: {payload.vin} | Fault: {payload.fault_code}")
 
         response = {
             "status": "success",
@@ -183,13 +159,10 @@ async def receive_distress_signal(
 
 @router.get("/v1/agent/missions")
 async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_agent_signature)):
-    """Polled by the mobile app to pick up missions assigned by the Ops Hub."""
     redis_client = request.app.state.redis_client
     cursor = 0
     active_missions = []
     
-    # TODO: Replace SCAN with a per-agent mission index (e.g., SMEMBERS pan:agent:{id}:missions)
-    # SCAN is acceptable for Vanguard 50 but becomes O(N) at scale.
     while True:
         cursor, keys = await redis_client.scan(cursor=cursor, match="mission:active:*", count=100)
         for key in keys:
@@ -203,6 +176,7 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
                 active_missions.append({
                     "task_id": task_id,
                     "incident_id": str(mission.get("incident_id", f"inc_{task_id}")),
+                    "fleet_id": str(mission.get("fleet_id", "Vanguard Network Partner")),
                     "lat": float(mission.get("lat", 0.0)),
                     "lon": float(mission.get("lon", 0.0)),
                     "error_code": str(mission.get("fault_code", "Unknown Fault")),
@@ -221,7 +195,6 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
 
 @router.post("/v1/agent/missions/{task_id}/complete")
 async def complete_mission(task_id: str, payload: MissionCompletePayload, request: Request, agent_id: str = Depends(verify_agent_signature)):
-    """Fired when the agent physically secures the vehicle and completes the task."""
     try:
         redis_client = request.app.state.redis_client
         
@@ -231,7 +204,6 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
             
         task_data = decode_redis_hash(raw_task_data)
             
-        # IDOR Guard
         mission_key = f"mission:active:{task_id}"
         raw_mission_data = await redis_client.hgetall(mission_key)
         mission_data = decode_redis_hash(raw_mission_data)
@@ -240,16 +212,14 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
             raise HTTPException(status_code=404, detail="Mission not found.")
             
         if mission_data.get("agent_id") != agent_id:
-            logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to snipe mission {task_id} assigned to {mission_data.get('agent_id')}.")
+            logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to snipe mission {task_id}.")
             raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
         vin = task_data.get("vin", "UNKNOWN_VIN")
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
-        
         raw_bounty = float(task_data.get("bounty_usd", 25.0))
         actual_payout = round(raw_bounty * 0.90, 2) 
 
-        # Update the master task hash securely, stamping the assigned agent_id into the record for IDOR checks on feedback
         await redis_client.hset(f"pan:task:{task_id}", mapping={
             "status": "COMPLETED",
             "agent_id": agent_id
@@ -268,7 +238,6 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         
         await redis_client.hset("pan:compliance:reports", task_id, json.dumps(sealed_report))
         
-        # --- ATOMIC FINANCIAL SETTLEMENT & RANK PROGRESSION ---
         wallet_key = f"pan:agent:{agent_id}:wallet"
         missions_key = f"pan:agent:{agent_id}:missions_completed"
         
@@ -276,13 +245,8 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
             for attempt in range(10):
                 try:
                     await pipe.watch(wallet_key)
-                    
                     wallet_raw = await pipe.get(wallet_key)
-                    if wallet_raw:
-                        wallet = json.loads(wallet_raw)
-                    else:
-                        wallet = {"balance": 0.0, "linkedCard": None, "history": []}
-                        
+                    wallet = json.loads(wallet_raw) if wallet_raw else {"balance": 0.0, "linkedCard": None, "history": []}
                     wallet["balance"] += actual_payout
                     
                     role = task_data.get("role", "PRIMARY").upper()
@@ -299,13 +263,8 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                     
                     pipe.multi()
                     pipe.set(wallet_key, json.dumps(wallet))
-                    
-                    # Atomic increment of missions_completed inside the payout pipeline
                     pipe.incr(missions_key)
-                    
-                    # Record last_active timestamp for the reputation yield cron
                     pipe.set(f"pan:agent:{agent_id}:last_active", int(time.time()))
-                    
                     await pipe.execute()
                     break
                 except WatchError:
@@ -331,7 +290,6 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
 
 @router.post("/v1/agent/missions/{task_id}/ack")
 async def acknowledge_mission(task_id: str, request: Request, agent_id: str = Depends(verify_agent_signature)):
-    """Phase 2 ACK: Fired silently by the mobile app the millisecond the mission UI renders."""
     redis_client = request.app.state.redis_client
     mission_key = f"mission:active:{task_id}"
 
@@ -339,7 +297,7 @@ async def acknowledge_mission(task_id: str, request: Request, agent_id: str = De
     mission_data = decode_redis_hash(raw_mission_data)
     
     if not mission_data:
-        raise HTTPException(status_code=404, detail="Mission not found or already revoked.")
+        raise HTTPException(status_code=404, detail="Mission not found.")
 
     if mission_data.get("agent_id") != agent_id:
         raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
@@ -348,14 +306,17 @@ async def acknowledge_mission(task_id: str, request: Request, agent_id: str = De
         "ack_status": "ACKNOWLEDGED",
         "ack_timestamp": int(time.time())
     })
-
-    logger.info(f"📡 [DISPATCH] Agent {agent_id} ACKed mission {task_id}. Dispatch secure.")
-    return {"status": "success", "message": "Mission acknowledged."}
+    return {"status": "success"}
 
 @router.post("/v1/agent/missions/{task_id}/decline")
-async def decline_mission(task_id: str, request: Request, agent_id: str = Depends(verify_agent_signature)):
-    """Allows an agent to reject a mission, placing them on a price-sensitive cooldown."""
+async def decline_mission(
+    task_id: str, 
+    request: Request, 
+    payload: DeclinePayload = None,
+    agent_id: str = Depends(verify_agent_signature)
+):
     redis_client = request.app.state.redis_client
+    abort_reason = payload.reason if payload else "No reason provided"
     
     raw_task_data = await redis_client.hgetall(f"pan:task:{task_id}")
     task_data = decode_redis_hash(raw_task_data)
@@ -375,13 +336,19 @@ async def decline_mission(task_id: str, request: Request, agent_id: str = Depend
     if mission_data and mission_data.get("agent_id") == agent_id:
         await redis_client.delete(mission_key)
         await redis_client.hset(f"agent:{agent_id}", "status", "ONLINE")
+        
         await redis_client.publish(
             "pan:stream:mission_cleared", 
-            json.dumps({"task_id": task_id, "agent_id": agent_id, "reason": "declined"})
+            json.dumps({
+                "task_id": task_id, 
+                "agent_id": agent_id, 
+                "reason": "declined",
+                "abort_reason": abort_reason
+            })
         )
 
-    logger.info(f"🚫 [V2X] Agent {agent_id} declined {task_id} at ${rejected_bounty:.2f}. 15-Min Cooldown active.")
-    return {"status": "success", "message": "Mission declined."}
+    logger.info(f"🚫 [V2X] Agent {agent_id} aborted {task_id} at ${rejected_bounty:.2f}. Reason: '{abort_reason}'.")
+    return {"status": "success", "message": "Mission aborted."}
 
 @router.post("/v1/agent/missions/{task_id}/extend")
 async def extend_sentry_mission(
@@ -390,7 +357,6 @@ async def extend_sentry_mission(
     request: Request, 
     agent_id: str = Depends(verify_agent_signature)
 ):
-    """Processes an accepted tactical time extension for a Sentry role."""
     redis_client = request.app.state.redis_client
     mission_key = f"mission:active:{task_id}"
 
@@ -403,7 +369,6 @@ async def extend_sentry_mission(
     if mission_data.get("role", "PRIMARY").upper() != "SENTRY":
         raise HTTPException(status_code=403, detail="Extension only valid for SENTRY role missions.")
 
-    # Guard against exceeding the fleet manager's configured max bid for this sentry task
     raw_task_data = await redis_client.hgetall(f"pan:task:{task_id}")
     task_data = decode_redis_hash(raw_task_data)
     max_bounty = float(task_data.get("max_bounty_usd", float('inf')))
@@ -425,11 +390,6 @@ async def extend_sentry_mission(
         pipe.hset(f"pan:task:{task_id}", "bounty_usd", new_bounty)
         await pipe.execute()
 
-    logger.info(
-        f"⏱️ [SENTRY] Agent {agent_id} accepted +{payload.extension_minutes}m extension "
-        f"for ${payload.accepted_bounty_usd:.2f}. New total: ${new_bounty:.2f} "
-        f"(fleet max: ${max_bounty:.2f})"
-    )
     return {"status": "success", "new_bounty_usd": new_bounty}
 
 @router.post("/v1/agent/missions/{task_id}/feedback")
@@ -439,13 +399,8 @@ async def submit_mission_feedback(
     request: Request,
     agent_id: str = Depends(verify_agent_signature)
 ):
-    """
-    Submits post-mission feedback. 
-    Enforces IDOR (Agent must have been assigned) and Task State (Must be COMPLETED).
-    """
     redis_client = request.app.state.redis_client
     
-    # 1. Verify task exists and is COMPLETED
     raw_task_data = await redis_client.hgetall(f"pan:task:{task_id}")
     if not raw_task_data:
         raise HTTPException(status_code=404, detail="Task not found.")
@@ -455,47 +410,50 @@ async def submit_mission_feedback(
     if task_data.get("status", "").upper() != "COMPLETED":
         raise HTTPException(status_code=400, detail="Feedback can only be submitted for COMPLETED tasks.")
         
-    # 2. Verify submitter was assigned to this task (IDOR protection)
     assigned_agent = task_data.get("agent_id")
     incident_id = task_data.get("incident_id")
     
     is_assigned = False
     if incident_id:
         is_assigned = await redis_client.sismember(f"incident:{incident_id}:assigned_agents", agent_id)
-        if not is_assigned and not assigned_agent:
-            logger.warning(f"⚠️ Incident set for {incident_id} may have expired. IDOR check relying on task hash only.")
             
-    # Unified IDOR check: agent must appear in either the task's direct assignment
-    # or the incident's assigned agent set
     is_authorized = (assigned_agent == agent_id) or bool(is_assigned)
         
     if not is_authorized:
         logger.error(f"🚨 [SECURITY] IDOR Attempt: Agent {agent_id} tried to rate task {task_id}")
         raise HTTPException(status_code=403, detail="IDOR Blocked: Mission not assigned to this agent.")
         
-    # 3. Fetch Reputation Engine from Application State
     engine = request.app.state.reputation_engine
-    
     target_entity_id = task_data.get("fleet_id")
+    
     if not target_entity_id:
         raise HTTPException(status_code=500, detail="Task is missing fleet_id target.")
         
-    # 4. Submit Feedback via Engine (Agent rating Fleet = BUYER pool)
     result = await engine.submit_feedback(
         task_id=task_id,
         submitter_entity_id=agent_id,
         target_entity_id=target_entity_id,
         is_positive=payload.is_positive,
-        feedback_direction="BUYER",  # Explicitly defined to prevent client-side spoofing
+        feedback_direction="BUYER",
         category=payload.category,
         label=payload.label,
         vent_text=payload.vent_text
     )
     
-    # Record last_active timestamp for the reputation yield cron
     await redis_client.set(f"pan:agent:{agent_id}:last_active", int(time.time()))
     
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("reason"))
         
     return result
+
+@router.post("/v1/agent/presence")
+async def update_presence(
+    payload: PresencePayload,
+    request: Request,
+    agent_id: str = Depends(verify_agent_signature)
+):
+    redis_client = request.app.state.redis_client
+    status_str = "ONLINE" if payload.is_online else "OFFLINE"
+    await redis_client.hset(f"agent:{agent_id}", "status", status_str)
+    return {"status": "success", "is_online": payload.is_online}
