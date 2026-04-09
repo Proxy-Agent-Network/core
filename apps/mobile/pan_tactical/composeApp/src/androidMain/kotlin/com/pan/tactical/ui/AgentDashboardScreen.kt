@@ -1,9 +1,6 @@
 package com.pan.tactical.ui
 
 import android.graphics.BitmapFactory
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.*
@@ -11,14 +8,10 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,12 +25,9 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.painterResource
 import kotlin.math.*
-import kotlin.math.roundToInt // 🛡️ FIXED: Explicit import for KMP
-import com.pan.tactical.BuildConfig // 🛡️ FIXED: Required for environment check
+import com.pan.tactical.BuildConfig
 import com.pan.tactical.ui.components.OfflineLoadoutMenu
 import com.pan.tactical.ui.components.OnSceneTerminal
 import com.pan.tactical.ui.components.PostMissionOverlays
@@ -46,12 +36,11 @@ import com.pan.tactical.ui.components.SwipeActionSlider
 import com.pan.tactical.ui.components.UwbHomingCompass
 import com.pan.tactical.ui.components.FeedbackScreen
 import com.pan.tactical.ui.components.FeedbackIssueChip
-import com.pan.tactical.ui.components.AgentRank
 import com.pan.tactical.ui.components.RankUpOverlay
-import com.pan.tactical.ui.components.rankForMissions
+import com.pan.tactical.ui.components.TacticalStatusBar
+import com.pan.tactical.ui.components.MissionControlsPanel
 import com.pan.tactical.models.AgentCapability
 import com.pan.tactical.models.AgentCapabilityUiModel
-import com.pan.tactical.models.MissionData
 import com.pan.tactical.AudioEngine
 import com.pan.tactical.getCurrentTimeMs
 import com.pan.tactical.getNativeMapUrl
@@ -60,19 +49,21 @@ import com.pan.tactical.rememberSharedLocationManager
 import com.pan.tactical.rememberUwbClient
 import com.pan.tactical.rememberBleHomingClient
 import com.pan.tactical.hardware.rememberBleHapHatService
-import com.pan.tactical.hardware.HapHatCommand           
-import com.pan.tactical.hardware.LedColor                
-import com.pan.tactical.hardware.LedMode                 
-import com.pan.tactical.hardware.MotorId                 
+import com.pan.tactical.hardware.HardwareCommandBridge
+import com.pan.tactical.hardware.AndroidHardwareCommandBridge
+import com.pan.tactical.security.BiometricAuthHelper
+import com.pan.tactical.security.AndroidBiometricAuthHelper
 import com.pan.tactical.network.PanApiClient
 import com.pan.tactical.network.PanWalletClient
 import com.pan.tactical.ui.homing.HomingViewModel
 import com.pan.tactical.ui.homing.HomingViewModelFactory
 import com.pan.tactical.ui.homing.MissionResult
+import com.pan.tactical.ui.mission.MissionViewModel
+import com.pan.tactical.ui.mission.MissionPhase
+import com.pan.tactical.ui.theme.PanColors
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
-// 🛡️ FIXED: Wired directly to build environment to prevent production sandbox leaks
 private val IS_DEBUG_MODE = BuildConfig.DEBUG
 
 @Composable
@@ -84,12 +75,31 @@ actual fun AgentDashboardScreen(
         Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
             Text(
                 text = "CRITICAL ARCHITECTURE ERROR:\nPanApiClient required for Tactical Dashboard.\nCurrent client is incompatible.",
-                color = Color.Red,
+                color = PanColors.AlertRed,
                 fontWeight = FontWeight.Bold,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
         return
+    }
+
+    // --- PLATFORM-SPECIFIC INJECTIONS ---
+    val hapHatService = rememberBleHapHatService()
+    val hardwareBridge = remember { AndroidHardwareCommandBridge(hapHatService) }
+
+    val context = LocalContext.current
+    val fragmentActivity = context as? FragmentActivity
+        ?: throw IllegalStateException("Dashboard requires FragmentActivity for biometrics")
+    val biometricHelper = remember { AndroidBiometricAuthHelper(fragmentActivity) }
+
+    val coroutineScope = rememberCoroutineScope()
+    val missionViewModel = remember {
+        MissionViewModel(
+            apiClient = panClient,
+            walletClient = apiClient,
+            hardwareBridge = hardwareBridge,
+            scope = coroutineScope
+        )
     }
 
     var appState by rememberSaveable { mutableStateOf("BOOT") }
@@ -107,6 +117,7 @@ actual fun AgentDashboardScreen(
             when (state) {
                 "BOOT" -> {
                     LaunchedEffect(Unit) {
+                        missionViewModel.initialize()
                         currentScreen = "DASHBOARD"
                         delay(500)
                         appState = "RUNNING"
@@ -115,6 +126,8 @@ actual fun AgentDashboardScreen(
                 "RUNNING" -> MainDashboardContent(
                     apiClient = panClient,
                     rawWalletClient = apiClient,
+                    missionViewModel = missionViewModel,
+                    biometricHelper = biometricHelper,
                     currentScreen = currentScreen,
                     onNavigate = { currentScreen = it }
                 )
@@ -180,24 +193,24 @@ actual fun AgentDashboardScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MainDashboardContent(
     apiClient: PanApiClient,
     rawWalletClient: WalletNetworkClient,
+    missionViewModel: MissionViewModel,
+    biometricHelper: BiometricAuthHelper,
     currentScreen: String,
     onNavigate: (String) -> Unit
 ) {
-    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val audio = remember { AudioEngine() }
     val uriHandler = LocalUriHandler.current
 
+    val uiState by missionViewModel.uiState.collectAsState()
+
     val uwbClient = rememberUwbClient()
     val uwbRangingState by uwbClient.rangingState.collectAsState()
-
     val bleClient = rememberBleHomingClient()
-    val hapHat = rememberBleHapHatService() 
 
     val homingViewModel: HomingViewModel = viewModel(
         factory = HomingViewModelFactory(bleClient, uwbClient, apiClient)
@@ -205,12 +218,11 @@ fun MainDashboardContent(
     val homingState by homingViewModel.uiState.collectAsState()
 
     DisposableEffect(Unit) {
-        coroutineScope.launch { hapHat.connect() }
         onDispose {
             audio.shutdown()
             uwbClient.close()
             bleClient.stopScanning()
-            hapHat.close() 
+            missionViewModel.close()
         }
     }
 
@@ -223,77 +235,20 @@ fun MainDashboardContent(
     var alertVolume by rememberSaveable { mutableIntStateOf(100) }
 
     var hasSpokenWelcome by rememberSaveable { mutableStateOf(false) }
-    var isOnline by rememberSaveable { mutableStateOf(false) }
-    var isProcessing by rememberSaveable { mutableStateOf(false) }
-    var missionState by rememberSaveable { mutableStateOf("IDLE") }
     var showAbortDialog by rememberSaveable { mutableStateOf(false) }
     var showDevMenu by rememberSaveable { mutableStateOf(false) }
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
-    
-    // Feedback State
-    var showFeedbackScreen by rememberSaveable { mutableStateOf(false) }
-    var feedbackTaskId by rememberSaveable { mutableStateOf("") }
-    var feedbackFleetId by rememberSaveable { mutableStateOf("") }
 
-    // 🟢 RANK PROGRESSION STATE
-    var missionsCompleted by rememberSaveable { mutableIntStateOf(0) }
-    var currentRank by rememberSaveable { mutableStateOf<AgentRank?>(null) }
-    var showRankUp by rememberSaveable { mutableStateOf(false) }
-    var rankUpTo by rememberSaveable { mutableStateOf(AgentRank.RECRUIT) }
+    // 🟢 STORE NAVIGATION STATE
+    var storeBalance by rememberSaveable { mutableDoubleStateOf(0.0) }
+    var storeMissions by rememberSaveable { mutableIntStateOf(0) }
 
     // Ephemeral security storage
     var avUwbMacAddress by remember { mutableStateOf<String?>(null) }
     var avUwbSessionKey by remember { mutableStateOf<ByteArray?>(null) }
     var isBleHandshakeComplete by remember { mutableStateOf(false) }
     var isBleScanning by remember { mutableStateOf(false) }
-
-    // On boot, fetch initial missions completed so we don't trigger a rank-up
-    LaunchedEffect(Unit) {
-        val data = rawWalletClient.getWalletData()
-        if (data != null) {
-            missionsCompleted = data.missionsCompleted
-        }
-    }
-
-    // Trigger overlay safely when crossing a threshold
-    LaunchedEffect(missionsCompleted) {
-        val newRank = rankForMissions(missionsCompleted)
-        if (currentRank != null && newRank > currentRank!!) {
-            rankUpTo = newRank
-            showRankUp = true
-        }
-        currentRank = newRank
-    }
-
-    val MissionDataSaver = Saver<MissionData?, String>(
-        save = { it?.let { data -> "${data.lat}|${data.lon}|${data.errorCode}|${data.bountyUsd}|${data.intersection}|${data.taskId}|${data.incidentId}" } ?: "" },
-        restore = { str ->
-            if (str.isEmpty()) null
-            else {
-                val parts = str.split("|")
-                if (parts.size >= 7) MissionData(
-                    lat = parts[0].toDoubleOrNull() ?: 0.0,
-                    lon = parts[1].toDoubleOrNull() ?: 0.0,
-                    errorCode = parts[2],
-                    bountyUsd = parts[3].toDoubleOrNull() ?: 0.0,
-                    intersection = parts[4],
-                    taskId = parts[5],
-                    incidentId = parts[6]
-                ) else null
-            }
-        }
-    )
-
-    var activeMission by rememberSaveable(stateSaver = MissionDataSaver) { mutableStateOf(null) }
-    var queuedMission by rememberSaveable(stateSaver = MissionDataSaver) { mutableStateOf(null) }
     var isMissionControlsExpanded by rememberSaveable { mutableStateOf(false) }
-
-    var lastPayoutAmount by rememberSaveable { mutableDoubleStateOf(0.0) }
-    var lastTxHash by rememberSaveable { mutableStateOf("") }
-    var timeOnSceneMs by rememberSaveable { mutableLongStateOf(0L) }
-    var totalResponseTimeMs by rememberSaveable { mutableLongStateOf(0L) }
-    var sceneArrivalTime by rememberSaveable { mutableLongStateOf(0L) }
-    var missionAcceptTime by rememberSaveable { mutableLongStateOf(0L) }
 
     var agentCapabilities by remember {
         mutableStateOf(
@@ -315,14 +270,12 @@ fun MainDashboardContent(
     var agentLocation by remember { mutableStateOf(Pair(33.3061, -111.6601)) }
     var lastTelemetryTime by remember { mutableLongStateOf(0L) }
 
-    val distanceMiles = remember(agentLocation, activeMission) {
-        if (activeMission == null) return@remember 0.0
-
+    val distanceMiles = remember(agentLocation, uiState.activeMission) {
+        if (uiState.activeMission == null) return@remember 0.0
         val lat1 = agentLocation.first * PI / 180.0
         val lon1 = agentLocation.second * PI / 180.0
-        val lat2 = activeMission!!.lat * PI / 180.0
-        val lon2 = activeMission!!.lon * PI / 180.0
-
+        val lat2 = uiState.activeMission!!.lat * PI / 180.0
+        val lon2 = uiState.activeMission!!.lon * PI / 180.0
         val dlon = lon2 - lon1
         val dlat = lat2 - lat1
         val a = sin(dlat / 2).pow(2.0) + cos(lat1) * cos(lat2) * sin(dlon / 2).pow(2.0)
@@ -337,58 +290,27 @@ fun MainDashboardContent(
     var isFlashing by remember { mutableStateOf(false) }
     val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
 
-    LaunchedEffect(missionState, isOnline) {
-        when (missionState) {
-            "IDLE" -> {
+    // --- UI ANIMATION & AUDIO EFFECTS BASED ON PHASE ---
+    LaunchedEffect(uiState.missionPhase) {
+        when (uiState.missionPhase) {
+            MissionPhase.IDLE -> {
                 isFlashing = false
-                if (isOnline) {
-                    while (isOnline && missionState == "IDLE") {
-                        try {
-                            val incomingMissions = apiClient.fetchActiveMissions()
-                            if (incomingMissions.isNotEmpty()) {
-                                println("[TACTICAL_UI] Mission Received! Triggering Alert...")
-                                withContext(Dispatchers.Main) {
-                                    activeMission = incomingMissions.first()
-                                    missionState = "PENDING"
-                                    
-                                    hapHat.sendCommand(
-                                        HapHatCommand(
-                                            motorId = MotorId.M3_CENTER,
-                                            intensityPwm = 200.toByte(), 
-                                            ledMode = LedMode.PULSE,
-                                            ledColor = LedColor.PURPLE,
-                                            durationMs = 15000 
-                                        )
-                                    )
-                                }
-                                break
-                            }
-                        } catch (e: Exception) {
-                            println("[NETWORK_ERROR] Mission polling failed: ${e.message}")
-                        }
-                        delay(3000)
-                    }
-                }
+                isMissionControlsExpanded = false
             }
-            "PENDING" -> {
+            MissionPhase.PENDING -> {
                 launch {
                     while (true) {
                         isFlashing = !isFlashing
                         delay(500)
                     }
                 }
-                
-                val taskId = activeMission?.taskId
-                if (!taskId.isNullOrBlank()) {
-                    launch { apiClient.acknowledgeMission(taskId) }
-                }
 
-                val rawBounty = activeMission?.bountyUsd ?: 0.0
+                val rawBounty = uiState.activeMission?.bountyUsd ?: 0.0
                 val netPayout = rawBounty * 0.90
                 val cleanBounty = if (netPayout % 1.0 == 0.0) netPayout.toInt().toString() else netPayout.toString()
-                val cleanCategory = activeMission?.errorCode?.substringAfter(": ") ?: activeMission?.errorCode ?: "Unknown"
-
+                val cleanCategory = uiState.activeMission?.errorCode?.substringAfter(": ") ?: uiState.activeMission?.errorCode ?: "Unknown"
                 val cleanDistance = ((distanceMiles * 10.0).roundToInt() / 10.0).toString()
+
                 audio.speak("Agent, Mission: $cleanCategory. $cleanDistance Miles Away. Payout, $cleanBounty dollars.", voiceVolume)
 
                 countdownProgress.snapTo(1f)
@@ -396,21 +318,17 @@ fun MainDashboardContent(
                     targetValue = 0f,
                     animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
                 )
-                
-                if (missionState == "PENDING") {
-                    if (!taskId.isNullOrBlank()) {
-                        apiClient.declineMission(taskId)
-                    }
-                    hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
-                    missionState = "IDLE"
-                    activeMission = null
+
+                // 🛡️ CRITICAL BUG FIXED: Reading live state machine value instead of a frozen snapshot closure
+                if (missionViewModel.uiState.value.missionPhase == MissionPhase.PENDING) {
+                    missionViewModel.onMissionDeclined()
                 }
             }
-            "ACTIVE" -> {
+            MissionPhase.ACTIVE -> {
                 isFlashing = false
                 isMissionControlsExpanded = false
             }
-            "ON_SCENE", "COMPLETED" -> {
+            MissionPhase.ON_SCENE, MissionPhase.COMPLETED -> {
                 isFlashing = false
             }
         }
@@ -425,13 +343,11 @@ fun MainDashboardContent(
     }
 
     val locationManager = rememberSharedLocationManager { lat, lon ->
-        println("[TACTICAL_GPS] Agent moving: $lat, $lon")
         agentLocation = Pair(lat, lon)
-
         homingViewModel.updateGpsProximity(distanceMeters.toDouble())
 
         val now = getCurrentTimeMs()
-        if (isOnline && now - lastTelemetryTime > 3000) {
+        if (uiState.isOnline && now - lastTelemetryTime > 3000) {
             lastTelemetryTime = now
             coroutineScope.launch {
                 try {
@@ -445,7 +361,6 @@ fun MainDashboardContent(
 
     var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
     var hasCameraPermission by rememberSaveable { mutableStateOf(true) }
-
     var capturedEvidence by remember { mutableStateOf<List<ByteArray>>(emptyList()) }
 
     val cameraManager = rememberSharedCameraManager { imageData ->
@@ -454,64 +369,30 @@ fun MainDashboardContent(
         }
     }
 
+    // --- HOMING RESULT DELEGATION ---
     LaunchedEffect(homingState.missionResult) {
         when (homingState.missionResult) {
             MissionResult.SUCCESS -> {
-                val rawBounty = activeMission?.bountyUsd ?: 0.0
-                val finalPayout = rawBounty * 0.90
-
-                lastTxHash = "tx_${getCurrentTimeMs()}"
-                lastPayoutAmount = finalPayout
-                timeOnSceneMs = if (sceneArrivalTime > 0) getCurrentTimeMs() - sceneArrivalTime else 252000L
-                totalResponseTimeMs = if (missionAcceptTime > 0) getCurrentTimeMs() - missionAcceptTime else timeOnSceneMs + 300000L
-                missionState = "COMPLETED"
-
-                hapHat.sendCommand(
-                    HapHatCommand(
-                        motorId = MotorId.ALL, 
-                        intensityPwm = 255.toByte(), 
-                        ledMode = LedMode.STROBE,
-                        ledColor = LedColor.GREEN,
-                        durationMs = 3000 
-                    )
-                )
-
+                missionViewModel.onMissionSuccess()
                 audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
                 capturedEvidence = emptyList()
-
-                // Refresh wallet data after payout to fetch updated missionsCompleted count
-                val updatedWallet = rawWalletClient.getWalletData()
-                if (updatedWallet != null) {
-                    missionsCompleted = updatedWallet.missionsCompleted
-                }
-
                 homingViewModel.clearMissionResult()
             }
             MissionResult.FAILED -> {
+                missionViewModel.onMissionFailed()
                 audio.speak("Network submission failed. Please retry.", voiceVolume)
-                
-                hapHat.sendCommand(
-                    HapHatCommand(
-                        motorId = MotorId.ALL, 
-                        intensityPwm = 255.toByte(),
-                        ledMode = LedMode.STROBE,
-                        ledColor = LedColor.RED,
-                        durationMs = 3000
-                    )
-                )
-
                 homingViewModel.clearMissionResult()
             }
             null -> {}
         }
     }
 
-    val bearingDegrees = remember(agentLocation, activeMission) {
-        if (activeMission == null) return@remember 0f
+    val bearingDegrees = remember(agentLocation, uiState.activeMission) {
+        if (uiState.activeMission == null) return@remember 0f
         val lat1 = agentLocation.first * PI / 180.0
         val lon1 = agentLocation.second * PI / 180.0
-        val lat2 = activeMission!!.lat * PI / 180.0
-        val lon2 = activeMission!!.lon * PI / 180.0
+        val lat2 = uiState.activeMission!!.lat * PI / 180.0
+        val lon2 = uiState.activeMission!!.lon * PI / 180.0
 
         val dLon = lon2 - lon1
         val y = sin(dLon) * cos(lat2)
@@ -521,33 +402,24 @@ fun MainDashboardContent(
         brng.toFloat()
     }
 
-    val isBleZone = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 50f
-    val isUwbZone = (missionState == "ACTIVE" || missionState == "ON_SCENE") && distanceMeters <= 15f
+    val isBleZone = (uiState.missionPhase == MissionPhase.ACTIVE || uiState.missionPhase == MissionPhase.ON_SCENE) && distanceMeters <= 50f
+    val isUwbZone = (uiState.missionPhase == MissionPhase.ACTIVE || uiState.missionPhase == MissionPhase.ON_SCENE) && distanceMeters <= 15f
     val isUwbEngaged = isUwbZone && isBleHandshakeComplete
 
-    LaunchedEffect(isBleZone, activeMission?.taskId) {
+    LaunchedEffect(isBleZone, uiState.activeMission?.taskId) {
         if (isBleZone && !isBleHandshakeComplete && !isBleScanning) {
-            val currentTaskId = activeMission?.taskId
+            val currentTaskId = uiState.activeMission?.taskId
             if (!currentTaskId.isNullOrBlank()) {
                 isBleScanning = true
                 try {
                     audio.speak("Approaching target. Initiating secure B L E handshake.", voiceVolume)
-
                     val result = bleClient.executeOobHandshake(missionId = currentTaskId)
 
                     if (result.success && result.uwbMacAddress != null && result.secureSessionKey != null) {
                         avUwbMacAddress = result.uwbMacAddress
                         avUwbSessionKey = result.secureSessionKey
                         isBleHandshakeComplete = true
-                        
-                        hapHat.sendCommand(
-                            HapHatCommand(
-                                ledMode = LedMode.SOLID,
-                                ledColor = LedColor.CYAN,
-                                durationMs = 0
-                            )
-                        )
-                        
+                        // Note: Hardware Bridge logic for BLE is safely extracted, but if we need a specific call here we can add it to the VM
                         audio.speak("Handshake verified. Micro-homing credentials secured.", voiceVolume)
                     } else {
                         audio.speak("Handshake failed. Move closer and re-approach target.", voiceVolume)
@@ -576,7 +448,11 @@ fun MainDashboardContent(
         }
     }
 
-    LaunchedEffect(distanceMiles) { if (missionState == "ACTIVE" && distanceMiles <= 0.1) isMissionControlsExpanded = true }
+    LaunchedEffect(distanceMiles) {
+        if (uiState.missionPhase == MissionPhase.ACTIVE && distanceMiles <= 0.1) {
+            isMissionControlsExpanded = true
+        }
+    }
 
     val tacticalMapStyle = """[{"elementType":"geometry","stylers":[{"color":"#121212"}]},{"elementType":"labels.icon","stylers":[{"visibility":"off"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#EEEEEE"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#000000"},{"weight":3}]},{"featureType":"road","elementType":"geometry","stylers":[{"color":"#555555"}]}]"""
 
@@ -584,58 +460,15 @@ fun MainDashboardContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF121212))
+                .background(PanColors.SurfaceDark)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF000000))
-                    .padding(end = 16.dp)
-                    .zIndex(10f),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(200.dp)
-                        .height(70.dp)
-                        .let {
-                            if (IS_DEBUG_MODE) {
-                                it.combinedClickable(onClick = {}, onLongClick = { showDevMenu = true })
-                            } else {
-                                it.clickable(enabled = false) {}
-                            }
-                        }
-                )
+            TacticalStatusBar(
+                isOnline = uiState.isOnline,
+                onNavigateToWallet = { onNavigate("WALLET") },
+                onDevMenuLongPress = if (IS_DEBUG_MODE) { { showDevMenu = true } } else null
+            )
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(if (isOnline) Color(0xFF4CAF50) else Color(0xFFF44336), CircleShape)
-                        )
-                        Text(
-                            text = if (isOnline) "ONLINE" else "OFFLINE",
-                            color = if (isOnline) Color(0xFF4CAF50) else Color(0xFFF44336),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(Color(0xFF333333), RoundedCornerShape(18.dp))
-                            .clickable { onNavigate("WALLET") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("ID", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            Box(modifier = Modifier.fillMaxWidth().weight(1f).background(Color(0xFF2A2A2A)), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f).background(PanColors.SurfaceMid), contentAlignment = Alignment.Center) {
 
                 AnimatedContent(
                     targetState = isUwbEngaged,
@@ -660,51 +493,32 @@ fun MainDashboardContent(
                     }
                 }
 
-                androidx.compose.animation.AnimatedVisibility(visible = missionState == "PENDING" && activeMission != null, enter = slideInVertically(initialOffsetY = { it }) + fadeIn(), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(), modifier = Modifier.fillMaxSize()) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = uiState.missionPhase == MissionPhase.PENDING && uiState.activeMission != null,
+                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                    modifier = Modifier.fillMaxSize()
+                ) {
                     MissionAlertOverlay(
-                        activeMission = activeMission,
+                        activeMission = uiState.activeMission,
                         countdownProgress = countdownProgress.value,
                         flashAlpha = flashAlpha,
                         onAccept = {
-                            val currentTaskId = activeMission?.taskId
+                            val currentTaskId = uiState.activeMission?.taskId
                             if (!currentTaskId.isNullOrBlank()) {
                                 homingViewModel.setMission(currentTaskId)
                             }
 
-                            missionState = "ACTIVE"
-                            
-                            coroutineScope.launch {
-                                hapHat.sendCommand(
-                                    HapHatCommand(
-                                        motorId = MotorId.M3_CENTER, 
-                                        intensityPwm = 200.toByte(), 
-                                        ledMode = LedMode.SOLID,     
-                                        ledColor = LedColor.WHITE,
-                                        durationMs = 500             
-                                    )
-                                )
-                                delay(500)
-                                hapHat.sendCommand(
-                                    HapHatCommand(
-                                        ledMode = LedMode.SOLID,
-                                        ledColor = LedColor.ORANGE,
-                                        durationMs = 0
-                                    )
-                                )
-                            }
-                            
-                            missionAcceptTime = getCurrentTimeMs()
-                            audio.stop()
-
-                            val targetLat = activeMission?.lat ?: 0.0
-                            val targetLon = activeMission?.lon ?: 0.0
-
-                            // TODO (Phase 6): Fetch actual OSRM geospatial route from matching_engine
+                            val targetLat = uiState.activeMission?.lat ?: 0.0
+                            val targetLon = uiState.activeMission?.lon ?: 0.0
                             tacticalRoute = listOf(
                                 agentLocation,
                                 Pair(agentLocation.first + 0.015, agentLocation.second - 0.01),
                                 Pair(targetLat, targetLon)
                             )
+
+                            missionViewModel.onMissionAccepted()
+                            audio.stop()
 
                             try {
                                 uriHandler.openUri(getNativeMapUrl(targetLat, targetLon))
@@ -713,17 +527,7 @@ fun MainDashboardContent(
                             }
                         },
                         onDecline = {
-                            val currentTaskId = activeMission?.taskId
-                            if (!currentTaskId.isNullOrBlank()) {
-                                coroutineScope.launch { apiClient.declineMission(currentTaskId) }
-                            }
-                            missionState = "IDLE"
-                            
-                            coroutineScope.launch {
-                                hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
-                            }
-                            
-                            activeMission = null
+                            missionViewModel.onMissionDeclined()
                             tacticalRoute = emptyList()
                             audio.stop()
                         }
@@ -733,63 +537,33 @@ fun MainDashboardContent(
                 PostMissionOverlays(
                     isUploadingProof = homingState.isResolving,
                     capturedEvidence = capturedEvidence,
-                    missionState = missionState,
-                    lastPayoutAmount = lastPayoutAmount,
-                    timeOnSceneMs = timeOnSceneMs,
-                    totalResponseTimeMs = totalResponseTimeMs,
-                    lastTxHash = lastTxHash,
+                    missionState = uiState.missionPhase.name,
+                    lastPayoutAmount = uiState.lastPayoutAmount,
+                    timeOnSceneMs = uiState.timeOnSceneMs,
+                    totalResponseTimeMs = uiState.totalResponseTimeMs,
+                    lastTxHash = uiState.lastTxHash,
                     onReturnToPatrol = {
-                        // 🛡️ Safely snapshot the mission data BEFORE opening the overlay
-                        // This prevents recomposition crashes when activeMission becomes null mid-animation
-                        feedbackTaskId = activeMission?.taskId ?: ""
-                        feedbackFleetId = "Vanguard Network Partner" // To be pulled from activeMission?.fleetId in next iteration
-                        showFeedbackScreen = true
+                        missionViewModel.onReturnToPatrol()
                     }
                 )
             }
 
-            Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E1E1E)), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(modifier = Modifier.fillMaxWidth().background(PanColors.CardBackground), horizontalAlignment = Alignment.CenterHorizontally) {
 
-                AnimatedVisibility(visible = missionState == "ACTIVE", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                    Column(modifier = Modifier.fillMaxWidth().animateContentSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(modifier = Modifier.fillMaxWidth().clickable { isMissionControlsExpanded = !isMissionControlsExpanded }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) { Text(if (isMissionControlsExpanded) "▼ HIDE MISSION CONTROLS ▼" else "▲ SHOW MISSION CONTROLS ▲", color = Color(0xFF00BCD4), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp) }
-                        if (isMissionControlsExpanded) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("ACTIVE MISSION: EN ROUTE", color = Color(0xFF00BCD4), fontSize = 14.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-                                Spacer(modifier = Modifier.height(8.dp)); Text(activeMission?.intersection ?: "Target Location", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text("Diagnostic: ${activeMission?.errorCode}", color = Color.LightGray, fontSize = 14.sp); Spacer(modifier = Modifier.height(16.dp))
-                                Button(
-                                    onClick = {
-                                        missionState = "ON_SCENE"
-                                        sceneArrivalTime = getCurrentTimeMs()
-                                        
-                                        coroutineScope.launch {
-                                            hapHat.sendCommand(
-                                                HapHatCommand(
-                                                    motorId = MotorId.ALL,
-                                                    intensityPwm = 255.toByte(),
-                                                    ledMode = LedMode.SOLID,
-                                                    ledColor = LedColor.YELLOW,
-                                                    durationMs = 0 
-                                                )
-                                            )
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(64.dp).padding(bottom = 16.dp)
-                                ) { Text("ARRIVED AT SCENE", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp) }
-
-                                key(abortSliderResetKey) {
-                                    SwipeActionSlider(text = "SWIPE TO ABORT >>", trackColor = Color(0xFF2C2C2C), thumbColor = Color(0xFFD32F2F)) {
-                                        showAbortDialog = true
-                                    }
-                                }
-                            }
-                        }
-                    }
+                AnimatedVisibility(visible = uiState.missionPhase == MissionPhase.ACTIVE, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    MissionControlsPanel(
+                        activeMission = uiState.activeMission,
+                        isExpanded = isMissionControlsExpanded,
+                        onToggleExpand = { isMissionControlsExpanded = !isMissionControlsExpanded },
+                        onArrivedAtScene = { missionViewModel.onArrivedAtScene() },
+                        onAbortRequested = { showAbortDialog = true },
+                        abortSliderKey = abortSliderResetKey
+                    )
                 }
 
-                AnimatedVisibility(visible = missionState == "ON_SCENE", enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                AnimatedVisibility(visible = uiState.missionPhase == MissionPhase.ON_SCENE, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                     OnSceneTerminal(
-                        activeMission = activeMission,
+                        activeMission = uiState.activeMission,
                         capturedEvidence = capturedEvidence,
                         isProcessingRedaction = homingState.isResolving,
                         isResolving = homingState.isResolving,
@@ -822,44 +596,13 @@ fun MainDashboardContent(
                             homingViewModel.declineExtension()
                         },
                         onVerifyIdentity = { onResult ->
-                            val fragmentActivity = context as? FragmentActivity
-                            if (fragmentActivity != null) {
-                                val executor = ContextCompat.getMainExecutor(context)
-                                val biometricPrompt = BiometricPrompt(
-                                    fragmentActivity,
-                                    executor,
-                                    object : BiometricPrompt.AuthenticationCallback() {
-                                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                                            super.onAuthenticationError(errorCode, errString)
-                                            println("[ATTESTATION] Biometric error: $errString")
-                                            onResult(false)
-                                        }
-
-                                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                                            super.onAuthenticationSucceeded(result)
-                                            println("[ATTESTATION] ✅ Agent Verified. StrongBox Signature Authorized.")
-                                            onResult(true) 
-                                        }
-
-                                        override fun onAuthenticationFailed() {
-                                            super.onAuthenticationFailed()
-                                            println("[ATTESTATION] ❌ Biometric rejection.")
-                                            onResult(false)
-                                        }
-                                    }
+                            coroutineScope.launch {
+                                onResult(
+                                    biometricHelper.authenticate(
+                                        promptTitle = "Agent Attestation Required",
+                                        promptSubtitle = "Authenticate to cryptographically sign mission evidence"
+                                    )
                                 )
-
-                                val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                                    .setTitle("Agent Attestation Required")
-                                    .setSubtitle("Authenticate to cryptographically sign mission evidence")
-                                    .setNegativeButtonText("Cancel")
-                                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                                    .build()
-
-                                biometricPrompt.authenticate(promptInfo)
-                            } else {
-                                println("[ATTESTATION_ERROR] LocalContext is not a FragmentActivity")
-                                onResult(false)
                             }
                         },
                         onLogEntry = { log ->
@@ -868,7 +611,7 @@ fun MainDashboardContent(
                     )
                 }
 
-                AnimatedVisibility(visible = missionState == "IDLE") {
+                AnimatedVisibility(visible = uiState.missionPhase == MissionPhase.IDLE) {
                     OfflineLoadoutMenu(
                         isLoadoutExpanded = isLoadoutExpanded,
                         onToggleExpand = { isLoadoutExpanded = !isLoadoutExpanded },
@@ -881,38 +624,33 @@ fun MainDashboardContent(
                     )
                 }
 
-                AnimatedVisibility(visible = missionState == "IDLE") {
+                AnimatedVisibility(visible = uiState.missionPhase == MissionPhase.IDLE) {
                     Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-                        if (isOnline) {
-                            SwipeActionSlider(text = "SWIPE TO GO OFFLINE >>", trackColor = Color(0xFF333333), thumbColor = Color(0xFFF44336)) {
-                                isProcessing = true
-                                coroutineScope.launch {
-                                    delay(800)
-                                    isOnline = false
-                                    missionState = "IDLE"
-                                    isProcessing = false
-                                }
+                        if (uiState.isOnline) {
+                            SwipeActionSlider(
+                                text = "SWIPE TO GO OFFLINE >>",
+                                trackColor = PanColors.ButtonSecondary,
+                                thumbColor = PanColors.AlertRed
+                            ) {
+                                missionViewModel.goOffline()
                             }
                         } else {
                             Button(
-                                enabled = !isProcessing,
-                                onClick = {
-                                    isProcessing = true
-                                    coroutineScope.launch {
-                                        delay(800)
-                                        isOnline = true
-
-                                        try {
-                                            apiClient.updateLocationTelemetry(agentLocation.first, agentLocation.second)
-                                        } catch (e: Exception) {
-                                            println("[TELEMETRY_ERROR] ${e.message}")
-                                        }
-
-                                        isProcessing = false
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), disabledContainerColor = Color(0xFF555555))
-                            ) { if (isProcessing) CircularProgressIndicator(color = Color.White) else Text("GO ONLINE", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp) }
+                                enabled = !uiState.isProcessing,
+                                onClick = { missionViewModel.goOnline(agentLocation.first, agentLocation.second) },
+                                modifier = Modifier.fillMaxWidth().height(56.dp),
+                                // 🛡️ REFACTOR: Replaced hardcoded hex values with PanColors
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = PanColors.OnlineGreen,
+                                    disabledContainerColor = PanColors.Disabled
+                                )
+                            ) {
+                                if (uiState.isProcessing) {
+                                    CircularProgressIndicator(color = Color.White)
+                                } else {
+                                    Text("GO ONLINE", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                }
+                            }
                         }
                     }
                 }
@@ -928,6 +666,11 @@ fun MainDashboardContent(
             WalletAndProfileScreen(
                 apiClient = apiClient,
                 onBack = { onNavigate("DASHBOARD") },
+                onNavigateToStore = { bal, miss ->
+                    storeBalance = bal
+                    storeMissions = miss
+                    onNavigate("STORE")
+                },
                 navPreference = navPreference,
                 onNavPrefChange = { navPreference = it },
                 audioEngine = audio,
@@ -938,72 +681,75 @@ fun MainDashboardContent(
             )
         }
 
+        AnimatedVisibility(
+            visible = currentScreen == "STORE",
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.fillMaxSize().zIndex(15f)
+        ) {
+            StoreScreen(
+                currentBalance = storeBalance,
+                missionsCompleted = storeMissions,
+                onBack = { onNavigate("WALLET") },
+                onJoinWaitlist = { itemId, email ->
+                    (rawWalletClient as? PanWalletClient)?.joinWaitlist(itemId, email) ?: false
+                }
+            )
+        }
+
         if (showDevMenu) {
-            AlertDialog(onDismissRequest = { showDevMenu = false }, containerColor = Color(0xFF1E1E1E), title = { Text("DEV: INJECT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
+            AlertDialog(onDismissRequest = { showDevMenu = false }, containerColor = PanColors.CardBackground, title = { Text("DEV: INJECT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
                         coroutineScope.launch { apiClient.triggerBackendDispatch(33.432, -111.865, "scene_securement") }
                         showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
 
                     Button(onClick = {
                         coroutineScope.launch { apiClient.triggerBackendDispatch(33.385, -111.683, "spill_remediation") }
                         showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Bio/Liquid Remediation (Tier 2)", color = Color.White) }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Bio/Liquid Remediation (Tier 2)", color = Color.White) }
 
                     Button(onClick = {
                         coroutineScope.launch { apiClient.triggerBackendDispatch(33.415, -111.831, "latch_fault") }
                         showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
 
                     Button(onClick = {
                         coroutineScope.launch { apiClient.triggerBackendDispatch(agentLocation.first + 0.00009, agentLocation.second, "uwb_calibration") }
                         showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)), modifier = Modifier.fillMaxWidth()) { Text("LOC 4: UWB Proximity Test (10m)", color = Color.Black, fontWeight = FontWeight.Bold) }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.CyanAccent), modifier = Modifier.fillMaxWidth()) { Text("LOC 4: UWB Proximity Test (10m)", color = Color.Black, fontWeight = FontWeight.Bold) }
                 } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showDevMenu = false }) { Text("CLOSE", color = Color.Gray) } }
             )
         }
 
         if (showAbortDialog) {
-            AlertDialog(onDismissRequest = { showAbortDialog = false; abortSliderResetKey++ }, containerColor = Color(0xFF1E1E1E), title = { Text("ABORT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
+            AlertDialog(onDismissRequest = { showAbortDialog = false; abortSliderResetKey++ }, containerColor = PanColors.CardBackground, title = { Text("ABORT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column { listOf("Too Dangerous", "Changed Mind", "Can't Find AV", "AV Leaving Scene", "Other").forEach { reason ->
                     Button(onClick = {
-                        val currentTaskId = activeMission?.taskId ?: queuedMission?.taskId
-                        if (!currentTaskId.isNullOrBlank()) {
-                            coroutineScope.launch { apiClient.declineMission(currentTaskId) }
-                        }
-                        showAbortDialog = false; missionState = "IDLE"; activeMission = null; queuedMission = null; abortSliderResetKey++
-                        missionAcceptTime = 0L; sceneArrivalTime = 0L
+                        missionViewModel.onMissionAborted(reason)
+                        showAbortDialog = false; abortSliderResetKey++
                         tacticalRoute = emptyList()
-
-                        // 🛡️ FIXED: Clear captured evidence to prevent cross-mission contamination
                         capturedEvidence = emptyList()
-
-                        // 🟢 SECURITY RESET: Scrub BLE Keys
                         isBleHandshakeComplete = false
                         avUwbMacAddress = null
                         avUwbSessionKey = null
-
-                        coroutineScope.launch {
-                            hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
-                        }
-                        
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
                 } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }
             )
         }
 
         // 🟢 FEEDBACK SCREEN INJECTION
         AnimatedVisibility(
-            visible = showFeedbackScreen,
+            visible = uiState.showFeedbackScreen,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize().zIndex(20f)
         ) {
             FeedbackScreen(
-                taskId = feedbackTaskId,
-                fleetId = feedbackFleetId,
-                payoutAmount = lastPayoutAmount,
+                taskId = uiState.feedbackTaskId,
+                fleetId = uiState.feedbackFleetId,
+                payoutAmount = uiState.lastPayoutAmount,
                 issueChips = listOf(
                     FeedbackIssueChip("Biohazard Unreported", "SAFETY"),
                     FeedbackIssueChip("Hardware Defect", "SAFETY"),
@@ -1013,9 +759,8 @@ fun MainDashboardContent(
                     FeedbackIssueChip("Vehicle Not at Pin", "LOGISTICS")
                 ),
                 onSubmit = { isPositive, category, label, ventText ->
-                    // Cast safely assuming PanWalletClient implementation is provided
                     (rawWalletClient as? PanWalletClient)?.submitMissionFeedback(
-                        taskId = feedbackTaskId,
+                        taskId = uiState.feedbackTaskId,
                         isPositive = isPositive,
                         category = category,
                         label = label,
@@ -1023,50 +768,27 @@ fun MainDashboardContent(
                     ) ?: false
                 },
                 onDismiss = {
-                    showFeedbackScreen = false
-                    
-                    // --- DELEGATED POST-MISSION RESET LOGIC ---
-                    lastPayoutAmount = 0.0; timeOnSceneMs = 0L; totalResponseTimeMs = 0L; lastTxHash = ""; sceneArrivalTime = 0L; missionAcceptTime = 0L
+                    missionViewModel.onFeedbackDismissed()
                     tacticalRoute = emptyList()
-
                     isBleHandshakeComplete = false
                     avUwbMacAddress = null
                     avUwbSessionKey = null
-
-                    if (queuedMission != null) {
-                        activeMission = queuedMission; queuedMission = null; missionState = "ACTIVE"
-                        
-                        coroutineScope.launch {
-                            hapHat.sendCommand(
-                                HapHatCommand(
-                                    ledMode = LedMode.SOLID,
-                                    ledColor = LedColor.ORANGE
-                                )
-                            )
-                        }
-                    } else {
-                        missionState = "IDLE"; activeMission = null
-                        
-                        coroutineScope.launch {
-                            hapHat.sendCommand(HapHatCommand(ledMode = LedMode.OFF, ledColor = LedColor.OFF))
-                        }
-                    }
                 }
             )
         }
 
         // 🟢 RANK UP OVERLAY
         AnimatedVisibility(
-            visible = showRankUp,
+            visible = uiState.showRankUp,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize().zIndex(25f)
         ) {
             RankUpOverlay(
-                newRank = rankUpTo,
-                ownsHapHat = false, // Will wire to real hardware inventory in Q3
+                newRank = uiState.rankUpTo,
+                ownsHapHat = false,
                 ownsGauntlets = false,
-                onDismiss = { showRankUp = false }
+                onDismiss = { missionViewModel.onRankUpDismissed() }
             )
         }
     }

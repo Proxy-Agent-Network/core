@@ -54,7 +54,7 @@ fun PostMissionOverlays(
                 Text("ESCROW RELEASED:", color = Color.Gray, fontSize = 12.sp)
 
                 // Format the double so it looks like cash
-                val formattedPayout = String.format("$%.2f", lastPayoutAmount)
+                val formattedPayout = lastPayoutAmount.toCurrency()
                 Text(formattedPayout, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold)
 
                 Spacer(modifier = Modifier.height(24.dp))

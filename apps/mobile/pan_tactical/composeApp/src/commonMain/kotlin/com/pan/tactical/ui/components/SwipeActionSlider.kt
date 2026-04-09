@@ -1,5 +1,16 @@
 package com.pan.tactical.ui.components
 
+// ============================================================================
+// CANONICAL VERSION — com.pan.tactical.ui.components
+//
+// The duplicate SwipeActionSlider in TacticalComponents.kt
+// (com.pan.tactical.ui) must be deleted. This file is the single
+// source of truth. It supersedes the old version with:
+//   - Smooth snap-back animation (animateFloatAsState)
+//   - isDragging flag for real-time feel during drag
+//   - modifier parameter for caller-controlled sizing and padding
+// ============================================================================
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -24,7 +35,8 @@ fun SwipeActionSlider(
     text: String,
     trackColor: Color,
     thumbColor: Color,
-    onSwipeComplete: () -> Unit
+    onSwipeComplete: () -> Unit,
+    modifier: Modifier = Modifier  // Caller controls outer sizing/padding
 ) {
     var swipeOffset by remember { mutableStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
@@ -32,14 +44,13 @@ fun SwipeActionSlider(
     var maxWidthPx by remember { mutableStateOf(0f) }
     val density = LocalDensity.current
 
-    // Smooth snap-back animation if the agent lets go before the end
+    // Smooth snap-back animation when the agent releases before the threshold.
+    // While actively dragging, use the raw offset for real-time feel.
     val animatedOffset by animateFloatAsState(targetValue = swipeOffset, label = "swipe_snap")
-
-    // Use the active drag offset if touching, otherwise use the snap-back animation value
     val currentOffset = if (isDragging) swipeOffset else animatedOffset
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(thumbSize)
             .background(trackColor, RoundedCornerShape(8.dp))
@@ -48,10 +59,11 @@ fun SwipeActionSlider(
     ) {
 
         // 1. THE TEXT
-        // Drawn first so it sits on the bottom layer. It will be covered up as the fill expands!
+        // Drawn first — sits on the bottom layer.
+        // Gets covered by the expanding fill track as the agent swipes.
         Text(
             text = text,
-            color = Color(0xFF999999), // Subdued medium grey
+            color = Color(0xFF999999),
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
             letterSpacing = 1.sp,
@@ -61,7 +73,7 @@ fun SwipeActionSlider(
         )
 
         // 2. THE EXPANDING FILL TRACK
-        // This box stretches from the left edge to the right edge of the thumb
+        // Stretches from the left edge to the right edge of the thumb.
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -81,12 +93,13 @@ fun SwipeActionSlider(
                         onDragEnd = {
                             isDragging = false
                             val maxSwipe = maxWidthPx - thumbSize.toPx()
-                            // Require a 75% swipe to trigger the action
+                            // 75% swipe required — deliberate friction to prevent
+                            // accidental mission aborts or offline toggling.
                             if (swipeOffset > maxSwipe * 0.75f) {
                                 swipeOffset = maxSwipe
                                 onSwipeComplete()
                             } else {
-                                swipeOffset = 0f
+                                swipeOffset = 0f  // Snap back
                             }
                         }
                     ) { change, dragAmount ->

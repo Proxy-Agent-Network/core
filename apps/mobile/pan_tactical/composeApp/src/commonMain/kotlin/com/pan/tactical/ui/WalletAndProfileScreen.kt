@@ -28,6 +28,7 @@ import com.pan.tactical.AudioEngine
 import com.pan.tactical.ui.theme.PanColors
 import com.pan.tactical.ui.components.AgentRankCard
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // 1. DATA MODELS (Now in commonMain so the UI can see them)
 @Serializable
@@ -79,6 +80,7 @@ fun Double.toCurrency(): String {
 fun WalletAndProfileScreen(
     apiClient: WalletNetworkClient,
     onBack: () -> Unit,
+    onNavigateToStore: (balance: Double, missions: Int) -> Unit,
     navPreference: String,
     onNavPrefChange: (String) -> Unit,
     audioEngine: AudioEngine,
@@ -182,7 +184,7 @@ fun WalletAndProfileScreen(
                                                 linkedCard = maskedCard
                                                 audioEngine.speak("Payout method secured.", voiceVolume)
                                                 showLinkCardDialog = false
-                                                cardNumber = "" 
+                                                cardNumber = ""
                                             }.onFailure { error ->
                                                 audioEngine.speak("Network connection failed.", voiceVolume)
                                                 snackbarHostState.showSnackbar("ERROR: ${error.message}")
@@ -287,6 +289,18 @@ fun WalletAndProfileScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         TextButton(onClick = { showLinkCardDialog = true }) { Text("UPDATE LINKED CARD", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                     }
+
+                    if (!isLoading) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { onNavigateToStore(balance, missionsCompleted) },
+                            colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary),
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("🛒 OPEN SUPPLY DEPOT", color = Color.White, fontWeight = FontWeight.Black, fontSize = 14.sp, letterSpacing = 1.sp)
+                        }
+                    }
                 }
 
                 // 🟢 NEW: DOSSIER INSERTION POINT
@@ -294,6 +308,39 @@ fun WalletAndProfileScreen(
                     AgentRankCard(
                         missionsCompleted = missionsCompleted
                     )
+
+                    // 🟢 OBSERVATION FIXED: Display VTS Score
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(PanColors.SurfaceMid)
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "VANGUARD TRUST SCORE (VTS)",
+                            color = Color.LightGray,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+
+                        val vtsDisplay = ((vtsScore * 10.0).roundToInt() / 10.0).toString()
+                        val vtsColor = when {
+                            vtsScore >= 90.0 -> PanColors.QualifiedGreen
+                            vtsScore >= 70.0 -> PanColors.CyanAccent
+                            else -> PanColors.WarningOrange
+                        }
+
+                        Text(
+                            text = vtsDisplay,
+                            color = vtsColor,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+
                     HorizontalDivider(color = PanColors.ButtonSecondary, thickness = 1.dp)
                 }
 

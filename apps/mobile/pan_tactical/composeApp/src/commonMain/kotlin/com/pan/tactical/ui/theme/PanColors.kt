@@ -12,6 +12,13 @@ object PanColors {
     val SurfaceLight = Color(0xFF444444)
     val WarningOrange = Color(0xFFFF9800)
 
+    // 🛡️ REFACTOR: Standardized hex codes into the design system
+    val AlertRed = Color(0xFFF44336)      // For offline status, alerts, and standard errors
+    val DangerRed = Color(0xFFD32F2F)     // For destructive actions (e.g., abort mission slider)
+    val OnlineGreen = Color(0xFF2E7D32)   // For the primary Go Online action
+    val Disabled = Color(0xFF555555)      // For disabled UI element backgrounds
+    val SliderTrack = Color(0xFF2C2C2C)   // For slider background tracks
+
     // --- General/Legacy UI Colors (Merged from Color.kt) ---
     val Green = Color(0xFF4CAF50)
     val Cyan = Color(0xFF00BCD4)

@@ -5,7 +5,6 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel, Field
 from redis.exceptions import WatchError
 
-# 🛠️ THE FIX 1: Addressed circular import risk by routing through our new utils module
 from utils.auth import verify_agent_signature 
 
 logger = logging.getLogger("PAN_WalletAPI")
@@ -17,21 +16,47 @@ class LinkCardRequest(BaseModel):
 class WithdrawRequest(BaseModel):
     amount: float = Field(..., gt=0, description="Amount to withdraw in USD")
 
+class WaitlistPayload(BaseModel):
+    item_id: str
+    email: str
+
 async def get_agent_wallet(redis_client, agent_id: str):
     """
     Helper for standard reads. 
-    🛠️ THE FIX 2: Removed the silent write side-effect. GETs should be purely idempotent.
+    Fetches the fiat balance and piggybacks the Vanguard Trust Score data.
     """
     wallet_key = f"pan:agent:{agent_id}:wallet"
-    wallet_data = await redis_client.get(wallet_key)
+    
+    missions_key = f"pan:agent:{agent_id}:missions_completed"
+    
+    # 🟢 FINDING 2 FIXED: Fetch seller_score (how fleets evaluate the agent)
+    rep_score_key = f"pan:entity:{agent_id}:rep:seller_score"
+    
+    # Execute as a pipeline for speed
+    async with redis_client.pipeline() as pipe:
+        pipe.get(wallet_key)
+        pipe.get(missions_key)
+        pipe.get(rep_score_key)
+        results = await pipe.execute()
+        
+    wallet_data, raw_missions, raw_score = results
+
+    # Parse Vanguard Dossier safely
+    missions_completed = int(raw_missions) if raw_missions else 0
+    vanguard_trust_score = float(raw_score) if raw_score else 100.0
     
     if wallet_data:
-        return json.loads(wallet_data)
+        wallet = json.loads(wallet_data)
+        wallet["missions_completed"] = missions_completed
+        wallet["vanguard_trust_score"] = vanguard_trust_score
+        return wallet
         
     return {
         "balance": 0.0,
         "linkedCard": None,
-        "history": []
+        "history": [],
+        "missions_completed": missions_completed,
+        "vanguard_trust_score": vanguard_trust_score
     }
 
 @router.get("/")
@@ -48,14 +73,10 @@ async def link_debit_card(payload: LinkCardRequest, request: Request, agent_id: 
     wallet_key = f"pan:agent:{agent_id}:wallet"
     
     async with redis_client.pipeline() as pipe:
-        # 🛠️ THE FIX 3: Replaced infinite loop with a bounded 10-attempt retry mechanism
         for attempt in range(10):
             try:
                 await pipe.watch(wallet_key)
                 
-                # 🛠️ THE FIX 4: Added architectural comment regarding async pipeline state
-                # NOTE FOR FUTURE DEVS: Immediate-execution mode is active after watch().
-                # pipe.get() executes directly and returns the value. Do NOT move this inside multi()!
                 wallet_data = await pipe.get(wallet_key)
                 if wallet_data:
                     wallet = json.loads(wallet_data)
@@ -83,14 +104,10 @@ async def withdraw_funds(payload: WithdrawRequest, request: Request, agent_id: s
     wallet_key = f"pan:agent:{agent_id}:wallet"
     
     async with redis_client.pipeline() as pipe:
-        # 🛠️ THE FIX 3: Bounded retry mechanism
         for attempt in range(10):
             try:
                 await pipe.watch(wallet_key)
                 
-                # 🛠️ THE FIX 4: Educational note
-                # NOTE FOR FUTURE DEVS: Immediate-execution mode active after watch(). 
-                # Do not place inside pipe.multi().
                 wallet_data = await pipe.get(wallet_key)
                 if wallet_data:
                     wallet = json.loads(wallet_data)
@@ -127,3 +144,18 @@ async def withdraw_funds(payload: WithdrawRequest, request: Request, agent_id: s
                 continue
                 
     return {"status": "success", "new_balance": wallet["balance"]}
+
+@router.post("/waitlist")
+async def join_gear_waitlist(payload: WaitlistPayload, request: Request, agent_id: str = Depends(verify_agent_signature)):
+    """
+    Records agent interest in a specific piece of Q3 pre-production hardware.
+    Data is utilized by PAN Supply Chain to prioritize manufacturing runs.
+    """
+    redis_client = request.app.state.redis_client
+    waitlist_key = f"pan:agent:{agent_id}:gear_interest:{payload.item_id}"
+    
+    # Store the email value with no TTL so it survives until fulfillment operations pulls the queue
+    await redis_client.set(waitlist_key, payload.email)
+    
+    logger.info(f"📦 [SUPPLY CHAIN] Agent {agent_id} joined waitlist for {payload.item_id}")
+    return {"status": "success"}

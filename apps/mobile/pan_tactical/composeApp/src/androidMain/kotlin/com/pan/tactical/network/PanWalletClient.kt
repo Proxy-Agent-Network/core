@@ -21,8 +21,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.*
 import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
@@ -48,13 +48,14 @@ data class NetworkTransactionLog(
     val evidenceUrls: List<String>? = null
 )
 
+// 🛡️ GAP 1 FIXED: Explicit SerialName mapping to protect against Python snake_case
 @Serializable
 data class NetworkWalletResponse(
-    val balance: Double = 0.0,
-    val linkedCard: String? = null,
-    val history: List<NetworkTransactionLog> = emptyList(),
-    val missionsCompleted: Int = 0,
-    val vanguardTrustScore: Double = 100.0
+    @SerialName("balance") val balance: Double = 0.0,
+    @SerialName("linkedCard") val linkedCard: String? = null,
+    @SerialName("history") val history: List<NetworkTransactionLog> = emptyList(),
+    @SerialName("missions_completed") val missionsCompleted: Int = 0,
+    @SerialName("vanguard_trust_score") val vanguardTrustScore: Double = 100.0
 )
 
 @Serializable
@@ -63,6 +64,12 @@ data class FeedbackPayload(
     val category: String,
     val label: String,
     val vent_text: String
+)
+
+@Serializable
+data class WaitlistPayload(
+    val item_id: String,
+    val email: String
 )
 
 class PanWalletClient : WalletNetworkClient {
@@ -162,6 +169,7 @@ class PanWalletClient : WalletNetworkClient {
                             evidenceUrls = it.evidenceUrls
                         )
                     },
+                    // 🛡️ Ensure mapped fields are passed up to the UI contract
                     missionsCompleted = data.missionsCompleted,
                     vanguardTrustScore = data.vanguardTrustScore
                 )
@@ -217,7 +225,7 @@ class PanWalletClient : WalletNetworkClient {
             try {
                 val targetUrl = "$hostUrl/api/v1/agent/missions/$taskId/feedback"
                 Log.i(TAG, "Transmitting feedback for $taskId (Positive: $isPositive) to $targetUrl")
-                
+
                 val response = client.post(targetUrl) {
                     contentType(ContentType.Application.Json)
                     attachAgentSignature()
@@ -238,6 +246,35 @@ class PanWalletClient : WalletNetworkClient {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Network connection lost during feedback submission: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    suspend fun joinWaitlist(itemId: String, email: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val targetUrl = "$hostUrl/api/v1/store/waitlist"
+                Log.i(TAG, "Joining waitlist for hardware $itemId")
+
+                val response = client.post(targetUrl) {
+                    contentType(ContentType.Application.Json)
+                    attachAgentSignature()
+                    setBody(WaitlistPayload(
+                        item_id = itemId,
+                        email = email
+                    ))
+                }
+
+                if (response.status.isSuccess()) {
+                    Log.i(TAG, "Successfully secured waitlist position for $itemId.")
+                    true
+                } else {
+                    Log.e(TAG, "Waitlist API rejected request. HTTP Status: ${response.status.value}")
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Network connection lost during waitlist submission: ${e.message}", e)
                 false
             }
         }

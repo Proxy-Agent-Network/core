@@ -268,8 +268,9 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         
         await redis_client.hset("pan:compliance:reports", task_id, json.dumps(sealed_report))
         
-        # --- ATOMIC FINANCIAL SETTLEMENT ---
+        # --- ATOMIC FINANCIAL SETTLEMENT & RANK PROGRESSION ---
         wallet_key = f"pan:agent:{agent_id}:wallet"
+        missions_key = f"pan:agent:{agent_id}:missions_completed"
         
         async with redis_client.pipeline() as pipe:
             for attempt in range(10):
@@ -298,6 +299,13 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                     
                     pipe.multi()
                     pipe.set(wallet_key, json.dumps(wallet))
+                    
+                    # Atomic increment of missions_completed inside the payout pipeline
+                    pipe.incr(missions_key)
+                    
+                    # Record last_active timestamp for the reputation yield cron
+                    pipe.set(f"pan:agent:{agent_id}:last_active", int(time.time()))
+                    
                     await pipe.execute()
                     break
                 except WatchError:
@@ -466,7 +474,6 @@ async def submit_mission_feedback(
         raise HTTPException(status_code=403, detail="IDOR Blocked: Mission not assigned to this agent.")
         
     # 3. Fetch Reputation Engine from Application State
-    # (Instantiated once at startup in main.py to prevent synchronous disk I/O)
     engine = request.app.state.reputation_engine
     
     target_entity_id = task_data.get("fleet_id")
@@ -484,6 +491,9 @@ async def submit_mission_feedback(
         label=payload.label,
         vent_text=payload.vent_text
     )
+    
+    # Record last_active timestamp for the reputation yield cron
+    await redis_client.set(f"pan:agent:{agent_id}:last_active", int(time.time()))
     
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("reason"))
