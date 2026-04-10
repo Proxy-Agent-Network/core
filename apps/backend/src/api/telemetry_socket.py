@@ -1,16 +1,23 @@
 import os
+import time
 import logging
 import json
 import asyncio
+from typing import Dict
+from pydantic import BaseModel
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends
 
-# 🟢 THE FIX 2: Import decode_redis_hash to handle byte/string variances defensively
+# TODO(refactor): Move decode_redis_hash to utils/redis_helpers.py — importing from
+# business logic is a layering violation that will break if v2x_bounty_api.py is refactored.
 from api.v2x_bounty_api import decode_redis_hash
-# 🟢 THE FIX 1: Import the standard agent auth dependency
 from utils.auth import verify_agent_signature
 
 logger = logging.getLogger("PAN_TelemetryStream")
 router = APIRouter()
+
+# Agent state TTL: 30 days. Resets on every status update so active agents
+# never expire. Prevents stale agent hashes accumulating in Redis indefinitely.
+AGENT_STATE_TTL_SECONDS = 60 * 60 * 24 * 30
 
 # --- HTTP TELEMETRY INGEST ---
 
@@ -21,29 +28,37 @@ async def ingest_telemetry(request: Request, agent_identity: dict = Depends(veri
     try:
         data = await request.json()
     except Exception:
-        return {"status": "error", "message": "Invalid JSON"}
+        # 🛡️ FIX: Return proper 400 so the Android client knows the request failed
+        raise HTTPException(status_code=400, detail="Invalid JSON")
 
     lat = data.get("lat") or data.get("latitude")
     lon = data.get("lon") or data.get("longitude") or data.get("lng")
     
-    # 🟢 THE FIX 1: Cryptographically enforce the Agent ID from the validated token, 
+    # Cryptographically enforce the Agent ID from the validated token,
     # preventing location spoofing by malicious actors.
     agent_id = agent_identity.get("agent_id")
     status = data.get("status", "ONLINE")
 
+    # 🛡️ FIX: Raise HTTP 400 (not 200) so the Android client sees a real failure
+    # and can log it. Returning 200 with an error body was masking silent GPS failures.
     if lat is None or lon is None:
-        return {"status": "error", "message": "Missing lat/lon keys"}
+        raise HTTPException(status_code=400, detail="Missing lat/lon keys")
 
     try:
         lat = float(lat)
         lon = float(lon)
     except ValueError:
-        return {"status": "error", "message": "Coordinates must be numbers"}
+        raise HTTPException(status_code=400, detail="Coordinates must be numbers")
 
     redis_client = request.app.state.redis_client
     
-    # Update agent state
-    await redis_client.hset(f"agent:{agent_id}", mapping={"lat": lat, "lon": lon, "status": status})
+    # 🛡️ FIX: Standardized key to pan:agent:{id} namespace — was agent:{id} which
+    # broke the pan: prefix convention used everywhere else in the codebase.
+    agent_key = f"pan:agent:{agent_id}"
+    await redis_client.hset(agent_key, mapping={"lat": lat, "lon": lon, "status": status})
+    # Reset TTL on every ping so active agents never expire
+    await redis_client.expire(agent_key, AGENT_STATE_TTL_SECONDS)
+
     await redis_client.geoadd("pan:agent_locations", (lon, lat, agent_id))
     
     # Broadcast to Ops Hub via PubSub
@@ -54,11 +69,76 @@ async def ingest_telemetry(request: Request, agent_identity: dict = Depends(veri
     return {"status": "ok", "received": True}
 
 
+class StatusUpdateRequest(BaseModel):
+    status: str
+    latitude: float
+    longitude: float
+    radius: float
+    loadout: Dict[str, float]
+    signature: str
+    timestamp: int
+
+
+@router.post("/v1/agent/status")
+async def update_agent_status(
+    payload: StatusUpdateRequest,
+    request: Request,
+    agent_identity: dict = Depends(verify_agent_signature)
+):
+    """
+    Handles the 'GO ONLINE' / 'GO OFFLINE' toggle from the mobile app.
+    Syncs the agent's current location, service radius, and hardware loadout.
+    """
+    agent_id = agent_identity.get("agent_id")
+    redis_client = request.app.state.redis_client
+
+    # 1. Update Core Agent State
+    # 🛡️ FIX: Standardized key to pan:agent:{id} — was agent:{id} which broke the
+    # pan: prefix convention and made the WebSocket SCAN miss these keys.
+    agent_key = f"pan:agent:{agent_id}"
+    await redis_client.hset(agent_key, mapping={
+        "status": payload.status,
+        "lat": payload.latitude,
+        "lon": payload.longitude,
+        "radius_miles": payload.radius,
+        "last_active": payload.timestamp
+    })
+    # 🛡️ FIX: Reset 30-day TTL on every status update so active agents never expire
+    await redis_client.expire(agent_key, AGENT_STATE_TTL_SECONDS)
+
+    # 2. Sync Hardware Loadout
+    if payload.loadout:
+        await redis_client.hset(f"pan:agent:{agent_id}:loadout", mapping=payload.loadout)
+
+    # 3. Update Geospatial Dispatch Index
+    if payload.status == "ONLINE":
+        await redis_client.geoadd("pan:agent_locations", (payload.longitude, payload.latitude, agent_id))
+    else:
+        # Remove offline agents from the spatial index so the Matching Engine ignores them
+        await redis_client.zrem("pan:agent_locations", agent_id)
+
+    # 4. Broadcast to Ops Hub UI
+    await redis_client.publish(
+        "pan:stream:agent_locations", 
+        json.dumps({
+            "agent_id": agent_id, 
+            "lat": payload.latitude, 
+            "lon": payload.longitude, 
+            "status": payload.status, 
+            "heading": 0.0
+        })
+    )
+
+    return {"status": "success"}
+
+
 # --- WEBSOCKET STREAM ---
 
 @router.websocket("/v1/telemetry/stream")
 async def websocket_telemetry_endpoint(websocket: WebSocket):
     # Production Token Fallback Guard (Ops Hub UI Auth)
+    # Note: query param tokens appear in access logs. Acceptable for internal
+    # Ops Hub — do not use this pattern for external-facing WebSocket endpoints.
     expected_token = os.getenv("OPS_HUB_TOKEN")
     if not expected_token:
         if os.getenv("ENVIRONMENT") == "production":
@@ -81,20 +161,26 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
     # --- 1. STATE REHYDRATION ---
     try:
         # Sync Active Agents
+        # 🛡️ FIX: Updated SCAN pattern to pan:agent:* to match standardized key convention.
+        # Was agent:* which only worked because of the old naming inconsistency.
+        # TODO(scale): Replace SCAN with SMEMBERS pan:agents:active index before fleet-scale
+        # deployment — SCAN is O(N) and will slow down rehydration at high agent counts.
         cursor = 0
         while True:
-            cursor, keys = await redis_client.scan(cursor=cursor, match="agent:*", count=100)
+            cursor, keys = await redis_client.scan(cursor=cursor, match="pan:agent:*", count=100)
             for key in keys:
+                # Skip sub-keys like pan:agent:{id}:loadout and pan:agent:{id}:orders
+                key_str = key.decode('utf-8') if isinstance(key, bytes) else key
+                if key_str.count(':') != 2:
+                    continue
+
                 raw_agent = await redis_client.hgetall(key)
                 if raw_agent:
-                    # 🟢 THE FIX 2: Defensively decode the Redis hash
                     agent = decode_redis_hash(raw_agent)
                     lat = agent.get("lat") or agent.get("latitude")
                     lon = agent.get("lon") or agent.get("longitude")
                     
                     if lat is not None and lon is not None:
-                        # Ensure key is a string
-                        key_str = key.decode('utf-8') if isinstance(key, bytes) else key
                         await websocket.send_json({
                             "type": "AGENT_LOCATION",
                             "payload": {
@@ -104,7 +190,8 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                                 "status": agent.get("status", "OFFLINE")
                             }
                         })
-            if int(cursor) == 0: break
+            if int(cursor) == 0:
+                break
             
         # Sync Active Distress Signals
         cursor = 0
@@ -113,11 +200,10 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             for key in keys:
                 raw_task = await redis_client.hgetall(key)
                 if raw_task:
-                    # 🟢 THE FIX 2: Defensively decode the Redis hash
                     task = decode_redis_hash(raw_task)
                     status = task.get("status", "")
                     if status in ["COMPLETED", "declined", "CANCELLED"]:
-                        continue # Skip resolved tasks
+                        continue
 
                     lat = task.get("lat") or task.get("latitude")
                     lon = task.get("lon") or task.get("longitude")
@@ -144,14 +230,21 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                                 "sla_status": sla_status
                             }
                         })
-            if int(cursor) == 0: break
+            if int(cursor) == 0:
+                break
+
     except Exception as e:
         logger.error(f"⚠️ Failed to sync initial state: {e}")
 
     # --- 2. LIVE STREAM LISTENERS ---
     pubsub = redis_client.pubsub()
     try:
-        await pubsub.subscribe("pan:stream:agent_locations", "pan:stream:distress_alerts", "pan:stream:mission_cleared", "pan:stream:sla_alerts")
+        await pubsub.subscribe(
+            "pan:stream:agent_locations",
+            "pan:stream:distress_alerts",
+            "pan:stream:mission_cleared",
+            "pan:stream:sla_alerts"
+        )
         
         async def pubsub_reader():
             ping_counter = 0
@@ -161,7 +254,6 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                     payload_str = message["data"]
                     channel = message["channel"]
                     
-                    # Safely handle byte channels
                     channel_str = channel.decode('utf-8') if isinstance(channel, bytes) else channel
                     
                     try:
@@ -169,17 +261,20 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                     except json.JSONDecodeError:
                         continue
                     
-                    # Map Redis PubSub channels to React UI Event Types
-                    if "agent_locations" in channel_str: event_type = "AGENT_LOCATION"
-                    elif "mission_cleared" in channel_str: event_type = "MISSION_CLEARED"
-                    elif "sla_alerts" in channel_str: event_type = parsed_payload.get("type", "SLA_ALERT")
-                    else: event_type = "DISTRESS_ALERT"
+                    if "agent_locations" in channel_str:
+                        event_type = "AGENT_LOCATION"
+                    elif "mission_cleared" in channel_str:
+                        event_type = "MISSION_CLEARED"
+                    elif "sla_alerts" in channel_str:
+                        event_type = parsed_payload.get("type", "SLA_ALERT")
+                    else:
+                        event_type = "DISTRESS_ALERT"
                     
                     await websocket.send_json({"type": event_type, "payload": parsed_payload})
                 
-                # Keepalive Heartbeat
+                # Keepalive Heartbeat (~30 seconds at 10ms sleep)
                 ping_counter += 1
-                if ping_counter >= 3000:  
+                if ping_counter >= 3000:
                     await websocket.send_json({"type": "HEARTBEAT"})
                     ping_counter = 0
                     
@@ -190,7 +285,6 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                 try:
                     data = await websocket.receive_json()
                     
-                    # Wire Ops Hub Manual Dispatch directly to the matching engine queue
                     if data.get("action") == "DISPATCH_AGENT":
                         payload = data.get("payload", {})
                         task_id = payload.get("task_id")
@@ -200,33 +294,32 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                             continue
                             
                         logger.info(f"🚀 Ops Command triggered manual dispatch for {task_id}")
-                        
-                        # Push to the live matching engine queue
                         await redis_client.rpush("pan:dispatch:active_tasks", task_id)
-                        
-                        # Also broadcast the command logging
                         await redis_client.publish("pan:stream:dispatch_commands", json.dumps(payload))
                         
                 except WebSocketDisconnect:
                     logger.info("🔴 [OPS_HUB] Command Center UI disconnected cleanly.")
                     break
-                except Exception:
+                except Exception as e:
+                    # 🛡️ FIX: Log exceptions instead of silently swallowing them.
+                    # Silent swallow was masking dispatch command failures during live ops.
+                    logger.error(f"[OPS_HUB] websocket_reader error: {e}")
                     continue
 
-        # Run both listeners concurrently
         reader_task = asyncio.create_task(pubsub_reader(), name="pubsub_reader")
         ws_task = asyncio.create_task(websocket_reader(), name="websocket_reader")
 
         done, pending = await asyncio.wait([reader_task, ws_task], return_when=asyncio.FIRST_COMPLETED)
         
-        # Cleanup
-        for task in pending: task.cancel()
+        for task in pending:
+            task.cancel()
 
     except Exception as e:
         logger.error(f"❌ Telemetry Stream crashed: {str(e)}", exc_info=True)
     finally:
         try:
             await pubsub.unsubscribe()
-            if hasattr(pubsub, 'close'): await pubsub.close()
+            if hasattr(pubsub, 'close'):
+                await pubsub.close()
         except Exception:
             pass
