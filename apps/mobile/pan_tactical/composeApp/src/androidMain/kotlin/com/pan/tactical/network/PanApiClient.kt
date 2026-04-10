@@ -13,6 +13,7 @@ import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
@@ -101,13 +102,11 @@ data class FcmTokenPayload(
     val fcmToken: String
 )
 
-// 🛡️ REFACTOR: Added DeclinePayload for abort analytics
 @Serializable
 data class DeclinePayload(
     val reason: String
 )
 
-// 🛡️ REFACTOR: Added PresencePayload for dynamic dispatch routing
 @Serializable
 data class PresencePayload(
     @SerialName("is_online")
@@ -125,7 +124,6 @@ class PanApiClient : WalletNetworkClient {
             config {
                 connectTimeout(3, TimeUnit.SECONDS)
                 readTimeout(3, TimeUnit.SECONDS)
-                // 🛡️ FIXED: Arch 6 - Added writeTimeout for large evidence payload uploads on degraded LTE
                 writeTimeout(30, TimeUnit.SECONDS)
             }
         }
@@ -140,14 +138,12 @@ class PanApiClient : WalletNetworkClient {
     private val strongBoxManager = StrongBoxManager()
     private val attestationEngine = com.pan.tactical.security.AttestationEngine()
 
-    // 🛡️ FIXED: Bug 3 - Removed the uncatchable throw exception; handled gracefully
     private val secureUid: String?
         get() = FirebaseAuth.getInstance().currentUser?.uid
 
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
 
-    // 🛡️ FIXED: Arch 5 - Mutex to prevent multi-threading StrongBox collisions
     private val jwtMutex = Mutex()
 
     private suspend fun getFreshJwt(): String? {
@@ -246,7 +242,6 @@ class PanApiClient : WalletNetworkClient {
                     timestamp = System.currentTimeMillis() / 1000
                 )
 
-                // 🛡️ FIXED: Bug 1 - Writes to Python backend instead of Firebase RTDB so the engine can geofence
                 val response: HttpResponse =
                     client.post("$PAN_API_URL/agent/status") {
                         header("Authorization", "Bearer $jwt")
@@ -262,7 +257,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🛡️ REFACTOR: Added new endpoint targeting dispatch routing
     suspend fun updatePresence(isOnline: Boolean): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -368,39 +362,45 @@ class PanApiClient : WalletNetworkClient {
     suspend fun uploadEvidenceArray(bitmaps: List<Bitmap>): List<String> {
         return withContext(Dispatchers.IO) {
             val uploadedUrls = mutableListOf<String>()
-            val relayApiKey = BuildConfig.IMGBB_API_KEY
-
-            if (relayApiKey.isEmpty()) {
-                Log.e(TAG, "IMGBB_API_KEY not configured. Evidence upload skipped to prevent false-positive compliance checks.")
+            
+            // 🛡️ FIXED: Catch missing JWT cleanly with logs rather than silently failing
+            val jwt = getFreshJwt() ?: run {
+                Log.e(TAG, "Evidence upload aborted: JWT unavailable. Agent identity missing.")
                 return@withContext uploadedUrls
             }
 
-            // ⚠️ ARCHITECTURAL CONCERN (Phase 4): imgbb has no SLA or SB 1417 compliance certifications.
-            // MUST migrate to AWS S3 or GCP Cloud Storage prior to final Fleet Partner sign-off to prevent
-            // data leakage and liability exposure.
             bitmaps.forEach { bitmap ->
                 try {
                     val redactedBitmap = com.pan.tactical.security.PrivacyFilter.sanitizeImage(bitmap)
-
                     val stream = ByteArrayOutputStream()
-
                     redactedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
+                    
                     val byteArray = stream.toByteArray()
-                    Log.d(TAG, "Uploading evidence: ${byteArray.size / 1024}KB")
-                    val base64Image = android.util.Base64.encodeToString(byteArray, android.util.Base64.DEFAULT)
+                    
+                    // 🛡️ FIXED: Prevent memory leak of 1280x1280 ARGB bitmaps
+                    redactedBitmap.recycle()
+                    
+                    Log.d(TAG, "Uploading encrypted evidence: ${byteArray.size / 1024}KB")
 
-                    val response: HttpResponse = client.post("https://api.imgbb.com/1/upload?key=$relayApiKey") {
-                        contentType(ContentType.Application.FormUrlEncoded)
-                        setBody("image=${java.net.URLEncoder.encode(base64Image, "UTF-8")}")
+                    val response: HttpResponse = client.post("$PAN_API_URL/agent/evidence/upload") {
+                        header("Authorization", "Bearer $jwt")
+                        setBody(MultiPartFormDataContent(
+                            formData {
+                                append("evidence_file", byteArray, Headers.build {
+                                    append(HttpHeaders.ContentType, "image/jpeg")
+                                    append(HttpHeaders.ContentDisposition, "filename=\"evidence_${System.currentTimeMillis()}.jpg\"")
+                                })
+                            }
+                        ))
                     }
 
-                    val responseBody = response.bodyAsText()
-
                     if (response.status.isSuccess()) {
+                        val responseBody = response.bodyAsText()
                         val json = org.json.JSONObject(responseBody)
-                        val dataObj = json.optJSONObject("data")
-                        val downloadUrl = dataObj?.optString("url", "") ?: ""
+                        val downloadUrl = json.optString("url", "")
                         if (downloadUrl.isNotEmpty()) uploadedUrls.add(downloadUrl)
+                    } else {
+                        Log.e(TAG, "Backend rejected evidence upload. HTTP Status: ${response.status.value}")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to upload evidence bitmap: ${e.message}", e)
@@ -465,12 +465,10 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // Overloads the interface to preserve compliance while enabling reason-based declines
     override suspend fun declineMission(taskId: String): Boolean {
         return declineMission(taskId, "No reason provided")
     }
 
-    // 🛡️ REFACTOR: Added overloaded decline method mapping to DeclinePayload
     suspend fun declineMission(taskId: String, reason: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -500,8 +498,7 @@ class PanApiClient : WalletNetworkClient {
                     setBody(
                         MissionCompletePayload(
                             agentId = uid,
-                            // FIXME: Ensure backend ignores this and calculates from Redis config to prevent $0 payouts
-                            netPayout = 0.0,
+                            netPayout = 0.0, // Backend calculates payout from Redis task config — do not send client-side value
                             evidenceUrls = evidenceUrls,
                             hardwareAttestationToken = strongBoxManager.generateJwt(uid)
                         )
