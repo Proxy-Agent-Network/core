@@ -565,7 +565,7 @@ def api_dispatch_request():
     }
 
     # 🟢 NEW: Broadcast to all connected Command Center browsers instantly
-    socketio.emit('partner_fault_ingested', map_payload)
+    # socketio.emit('partner_fault_ingested', map_payload)
 
     # 4. Return the standard 201 Created response to the AV
     response_payload = {
