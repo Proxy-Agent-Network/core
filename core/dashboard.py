@@ -26,6 +26,8 @@ if "spent" not in st.session_state: st.session_state.spent = 0
 
 #... (Avatar and Sidebar logic remains consistent)
 
+tab_chat, tab_ops = st.tabs(["Tactical Comms", "Operations"])
+
 with tab_chat:
     # BUG 2 FIX: High-precedence rendering for pending payments.
     # This renders at the top of the chat whenever a payment is required.
