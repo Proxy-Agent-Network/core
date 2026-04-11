@@ -15,6 +15,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+// 🛡️ FIX: Import the toCurrency extension function from the UI package
+import com.pan.tactical.ui.toCurrency
+
 @Composable
 fun PostMissionOverlays(
     isUploadingProof: Boolean,

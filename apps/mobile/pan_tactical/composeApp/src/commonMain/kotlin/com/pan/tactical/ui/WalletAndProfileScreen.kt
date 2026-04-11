@@ -24,13 +24,14 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-import com.pan.tactical.AudioEngine
+// 🛡️ FIX: Removed the illegal androidMain import!
+// import com.pan.tactical.AudioEngine
 import com.pan.tactical.ui.theme.PanColors
 import com.pan.tactical.ui.components.AgentRankCard
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-// 1. DATA MODELS (Now in commonMain so the UI can see them)
+// 1. DATA MODELS
 @Serializable
 data class TransactionLog(
     val id: String,
@@ -49,22 +50,35 @@ data class WalletResponse(
     val vanguardTrustScore: Double = 100.0
 )
 
-// 2. THE INTERFACE (The contract the UI relies on)
+// 2. THE INTERFACE (Network)
 interface WalletNetworkClient {
     suspend fun getWalletData(): WalletResponse?
-
-    // 🛡️ FIXED: Renamed parameter to explicitly indicate this is a UI display label, not a secure token
     suspend fun linkDebitCard(maskedCardLabel: String): Result<String>
-
     suspend fun withdrawFunds(amount: Double): Result<String>
     suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean
     suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean
-    suspend fun declineMission(taskId: String): Boolean
+    
+    // 🛡️ FIX: Added missing updatePresence method
+    suspend fun updatePresence(isOnline: Boolean): Boolean 
+    
+    // 🛡️ FIX: Added optional 'reason' parameter to match MissionViewModel's signature
+    suspend fun declineMission(taskId: String, reason: String? = null): Boolean 
+    
     suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData>
     suspend fun completeMission(taskId: String, evidenceUrls: List<String> = emptyList()): Boolean
     suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String>
     suspend fun acknowledgeMission(taskId: String): Boolean
 }
+
+// 3. 🛡️ NEW FIX: THE AUDIO INTERFACE
+interface TacticalAudioEngine {
+    fun getAvailableVoices(): List<VoiceProfile>
+    fun speak(text: String, volume: Float)
+    fun playAlertBeep(volume: Int)
+    fun setVoice(voiceId: String)
+}
+
+data class VoiceProfile(val id: String, val name: String)
 
 // --- KMP-FRIENDLY CURRENCY FORMATTER ---
 fun Double.toCurrency(): String {
@@ -83,7 +97,7 @@ fun WalletAndProfileScreen(
     onNavigateToStore: (balance: Double, missions: Int) -> Unit,
     navPreference: String,
     onNavPrefChange: (String) -> Unit,
-    audioEngine: AudioEngine,
+    audioEngine: TacticalAudioEngine, // 🛡️ FIX: Depend on the shared interface, not the concrete Android class
     voiceVolume: Float,
     onVoiceVolumeChange: (Float) -> Unit,
     alertVolume: Int,
@@ -92,7 +106,6 @@ fun WalletAndProfileScreen(
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // 🛡️ FIXED: Use rememberSaveable so text inputs survive configuration changes / process death
     var firstName by rememberSaveable { mutableStateOf("Proxy") }
     var callsign by rememberSaveable { mutableStateOf("Vanguard-01") }
 
@@ -108,7 +121,7 @@ fun WalletAndProfileScreen(
     var vtsScore by remember { mutableDoubleStateOf(100.0) }
 
     var showLinkCardDialog by remember { mutableStateOf(false) }
-    var cardNumber by rememberSaveable { mutableStateOf("") } // 🛡️ FIXED: Survive rotation
+    var cardNumber by rememberSaveable { mutableStateOf("") }
     var isLinkingCard by remember { mutableStateOf(false) }
     var isWithdrawing by remember { mutableStateOf(false) }
 
@@ -190,7 +203,6 @@ fun WalletAndProfileScreen(
                                                 snackbarHostState.showSnackbar("ERROR: ${error.message}")
                                             }
                                         } finally {
-                                            // 🛡️ FIXED: Ensure loading state is cleared even if network throws exception
                                             isLinkingCard = false
                                         }
                                     }
@@ -273,7 +285,6 @@ fun WalletAndProfileScreen(
                                         } catch (e: Exception) {
                                             snackbarHostState.showSnackbar("ERROR: Network failure refreshing ledger.")
                                         } finally {
-                                            // 🛡️ FIXED: Ensure UI is unlocked even if ledger re-sync drops
                                             isWithdrawing = false
                                         }
                                     }
@@ -303,13 +314,11 @@ fun WalletAndProfileScreen(
                     }
                 }
 
-                // 🟢 NEW: DOSSIER INSERTION POINT
                 if (!isLoading) {
                     AgentRankCard(
                         missionsCompleted = missionsCompleted
                     )
 
-                    // 🟢 OBSERVATION FIXED: Display VTS Score
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

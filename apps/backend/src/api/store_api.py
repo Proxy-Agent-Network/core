@@ -21,6 +21,14 @@ ITEM_CATALOG = {
     "hw_gauntlets":  {"name": "VFG-1 Gauntlets",                   "price_usd": 60.00},
 }
 
+# 🛡️ THE FIX: Export the set required by logistics_webhook_api.py
+# This defines which store items grant new tactical capabilities upon delivery.
+LOADOUT_UNLOCKING_ITEMS = {
+    "gear_vest_01",
+    "hw_gauntlets",
+    "gear_flare_01"
+}
+
 # ─── REQUEST MODELS ───────────────────────────────────────────────────────────
 
 class CheckoutRequest(BaseModel):

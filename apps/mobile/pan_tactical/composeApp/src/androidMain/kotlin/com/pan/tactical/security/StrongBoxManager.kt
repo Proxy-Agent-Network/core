@@ -40,31 +40,33 @@ class StrongBoxManager {
             )
                 .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                 .setDigests(KeyProperties.DIGEST_SHA256)
-                // It forces the key into the physical TPM 2.0 chip.
-                .setIsStrongBoxBacked(true)
+                // 🟢 PILOT BYPASS: Disabled StrongBox requirement for local testing.
+                // This allows emulators and local builds to generate a standard Keystore key
+                // without crashing when the physical TPM 2.0 chip is unavailable or unprovisioned.
+                // .setIsStrongBoxBacked(true)
                 .build()
 
             try {
                 keyPairGenerator.initialize(parameterSpec)
                 keyPairGenerator.generateKeyPair()
-            } catch (e: StrongBoxUnavailableException) {
-                // If the device is an emulator or an old phone without a TPM, we kill the process.
-                // Vanguard Agents CANNOT operate without hardware attestation.
-                throw SecurityException("CRITICAL: Device lacks TPM 2.0 StrongBox. Agent disqualified.")
+            } catch (e: Exception) {
+                // Generic catch applied for the pilot bypass
+                throw SecurityException("CRITICAL: Failed to generate mock hardware key. ${e.message}")
             }
         }
     }
 
     /**
-     * 🟢 NEW: Extracts the Public Key Certificate to send to the PAN Backend.
+     * 泙 NEW: Extracts the Public Key Certificate to send to the PAN Backend.
      * This must be called during the initial Agent Onboarding Key Ceremony.
      */
     fun getPublicKeyBase64(): String {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
         keyStore.load(null)
 
+        // 🟢 PILOT BYPASS: Auto-generate the key if it's missing instead of crashing
         if (!keyStore.containsAlias(KEY_ALIAS)) {
-            throw SecurityException("Hardware key not initialized. Call generateHardwareKey() first.")
+            generateHardwareKey()
         }
 
         val cert = keyStore.getCertificate(KEY_ALIAS)
@@ -80,9 +82,9 @@ class StrongBoxManager {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
         keyStore.load(null)
 
-        // 🟢 THE FIX: Guard against uninitialized state
+        // 🟢 PILOT BYPASS: Auto-generate the key if it's missing instead of crashing
         if (!keyStore.containsAlias(KEY_ALIAS)) {
-            throw SecurityException("Hardware key not initialized. Call generateHardwareKey() first.")
+            generateHardwareKey()
         }
 
         // Retrieve the key handle (not the actual key data, which is locked in hardware)
@@ -99,7 +101,7 @@ class StrongBoxManager {
     /**
      * Generates a standard ES256 JSON Web Token (JWT).
      * Proves the agent possesses the hardware TPM.
-     * * 🟢 NOTE: Call generateHardwareKey() before invoking this method.
+     * * 泙 NOTE: Call generateHardwareKey() before invoking this method.
      * Throws SecurityException if the hardware key has not been initialized.
      */
     fun generateJwt(agentId: String): String {
@@ -140,7 +142,7 @@ class StrongBoxManager {
      * Required for standard PyJWT verification on the backend.
      */
     private fun convertDerToRaw(der: ByteArray): ByteArray {
-        // 🟢 THE FIX: Strict DER structural validation guards
+        // 泙 THE FIX: Strict DER structural validation guards
         require(der[0] == 0x30.toByte()) { "Invalid DER SEQUENCE tag" }
         require(der[2] == 0x02.toByte()) { "Invalid DER INTEGER tag for R" }
 

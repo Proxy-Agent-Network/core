@@ -1,4 +1,6 @@
 package com.pan.tactical.hardware
+import android.util.Log
+import kotlinx.coroutines.delay
 
 class AndroidHardwareCommandBridge(
     private val hapHat: BleHapHatService

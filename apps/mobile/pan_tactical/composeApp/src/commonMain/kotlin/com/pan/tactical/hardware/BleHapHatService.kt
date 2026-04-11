@@ -1,5 +1,8 @@
 package com.pan.tactical.hardware
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+
 /**
  * 🛡️ [PHASE 5] Wearable Hardware Contract
  * Defines the GATT payload structure expected by the Vanguard HapHat firmware.
@@ -69,8 +72,6 @@ interface BleHapHatService {
 
 // --- MOCK INJECTION FOR UI DEVELOPMENT ---
 // TODO: Before Pilot, create an AndroidBleHapHatService implementation and toggle via BuildConfig.DEBUG
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 
 @Composable
 fun rememberBleHapHatService(): BleHapHatService {

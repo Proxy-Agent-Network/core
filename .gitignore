@@ -119,3 +119,7 @@ keystore.properties
 # Prevents committing the local Redis matching engine database state
 *.rdb
 dump.rdbapps/backend/src/cognitive_vault/cognitive_vault.egg-info/
+
+# PAN Tactical Security
+apps/backend/credentials/
+*.json

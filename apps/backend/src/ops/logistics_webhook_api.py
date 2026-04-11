@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 
 from utils.webhook_auth import verify_carrier_hmac, SecurityVault
-from store_api import LOADOUT_UNLOCKING_ITEMS
+from api.store_api import LOADOUT_UNLOCKING_ITEMS
 
 # PROXY PROTOCOL - LOGISTICS WEBHOOK API (v2.1)
 # Handles carrier delivery events and automatically updates agent loadouts.

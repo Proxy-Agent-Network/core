@@ -50,7 +50,7 @@ val osrmBaseUrl = requireLocalProperty("OSRM_BASE_URL")
 // --- KMP SECRETS BRIDGE ---
 buildConfig {
     packageName("com.pan.tactical")
-    
+
     // Ensure the generated object is public so we don't need @file:Suppress in our network clients
     useKotlinOutput { internalVisibility = false }
 
@@ -62,10 +62,10 @@ buildConfig {
     // 🛠️ THE FIX 2: Injecting the missing fields into BuildConfig exactly once!
     buildConfigField("String", "PAN_API_BASE_URL", "\"$panApiBaseUrl\"")
     buildConfigField("String", "AGENT_DEV_TOKEN", "\"$agentDevToken\"")
-    
+
     // 🟢 THE FIX: Route tactical navigation to our dedicated server
     buildConfigField("String", "OSRM_BASE_URL", "\"$osrmBaseUrl\"")
-    
+
     // 🟢 THE FIX: Injected as a primitive kotlin.Long so the Kotlin compiler enforces type safety without broken imports
     buildConfigField("kotlin.Long", "PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER", "${playIntegrityProjectNumLong}L")
 }
@@ -109,13 +109,16 @@ kotlin {
             // 🛠️ MINOR FIX: Replaced unstable alpha with stable release
             implementation("androidx.security:security-crypto:1.0.0")
 
+            // 🛡️ THE FIX: Added AndroidX Biometric to resolve imports
+            implementation("androidx.biometric:biometric:1.1.0")
+
             // ML Kit (On-Device Face & Text Privacy Redaction)
             implementation("com.google.mlkit:face-detection:16.1.6")
             implementation("com.google.mlkit:text-recognition:16.0.0")
 
             // Ktor Android Engine (For PanApiClient)
             implementation("io.ktor:ktor-client-okhttp:2.3.11")
-            
+
             // 🟢 THE FIX: Re-added UWB dependency required by AndroidUwbClient
             // TODO (Q3): Required for real BLE OOB handshake and ranging
             implementation("androidx.core.uwb:uwb:1.0.0-alpha08")
@@ -161,9 +164,9 @@ android {
     namespace = "com.pan.tactical"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    buildFeatures { 
+    buildFeatures {
         // Disabled: We use the gmazzo BuildConfig plugin instead for KMP compatibility
-        buildConfig = false 
+        buildConfig = false
     }
 
     defaultConfig {

@@ -10,10 +10,12 @@ import android.speech.tts.Voice
 import android.util.Log
 import java.util.Locale
 
-// Assuming TacticalVoice is in your shared UI/models package. Update import if needed.
-// import com.pan.tactical.ui.TacticalVoice
+// 🛡️ FIX: Import the new interface and data model from the UI package
+import com.pan.tactical.ui.TacticalAudioEngine
+import com.pan.tactical.ui.VoiceProfile
 
-actual class AudioEngine {
+// 🛡️ FIX: Implement the shared TacticalAudioEngine interface
+actual class AudioEngine : TacticalAudioEngine {
 
     companion object {
         private const val TAG = "AudioEngine"
@@ -23,10 +25,10 @@ actual class AudioEngine {
     private var isInitialized = false
 
     private val pendingUtterances = mutableListOf<Pair<String, Float>>()
-    // 🛠️ THE FIX 5: Restored the native voice mapping backing field
     private val nativeVoices = mutableMapOf<String, Voice>()
 
     init {
+        // Relies on PanApplication.instance being set in the Android Application class
         val context = PanApplication.instance
 
         tts = TextToSpeech(context) { status ->
@@ -47,7 +49,7 @@ actual class AudioEngine {
         }
     }
 
-    actual fun speak(text: String, volume: Float) {
+    actual override fun speak(text: String, volume: Float) {
         if (!isInitialized) {
             Log.w(TAG, "TTS not ready yet. Queuing: '$text'")
             pendingUtterances.add(Pair(text, volume))
@@ -57,14 +59,12 @@ actual class AudioEngine {
         try {
             val params = Bundle()
             params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
-            // 🛠️ THE FIX 4: Restored QUEUE_FLUSH for instant tactical interrupts
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "pan_utterance_${System.currentTimeMillis()}")
         } catch (e: Exception) {
             Log.e(TAG, "TTS Speak failed: ${e.message}", e)
         }
     }
 
-    // 🛠️ THE FIX 1: Restored the stop() method
     actual fun stop() {
         try {
             tts?.stop()
@@ -73,8 +73,7 @@ actual class AudioEngine {
         }
     }
 
-    // 🛠️ THE FIX 2: Restored the setVoice() method
-    actual fun setVoice(voiceId: String) {
+    actual override fun setVoice(voiceId: String) {
         try {
             nativeVoices[voiceId]?.let { voice ->
                 tts?.voice = voice
@@ -84,8 +83,8 @@ actual class AudioEngine {
         }
     }
 
-    // 🛠️ THE FIX 3 & 6: Restored TacticalVoice return type, English filter, and take(6)
-    actual fun getAvailableVoices(): List<TacticalVoice> {
+    // 🛡️ FIX: Updated to return List<VoiceProfile> to match the interface
+    actual override fun getAvailableVoices(): List<VoiceProfile> {
         return try {
             val voices = tts?.voices ?: return emptyList()
 
@@ -94,7 +93,7 @@ actual class AudioEngine {
                 .map { voice ->
                     nativeVoices[voice.name] = voice
                     val lang = voice.locale.toLanguageTag().uppercase()
-                    TacticalVoice(
+                    VoiceProfile(
                         id = voice.name,
                         name = "OS Voice: ${voice.name.takeLast(4).uppercase()} ($lang)"
                     )
@@ -105,7 +104,7 @@ actual class AudioEngine {
         }
     }
 
-    actual fun playAlertBeep(volume: Int) {
+    actual override fun playAlertBeep(volume: Int) {
         try {
             val safeVolume = volume.coerceIn(0, 100)
             val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, safeVolume)

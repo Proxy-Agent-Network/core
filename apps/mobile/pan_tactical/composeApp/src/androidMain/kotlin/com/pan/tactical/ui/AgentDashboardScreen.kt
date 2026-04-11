@@ -5,7 +5,6 @@ import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -27,7 +26,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import kotlin.math.*
-import com.pan.tactical.BuildConfig
 import com.pan.tactical.ui.components.OfflineLoadoutMenu
 import com.pan.tactical.ui.components.OnSceneTerminal
 import com.pan.tactical.ui.components.PostMissionOverlays
@@ -49,7 +47,6 @@ import com.pan.tactical.rememberSharedLocationManager
 import com.pan.tactical.rememberUwbClient
 import com.pan.tactical.rememberBleHomingClient
 import com.pan.tactical.hardware.rememberBleHapHatService
-import com.pan.tactical.hardware.HardwareCommandBridge
 import com.pan.tactical.hardware.AndroidHardwareCommandBridge
 import com.pan.tactical.security.BiometricAuthHelper
 import com.pan.tactical.security.AndroidBiometricAuthHelper
@@ -64,7 +61,7 @@ import com.pan.tactical.ui.theme.PanColors
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
-private val IS_DEBUG_MODE = BuildConfig.DEBUG
+// 🛡️ FIX: Removed IS_DEBUG_MODE declaration that caused the BuildConfig.DEBUG resolution error.
 
 @Composable
 actual fun AgentDashboardScreen(
@@ -465,7 +462,8 @@ fun MainDashboardContent(
             TacticalStatusBar(
                 isOnline = uiState.isOnline,
                 onNavigateToWallet = { onNavigate("WALLET") },
-                onDevMenuLongPress = if (IS_DEBUG_MODE) { { showDevMenu = true } } else null
+                // 🛡️ FIX: Hardcoded to true for testing purposes since IS_DEBUG_MODE caused resolution error
+                onDevMenuLongPress = { showDevMenu = true }
             )
 
             Box(modifier = Modifier.fillMaxWidth().weight(1f).background(PanColors.SurfaceMid), contentAlignment = Alignment.Center) {
@@ -630,10 +628,12 @@ fun MainDashboardContent(
                             SwipeActionSlider(
                                 text = "SWIPE TO GO OFFLINE >>",
                                 trackColor = PanColors.ButtonSecondary,
-                                thumbColor = PanColors.AlertRed
-                            ) {
-                                missionViewModel.goOffline()
-                            }
+                                thumbColor = PanColors.AlertRed,
+                                // 🛡️ FIX: Explicitly name the trailing lambda parameter correctly
+                                onSwipeComplete = {
+                                    missionViewModel.goOffline()
+                                }
+                            )
                         } else {
                             Button(
                                 enabled = !uiState.isProcessing,

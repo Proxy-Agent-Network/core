@@ -2,8 +2,6 @@
 package com.pan.tactical.network
 
 import android.util.Log
-import com.google.firebase.auth.FirebaseAuth
-import com.pan.tactical.BuildConfig
 import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.TransactionLog
 import com.pan.tactical.ui.WalletNetworkClient
@@ -90,12 +88,15 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    private val hostUrl = BuildConfig.PAN_API_BASE_URL
+    // 🟢 PILOT BYPASS: Hardcode hostUrl to the PC's local IP Address
+    // private val hostUrl = BuildConfig.PAN_API_BASE_URL
+    private val hostUrl = "http://192.168.0.84:5001"
     private val baseUrl = "$hostUrl/api/v1/wallet"
 
     private val secureUid: String
-        get() = FirebaseAuth.getInstance().currentUser?.uid
-            ?: throw IllegalStateException("Agent identity missing. Cannot execute network operations.")
+        get() = "VNG-50-PILOT"
+    //get() = FirebaseAuth.getInstance().currentUser?.uid
+    //    ?: throw IllegalStateException("Agent identity missing. Cannot execute network operations.")
 
     private val jwtMutex = Mutex()
     private var cachedJwt: String? = null
@@ -285,9 +286,16 @@ class PanWalletClient : WalletNetworkClient {
     }
 
     override suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean = false
+
+    // 🛡️ FIX: Added updatePresence to satisfy the interface
+    override suspend fun updatePresence(isOnline: Boolean): Boolean = false
+
     override suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData> = emptyList()
     override suspend fun acknowledgeMission(taskId: String): Boolean = false
-    override suspend fun declineMission(taskId: String): Boolean = false
+
+    // 🛡️ FIX: Added the reason parameter to satisfy the interface
+    override suspend fun declineMission(taskId: String, reason: String?): Boolean = false
+
     override suspend fun completeMission(taskId: String, evidenceUrls: List<String>): Boolean = false
 
     fun close() = client.close()

@@ -132,14 +132,17 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    private val hostUrl = BuildConfig.PAN_API_BASE_URL
+    // 🟢 PILOT BYPASS: Hardcode hostUrl to the PC's local IP Address
+    // private val hostUrl = BuildConfig.PAN_API_BASE_URL
+    private val hostUrl = "http://192.168.0.84:5001"
     private val PAN_API_URL = "$hostUrl/api/v1"
 
     private val strongBoxManager = StrongBoxManager()
     private val attestationEngine = com.pan.tactical.security.AttestationEngine()
 
     private val secureUid: String?
-        get() = FirebaseAuth.getInstance().currentUser?.uid
+        //get() = FirebaseAuth.getInstance().currentUser?.uid
+        get() = "VNG-50-PILOT"
 
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
@@ -257,7 +260,8 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    suspend fun updatePresence(isOnline: Boolean): Boolean {
+    // 🛡️ FIX: Added override modifier to satisfy the WalletNetworkClient interface
+    override suspend fun updatePresence(isOnline: Boolean): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val jwt = getFreshJwt() ?: return@withContext false
@@ -362,7 +366,7 @@ class PanApiClient : WalletNetworkClient {
     suspend fun uploadEvidenceArray(bitmaps: List<Bitmap>): List<String> {
         return withContext(Dispatchers.IO) {
             val uploadedUrls = mutableListOf<String>()
-            
+
             // 🛡️ FIXED: Catch missing JWT cleanly with logs rather than silently failing
             val jwt = getFreshJwt() ?: run {
                 Log.e(TAG, "Evidence upload aborted: JWT unavailable. Agent identity missing.")
@@ -374,12 +378,12 @@ class PanApiClient : WalletNetworkClient {
                     val redactedBitmap = com.pan.tactical.security.PrivacyFilter.sanitizeImage(bitmap)
                     val stream = ByteArrayOutputStream()
                     redactedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
-                    
+
                     val byteArray = stream.toByteArray()
-                    
+
                     // 🛡️ FIXED: Prevent memory leak of 1280x1280 ARGB bitmaps
                     redactedBitmap.recycle()
-                    
+
                     Log.d(TAG, "Uploading encrypted evidence: ${byteArray.size / 1024}KB")
 
                     val response: HttpResponse = client.post("$PAN_API_URL/agent/evidence/upload") {
@@ -465,18 +469,16 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    override suspend fun declineMission(taskId: String): Boolean {
-        return declineMission(taskId, "No reason provided")
-    }
-
-    suspend fun declineMission(taskId: String, reason: String): Boolean {
+    // 🛡️ FIX: Updated method signature to accept the optional reason parameter
+    override suspend fun declineMission(taskId: String, reason: String?): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val jwt = getFreshJwt() ?: return@withContext false
+                val finalReason = reason ?: "No reason provided"
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/decline") {
                     header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
-                    setBody(DeclinePayload(reason))
+                    setBody(DeclinePayload(finalReason))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {

@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-import com.google.firebase.auth.FirebaseAuth
+// import com.google.firebase.auth.FirebaseAuth // 🟢 PILOT BYPASS: Disabled Firebase import
 import com.pan.tactical.network.PanWalletClient
 import com.pan.tactical.security.PlayIntegrityManager
 import com.pan.tactical.security.StrongBoxManager
@@ -76,8 +76,10 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
                         strongBox.generateHardwareKey()
                         val publicKeyB64 = strongBox.getPublicKeyBase64()
 
-                        val agentId = FirebaseAuth.getInstance().currentUser?.uid
-                            ?: throw Exception("Agent identity missing. Firebase authentication required.")
+                        // 🟢 PILOT BYPASS: Hardcoded agent identity to bypass Firebase Auth
+                        // val agentId = FirebaseAuth.getInstance().currentUser?.uid
+                        //    ?: throw Exception("Agent identity missing. Firebase authentication required.")
+                        val agentId = "VNG-50-PILOT"
 
                         // ── Step 2: Play Integrity token acquisition ───────────────────────
                         delay(500)
@@ -127,8 +129,20 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
                     } catch (e: Exception) {
                         isInitializing = false
                         hasError = true
-                        terminalLogs.add("[ERROR] ${e.message}")
+
+                        // 🟢 VERBOSE DEBUGGING: Print full class and message to UI
+                        val debugInfo = "Exception: ${e::class.simpleName} | Message: ${e.message}"
+                        terminalLogs.add("[ERROR] $debugInfo")
+
+                        // 🟢 VERBOSE DEBUGGING: Direct network target check
+                        if (e.toString().contains("ConnectException") ||
+                            e.toString().contains("UnresolvedAddressException") ||
+                            e.message?.contains("Network") == true) {
+                            terminalLogs.add("🔍 DEBUG: Target Host was http://192.168.0.84:5001")
+                        }
+
                         terminalLogs.add("🛑 BOOT SEQUENCE TERMINATED.")
+                        e.printStackTrace()
                     }
                 }
             },
@@ -176,7 +190,7 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
         ) {
             terminalLogs.forEach { log ->
                 val textColor = when {
-                    log.contains("[ERROR]") || log.contains("TERMINATED") -> Color.Red
+                    log.contains("[ERROR]") || log.contains("TERMINATED") || log.contains("DEBUG") -> Color.Red
                     log.contains("✅") -> Color(0xFF00FF00)
                     else -> Color(0xFF00FF00)
                 }

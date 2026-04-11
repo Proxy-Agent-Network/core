@@ -1,20 +1,19 @@
 package com.pan.tactical
 
-// Our shared KMP Voice Model
-data class TacticalVoice(val id: String, val name: String)
+import com.pan.tactical.ui.TacticalAudioEngine
+import com.pan.tactical.ui.VoiceProfile
 
-// The Multiplatform Engine Contract
-expect class AudioEngine() {
-    fun speak(text: String, volume: Float = 1.0f)
+// 🛡️ FIX: The AudioEngine now implements the shared interface from the UI package.
+// This allows the commonMain UI to control audio without knowing Android-specifics.
+expect class AudioEngine() : TacticalAudioEngine {
+    
+    // Interface overrides
+    override fun speak(text: String, volume: Float)
+    override fun getAvailableVoices(): List<VoiceProfile>
+    override fun setVoice(voiceId: String)
+    override fun playAlertBeep(volume: Int)
+
+    // Platform-specific lifecycle methods (not needed by the UI, but required for memory management)
     fun stop()
-
-    // The Voice API
-    fun getAvailableVoices(): List<TacticalVoice>
-    fun setVoice(voiceId: String)
-
-    // THE FIX: Adding the 'volume' parameter so App.kt stops crashing!
-    fun playAlertBeep(volume: Int)
-
-    // 🛠️ THE FIX: Adding the shutdown method to match the Android implementation
     fun shutdown()
 }

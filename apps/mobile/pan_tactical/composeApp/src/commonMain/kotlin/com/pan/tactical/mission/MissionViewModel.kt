@@ -3,7 +3,7 @@ package com.pan.tactical.ui.mission
 import com.pan.tactical.getCurrentTimeMs
 import com.pan.tactical.hardware.HardwareCommandBridge
 import com.pan.tactical.models.MissionData
-import com.pan.tactical.network.PanApiClient
+// 🛡️ FIX: Removed the illegal import. commonMain cannot import androidMain classes.
 import com.pan.tactical.ui.WalletNetworkClient
 import com.pan.tactical.ui.components.AgentRank
 import com.pan.tactical.ui.components.rankForMissions
@@ -45,7 +45,8 @@ data class MissionUiState(
 // ─── VIEW MODEL ──────────────────────────────────────────────────────────────
 
 class MissionViewModel(
-    private val apiClient: PanApiClient,
+    // 🛡️ FIX: Program to the shared interface, not the concrete Android implementation.
+    private val apiClient: WalletNetworkClient,
     private val walletClient: WalletNetworkClient,
     private val hardwareBridge: HardwareCommandBridge,
     private val scope: CoroutineScope
@@ -78,6 +79,8 @@ class MissionViewModel(
             } catch (e: Exception) {
                 println("[MISSION_VM] Telemetry push failed on go-online: ${e.message}")
             } finally {
+                // Note: Ensure updatePresence() is declared in the WalletNetworkClient interface
+                // in commonMain, otherwise you will get an unresolved reference error here.
                 apiClient.updatePresence(true)
                 _uiState.update { it.copy(isOnline = true, isProcessing = false) }
                 startPolling()
