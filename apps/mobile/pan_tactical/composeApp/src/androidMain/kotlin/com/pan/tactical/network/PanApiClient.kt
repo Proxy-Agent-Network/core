@@ -64,7 +64,6 @@ data class LegacyTelemetryPayload(
     val status: String
 )
 
-// 🛡️ FIX: Renamed to avoid conflict with PanWalletClient
 @Serializable
 data class LegacyMissionCompletePayload(
     @SerialName("agent_id")
@@ -505,6 +504,15 @@ class PanApiClient : WalletNetworkClient {
                 false
             }
         }
+    }
+
+    // 🟢 FIX: Stub out the new listener to satisfy the interface contract.
+    // The legacy PanApiClient doesn't use WebSockets, so this does nothing.
+    override suspend fun listenForMissions(
+        onMissionAssigned: (MissionData) -> Unit,
+        onMissionCleared: () -> Unit
+    ) {
+        Log.e(TAG, "MIGRATION_ERROR: WebSockets are not supported on legacy PanApiClient. Use PanWalletClient.")
     }
 
     // --- SENTRY OPERATIONS ---

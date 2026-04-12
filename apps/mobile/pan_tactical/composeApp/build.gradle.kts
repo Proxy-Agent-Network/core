@@ -10,7 +10,6 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
 
-    // 🟢 THE FIX: Strictly aligned with the 2.1.0 Kotlin compiler from libs.versions.toml
     kotlin("plugin.serialization") version "2.1.0"
 
     id("com.github.gmazzo.buildconfig") version "4.1.2"
@@ -23,7 +22,6 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-// 🛠️ THE FIX 1: Hard fail at build time if a secret is missing
 fun requireLocalProperty(key: String): String {
     return localProperties.getProperty(key)
         ?: throw GradleException("🛑 FATAL: Missing required local.properties key: '$key'. Cannot build securely.")
@@ -34,16 +32,13 @@ val secureIosMapsKey = requireLocalProperty("IOS_MAPS_API_KEY")
 val secureImgbbKey = requireLocalProperty("IMGBB_API_KEY")
 val firebaseRtdbUrl = requireLocalProperty("FIREBASE_RTDB_URL")
 
-// 🛠️ THE FIX 2: Extracted missing properties for the Network Client and Attestation Engine
 val panApiBaseUrl = requireLocalProperty("PAN_API_BASE_URL")
 val agentDevToken = requireLocalProperty("AGENT_DEV_TOKEN")
 
-// 🟢 THE FIX: Safely parse the GCP Project Number as a Long, or fail the build if invalid
 val playIntegrityProjectNumStr = requireLocalProperty("PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER")
 val playIntegrityProjectNumLong = playIntegrityProjectNumStr.toLongOrNull()
     ?: throw GradleException("🛑 FATAL: PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER must be a valid number.")
 
-// 🟢 THE FIX: Add the dedicated routing server URL
 val osrmBaseUrl = requireLocalProperty("OSRM_BASE_URL")
 // -------------------------------------------------
 
@@ -51,7 +46,6 @@ val osrmBaseUrl = requireLocalProperty("OSRM_BASE_URL")
 buildConfig {
     packageName("com.pan.tactical")
 
-    // Ensure the generated object is public so we don't need @file:Suppress in our network clients
     useKotlinOutput { internalVisibility = false }
 
     buildConfigField("String", "MAPS_API_KEY", "\"$secureMapsKey\"")
@@ -59,14 +53,11 @@ buildConfig {
     buildConfigField("String", "IMGBB_API_KEY", "\"$secureImgbbKey\"")
     buildConfigField("String", "FIREBASE_RTDB_URL", "\"$firebaseRtdbUrl\"")
 
-    // 🛠️ THE FIX 2: Injecting the missing fields into BuildConfig exactly once!
     buildConfigField("String", "PAN_API_BASE_URL", "\"$panApiBaseUrl\"")
     buildConfigField("String", "AGENT_DEV_TOKEN", "\"$agentDevToken\"")
 
-    // 🟢 THE FIX: Route tactical navigation to our dedicated server
     buildConfigField("String", "OSRM_BASE_URL", "\"$osrmBaseUrl\"")
 
-    // 🟢 THE FIX: Injected as a primitive kotlin.Long so the Kotlin compiler enforces type safety without broken imports
     buildConfigField("kotlin.Long", "PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER", "${playIntegrityProjectNumLong}L")
 }
 // --------------------------
@@ -106,10 +97,7 @@ kotlin {
             // Hardware Security & Attestation
             implementation("com.google.android.play:integrity:1.4.0")
 
-            // 🛠️ MINOR FIX: Replaced unstable alpha with stable release
             implementation("androidx.security:security-crypto:1.0.0")
-
-            // 🛡️ THE FIX: Added AndroidX Biometric to resolve imports
             implementation("androidx.biometric:biometric:1.1.0")
 
             // ML Kit (On-Device Face & Text Privacy Redaction)
@@ -119,8 +107,6 @@ kotlin {
             // Ktor Android Engine (For PanApiClient)
             implementation("io.ktor:ktor-client-okhttp:2.3.11")
 
-            // 🟢 THE FIX: Re-added UWB dependency required by AndroidUwbClient
-            // TODO (Q3): Required for real BLE OOB handshake and ranging
             implementation("androidx.core.uwb:uwb:1.0.0-alpha08")
         }
 
@@ -139,12 +125,14 @@ kotlin {
             // Serialization (For AgentModels.kt)
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
-            // Ktor (Network Client for the REST APIs)
+            // Ktor (Network Client for the REST APIs) 
             implementation("io.ktor:ktor-client-core:2.3.11")
             implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
             implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
+            
+            // 🟢 NEW: Ktor WebSockets Plugin for real-time dispatch 
+            implementation("io.ktor:ktor-client-websockets:2.3.11")
 
-            // 🛠️ THE FIX 5: Promoted Coil from unstable alpha to 3.0.4 stable
             implementation("io.coil-kt.coil3:coil-compose:3.0.4")
             implementation("io.coil-kt.coil3:coil-network-ktor2:3.0.4")
         }
@@ -165,7 +153,6 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     buildFeatures {
-        // Disabled: We use the gmazzo BuildConfig plugin instead for KMP compatibility
         buildConfig = false
     }
 
@@ -188,7 +175,6 @@ android {
 
     buildTypes {
         getByName("release") {
-            // 🛠️ THE FIX 4: Enabled R8 minification/obfuscation to protect financial logic & keys
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

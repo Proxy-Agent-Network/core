@@ -28,20 +28,15 @@ async def ingest_telemetry(request: Request, agent_identity: dict = Depends(veri
     try:
         data = await request.json()
     except Exception:
-        # 🛡️ FIX: Return proper 400 so the Android client knows the request failed
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
     lat = data.get("lat") or data.get("latitude")
     lon = data.get("lon") or data.get("longitude") or data.get("lng")
     
-    # Cryptographically enforce the Agent ID from the validated token,
-    # preventing location spoofing by malicious actors.
     # 🟢 PILOT BYPASS: Handle raw string returned by the pilot mock token
     agent_id = agent_identity if isinstance(agent_identity, str) else agent_identity.get("agent_id")
     status = data.get("status", "ONLINE")
 
-    # 🛡️ FIX: Raise HTTP 400 (not 200) so the Android client sees a real failure
-    # and can log it. Returning 200 with an error body was masking silent GPS failures.
     if lat is None or lon is None:
         raise HTTPException(status_code=400, detail="Missing lat/lon keys")
 
@@ -53,11 +48,8 @@ async def ingest_telemetry(request: Request, agent_identity: dict = Depends(veri
 
     redis_client = request.app.state.redis_client
     
-    # 🛡️ FIX: Standardized key to pan:agent:{id} namespace — was agent:{id} which
-    # broke the pan: prefix convention used everywhere else in the codebase.
     agent_key = f"pan:agent:{agent_id}"
     await redis_client.hset(agent_key, mapping={"lat": lat, "lon": lon, "status": status})
-    # Reset TTL on every ping so active agents never expire
     await redis_client.expire(agent_key, AGENT_STATE_TTL_SECONDS)
 
     await redis_client.geoadd("pan:agent_locations", (lon, lat, agent_id))
@@ -90,13 +82,10 @@ async def update_agent_status(
     Handles the 'GO ONLINE' / 'GO OFFLINE' toggle from the mobile app.
     Syncs the agent's current location, service radius, and hardware loadout.
     """
-    # 🟢 PILOT BYPASS: Handle raw string returned by the pilot mock token
     agent_id = agent_identity if isinstance(agent_identity, str) else agent_identity.get("agent_id")
     redis_client = request.app.state.redis_client
 
     # 1. Update Core Agent State
-    # 🛡️ FIX: Standardized key to pan:agent:{id} — was agent:{id} which broke the
-    # pan: prefix convention and made the WebSocket SCAN miss these keys.
     agent_key = f"pan:agent:{agent_id}"
     await redis_client.hset(agent_key, mapping={
         "status": payload.status,
@@ -105,7 +94,6 @@ async def update_agent_status(
         "radius_miles": payload.radius,
         "last_active": payload.timestamp
     })
-    # 🛡️ FIX: Reset 30-day TTL on every status update so active agents never expire
     await redis_client.expire(agent_key, AGENT_STATE_TTL_SECONDS)
 
     # 2. Sync Hardware Loadout
@@ -116,7 +104,6 @@ async def update_agent_status(
     if payload.status == "ONLINE":
         await redis_client.geoadd("pan:agent_locations", (payload.longitude, payload.latitude, agent_id))
     else:
-        # Remove offline agents from the spatial index so the Matching Engine ignores them
         await redis_client.zrem("pan:agent_locations", agent_id)
 
     # 4. Broadcast to Ops Hub UI
@@ -134,13 +121,77 @@ async def update_agent_status(
     return {"status": "success"}
 
 
-# --- WEBSOCKET STREAM ---
+# --- WEBSOCKET STREAMS ---
+
+@router.websocket("/v1/agent/stream")
+async def agent_mission_stream(websocket: WebSocket):
+    """
+    Persistent WebSocket connection for the Mobile App.
+    Replaces the HTTP polling loop, pushing missions instantly to the agent.
+    """
+    # 🟢 PILOT BYPASS: For web sockets, we accept the token/id via query params 
+    # since Android's native WS client struggles with custom auth headers.
+    token = websocket.query_params.get("token")
+    agent_id = websocket.query_params.get("agent_id")
+    
+    if not token or not agent_id:
+        logger.warning("🚨 [WEBSOCKET] Agent connection rejected: Missing token or agent_id.")
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    logger.info(f"🟢 [AGENT_WS] Agent {agent_id} connected to real-time mission stream.")
+    
+    redis_client = websocket.app.state.redis_client
+    pubsub = redis_client.pubsub()
+    
+    # Listen exclusively to this agent's personal dispatch channel and the global clear channel
+    personal_dispatch_channel = f"agent:{agent_id}:dispatch"
+    clear_channel = "pan:stream:mission_cleared"
+    
+    try:
+        await pubsub.subscribe(personal_dispatch_channel, clear_channel)
+        
+        ping_counter = 0
+        while True:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if message is not None:
+                payload_str = message["data"]
+                channel_str = message["channel"].decode('utf-8') if isinstance(message["channel"], bytes) else message["channel"]
+                
+                try:
+                    parsed_payload = json.loads(payload_str)
+                except json.JSONDecodeError:
+                    continue
+                
+                if channel_str == personal_dispatch_channel:
+                    await websocket.send_json({"type": "NEW_MISSION", "payload": parsed_payload})
+                elif channel_str == clear_channel:
+                    # Only pass the clear event if it belongs to this agent
+                    if parsed_payload.get("agent_id") == agent_id:
+                        await websocket.send_json({"type": "MISSION_CLEARED", "payload": parsed_payload})
+            
+            # Keepalive Heartbeat to prevent load balancers from dropping the idle connection
+            ping_counter += 1
+            if ping_counter >= 3000:
+                await websocket.send_json({"type": "HEARTBEAT"})
+                ping_counter = 0
+                
+            await asyncio.sleep(0.01)
+
+    except WebSocketDisconnect:
+        logger.info(f"🔴 [AGENT_WS] Agent {agent_id} disconnected.")
+    except Exception as e:
+        logger.error(f"❌ [AGENT_WS] Stream crashed for {agent_id}: {str(e)}", exc_info=True)
+    finally:
+        await pubsub.unsubscribe()
+        if hasattr(pubsub, 'close'):
+            await pubsub.close()
+
 
 @router.websocket("/v1/telemetry/stream")
 async def websocket_telemetry_endpoint(websocket: WebSocket):
     # Production Token Fallback Guard (Ops Hub UI Auth)
-    # Note: query param tokens appear in access logs. Acceptable for internal
-    # Ops Hub — do not use this pattern for external-facing WebSocket endpoints.
     expected_token = os.getenv("OPS_HUB_TOKEN")
     if not expected_token:
         if os.getenv("ENVIRONMENT") == "production":
@@ -163,15 +214,10 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
     # --- 1. STATE REHYDRATION ---
     try:
         # Sync Active Agents
-        # 🛡️ FIX: Updated SCAN pattern to pan:agent:* to match standardized key convention.
-        # Was agent:* which only worked because of the old naming inconsistency.
-        # TODO(scale): Replace SCAN with SMEMBERS pan:agents:active index before fleet-scale
-        # deployment — SCAN is O(N) and will slow down rehydration at high agent counts.
         cursor = 0
         while True:
             cursor, keys = await redis_client.scan(cursor=cursor, match="pan:agent:*", count=100)
             for key in keys:
-                # Skip sub-keys like pan:agent:{id}:loadout and pan:agent:{id}:orders
                 key_str = key.decode('utf-8') if isinstance(key, bytes) else key
                 if key_str.count(':') != 2:
                     continue
@@ -303,8 +349,6 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                     logger.info("🔴 [OPS_HUB] Command Center UI disconnected cleanly.")
                     break
                 except Exception as e:
-                    # 🛡️ FIX: Log exceptions instead of silently swallowing them.
-                    # Silent swallow was masking dispatch command failures during live ops.
                     logger.error(f"[OPS_HUB] websocket_reader error: {e}")
                     continue
 

@@ -29,11 +29,18 @@ fun MissionAlertOverlay(
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
+    // 🟢 FIX: Safely convert the role (which is likely an Enum) into a String first
+    val isSentry = activeMission?.role.toString().uppercase() == "SENTRY"
+
+    val alertTitle = if (isSentry) "SENTRY DISPATCH" else "RESCUE DISPATCH"
+    val titleColor = if (isSentry) PanColors.WarningOrange else Color(0xFFF44336)
+    val flashColor = if (isSentry) PanColors.WarningOrange else PanColors.QualifiedGreen
+
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
-        Box(modifier = Modifier.fillMaxSize().background(PanColors.QualifiedGreen.copy(alpha = flashAlpha)))
+        Box(modifier = Modifier.fillMaxSize().background(flashColor.copy(alpha = flashAlpha)))
 
         Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
@@ -45,20 +52,20 @@ fun MissionAlertOverlay(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                Box(modifier = Modifier.size(32.dp).background(Color(0xFFF44336), CircleShape), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(32.dp).background(titleColor, CircleShape), contentAlignment = Alignment.Center) {
                     Text("!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    "RESCUE DISPATCH",
-                    color = Color(0xFFF44336),
+                    text = alertTitle,
+                    color = titleColor,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 1.sp,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Box(modifier = Modifier.size(32.dp).background(Color(0xFFF44336), CircleShape), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(32.dp).background(titleColor, CircleShape), contentAlignment = Alignment.Center) {
                     Text("!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
                 }
             }
@@ -67,7 +74,7 @@ fun MissionAlertOverlay(
                 modifier = Modifier.fillMaxWidth().height(12.dp).background(PanColors.SurfaceMid, shape = RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.CenterStart
             ) {
-                Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(countdownProgress).background(PanColors.QualifiedGreen, shape = RoundedCornerShape(8.dp)))
+                Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(countdownProgress).background(flashColor, shape = RoundedCornerShape(8.dp)))
             }
 
             val rawBounty = activeMission?.bountyUsd ?: 0.0
@@ -79,11 +86,8 @@ fun MissionAlertOverlay(
             Text("GUARANTEED NET PAYOUT", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Text(formattedBounty, color = PanColors.QualifiedGreen, fontSize = 48.sp, fontWeight = FontWeight.Black)
 
-            // 🟢 FIX: We now correctly map to the Intersection instead of displaying the VIN.
             Text(activeMission?.intersection ?: "Broadway / Dobson", color = PanColors.WarningOrange, fontSize = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
 
-            // 🟢 FIX: Formats the fault code by removing underscores and uppercasing it
-            // ensuring we never show a red "Unknown Error" again.
             val displayFault = activeMission?.errorCode?.replace("_", " ")?.uppercase() ?: "UNKNOWN FAULT"
             Text(displayFault, color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
 

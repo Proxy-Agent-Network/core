@@ -32,32 +32,33 @@ fun OnSceneTerminal(
     activeMission: MissionData?,
     capturedEvidence: List<ByteArray>,
     isProcessingRedaction: Boolean,
-    isResolving: Boolean, 
-    terminalLogs: List<String>, 
+    isResolving: Boolean,
+    terminalLogs: List<String>,
     hasCameraPermission: Boolean,
-    extensionRequest: SentryExtensionRequest?, 
+    extensionRequest: SentryExtensionRequest?,
     onRequestCameraPermission: () -> Unit,
     onCapturePhoto: () -> Unit,
     onRemovePhoto: (Int) -> Unit,
-    onSubmitEvidence: () -> Unit, 
-    onAcceptExtension: (String, Int, Double) -> Unit, 
-    onDeclineExtension: () -> Unit, 
+    onSubmitEvidence: () -> Unit,
+    onAcceptExtension: (String, Int, Double) -> Unit,
+    onDeclineExtension: () -> Unit,
     onVerifyIdentity: (onResult: (Boolean) -> Unit) -> Unit,
-    onLogEntry: (String) -> Unit // 🛡️ FIXED: Callback bridge for UI-driven logs
+    onLogEntry: (String) -> Unit
 ) {
+    // 🟢 FIX: Safely convert the role into a String first
+    val isSentry = activeMission?.role.toString().uppercase() == "SENTRY"
+
     var biometricsPassed by remember { mutableStateOf(true) }
     var isVerifyingBiometrics by remember { mutableStateOf(false) }
     val requiredPhotos = 2
 
     LaunchedEffect(activeMission) {
-        biometricsPassed = activeMission?.requiresAttestation != true 
-        // 🛡️ HOLE 3 FIXED: Attestation warning restored
+        biometricsPassed = activeMission?.requiresAttestation != true
         if (!biometricsPassed) {
             onLogEntry("WARNING: Identity verification required for this asset.")
         }
     }
 
-    // 🛡️ HOLE 1 FIXED: PrivacyFilter feedback restored
     LaunchedEffect(isProcessingRedaction) {
         if (isProcessingRedaction) {
             onLogEntry("PrivacyFilter: Redacting PII and scaling to 720p...")
@@ -71,8 +72,21 @@ fun OnSceneTerminal(
             modifier = Modifier.fillMaxWidth().padding(16.dp).background(Color(0xFF0D1117)).padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("📟 AV DIAGNOSTIC TERMINAL", color = Color(0xFF00FF00), fontSize = 16.sp, fontWeight = FontWeight.Black)
+            val titleText = if (isSentry) "🚧 SENTRY TRAFFIC CONTROL" else "📟 AV DIAGNOSTIC TERMINAL"
+            val titleColor = if (isSentry) Color(0xFFFF9800) else Color(0xFF00FF00)
+
+            Text(titleText, color = titleColor, fontSize = 16.sp, fontWeight = FontWeight.Black)
             Spacer(modifier = Modifier.height(12.dp))
+
+            if (isSentry) {
+                Text(
+                    text = "INSTRUCTIONS: Park near the scene. If the primary agent is already there, greet them. Stand 20 feet behind the AV and redirect traffic around the AV while the primary clears the error.",
+                    color = Color(0xFFCCCCCC),
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 8.dp).padding(bottom = 12.dp)
+                )
+            }
 
             Box(modifier = Modifier.fillMaxWidth().height(140.dp).background(Color.Black, RoundedCornerShape(8.dp)).border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp)).padding(12.dp)) {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -93,10 +107,8 @@ fun OnSceneTerminal(
                             isVerifyingBiometrics = false
                             if (success) {
                                 biometricsPassed = true
-                                // 🛡️ HOLE 2 FIXED: Biometric success feedback restored
                                 onLogEntry("Identity verified via StrongBox.")
                             } else {
-                                // 🛡️ HOLE 2 FIXED: Biometric failure feedback restored
                                 onLogEntry("ERROR: Verification failed.")
                             }
                         }
@@ -106,7 +118,7 @@ fun OnSceneTerminal(
                 if (capturedEvidence.isNotEmpty()) {
                     Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         capturedEvidence.forEachIndexed { index, imgBytes ->
-                            EvidenceThumbnail(index, imgBytes, onRemovePhoto)
+                            EvidenceThumbnail(index, imgBytes, isSentry, onRemovePhoto)
                         }
                     }
                 }
@@ -117,6 +129,7 @@ fun OnSceneTerminal(
                     isProcessingRedaction = isProcessingRedaction,
                     isResolving = isResolving,
                     hasCameraPermission = hasCameraPermission,
+                    isSentry = isSentry,
                     onCapturePhoto = onCapturePhoto,
                     onRequestCameraPermission = onRequestCameraPermission,
                     onSubmit = onSubmitEvidence
@@ -164,11 +177,17 @@ fun SentryExtensionOverlay(request: SentryExtensionRequest, onAccept: () -> Unit
 }
 
 @Composable
-fun EvidenceThumbnail(index: Int, imgBytes: ByteArray, onRemove: (Int) -> Unit) {
+fun EvidenceThumbnail(index: Int, imgBytes: ByteArray, isSentry: Boolean, onRemove: (Int) -> Unit) {
+    val labelText = if (isSentry) {
+        if (index == 0) "SETUP" else "TRAFFIC"
+    } else {
+        if (index == 0) "BEFORE" else "AFTER"
+    }
+
     Box(modifier = Modifier.size(80.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
         AsyncImage(model = imgBytes, contentDescription = "Evidence", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         Box(modifier = Modifier.align(Alignment.BottomStart).background(Color(0xAA000000)).padding(4.dp)) {
-            Text(if (index == 0) "BEFORE" else "AFTER", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            Text(labelText, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
         }
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp).background(Color(0xAA000000), RoundedCornerShape(11.dp)).clickable { onRemove(index) }, contentAlignment = Alignment.Center) {
             Text("✕", color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -177,16 +196,29 @@ fun EvidenceThumbnail(index: Int, imgBytes: ByteArray, onRemove: (Int) -> Unit) 
 }
 
 @Composable
-fun ActionButtons(evidenceCount: Int, requiredPhotos: Int, isProcessingRedaction: Boolean, isResolving: Boolean, hasCameraPermission: Boolean, onCapturePhoto: () -> Unit, onRequestCameraPermission: () -> Unit, onSubmit: () -> Unit) {
+fun ActionButtons(
+    evidenceCount: Int,
+    requiredPhotos: Int,
+    isProcessingRedaction: Boolean,
+    isResolving: Boolean,
+    hasCameraPermission: Boolean,
+    isSentry: Boolean,
+    onCapturePhoto: () -> Unit,
+    onRequestCameraPermission: () -> Unit,
+    onSubmit: () -> Unit
+) {
+    val btnTextCapture = if (isSentry) "CAPTURE SCENE (${evidenceCount}/$requiredPhotos)" else "CAPTURE PHOTO (${evidenceCount}/$requiredPhotos)"
+    val btnTextSubmit = if (isSentry) "SECURE SCENE & SUBMIT" else "RE-RUN DIAGNOSTICS & SUBMIT"
+
     if (evidenceCount < requiredPhotos) {
         Button(enabled = !isProcessingRedaction, onClick = { if (hasCameraPermission) onCapturePhoto() else onRequestCameraPermission() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), disabledContainerColor = Color(0xFF1B3D20)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)) {
             if (isProcessingRedaction) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
-            else Text("CAPTURE PHOTO (${evidenceCount}/$requiredPhotos)", color = Color.White, fontWeight = FontWeight.Black)
+            else Text(btnTextCapture, color = Color.White, fontWeight = FontWeight.Black)
         }
     } else {
         Button(enabled = !isResolving && !isProcessingRedaction, onClick = onSubmit, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4), disabledContainerColor = Color(0xFF1E3538)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)) {
             if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black)
-            else Text("RE-RUN DIAGNOSTICS & SUBMIT", color = Color.Black, fontWeight = FontWeight.Black)
+            else Text(btnTextSubmit, color = Color.Black, fontWeight = FontWeight.Black)
         }
     }
 }

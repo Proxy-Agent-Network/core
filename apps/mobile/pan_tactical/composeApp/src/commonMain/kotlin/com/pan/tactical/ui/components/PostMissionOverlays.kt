@@ -41,7 +41,7 @@ fun PostMissionOverlays(
         }
     } else if (missionState == "COMPLETED") {
 
-        // 🟢 FIX: Convert raw MS from ViewModel into user-friendly Minutes & Seconds
+        // --- TIME CALCULATIONS ---
         val totalSecs = (totalResponseTimeMs / 1000).toInt()
         val totalMins = totalSecs / 60
         val remSecs = totalSecs % 60
@@ -54,6 +54,19 @@ fun PostMissionOverlays(
         val travelSecs = (travelMs / 1000).toInt()
         val travelMins = travelSecs / 60
         val remTravelSecs = travelSecs % 60
+        // -------------------------
+
+        // 🟢 THE FIX: Audit Category Color Shift
+        // Based on internal SLAs and SB 1417 audit tracking:
+        // Optimal (Green) < 12m
+        // Watchlist (Yellow) 12m - 20m
+        // Critical (Orange/Red) >= 20m
+
+        val tacticalColor = when {
+            totalSecs < 720 -> Color(0xFF4CAF50) // < 12 mins (Qualified Green)
+            totalSecs < 1200 -> Color(0xFFFF9800) // 12 - 20 mins (Warning Orange)
+            else -> Color(0xFFF44336) // >= 20 mins (Critical Red)
+        }
 
         Box(
             modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp),
@@ -75,7 +88,6 @@ fun PostMissionOverlays(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // 🟢 FIX: Added the detailed breakdown of the mission timing
                 Column(
                     modifier = Modifier.fillMaxWidth().background(Color(0xFF2A2A2A), RoundedCornerShape(8.dp)).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -89,9 +101,11 @@ fun PostMissionOverlays(
                         Text("${sceneMins}m ${remSceneSecs}s", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     HorizontalDivider(color = Color.DarkGray)
+
+                    // 🟢 THE FIX: Applied the dynamic color here to the label and value
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("TOTAL MISSION TIME", color = Color(0xFF00BCD4), fontSize = 14.sp, fontWeight = FontWeight.Black)
-                        Text("${totalMins}m ${remSecs}s", color = Color(0xFF00BCD4), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                        Text("TOTAL MISSION TIME", color = tacticalColor, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                        Text("${totalMins}m ${remSecs}s", color = tacticalColor, fontSize = 14.sp, fontWeight = FontWeight.Black)
                     }
                 }
 

@@ -16,9 +16,13 @@ interface WalletNetworkClient {
     suspend fun fetchActiveMissions(): List<MissionData>
     suspend fun acknowledgeMission(taskId: String): Boolean
     suspend fun completeMission(taskId: String, evidenceUrls: List<String>): Boolean
-    
-    // 🟢 ADDED: Optional reason parameter for aborts
     suspend fun declineMission(taskId: String, reason: String? = null): Boolean
+    
+    // 🟢 NEW: The persistent WebSocket listener for real-time dispatch
+    suspend fun listenForMissions(
+        onMissionAssigned: (MissionData) -> Unit,
+        onMissionCleared: () -> Unit
+    )
     
     // --- Developer & Hardware Ops ---
     suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean

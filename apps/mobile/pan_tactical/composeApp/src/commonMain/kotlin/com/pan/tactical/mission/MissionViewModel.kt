@@ -51,7 +51,7 @@ class MissionViewModel(
     val uiState: StateFlow<MissionUiState> = _uiState.asStateFlow()
 
     private var currentRank: AgentRank? = null
-    private var pollingJob: Job? = null
+    private var socketJob: Job? = null
 
     private var agentPayoutMultiplier: Double = 0.80
 
@@ -63,16 +63,10 @@ class MissionViewModel(
             if (data != null) {
                 val missions = data.missionsCompleted
                 currentRank = rankForMissions(missions)
-
-                // All Vanguard 50 agents are Veteran/FR tier.
                 agentPayoutMultiplier = 0.90
-
                 _uiState.update { it.copy(missionsCompleted = missions) }
             }
 
-            // 🛡️ FIX: Boot-Time State Recovery
-            // If the app crashed or closed, pull the active mission from the backend
-            // and forcefully resume the UI where the agent left off.
             try {
                 val activeMissions = apiClient.fetchActiveMissions()
                 if (activeMissions.isNotEmpty()) {
@@ -86,12 +80,12 @@ class MissionViewModel(
                         it.copy(
                             isOnline = true,
                             activeMission = safeMission,
-                            // Jump straight to ACTIVE so the user doesn't have to re-accept after a crash
                             missionPhase = MissionPhase.ACTIVE,
                             missionAcceptTime = getCurrentTimeMs()
                         )
                     }
                     apiClient.updatePresence(true)
+                    startSocketListener()
                 }
             } catch (e: Exception) {
                 println("[MISSION_VM] Polling error during boot restore: ${e.message}")
@@ -112,7 +106,7 @@ class MissionViewModel(
             } finally {
                 apiClient.updatePresence(true)
                 _uiState.update { it.copy(isOnline = true, isProcessing = false) }
-                startPolling()
+                startSocketListener()
             }
         }
     }
@@ -121,7 +115,7 @@ class MissionViewModel(
         _uiState.update { it.copy(isProcessing = true) }
         scope.launch {
             delay(800)
-            stopPolling()
+            stopSocketListener()
             try {
                 apiClient.updatePresence(false)
             } catch (e: Exception) {
@@ -132,36 +126,43 @@ class MissionViewModel(
         }
     }
 
-    // ─── MISSION POLLING ──────────────────────────────────────────────────────
+    // ─── MISSION SOCKET STREAM ────────────────────────────────────────────────
 
-    private fun startPolling() {
-        pollingJob?.cancel()
-        pollingJob = scope.launch {
-            while (_uiState.value.isOnline && _uiState.value.missionPhase == MissionPhase.IDLE) {
-                try {
-                    val incoming = apiClient.fetchActiveMissions()
-                    if (incoming.isNotEmpty()) {
-                        val mission = incoming.first()
+    private fun startSocketListener() {
+        socketJob?.cancel()
+        socketJob = scope.launch {
+            try {
+                walletClient.listenForMissions(
+                    onMissionAssigned = { mission ->
+                        if (_uiState.value.missionPhase == MissionPhase.IDLE) {
+                            val safeLat = if (mission.lat == 0.0) 33.3061 else mission.lat
+                            val safeLon = if (mission.lon == 0.0) -111.6601 else mission.lon
+                            val safeMission = mission.copy(lat = safeLat, lon = safeLon)
 
-                        // 🛡️ Q3 HARDWARE BYPASS: Inject coordinates if backend failed to provide them
-                        val safeLat = if (mission.lat == 0.0) 33.3061 else mission.lat
-                        val safeLon = if (mission.lon == 0.0) -111.6601 else mission.lon
-                        val safeMission = mission.copy(lat = safeLat, lon = safeLon)
+                            _uiState.update { it.copy(activeMission = safeMission, missionPhase = MissionPhase.PENDING) }
+                        }
+                    },
+                    onMissionCleared = {
+                        // 🟢 FIX: Prevent race conditions. Never destroy the mission state if the UI
+                        // is currently transitioning, on the final debrief screen, or filling out feedback.
+                        val currentPhase = _uiState.value.missionPhase
+                        if (currentPhase != MissionPhase.COMPLETED &&
+                            currentPhase != MissionPhase.ON_SCENE &&
+                            !_uiState.value.showFeedbackScreen) {
 
-                        _uiState.update { it.copy(activeMission = safeMission, missionPhase = MissionPhase.PENDING) }
-                        break
+                            _uiState.update { it.copy(missionPhase = MissionPhase.IDLE, activeMission = null) }
+                        }
                     }
-                } catch (e: Exception) {
-                    println("[MISSION_VM] Polling error: ${e.message}")
-                }
-                delay(3000)
+                )
+            } catch (e: Exception) {
+                println("[MISSION_VM] Socket listener crashed: ${e.message}")
             }
         }
     }
 
-    private fun stopPolling() {
-        pollingJob?.cancel()
-        pollingJob = null
+    private fun stopSocketListener() {
+        socketJob?.cancel()
+        socketJob = null
     }
 
     // ─── MISSION LIFECYCLE EVENTS ─────────────────────────────────────────────
@@ -203,7 +204,6 @@ class MissionViewModel(
         _uiState.update {
             it.copy(missionPhase = MissionPhase.IDLE, activeMission = null)
         }
-        if (_uiState.value.isOnline) startPolling()
     }
 
     fun onMissionAborted(reason: String) {
@@ -229,7 +229,6 @@ class MissionViewModel(
                 sceneArrivalTime = 0L
             )
         }
-        if (_uiState.value.isOnline) startPolling()
     }
 
     fun onArrivedAtScene() {
@@ -316,7 +315,6 @@ class MissionViewModel(
                     sceneArrivalTime = 0L
                 )
             }
-            if (_uiState.value.isOnline) startPolling()
         }
     }
 
@@ -336,6 +334,6 @@ class MissionViewModel(
     }
 
     fun close() {
-        stopPolling()
+        stopSocketListener()
     }
 }

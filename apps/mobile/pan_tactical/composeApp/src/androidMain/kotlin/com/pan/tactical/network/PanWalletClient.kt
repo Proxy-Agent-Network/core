@@ -2,6 +2,7 @@
 package com.pan.tactical.network
 
 import android.util.Log
+import com.pan.tactical.models.MissionData
 import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.TransactionLog
 import com.pan.tactical.ui.WalletNetworkClient
@@ -10,11 +11,14 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import io.ktor.websocket.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -108,6 +112,10 @@ class PanWalletClient : WalletNetworkClient {
     private val client = HttpClient(OkHttp) {
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
+        }
+        // 🟢 NEW: Installed the WebSocket plugin with active keepalives
+        install(WebSockets) {
+            pingInterval = 20_000
         }
         engine {
             config {
@@ -281,7 +289,6 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 NEW: Safely fetches the turn-by-turn road polyline from OSRM
     suspend fun getTacticalRoute(startLat: Double, startLon: Double, endLat: Double, endLon: Double): List<Pair<Double, Double>> {
         return withContext(Dispatchers.IO) {
             try {
@@ -411,6 +418,54 @@ class PanWalletClient : WalletNetworkClient {
                 }
                 response.status.isSuccess()
             } catch (e: Exception) { false }
+        }
+    }
+
+    // 🟢 NEW: The persistent real-time stream that replaces the 3-second poller
+    override suspend fun listenForMissions(
+        onMissionAssigned: (MissionData) -> Unit,
+        onMissionCleared: () -> Unit
+    ) {
+        val wsUrl = hostUrl.replace("http://", "ws://")
+
+        while (true) {
+            try {
+                val jwt = getFreshJwt()
+                client.webSocket("$wsUrl/api/v1/agent/stream?token=$jwt&agent_id=$secureUid") {
+                    Log.i(TAG, "🟢 [WEBSOCKET] Connected to real-time dispatch stream.")
+
+                    // Double-check for missions immediately upon connection to clear any races
+                    val activeMissions = fetchActiveMissions()
+                    if (activeMissions.isNotEmpty()) {
+                        withContext(Dispatchers.Main) { onMissionAssigned(activeMissions.first()) }
+                    }
+
+                    for (frame in incoming) {
+                        if (frame !is Frame.Text) continue
+                        val text = frame.readText()
+
+                        try {
+                            val json = Json.parseToJsonElement(text).jsonObject
+                            val type = json["type"]?.jsonPrimitive?.content
+
+                            if (type == "NEW_MISSION") {
+                                // If the socket signals a dispatch, pull the safe object via HTTP
+                                val currentMissions = fetchActiveMissions()
+                                if (currentMissions.isNotEmpty()) {
+                                    withContext(Dispatchers.Main) { onMissionAssigned(currentMissions.first()) }
+                                }
+                            } else if (type == "MISSION_CLEARED") {
+                                withContext(Dispatchers.Main) { onMissionCleared() }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing WS frame: ${e.message}")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "🔴 [WEBSOCKET] Connection dropped. Reconnecting in 3s... (${e.message})")
+                delay(3000)
+            }
         }
     }
 

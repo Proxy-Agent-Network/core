@@ -210,6 +210,12 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, in
             await redis_client.expire(incident_agents_key, 3600) # 1 hr TTL
             
         logger.info(f"✅ Dispatched {task_id} to {assigned_id}")
+
+        # 🟢 NEW: Fire the real-time WebSocket trigger!
+        await redis_client.publish(f"agent:{assigned_id}:dispatch", json.dumps({
+            "task_id": task_id,
+            "status": "ASSIGNED"
+        }))
     else:
         # Append to Agent's sticky queue
         await redis_client.rpush(f"agent:{assigned_id}:queue", task_id)
