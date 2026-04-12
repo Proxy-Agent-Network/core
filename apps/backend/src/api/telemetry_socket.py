@@ -36,7 +36,8 @@ async def ingest_telemetry(request: Request, agent_identity: dict = Depends(veri
     
     # Cryptographically enforce the Agent ID from the validated token,
     # preventing location spoofing by malicious actors.
-    agent_id = agent_identity.get("agent_id")
+    # 🟢 PILOT BYPASS: Handle raw string returned by the pilot mock token
+    agent_id = agent_identity if isinstance(agent_identity, str) else agent_identity.get("agent_id")
     status = data.get("status", "ONLINE")
 
     # 🛡️ FIX: Raise HTTP 400 (not 200) so the Android client sees a real failure
@@ -89,7 +90,8 @@ async def update_agent_status(
     Handles the 'GO ONLINE' / 'GO OFFLINE' toggle from the mobile app.
     Syncs the agent's current location, service radius, and hardware loadout.
     """
-    agent_id = agent_identity.get("agent_id")
+    # 🟢 PILOT BYPASS: Handle raw string returned by the pilot mock token
+    agent_id = agent_identity if isinstance(agent_identity, str) else agent_identity.get("agent_id")
     redis_client = request.app.state.redis_client
 
     # 1. Update Core Agent State

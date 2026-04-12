@@ -26,7 +26,10 @@ from ops.sla_monitor import run_sla_monitor
 
 # 🛠️ NEW: Import missing dependencies for Lifespan initialization
 from reputation.reputation_engine import ReputationEngine
-from integrations.insurtech_client import InsurTechClient
+
+# 🛡️ Q3 HARDWARE/POLICY BYPASS: Disabled InsurTech Client initialization
+# TODO (Q3): Re-enable InsurTech integration once hardware/policies are ready
+# from integrations.insurtech_client import InsurTechClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Panopticon_Master")
@@ -66,14 +69,14 @@ async def lifespan(app: FastAPI):
     )
     logger.info(f"✅ Reputation Engine initialized with taxonomy: {taxonomy_path}")
 
-    # BUG 3 FIX: Instantiate the InsurTech Client to bind micro-policies during dispatch
-    insurtech_client = InsurTechClient()
-    app.state.insurtech_client = insurtech_client
-    logger.info("🛡️ InsurTech Client initialized.")
+    # 🛡️ Q3 HARDWARE/POLICY BYPASS: Disabled InsurTech Client initialization
+    # insurtech_client = InsurTechClient()
+    # app.state.insurtech_client = insurtech_client
+    # logger.info("🛡️ InsurTech Client initialized.")
 
-    # Pass both redis and insurtech_client to the matching engine
+    # Pass redis and None for insurtech_client (Q3 Bypass) to the matching engine
     engine_task = asyncio.create_task(
-        run_matching_engine(app.state.redis_client, insurtech_client),
+        run_matching_engine(app.state.redis_client, None),
         name="matching_engine"
     )
     app.state.matching_engine_task = engine_task

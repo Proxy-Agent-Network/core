@@ -1,9 +1,7 @@
 package com.pan.tactical.ui.mission
 
 import com.pan.tactical.getCurrentTimeMs
-import com.pan.tactical.hardware.HardwareCommandBridge
 import com.pan.tactical.models.MissionData
-// 🛡️ FIX: Removed the illegal import. commonMain cannot import androidMain classes.
 import com.pan.tactical.ui.WalletNetworkClient
 import com.pan.tactical.ui.components.AgentRank
 import com.pan.tactical.ui.components.rankForMissions
@@ -45,10 +43,8 @@ data class MissionUiState(
 // ─── VIEW MODEL ──────────────────────────────────────────────────────────────
 
 class MissionViewModel(
-    // 🛡️ FIX: Program to the shared interface, not the concrete Android implementation.
     private val apiClient: WalletNetworkClient,
     private val walletClient: WalletNetworkClient,
-    private val hardwareBridge: HardwareCommandBridge,
     private val scope: CoroutineScope
 ) {
     private val _uiState = MutableStateFlow(MissionUiState())
@@ -57,14 +53,49 @@ class MissionViewModel(
     private var currentRank: AgentRank? = null
     private var pollingJob: Job? = null
 
+    private var agentPayoutMultiplier: Double = 0.80
+
     // ─── BOOT ─────────────────────────────────────────────────────────────────
 
     fun initialize() {
         scope.launch {
-            val data = walletClient.getWalletData() ?: return@launch
-            val missions = data.missionsCompleted
-            currentRank = rankForMissions(missions)
-            _uiState.update { it.copy(missionsCompleted = missions) }
+            val data = walletClient.getWalletData()
+            if (data != null) {
+                val missions = data.missionsCompleted
+                currentRank = rankForMissions(missions)
+
+                // All Vanguard 50 agents are Veteran/FR tier.
+                agentPayoutMultiplier = 0.90
+
+                _uiState.update { it.copy(missionsCompleted = missions) }
+            }
+
+            // 🛡️ FIX: Boot-Time State Recovery
+            // If the app crashed or closed, pull the active mission from the backend
+            // and forcefully resume the UI where the agent left off.
+            try {
+                val activeMissions = apiClient.fetchActiveMissions()
+                if (activeMissions.isNotEmpty()) {
+                    val mission = activeMissions.first()
+
+                    val safeLat = if (mission.lat == 0.0) 33.3061 else mission.lat
+                    val safeLon = if (mission.lon == 0.0) -111.6601 else mission.lon
+                    val safeMission = mission.copy(lat = safeLat, lon = safeLon)
+
+                    _uiState.update {
+                        it.copy(
+                            isOnline = true,
+                            activeMission = safeMission,
+                            // Jump straight to ACTIVE so the user doesn't have to re-accept after a crash
+                            missionPhase = MissionPhase.ACTIVE,
+                            missionAcceptTime = getCurrentTimeMs()
+                        )
+                    }
+                    apiClient.updatePresence(true)
+                }
+            } catch (e: Exception) {
+                println("[MISSION_VM] Polling error during boot restore: ${e.message}")
+            }
         }
     }
 
@@ -77,10 +108,8 @@ class MissionViewModel(
                 delay(800)
                 apiClient.updateLocationTelemetry(agentLat, agentLon)
             } catch (e: Exception) {
-                println("[MISSION_VM] Telemetry push failed on go-online: ${e.message}")
+                println("[MISSION_VM] Telemetry push failed: ${e.message}")
             } finally {
-                // Note: Ensure updatePresence() is declared in the WalletNetworkClient interface
-                // in commonMain, otherwise you will get an unresolved reference error here.
                 apiClient.updatePresence(true)
                 _uiState.update { it.copy(isOnline = true, isProcessing = false) }
                 startPolling()
@@ -96,7 +125,7 @@ class MissionViewModel(
             try {
                 apiClient.updatePresence(false)
             } catch (e: Exception) {
-                println("[MISSION_VM] Presence update failed on go-offline: ${e.message}")
+                println("[MISSION_VM] Presence update failed: ${e.message}")
             } finally {
                 _uiState.update { it.copy(isOnline = false, isProcessing = false) }
             }
@@ -113,8 +142,13 @@ class MissionViewModel(
                     val incoming = apiClient.fetchActiveMissions()
                     if (incoming.isNotEmpty()) {
                         val mission = incoming.first()
-                        _uiState.update { it.copy(activeMission = mission, missionPhase = MissionPhase.PENDING) }
-                        launch { hardwareBridge.onMissionIncoming() }
+
+                        // 🛡️ Q3 HARDWARE BYPASS: Inject coordinates if backend failed to provide them
+                        val safeLat = if (mission.lat == 0.0) 33.3061 else mission.lat
+                        val safeLon = if (mission.lon == 0.0) -111.6601 else mission.lon
+                        val safeMission = mission.copy(lat = safeLat, lon = safeLon)
+
+                        _uiState.update { it.copy(activeMission = safeMission, missionPhase = MissionPhase.PENDING) }
                         break
                     }
                 } catch (e: Exception) {
@@ -145,24 +179,25 @@ class MissionViewModel(
 
         scope.launch {
             if (taskId.isNotBlank()) {
-                try { apiClient.acknowledgeMission(taskId) } catch (e: Exception) {
+                try {
+                    apiClient.acknowledgeMission(taskId)
+                } catch (e: Exception) {
                     println("[MISSION_VM] ACK failed for $taskId: ${e.message}")
                 }
             }
         }
-
-        scope.launch { hardwareBridge.onMissionAccepted() }
     }
 
     fun onMissionDeclined() {
         val taskId = _uiState.value.activeMission?.taskId
         scope.launch {
             if (!taskId.isNullOrBlank()) {
-                try { apiClient.declineMission(taskId) } catch (e: Exception) {
-                    println("[MISSION_VM] Decline API call failed: ${e.message}")
+                try {
+                    apiClient.declineMission(taskId, null)
+                } catch (e: Exception) {
+                    println("[MISSION_VM] Decline API call failed for $taskId: ${e.message}")
                 }
             }
-            hardwareBridge.onMissionDeclined()
         }
 
         _uiState.update {
@@ -177,11 +212,12 @@ class MissionViewModel(
 
         scope.launch {
             if (!taskId.isNullOrBlank()) {
-                try { apiClient.declineMission(taskId, reason) } catch (e: Exception) {
-                    println("[MISSION_VM] Abort API call failed: ${e.message}")
+                try {
+                    apiClient.declineMission(taskId, reason)
+                } catch (e: Exception) {
+                    println("[MISSION_VM] Abort API call failed for $taskId: ${e.message}")
                 }
             }
-            hardwareBridge.onMissionAborted()
         }
 
         _uiState.update {
@@ -203,13 +239,13 @@ class MissionViewModel(
                 sceneArrivalTime = getCurrentTimeMs()
             )
         }
-        scope.launch { hardwareBridge.onArrivedAtScene() }
     }
 
     fun onMissionSuccess() {
         val state = _uiState.value
         val rawBounty = state.activeMission?.bountyUsd ?: 0.0
-        val finalPayout = rawBounty * 0.90
+
+        val finalPayout = rawBounty * agentPayoutMultiplier
         val now = getCurrentTimeMs()
 
         _uiState.update {
@@ -223,7 +259,6 @@ class MissionViewModel(
         }
 
         scope.launch {
-            hardwareBridge.onMissionSuccess()
             val updated = walletClient.getWalletData()
             if (updated != null) {
                 val newCount = updated.missionsCompleted
@@ -234,7 +269,7 @@ class MissionViewModel(
     }
 
     fun onMissionFailed() {
-        scope.launch { hardwareBridge.onMissionFailed() }
+        // No-op for Q3 bypass
     }
 
     // ─── POST-MISSION FLOW ────────────────────────────────────────────────────
@@ -244,7 +279,6 @@ class MissionViewModel(
             it.copy(
                 showFeedbackScreen = true,
                 feedbackTaskId = it.activeMission?.taskId ?: "",
-                // 🛡️ ACTION ITEM FIXED: Replaced hardcoded string with dynamic fleetId
                 feedbackFleetId = it.activeMission?.fleetId ?: "Vanguard Network Partner"
             )
         }
@@ -268,7 +302,6 @@ class MissionViewModel(
                     sceneArrivalTime = 0L
                 )
             }
-            scope.launch { hardwareBridge.onChainedMission() }
         } else {
             _uiState.update {
                 it.copy(
@@ -304,6 +337,5 @@ class MissionViewModel(
 
     fun close() {
         stopPolling()
-        scope.launch { hardwareBridge.close() }
     }
 }

@@ -22,55 +22,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 
-// 🛡️ FIX: Removed the illegal androidMain import!
-// import com.pan.tactical.AudioEngine
 import com.pan.tactical.ui.theme.PanColors
 import com.pan.tactical.ui.components.AgentRankCard
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-// 1. DATA MODELS
-@Serializable
-data class TransactionLog(
-    val id: String,
-    val date: String,
-    val amount: String,
-    val description: String,
-    val evidenceUrls: List<String>? = null
-)
-
-@Serializable
-data class WalletResponse(
-    val balance: Double,
-    val linkedCard: String? = null,
-    val history: List<TransactionLog>,
-    val missionsCompleted: Int = 0,
-    val vanguardTrustScore: Double = 100.0
-)
-
-// 2. THE INTERFACE (Network)
-interface WalletNetworkClient {
-    suspend fun getWalletData(): WalletResponse?
-    suspend fun linkDebitCard(maskedCardLabel: String): Result<String>
-    suspend fun withdrawFunds(amount: Double): Result<String>
-    suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean
-    suspend fun updateLocationTelemetry(lat: Double, lon: Double): Boolean
-    
-    // 🛡️ FIX: Added missing updatePresence method
-    suspend fun updatePresence(isOnline: Boolean): Boolean 
-    
-    // 🛡️ FIX: Added optional 'reason' parameter to match MissionViewModel's signature
-    suspend fun declineMission(taskId: String, reason: String? = null): Boolean 
-    
-    suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData>
-    suspend fun completeMission(taskId: String, evidenceUrls: List<String> = emptyList()): Boolean
-    suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String>
-    suspend fun acknowledgeMission(taskId: String): Boolean
-}
-
-// 3. 🛡️ NEW FIX: THE AUDIO INTERFACE
+// 1. THE AUDIO INTERFACE (Kept separate from Network logic)
 interface TacticalAudioEngine {
     fun getAvailableVoices(): List<VoiceProfile>
     fun speak(text: String, volume: Float)
@@ -97,7 +55,7 @@ fun WalletAndProfileScreen(
     onNavigateToStore: (balance: Double, missions: Int) -> Unit,
     navPreference: String,
     onNavPrefChange: (String) -> Unit,
-    audioEngine: TacticalAudioEngine, // 🛡️ FIX: Depend on the shared interface, not the concrete Android class
+    audioEngine: TacticalAudioEngine,
     voiceVolume: Float,
     onVoiceVolumeChange: (Float) -> Unit,
     alertVolume: Int,
@@ -191,7 +149,8 @@ fun WalletAndProfileScreen(
                                         try {
                                             val maskedCard = "Visa ending in $cardNumber"
 
-                                            val result = apiClient.linkDebitCard(maskedCardLabel = maskedCard)
+                                            // 🛡️ FIX: Passed the mapped parameter name expected by the interface
+                                            val result = apiClient.linkDebitCard(cardNumber = maskedCard)
 
                                             result.onSuccess {
                                                 linkedCard = maskedCard

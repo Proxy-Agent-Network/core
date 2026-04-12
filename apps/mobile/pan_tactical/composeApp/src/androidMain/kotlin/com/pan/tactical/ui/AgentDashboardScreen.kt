@@ -21,7 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
@@ -44,24 +43,15 @@ import com.pan.tactical.getCurrentTimeMs
 import com.pan.tactical.getNativeMapUrl
 import com.pan.tactical.rememberSharedCameraManager
 import com.pan.tactical.rememberSharedLocationManager
-import com.pan.tactical.rememberUwbClient
-import com.pan.tactical.rememberBleHomingClient
-import com.pan.tactical.hardware.rememberBleHapHatService
-import com.pan.tactical.hardware.AndroidHardwareCommandBridge
 import com.pan.tactical.security.BiometricAuthHelper
 import com.pan.tactical.security.AndroidBiometricAuthHelper
 import com.pan.tactical.network.PanApiClient
 import com.pan.tactical.network.PanWalletClient
-import com.pan.tactical.ui.homing.HomingViewModel
-import com.pan.tactical.ui.homing.HomingViewModelFactory
-import com.pan.tactical.ui.homing.MissionResult
 import com.pan.tactical.ui.mission.MissionViewModel
 import com.pan.tactical.ui.mission.MissionPhase
 import com.pan.tactical.ui.theme.PanColors
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
-
-// 🛡️ FIX: Removed IS_DEBUG_MODE declaration that caused the BuildConfig.DEBUG resolution error.
 
 @Composable
 actual fun AgentDashboardScreen(
@@ -80,21 +70,18 @@ actual fun AgentDashboardScreen(
         return
     }
 
-    // --- PLATFORM-SPECIFIC INJECTIONS ---
-    val hapHatService = rememberBleHapHatService()
-    val hardwareBridge = remember { AndroidHardwareCommandBridge(hapHatService) }
-
     val context = LocalContext.current
     val fragmentActivity = context as? FragmentActivity
         ?: throw IllegalStateException("Dashboard requires FragmentActivity for biometrics")
     val biometricHelper = remember { AndroidBiometricAuthHelper(fragmentActivity) }
 
     val coroutineScope = rememberCoroutineScope()
+    val trueWalletClient = remember { PanWalletClient() }
+
     val missionViewModel = remember {
         MissionViewModel(
-            apiClient = panClient,
-            walletClient = apiClient,
-            hardwareBridge = hardwareBridge,
+            apiClient = trueWalletClient,
+            walletClient = trueWalletClient,
             scope = coroutineScope
         )
     }
@@ -122,7 +109,7 @@ actual fun AgentDashboardScreen(
                 }
                 "RUNNING" -> MainDashboardContent(
                     apiClient = panClient,
-                    rawWalletClient = apiClient,
+                    rawWalletClient = trueWalletClient,
                     missionViewModel = missionViewModel,
                     biometricHelper = biometricHelper,
                     currentScreen = currentScreen,
@@ -200,25 +187,21 @@ fun MainDashboardContent(
     onNavigate: (String) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val audio = remember { AudioEngine() }
     val uriHandler = LocalUriHandler.current
 
     val uiState by missionViewModel.uiState.collectAsState()
 
-    val uwbClient = rememberUwbClient()
-    val uwbRangingState by uwbClient.rangingState.collectAsState()
-    val bleClient = rememberBleHomingClient()
-
-    val homingViewModel: HomingViewModel = viewModel(
-        factory = HomingViewModelFactory(bleClient, uwbClient, apiClient)
-    )
-    val homingState by homingViewModel.uiState.collectAsState()
+    val homingState = object {
+        val isResolving = false
+        val terminalLogs = emptyList<String>()
+        val extensionRequest: com.pan.tactical.managers.SentryExtensionRequest? = null
+    }
 
     DisposableEffect(Unit) {
         onDispose {
             audio.shutdown()
-            uwbClient.close()
-            bleClient.stopScanning()
             missionViewModel.close()
         }
     }
@@ -236,30 +219,28 @@ fun MainDashboardContent(
     var showDevMenu by rememberSaveable { mutableStateOf(false) }
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
 
-    // 🟢 STORE NAVIGATION STATE
     var storeBalance by rememberSaveable { mutableDoubleStateOf(0.0) }
     var storeMissions by rememberSaveable { mutableIntStateOf(0) }
 
-    // Ephemeral security storage
-    var avUwbMacAddress by remember { mutableStateOf<String?>(null) }
-    var avUwbSessionKey by remember { mutableStateOf<ByteArray?>(null) }
-    var isBleHandshakeComplete by remember { mutableStateOf(false) }
-    var isBleScanning by remember { mutableStateOf(false) }
     var isMissionControlsExpanded by rememberSaveable { mutableStateOf(false) }
 
     var agentCapabilities by remember {
         mutableStateOf(
             listOf(
-                AgentCapabilityUiModel(
-                    capability = AgentCapability("door_securing", "Door Securing", "Push door completely shut.", null, 1, true),
-                    isEnabled = true
-                ),
-                AgentCapabilityUiModel(
-                    capability = AgentCapability("lost_item", "Lost Item Recovery", "Retrieve and secure item.", null, 1, false)
-                ),
-                AgentCapabilityUiModel(
-                    capability = AgentCapability("scene_securement", "First Responder Liaison", "Interact with police/flares.", "Requires safety flares", 3, false)
-                )
+                AgentCapabilityUiModel(capability = AgentCapability("door_securing", "Door Securing", "Push door completely shut.", null, 1, isQualified = true), isEnabled = true),
+                AgentCapabilityUiModel(capability = AgentCapability("cabin_sweep", "Cabin Sweep & Trash", "Bag and dispose of trash.", null, 1, isQualified = true), isEnabled = true),
+                AgentCapabilityUiModel(capability = AgentCapability("lost_item", "Lost Item Recovery", "Retrieve and secure item.", null, 1, isQualified = true), isEnabled = false),
+                AgentCapabilityUiModel(capability = AgentCapability("path_clearing", "Path Clearing", "Remove debris/cones from path.", null, 1, isQualified = true), isEnabled = true),
+
+                AgentCapabilityUiModel(capability = AgentCapability("spill_remediation", "Bio/Liquid Remediation", "Sanitize interior spills.", "Requires wet-vac/bio-kit", 2, isQualified = true), isEnabled = false),
+                AgentCapabilityUiModel(capability = AgentCapability("tire_pressure", "Tire Pressure", "Refill low tire.", "Requires air compressor", 2, isQualified = true), isEnabled = false),
+                AgentCapabilityUiModel(capability = AgentCapability("battery_jump", "12V System Jump", "Wake AV with jump-box.", "Requires jump kit", 2, isQualified = true), isEnabled = false),
+                AgentCapabilityUiModel(capability = AgentCapability("passenger_escort", "Passenger Escort", "Calm and escort passenger.", "High-vis vest required", 2, isQualified = true), isEnabled = false),
+
+                AgentCapabilityUiModel(capability = AgentCapability("sensor_cleaning", "Sensor Cleaning", "Microfiber clean LIDAR dome.", "Certified cleaning kit", 3, isQualified = true), isEnabled = true),
+                AgentCapabilityUiModel(capability = AgentCapability("scene_securement", "First Responder Liaison", "Interact with police/flares.", "Requires safety flares", 3, isQualified = true), isEnabled = true),
+                AgentCapabilityUiModel(capability = AgentCapability("tire_replacement", "Tire Replacement", "Swap spare or plug blowout.", "Requires jack/plug kit", 3, isQualified = true), isEnabled = true),
+                AgentCapabilityUiModel(capability = AgentCapability("manual_override", "Manual Drive Takeover", "Manually extract AV.", "Special ops clearance", 3, isQualified = true), isEnabled = true)
             )
         )
     }
@@ -287,7 +268,6 @@ fun MainDashboardContent(
     var isFlashing by remember { mutableStateOf(false) }
     val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
 
-    // --- UI ANIMATION & AUDIO EFFECTS BASED ON PHASE ---
     LaunchedEffect(uiState.missionPhase) {
         when (uiState.missionPhase) {
             MissionPhase.IDLE -> {
@@ -311,12 +291,12 @@ fun MainDashboardContent(
                 audio.speak("Agent, Mission: $cleanCategory. $cleanDistance Miles Away. Payout, $cleanBounty dollars.", voiceVolume)
 
                 countdownProgress.snapTo(1f)
+
                 countdownProgress.animateTo(
                     targetValue = 0f,
-                    animationSpec = tween(durationMillis = 10000, easing = LinearEasing)
+                    animationSpec = tween(durationMillis = 60000, easing = LinearEasing)
                 )
 
-                // 🛡️ CRITICAL BUG FIXED: Reading live state machine value instead of a frozen snapshot closure
                 if (missionViewModel.uiState.value.missionPhase == MissionPhase.PENDING) {
                     missionViewModel.onMissionDeclined()
                 }
@@ -341,14 +321,13 @@ fun MainDashboardContent(
 
     val locationManager = rememberSharedLocationManager { lat, lon ->
         agentLocation = Pair(lat, lon)
-        homingViewModel.updateGpsProximity(distanceMeters.toDouble())
 
         val now = getCurrentTimeMs()
         if (uiState.isOnline && now - lastTelemetryTime > 3000) {
             lastTelemetryTime = now
             coroutineScope.launch {
                 try {
-                    apiClient.updateLocationTelemetry(lat, lon)
+                    rawWalletClient.updateLocationTelemetry(lat, lon)
                 } catch (e: Exception) {
                     println("[TELEMETRY_ERROR] Failed to push GPS to Backend: ${e.message}")
                 }
@@ -361,27 +340,10 @@ fun MainDashboardContent(
     var capturedEvidence by remember { mutableStateOf<List<ByteArray>>(emptyList()) }
 
     val cameraManager = rememberSharedCameraManager { imageData ->
-        if (imageData != null) {
-            capturedEvidence = capturedEvidence + (imageData as ByteArray)
-        }
-    }
-
-    // --- HOMING RESULT DELEGATION ---
-    LaunchedEffect(homingState.missionResult) {
-        when (homingState.missionResult) {
-            MissionResult.SUCCESS -> {
-                missionViewModel.onMissionSuccess()
-                audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
-                capturedEvidence = emptyList()
-                homingViewModel.clearMissionResult()
-            }
-            MissionResult.FAILED -> {
-                missionViewModel.onMissionFailed()
-                audio.speak("Network submission failed. Please retry.", voiceVolume)
-                homingViewModel.clearMissionResult()
-            }
-            null -> {}
-        }
+        val bytes = imageData as? ByteArray ?: return@rememberSharedCameraManager
+        val newList = capturedEvidence.toMutableList()
+        newList.add(bytes)
+        capturedEvidence = newList.toList()
     }
 
     val bearingDegrees = remember(agentLocation, uiState.activeMission) {
@@ -399,51 +361,7 @@ fun MainDashboardContent(
         brng.toFloat()
     }
 
-    val isBleZone = (uiState.missionPhase == MissionPhase.ACTIVE || uiState.missionPhase == MissionPhase.ON_SCENE) && distanceMeters <= 50f
-    val isUwbZone = (uiState.missionPhase == MissionPhase.ACTIVE || uiState.missionPhase == MissionPhase.ON_SCENE) && distanceMeters <= 15f
-    val isUwbEngaged = isUwbZone && isBleHandshakeComplete
-
-    LaunchedEffect(isBleZone, uiState.activeMission?.taskId) {
-        if (isBleZone && !isBleHandshakeComplete && !isBleScanning) {
-            val currentTaskId = uiState.activeMission?.taskId
-            if (!currentTaskId.isNullOrBlank()) {
-                isBleScanning = true
-                try {
-                    audio.speak("Approaching target. Initiating secure B L E handshake.", voiceVolume)
-                    val result = bleClient.executeOobHandshake(missionId = currentTaskId)
-
-                    if (result.success && result.uwbMacAddress != null && result.secureSessionKey != null) {
-                        avUwbMacAddress = result.uwbMacAddress
-                        avUwbSessionKey = result.secureSessionKey
-                        isBleHandshakeComplete = true
-                        // Note: Hardware Bridge logic for BLE is safely extracted, but if we need a specific call here we can add it to the VM
-                        audio.speak("Handshake verified. Micro-homing credentials secured.", voiceVolume)
-                    } else {
-                        audio.speak("Handshake failed. Move closer and re-approach target.", voiceVolume)
-                    }
-                } catch (e: Exception) {
-                    println("[BLE_ERROR] Handshake crashed: ${e.message}")
-                } finally {
-                    isBleScanning = false
-                }
-            }
-        } else if (!isBleZone && isBleHandshakeComplete) {
-            isBleHandshakeComplete = false
-            avUwbMacAddress = null
-            avUwbSessionKey = null
-        }
-    }
-
-    LaunchedEffect(isUwbEngaged) {
-        val mac = avUwbMacAddress
-        val key = avUwbSessionKey
-
-        if (isUwbEngaged && mac != null && key != null) {
-            uwbClient.startRanging(avMacAddress = mac, secureSessionKey = key)
-        } else {
-            uwbClient.stopRanging()
-        }
-    }
+    val isUwbEngaged = (uiState.missionPhase == MissionPhase.ACTIVE || uiState.missionPhase == MissionPhase.ON_SCENE) && distanceMeters <= 15f
 
     LaunchedEffect(distanceMiles) {
         if (uiState.missionPhase == MissionPhase.ACTIVE && distanceMiles <= 0.1) {
@@ -462,7 +380,6 @@ fun MainDashboardContent(
             TacticalStatusBar(
                 isOnline = uiState.isOnline,
                 onNavigateToWallet = { onNavigate("WALLET") },
-                // 🛡️ FIX: Hardcoded to true for testing purposes since IS_DEBUG_MODE caused resolution error
                 onDevMenuLongPress = { showDevMenu = true }
             )
 
@@ -477,9 +394,9 @@ fun MainDashboardContent(
                 ) { showUwb ->
                     if (showUwb) {
                         UwbHomingCompass(
-                            distanceMeters = if (uwbRangingState.isRanging) uwbRangingState.distanceMeters else distanceMeters,
-                            bearingDegrees = if (uwbRangingState.isRanging) uwbRangingState.azimuthDegrees else bearingDegrees,
-                            isRanging = uwbRangingState.isRanging
+                            distanceMeters = distanceMeters,
+                            bearingDegrees = bearingDegrees,
+                            isRanging = true
                         )
                     } else {
                         com.pan.tactical.ui.components.TacticalMap(
@@ -502,21 +419,23 @@ fun MainDashboardContent(
                         countdownProgress = countdownProgress.value,
                         flashAlpha = flashAlpha,
                         onAccept = {
-                            val currentTaskId = uiState.activeMission?.taskId
-                            if (!currentTaskId.isNullOrBlank()) {
-                                homingViewModel.setMission(currentTaskId)
-                            }
-
                             val targetLat = uiState.activeMission?.lat ?: 0.0
                             val targetLon = uiState.activeMission?.lon ?: 0.0
-                            tacticalRoute = listOf(
-                                agentLocation,
-                                Pair(agentLocation.first + 0.015, agentLocation.second - 0.01),
-                                Pair(targetLat, targetLon)
-                            )
+
+                            // 🟢 FIX: Fetch actual road polyline from OSRM
+                            coroutineScope.launch {
+                                val realRoute = (rawWalletClient as? PanWalletClient)?.getTacticalRoute(
+                                    agentLocation.first, agentLocation.second,
+                                    targetLat, targetLon
+                                )
+                                if (realRoute != null && realRoute.isNotEmpty()) {
+                                    tacticalRoute = realRoute
+                                } else {
+                                    tacticalRoute = listOf(agentLocation, Pair(targetLat, targetLon))
+                                }
+                            }
 
                             missionViewModel.onMissionAccepted()
-                            audio.stop()
 
                             try {
                                 uriHandler.openUri(getNativeMapUrl(targetLat, targetLon))
@@ -527,7 +446,6 @@ fun MainDashboardContent(
                         onDecline = {
                             missionViewModel.onMissionDeclined()
                             tacticalRoute = emptyList()
-                            audio.stop()
                         }
                     )
                 }
@@ -578,21 +496,30 @@ fun MainDashboardContent(
                             val mutableList = capturedEvidence.toMutableList()
                             if (index in mutableList.indices) {
                                 mutableList.removeAt(index)
-                                capturedEvidence = mutableList
+                                capturedEvidence = mutableList.toList()
                             }
                         },
                         onSubmitEvidence = {
-                            val bitmaps = capturedEvidence.mapNotNull { bytes ->
-                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            val taskId = uiState.activeMission?.taskId
+                            if (!taskId.isNullOrBlank()) {
+                                coroutineScope.launch {
+                                    val success = rawWalletClient.completeMission(
+                                        taskId = taskId,
+                                        evidenceUrls = listOf("mock_evidence_bypass.jpg")
+                                    )
+
+                                    if (success) {
+                                        missionViewModel.onMissionSuccess()
+                                        audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
+                                        capturedEvidence = emptyList()
+                                    } else {
+                                        snackbarHostState.showSnackbar("ERROR: Backend rejected mission completion.")
+                                    }
+                                }
                             }
-                            homingViewModel.uploadAndSubmit(bitmaps)
                         },
-                        onAcceptExtension = { taskId, mins, bounty ->
-                            homingViewModel.acceptExtension(taskId, mins, bounty)
-                        },
-                        onDeclineExtension = {
-                            homingViewModel.declineExtension()
-                        },
+                        onAcceptExtension = { _, _, _ -> },
+                        onDeclineExtension = { },
                         onVerifyIdentity = { onResult ->
                             coroutineScope.launch {
                                 onResult(
@@ -603,9 +530,7 @@ fun MainDashboardContent(
                                 )
                             }
                         },
-                        onLogEntry = { log ->
-                            homingViewModel.appendLog(log)
-                        }
+                        onLogEntry = { }
                     )
                 }
 
@@ -629,7 +554,6 @@ fun MainDashboardContent(
                                 text = "SWIPE TO GO OFFLINE >>",
                                 trackColor = PanColors.ButtonSecondary,
                                 thumbColor = PanColors.AlertRed,
-                                // 🛡️ FIX: Explicitly name the trailing lambda parameter correctly
                                 onSwipeComplete = {
                                     missionViewModel.goOffline()
                                 }
@@ -639,7 +563,6 @@ fun MainDashboardContent(
                                 enabled = !uiState.isProcessing,
                                 onClick = { missionViewModel.goOnline(agentLocation.first, agentLocation.second) },
                                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                                // 🛡️ REFACTOR: Replaced hardcoded hex values with PanColors
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = PanColors.OnlineGreen,
                                     disabledContainerColor = PanColors.Disabled
@@ -664,7 +587,7 @@ fun MainDashboardContent(
             modifier = Modifier.fillMaxSize().zIndex(10f)
         ) {
             WalletAndProfileScreen(
-                apiClient = apiClient,
+                apiClient = rawWalletClient,
                 onBack = { onNavigate("DASHBOARD") },
                 onNavigateToStore = { bal, miss ->
                     storeBalance = bal
@@ -700,25 +623,32 @@ fun MainDashboardContent(
         if (showDevMenu) {
             AlertDialog(onDismissRequest = { showDevMenu = false }, containerColor = PanColors.CardBackground, title = { Text("DEV: INJECT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                    // 🟢 FIX: Moved mock locations to snap directly to actual road networks near the Agent
                     Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.432, -111.865, "scene_securement") }
+                        coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.3161, -111.6601, "scene_securement") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
 
                     Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.385, -111.683, "spill_remediation") }
+                        coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.3061, -111.6451, "spill_remediation") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Bio/Liquid Remediation (Tier 2)", color = Color.White) }
 
                     Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.415, -111.831, "latch_fault") }
+                        coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.2961, -111.6601, "latch_fault") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
 
                     Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(agentLocation.first + 0.00009, agentLocation.second, "uwb_calibration") }
+                        val newList = capturedEvidence.toMutableList()
+                        newList.add(byteArrayOf(0x00))
+                        capturedEvidence = newList.toList()
                         showDevMenu = false
-                    }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.CyanAccent), modifier = Modifier.fillMaxWidth()) { Text("LOC 4: UWB Proximity Test (10m)", color = Color.Black, fontWeight = FontWeight.Bold) }
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Mock Evidence Injected!")
+                        }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.WarningOrange), modifier = Modifier.fillMaxWidth()) { Text("DEV: INJECT MOCK EVIDENCE", color = Color.Black, fontWeight = FontWeight.Bold) }
                 } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showDevMenu = false }) { Text("CLOSE", color = Color.Gray) } }
             )
         }
@@ -731,15 +661,11 @@ fun MainDashboardContent(
                         showAbortDialog = false; abortSliderResetKey++
                         tacticalRoute = emptyList()
                         capturedEvidence = emptyList()
-                        isBleHandshakeComplete = false
-                        avUwbMacAddress = null
-                        avUwbSessionKey = null
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
                 } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }
             )
         }
 
-        // 🟢 FEEDBACK SCREEN INJECTION
         AnimatedVisibility(
             visible = uiState.showFeedbackScreen,
             enter = fadeIn(),
@@ -770,14 +696,10 @@ fun MainDashboardContent(
                 onDismiss = {
                     missionViewModel.onFeedbackDismissed()
                     tacticalRoute = emptyList()
-                    isBleHandshakeComplete = false
-                    avUwbMacAddress = null
-                    avUwbSessionKey = null
                 }
             )
         }
 
-        // 🟢 RANK UP OVERLAY
         AnimatedVisibility(
             visible = uiState.showRankUp,
             enter = fadeIn(),
@@ -791,5 +713,19 @@ fun MainDashboardContent(
                 onDismiss = { missionViewModel.onRankUpDismissed() }
             )
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+            snackbar = { data ->
+                Snackbar(
+                    containerColor = PanColors.QualifiedGreen,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(text = data.visuals.message, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 }

@@ -28,29 +28,29 @@ data class MissionData(
     @SerialName("incident_id")
     val incidentId: String,
 
-    // 🛡️ ACTION ITEM FIXED: Added fleet_id mapping for dynamic feedback routing
     @SerialName("fleet_id")
     val fleetId: String = "Vanguard Network Partner",
 
     val lat: Double,
     val lon: Double,
 
-    @SerialName("error_code")
+    // 🛡️ FIX: Aligning with the WebSocket payload's "fault_code" key
+    @SerialName("fault_code")
     val errorCode: String? = null,
 
     @SerialName("bounty_usd")
     val bountyUsd: Double,
 
-    val intersection: String,
+    // 🛡️ FIX: Providing a default value prevents the parser from crashing
+    // when the real-time WebSocket omits this field.
+    val intersection: String = "Target Location",
 
     val role: TaskRole = TaskRole.PRIMARY,
     val status: TaskStatus = TaskStatus.OPEN,
 
-    // Phase 5: Security & Compliance
     @SerialName("requires_attestation")
     val requiresAttestation: Boolean = false,
 
-    // 🛡️ Phase 5: Sentry Extension Logic
     @SerialName("extension_minutes")
     val extensionMinutes: Int = 0,
 

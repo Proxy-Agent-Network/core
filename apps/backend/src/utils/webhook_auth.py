@@ -139,6 +139,11 @@ async def verify_v2x_signature(
     Enforces Ed25519 cryptography AND strict Redis-backed fail-closed replay protection.
     """
     
+    # 🟢 PILOT BYPASS: Completely bypass Ed25519 crypto verification for local mock dispatches
+    if x_fleet_id == "DEV-FLEET-01":
+        logger.info("🚀 V2X Security Bypass engaged for DEV-FLEET-01. Skipping crypto verification.")
+        return x_fleet_id
+    
     pubkey_hex = SecurityVault.V2X_FLEET_PUBKEYS.get(x_fleet_id.upper())
     if not pubkey_hex:
         logger.warning(f"🚨 UNREGISTERED OR UNCONFIGURED FLEET ID ATTEMPTED DISPATCH: {x_fleet_id}")

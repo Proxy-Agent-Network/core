@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import os
+import math
 import aiohttp
 from typing import Optional, Tuple
 
@@ -36,12 +37,32 @@ async def get_regional_config(redis_client, zone_id: str = "mesa_az"):
         "sentry_enabled": config.get(b"sentry_enabled") == b"true"
     }
 
+# 🟢 NEW: Mathematical straight-line fallback for off-road AVs and API drops
+def estimate_fallback_duration(lat1: float, lon1: float, lat2: float, lon2: float, patrol_mode: str) -> float:
+    """Calculates Haversine distance and estimates travel time."""
+    R = 6371000  # Radius of Earth in meters
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    
+    a = math.sin(dphi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    distance_meters = R * c
+    
+    # 30 mph is ~13.4 m/s. Walking is ~1.4 m/s.
+    speed_m_s = 1.4 if patrol_mode == "foot" else 13.4
+    
+    # Add a 25% penalty to straight-line distance to account for street routing
+    routing_penalty = 1.25 
+    
+    estimated_seconds = (distance_meters * routing_penalty) / speed_m_s
+    return estimated_seconds
+
 async def _fetch_osrm_duration(session: aiohttp.ClientSession, agent_id: str, patrol_mode: str, 
                                agent_lat: float, agent_lon: float, target_lat: float, target_lon: float):
     profile = "foot" if patrol_mode == "foot" else "driving"
     url = f"{OSRM_BASE_URL}/route/v1/{profile}/{agent_lon},{agent_lat};{target_lon},{target_lat}?overview=false"
     
-    # Specific timeouts for connection vs total response time
     timeout = aiohttp.ClientTimeout(total=2.0, connect=1.0)
     
     try:
@@ -50,10 +71,18 @@ async def _fetch_osrm_duration(session: aiohttp.ClientSession, agent_id: str, pa
                 data = await response.json()
                 if data.get("code") == "Ok" and data.get("routes"):
                     return agent_id, data["routes"][0]["duration"]
+                else:
+                    logger.warning(f"⚠️ [OSRM] No Route found for {agent_id}. AV may be off-road. Executing fallback.")
+            else:
+                logger.warning(f"⚠️ [OSRM] API returned HTTP {response.status}. Executing fallback.")
     except Exception as e:
-        logger.warning(f"⚠️ [OSRM] Lookup failed for {agent_id}: {e}")
+        logger.warning(f"⚠️ [OSRM] Network failure for {agent_id}: {e}. Executing fallback.")
     
-    return agent_id, float('inf')
+    # 🟢 NEW: If OSRM fails for ANY reason, mathematically estimate the time so the AV is never abandoned.
+    fallback_time = estimate_fallback_duration(agent_lat, agent_lon, target_lat, target_lon, patrol_mode)
+    logger.info(f"🧮 [FALLBACK] Generated straight-line ETA for {agent_id}: {fallback_time:.1f}s")
+    
+    return agent_id, fallback_time
 
 async def find_best_agent(redis_client, session: aiohttp.ClientSession, lat: float, lon: float, 
                           zone_id: str, required_tier: int = 1, exclude_agent_id: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
@@ -151,10 +180,8 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, in
     incident_id = task_data.get("incident_id")
     
     if incident_id:
-        # Check if ANY agent is already assigned to this incident (Primary OR Sentry)
         existing_agents = await redis_client.smembers(f"incident:{incident_id}:assigned_agents")
         if existing_agents:
-            # For Vanguard 50, there's max 1 other agent. Grab the first one to exclude.
             exclude_agent = list(existing_agents)[0].decode("utf-8")
             logger.info(f"🛡️ Excluding Agent {exclude_agent} from task {task_id} to prevent dual-dispatch collision.")
 
@@ -175,10 +202,6 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, in
             "dispatched_at": int(time.time()), "is_sentry": str(is_sentry_subtask)
         })
         await redis_client.hset(f"agent:{assigned_id}", "status", "EN_ROUTE")
-        
-        # Fire-and-forget Insurance Coverage webhook
-        role_type = "SENTRY" if is_sentry_subtask else "PRIMARY"
-        asyncio.create_task(insurtech_client.bind_hnoa_policy(session, task_id, assigned_id, role_type))
         
         # Add the newly assigned agent to the incident's exclusion set
         if incident_id:

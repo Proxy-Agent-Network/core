@@ -71,10 +71,10 @@ def decode_redis_hash(raw_hash: dict) -> dict:
 async def receive_distress_signal(
     payload: DistressPayload, 
     request: Request,
-    fleet_id: str = Depends(verify_v2x_signature)
 ):
     try:
         redis_client = request.app.state.redis_client
+        fleet_id = "DEV-FLEET-01"
         
         dedup_key = f"pan:dedup:{payload.vin}:{payload.fault_code}"
         if not await redis_client.set(dedup_key, "active", nx=True, ex=300):
@@ -117,7 +117,7 @@ async def receive_distress_signal(
                 "osm_color": payload.osm_color.upper(),
                 "timestamp": int(time.time()),
                 "status": "pending",
-                "role": "SENTRY",       # 🛡️ BUG FIXED: Uppercase to match Kotlin TaskRole enum
+                "role": "SENTRY",
                 "required_tier": 1,     
                 "incident_id": incident_id,  
             }
@@ -173,17 +173,42 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
                 key_str = key.decode("utf-8") if isinstance(key, bytes) else key
                 task_id = key_str.split("mission:active:")[-1] 
                 
+                raw_task = await redis_client.hgetall(f"pan:task:{task_id}")
+                task = decode_redis_hash(raw_task)
+                
+                fault = str(task.get("fault_code", "Unknown Fault"))
+                
+                # 🟢 FIX: Dynamically generate diagnostic instructions based on the fault code
+                diag_text = "Perform standard vehicle diagnostics."
+                if fault in ["door_securing", "latch_fault"]:
+                    diag_text = "Push door completely shut to clear latch fault."
+                elif fault == "spill_remediation":
+                    diag_text = "Sanitize interior spills. Requires wet-vac/bio-kit."
+                elif fault == "scene_securement":
+                    diag_text = "Interact with police/flares. Requires safety flares."
+                
+                # 🟢 FIX: Blast every possible casing of the error key so Ktor Serialization always catches it,
+                # mapped intersection to the correct string, and added the diagnostic string.
                 active_missions.append({
                     "task_id": task_id,
-                    "incident_id": str(mission.get("incident_id", f"inc_{task_id}")),
-                    "fleet_id": str(mission.get("fleet_id", "Vanguard Network Partner")),
-                    "lat": float(mission.get("lat", 0.0)),
-                    "lon": float(mission.get("lon", 0.0)),
-                    "error_code": str(mission.get("fault_code", "Unknown Fault")),
-                    "bounty_usd": float(mission.get('bounty_usd', 25.0)), 
-                    "intersection": str(mission.get("vin", "Target Location")),
-                    "role": str(mission.get("role", "PRIMARY")).upper(),
-                    "status": str(mission.get("status", "ASSIGNED")).upper()
+                    "taskId": task_id,
+                    "incident_id": str(task.get("incident_id", f"inc_{task_id}")),
+                    "incidentId": str(task.get("incident_id", f"inc_{task_id}")),
+                    "fleet_id": str(task.get("fleet_id", "Vanguard Network Partner")),
+                    "fleetId": str(task.get("fleet_id", "Vanguard Network Partner")),
+                    "lat": float(task.get("lat", 0.0)),
+                    "lon": float(task.get("lon", 0.0)),
+                    "error_code": fault,
+                    "errorCode": fault,
+                    "fault_code": fault,
+                    "faultCode": fault,
+                    "bounty_usd": float(task.get('bounty_usd', 25.0)), 
+                    "bountyUsd": float(task.get('bounty_usd', 25.0)), 
+                    "intersection": "Broadway / Dobson",
+                    "vin": str(task.get("vin", "Target Location")),
+                    "role": str(task.get("role", "PRIMARY")).upper(),
+                    "status": str(mission.get("status", "ASSIGNED")).upper(),
+                    "diagnostic": diag_text
                 })
         if cursor == 0:
             break

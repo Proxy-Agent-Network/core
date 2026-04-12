@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -14,14 +15,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-// 🛡️ FIX: Import the toCurrency extension function from the UI package
 import com.pan.tactical.ui.toCurrency
 
 @Composable
 fun PostMissionOverlays(
     isUploadingProof: Boolean,
-    capturedEvidence: List<ByteArray>, // 🟢 Updated to ByteArray
+    capturedEvidence: List<ByteArray>,
     missionState: String,
     lastPayoutAmount: Double,
     timeOnSceneMs: Long,
@@ -41,6 +40,21 @@ fun PostMissionOverlays(
             }
         }
     } else if (missionState == "COMPLETED") {
+
+        // 🟢 FIX: Convert raw MS from ViewModel into user-friendly Minutes & Seconds
+        val totalSecs = (totalResponseTimeMs / 1000).toInt()
+        val totalMins = totalSecs / 60
+        val remSecs = totalSecs % 60
+
+        val sceneSecs = (timeOnSceneMs / 1000).toInt()
+        val sceneMins = sceneSecs / 60
+        val remSceneSecs = sceneSecs % 60
+
+        val travelMs = (totalResponseTimeMs - timeOnSceneMs).coerceAtLeast(0)
+        val travelSecs = (travelMs / 1000).toInt()
+        val travelMins = travelSecs / 60
+        val remTravelSecs = travelSecs % 60
+
         Box(
             modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp),
             contentAlignment = Alignment.Center
@@ -52,15 +66,37 @@ fun PostMissionOverlays(
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("MISSION ACCOMPLISHED", color = Color(0xFF4CAF50), fontSize = 24.sp, fontWeight = FontWeight.Black)
+                Text("MISSION ACCOMPLISHED", color = Color(0xFF4CAF50), fontSize = 22.sp, fontWeight = FontWeight.Black)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("ESCROW RELEASED:", color = Color.Gray, fontSize = 12.sp)
+                Text("ESCROW RELEASED:", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
 
-                // Format the double so it looks like cash
                 val formattedPayout = lastPayoutAmount.toCurrency()
-                Text(formattedPayout, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold)
+                Text(formattedPayout, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Bold)
 
                 Spacer(modifier = Modifier.height(24.dp))
+
+                // 🟢 FIX: Added the detailed breakdown of the mission timing
+                Column(
+                    modifier = Modifier.fillMaxWidth().background(Color(0xFF2A2A2A), RoundedCornerShape(8.dp)).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("TRAVEL TIME", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("${travelMins}m ${remTravelSecs}s", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("TIME ON SCENE", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("${sceneMins}m ${remSceneSecs}s", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    HorizontalDivider(color = Color.DarkGray)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("TOTAL MISSION TIME", color = Color(0xFF00BCD4), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                        Text("${totalMins}m ${remSecs}s", color = Color(0xFF00BCD4), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
                 Button(
                     onClick = onReturnToPatrol,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4)),

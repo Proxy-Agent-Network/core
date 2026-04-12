@@ -2,8 +2,6 @@ package com.pan.tactical.network
 
 import android.graphics.Bitmap
 import android.util.Log
-import com.google.firebase.auth.FirebaseAuth
-import com.pan.tactical.BuildConfig
 import com.pan.tactical.models.MissionData
 import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.WalletNetworkClient
@@ -57,7 +55,7 @@ data class V2XDistressPayload(
 )
 
 @Serializable
-data class TelemetryPayload(
+data class LegacyTelemetryPayload(
     @SerialName("agent_id")
     val agentId: String,
 
@@ -66,8 +64,9 @@ data class TelemetryPayload(
     val status: String
 )
 
+// 🛡️ FIX: Renamed to avoid conflict with PanWalletClient
 @Serializable
-data class MissionCompletePayload(
+data class LegacyMissionCompletePayload(
     @SerialName("agent_id")
     val agentId: String,
 
@@ -103,12 +102,12 @@ data class FcmTokenPayload(
 )
 
 @Serializable
-data class DeclinePayload(
+data class LegacyDeclinePayload(
     val reason: String
 )
 
 @Serializable
-data class PresencePayload(
+data class LegacyPresencePayload(
     @SerialName("is_online")
     val isOnline: Boolean
 )
@@ -133,7 +132,6 @@ class PanApiClient : WalletNetworkClient {
     }
 
     // 🟢 PILOT BYPASS: Hardcode hostUrl to the PC's local IP Address
-    // private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val hostUrl = "http://192.168.0.84:5001"
     private val PAN_API_URL = "$hostUrl/api/v1"
 
@@ -141,7 +139,6 @@ class PanApiClient : WalletNetworkClient {
     private val attestationEngine = com.pan.tactical.security.AttestationEngine()
 
     private val secureUid: String?
-        //get() = FirebaseAuth.getInstance().currentUser?.uid
         get() = "VNG-50-PILOT"
 
     private var cachedJwt: String? = null
@@ -260,7 +257,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🛡️ FIX: Added override modifier to satisfy the WalletNetworkClient interface
     override suspend fun updatePresence(isOnline: Boolean): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -268,7 +264,7 @@ class PanApiClient : WalletNetworkClient {
                 val response: HttpResponse = client.post("$PAN_API_URL/agent/presence") {
                     contentType(ContentType.Application.Json)
                     header("Authorization", "Bearer $jwt")
-                    setBody(PresencePayload(isOnline = isOnline))
+                    setBody(LegacyPresencePayload(isOnline = isOnline))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -287,7 +283,7 @@ class PanApiClient : WalletNetworkClient {
                 val response: HttpResponse = client.post("$PAN_API_URL/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
                     header("Authorization", "Bearer $jwt")
-                    setBody(TelemetryPayload(
+                    setBody(LegacyTelemetryPayload(
                         agentId = uid,
                         latitude = lat,
                         longitude = lon,
@@ -311,7 +307,7 @@ class PanApiClient : WalletNetworkClient {
     ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
-                val osrmBase = BuildConfig.OSRM_BASE_URL
+                val osrmBase = "https://router.project-osrm.org"
                 val urlString = "$osrmBase/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
 
@@ -367,7 +363,6 @@ class PanApiClient : WalletNetworkClient {
         return withContext(Dispatchers.IO) {
             val uploadedUrls = mutableListOf<String>()
 
-            // 🛡️ FIXED: Catch missing JWT cleanly with logs rather than silently failing
             val jwt = getFreshJwt() ?: run {
                 Log.e(TAG, "Evidence upload aborted: JWT unavailable. Agent identity missing.")
                 return@withContext uploadedUrls
@@ -381,7 +376,6 @@ class PanApiClient : WalletNetworkClient {
 
                     val byteArray = stream.toByteArray()
 
-                    // 🛡️ FIXED: Prevent memory leak of 1280x1280 ARGB bitmaps
                     redactedBitmap.recycle()
 
                     Log.d(TAG, "Uploading encrypted evidence: ${byteArray.size / 1024}KB")
@@ -469,7 +463,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🛡️ FIX: Updated method signature to accept the optional reason parameter
     override suspend fun declineMission(taskId: String, reason: String?): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -478,7 +471,7 @@ class PanApiClient : WalletNetworkClient {
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/decline") {
                     header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
-                    setBody(DeclinePayload(finalReason))
+                    setBody(LegacyDeclinePayload(finalReason))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -498,9 +491,9 @@ class PanApiClient : WalletNetworkClient {
                     header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
                     setBody(
-                        MissionCompletePayload(
+                        LegacyMissionCompletePayload(
                             agentId = uid,
-                            netPayout = 0.0, // Backend calculates payout from Redis task config — do not send client-side value
+                            netPayout = 0.0,
                             evidenceUrls = evidenceUrls,
                             hardwareAttestationToken = strongBoxManager.generateJwt(uid)
                         )

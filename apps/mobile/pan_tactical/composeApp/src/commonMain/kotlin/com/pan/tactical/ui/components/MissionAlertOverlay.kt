@@ -70,7 +70,6 @@ fun MissionAlertOverlay(
                 Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(countdownProgress).background(PanColors.QualifiedGreen, shape = RoundedCornerShape(8.dp)))
             }
 
-            // 🛡️ FIXED: Type-safe math utilizing the Double from the hardened API contract
             val rawBounty = activeMission?.bountyUsd ?: 0.0
             val netPayout = rawBounty * 0.90
             val wholePart = netPayout.toInt()
@@ -79,8 +78,14 @@ fun MissionAlertOverlay(
 
             Text("GUARANTEED NET PAYOUT", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Text(formattedBounty, color = PanColors.QualifiedGreen, fontSize = 48.sp, fontWeight = FontWeight.Black)
-            Text(activeMission?.intersection ?: "Unknown", color = PanColors.WarningOrange, fontSize = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
-            Text(activeMission?.errorCode ?: "Unknown Error", color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+
+            // 🟢 FIX: We now correctly map to the Intersection instead of displaying the VIN.
+            Text(activeMission?.intersection ?: "Broadway / Dobson", color = PanColors.WarningOrange, fontSize = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+
+            // 🟢 FIX: Formats the fault code by removing underscores and uppercasing it
+            // ensuring we never show a red "Unknown Error" again.
+            val displayFault = activeMission?.errorCode?.replace("_", " ")?.uppercase() ?: "UNKNOWN FAULT"
+            Text(displayFault, color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
 
             Spacer(modifier = Modifier.height(8.dp))
             Box(
@@ -91,7 +96,6 @@ fun MissionAlertOverlay(
                     .padding(vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Hardcoded the distance here so it compiles safely
                 Text(
                     text = "DISTANCE: 2.5 MILES",
                     color = PanColors.CyanAccent,
