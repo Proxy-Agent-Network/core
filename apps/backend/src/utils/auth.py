@@ -9,20 +9,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 logger = logging.getLogger("PAN_Auth")
 security = HTTPBearer(auto_error=False)
 
-async def verify_agent_signature(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)) -> str:
+async def verify_agent_jwt(token: str, redis_client) -> str:
     """
-    Verifies the incoming hardware JWT. 
-    Protects the fleet bounty escrows from spoofing attacks.
+    Core cryptographic verification of the hardware JWT.
+    Can be used by HTTP dependencies and WebSockets.
     """
-    if not credentials:
-        raise HTTPException(status_code=401, detail="Authorization header required.")
-        
-    token = credentials.credentials
-    
-    # 🟢 THE FIX: Removed the insecure 'dev-token-777' bypass. 
-    # Zero-Trust is now strictly enforced across all endpoints.
-        
-    redis_client = request.app.state.redis_client
     agent_id = None 
     
     try:
@@ -59,3 +50,18 @@ async def verify_agent_signature(request: Request, credentials: HTTPAuthorizatio
     except jwt.InvalidTokenError as e:
         logger.error(f"JWT Verification failed for agent '{agent_id}': {e}")
         raise HTTPException(status_code=401, detail="Cryptographic verification failed. Possible tampering detected.")
+
+
+async def verify_agent_signature(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)) -> str:
+    """
+    Verifies the incoming hardware JWT from HTTP Authorization headers.
+    Protects the fleet bounty escrows from spoofing attacks.
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authorization header required.")
+        
+    token = credentials.credentials
+    redis_client = request.app.state.redis_client
+    
+    # Pass the token and Redis client to our new core validation function
+    return await verify_agent_jwt(token, redis_client)

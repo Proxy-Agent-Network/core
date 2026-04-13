@@ -7,24 +7,18 @@ from typing import Dict
 from pydantic import BaseModel
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends
 
-# TODO(refactor): Move decode_redis_hash to utils/redis_helpers.py — importing from
-# business logic is a layering violation that will break if v2x_bounty_api.py is refactored.
 from api.v2x_bounty_api import decode_redis_hash
-from utils.auth import verify_agent_signature
+from utils.auth import verify_agent_signature, verify_agent_jwt
 
 logger = logging.getLogger("PAN_TelemetryStream")
 router = APIRouter()
 
-# Agent state TTL: 30 days. Resets on every status update so active agents
-# never expire. Prevents stale agent hashes accumulating in Redis indefinitely.
 AGENT_STATE_TTL_SECONDS = 60 * 60 * 24 * 30
 
 # --- HTTP TELEMETRY INGEST ---
 
 @router.post("/v1/telemetry/ingest")
 async def ingest_telemetry(request: Request, agent_identity: dict = Depends(verify_agent_signature)):
-    """Receives 1Hz GPS pings from the mobile app and flexibly extracts coordinates."""
-    
     try:
         data = await request.json()
     except Exception:
@@ -33,8 +27,12 @@ async def ingest_telemetry(request: Request, agent_identity: dict = Depends(veri
     lat = data.get("lat") or data.get("latitude")
     lon = data.get("lon") or data.get("longitude") or data.get("lng")
     
-    # 🟢 PILOT BYPASS: Handle raw string returned by the pilot mock token
     agent_id = agent_identity if isinstance(agent_identity, str) else agent_identity.get("agent_id")
+    
+    if not agent_id:
+        logger.warning("🚨 [TELEMETRY] Rejecting ingest: Agent identity could not be resolved.")
+        raise HTTPException(status_code=401, detail="Agent identity could not be resolved.")
+
     status = data.get("status", "ONLINE")
 
     if lat is None or lon is None:
@@ -54,7 +52,6 @@ async def ingest_telemetry(request: Request, agent_identity: dict = Depends(veri
 
     await redis_client.geoadd("pan:agent_locations", (lon, lat, agent_id))
     
-    # Broadcast to Ops Hub via PubSub
     await redis_client.publish(
         "pan:stream:agent_locations", 
         json.dumps({"agent_id": agent_id, "lat": lat, "lon": lon, "status": status, "heading": 0.0})
@@ -78,14 +75,13 @@ async def update_agent_status(
     request: Request,
     agent_identity: dict = Depends(verify_agent_signature)
 ):
-    """
-    Handles the 'GO ONLINE' / 'GO OFFLINE' toggle from the mobile app.
-    Syncs the agent's current location, service radius, and hardware loadout.
-    """
     agent_id = agent_identity if isinstance(agent_identity, str) else agent_identity.get("agent_id")
+    
+    if not agent_id:
+        raise HTTPException(status_code=401, detail="Agent identity could not be resolved.")
+        
     redis_client = request.app.state.redis_client
 
-    # 1. Update Core Agent State
     agent_key = f"pan:agent:{agent_id}"
     await redis_client.hset(agent_key, mapping={
         "status": payload.status,
@@ -96,17 +92,14 @@ async def update_agent_status(
     })
     await redis_client.expire(agent_key, AGENT_STATE_TTL_SECONDS)
 
-    # 2. Sync Hardware Loadout
     if payload.loadout:
         await redis_client.hset(f"pan:agent:{agent_id}:loadout", mapping=payload.loadout)
 
-    # 3. Update Geospatial Dispatch Index
     if payload.status == "ONLINE":
         await redis_client.geoadd("pan:agent_locations", (payload.longitude, payload.latitude, agent_id))
     else:
         await redis_client.zrem("pan:agent_locations", agent_id)
 
-    # 4. Broadcast to Ops Hub UI
     await redis_client.publish(
         "pan:stream:agent_locations", 
         json.dumps({
@@ -125,12 +118,6 @@ async def update_agent_status(
 
 @router.websocket("/v1/agent/stream")
 async def agent_mission_stream(websocket: WebSocket):
-    """
-    Persistent WebSocket connection for the Mobile App.
-    Replaces the HTTP polling loop, pushing missions instantly to the agent.
-    """
-    # 🟢 PILOT BYPASS: For web sockets, we accept the token/id via query params 
-    # since Android's native WS client struggles with custom auth headers.
     token = websocket.query_params.get("token")
     agent_id = websocket.query_params.get("agent_id")
     
@@ -139,14 +126,27 @@ async def agent_mission_stream(websocket: WebSocket):
         await websocket.close(code=1008)
         return
 
-    await websocket.accept()
-    logger.info(f"🟢 [AGENT_WS] Agent {agent_id} connected to real-time mission stream.")
-    
     redis_client = websocket.app.state.redis_client
+
+    # 🟢 THE FIX: Correctly awaited the async verify_agent_jwt with redis_client
+    try:
+        verified_id = await verify_agent_jwt(token, redis_client) 
+        
+        if verified_id != agent_id:
+            logger.warning(f"🚨 [WEBSOCKET] IDOR Attempt Blocked: Token identity ({verified_id}) does not match requested agent_id ({agent_id}).")
+            await websocket.close(code=1008)
+            return
+    except Exception as e:
+        logger.warning(f"🚨 [WEBSOCKET] Invalid JWT provided for {agent_id}: {str(e)}")
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    logger.info(f"🟢 [AGENT_WS] Agent {agent_id} successfully authenticated and connected.")
+    
     pubsub = redis_client.pubsub()
     
-    # Listen exclusively to this agent's personal dispatch channel and the global clear channel
-    personal_dispatch_channel = f"agent:{agent_id}:dispatch"
+    personal_dispatch_channel = f"pan:agent:{agent_id}:dispatch"
     clear_channel = "pan:stream:mission_cleared"
     
     try:
@@ -167,11 +167,9 @@ async def agent_mission_stream(websocket: WebSocket):
                 if channel_str == personal_dispatch_channel:
                     await websocket.send_json({"type": "NEW_MISSION", "payload": parsed_payload})
                 elif channel_str == clear_channel:
-                    # Only pass the clear event if it belongs to this agent
                     if parsed_payload.get("agent_id") == agent_id:
                         await websocket.send_json({"type": "MISSION_CLEARED", "payload": parsed_payload})
             
-            # Keepalive Heartbeat to prevent load balancers from dropping the idle connection
             ping_counter += 1
             if ping_counter >= 3000:
                 await websocket.send_json({"type": "HEARTBEAT"})
@@ -191,7 +189,6 @@ async def agent_mission_stream(websocket: WebSocket):
 
 @router.websocket("/v1/telemetry/stream")
 async def websocket_telemetry_endpoint(websocket: WebSocket):
-    # Production Token Fallback Guard (Ops Hub UI Auth)
     expected_token = os.getenv("OPS_HUB_TOKEN")
     if not expected_token:
         if os.getenv("ENVIRONMENT") == "production":
@@ -213,35 +210,27 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
     
     # --- 1. STATE REHYDRATION ---
     try:
-        # Sync Active Agents
-        cursor = 0
-        while True:
-            cursor, keys = await redis_client.scan(cursor=cursor, match="pan:agent:*", count=100)
-            for key in keys:
-                key_str = key.decode('utf-8') if isinstance(key, bytes) else key
-                if key_str.count(':') != 2:
-                    continue
-
-                raw_agent = await redis_client.hgetall(key)
-                if raw_agent:
-                    agent = decode_redis_hash(raw_agent)
-                    lat = agent.get("lat") or agent.get("latitude")
-                    lon = agent.get("lon") or agent.get("longitude")
-                    
-                    if lat is not None and lon is not None:
-                        await websocket.send_json({
-                            "type": "AGENT_LOCATION",
-                            "payload": {
-                                "agent_id": key_str.split(":")[-1], 
-                                "lat": float(lat), 
-                                "lon": float(lon), 
-                                "status": agent.get("status", "OFFLINE")
-                            }
-                        })
-            if int(cursor) == 0:
-                break
+        active_agent_ids = await redis_client.zrange("pan:agent_locations", 0, -1)
+        for agent_id_bytes in active_agent_ids:
+            agent_id = agent_id_bytes.decode('utf-8') if isinstance(agent_id_bytes, bytes) else agent_id_bytes
             
-        # Sync Active Distress Signals
+            raw_agent = await redis_client.hgetall(f"pan:agent:{agent_id}")
+            if raw_agent:
+                agent = decode_redis_hash(raw_agent)
+                lat = agent.get("lat") or agent.get("latitude")
+                lon = agent.get("lon") or agent.get("longitude")
+                
+                if lat is not None and lon is not None:
+                    await websocket.send_json({
+                        "type": "AGENT_LOCATION",
+                        "payload": {
+                            "agent_id": agent_id, 
+                            "lat": float(lat), 
+                            "lon": float(lon), 
+                            "status": agent.get("status", "OFFLINE")
+                        }
+                    })
+            
         cursor = 0
         while True:
             cursor, keys = await redis_client.scan(cursor=cursor, match="pan:task:*", count=100)
@@ -320,7 +309,6 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                     
                     await websocket.send_json({"type": event_type, "payload": parsed_payload})
                 
-                # Keepalive Heartbeat (~30 seconds at 10ms sleep)
                 ping_counter += 1
                 if ping_counter >= 3000:
                     await websocket.send_json({"type": "HEARTBEAT"})
@@ -367,5 +355,3 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             await pubsub.unsubscribe()
             if hasattr(pubsub, 'close'):
                 await pubsub.close()
-        except Exception:
-            pass

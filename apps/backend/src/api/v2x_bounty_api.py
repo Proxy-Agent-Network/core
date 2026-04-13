@@ -27,7 +27,8 @@ class DistressPayload(BaseModel):
     request_secondary: bool = False
     secondary_start_bid_usd: float = 14.0   
     secondary_max_bid_usd: float = 24.0     
-    secondary_escalation_usd_per_min: float = 2.0  
+    secondary_escalation_usd_per_min: float = 2.0
+    intersection: str = "Unknown Location"  # 🟢 THE FIX: dynamic intersection support
 
 class MissionCompletePayload(BaseModel):
     agent_id: str
@@ -71,10 +72,10 @@ def decode_redis_hash(raw_hash: dict) -> dict:
 async def receive_distress_signal(
     payload: DistressPayload, 
     request: Request,
+    fleet_id: str = Depends(verify_v2x_signature)  # 🟢 THE FIX: Enforced Webhook Auth
 ):
     try:
         redis_client = request.app.state.redis_client
-        fleet_id = "DEV-FLEET-01"
         
         dedup_key = f"pan:dedup:{payload.vin}:{payload.fault_code}"
         if not await redis_client.set(dedup_key, "active", nx=True, ex=300):
@@ -96,6 +97,7 @@ async def receive_distress_signal(
             "status": "pending",
             "role": "PRIMARY",
             "incident_id": incident_id,
+            "intersection": payload.intersection,
         }
         
         await redis_client.hset(f"pan:task:{task_id}", mapping=task_record)
@@ -119,7 +121,8 @@ async def receive_distress_signal(
                 "status": "pending",
                 "role": "SENTRY",
                 "required_tier": 1,     
-                "incident_id": incident_id,  
+                "incident_id": incident_id,
+                "intersection": payload.intersection,
             }
             await redis_client.hset(f"pan:task:{sentry_task_id}", mapping=sentry_record)
             await redis_client.rpush("pan:dispatch:active_tasks", sentry_task_id)
@@ -137,6 +140,7 @@ async def receive_distress_signal(
             "sla_status": "OK",
             "sentry_task_id": sentry_task_id,    
             "secondary_requested": payload.request_secondary,
+            "intersection": payload.intersection,
         }))
         
         logger.info(f"🚨 [V2X ALERT] Fleet: {fleet_id} | VIN: {payload.vin} | Fault: {payload.fault_code}")
@@ -160,58 +164,54 @@ async def receive_distress_signal(
 @router.get("/v1/agent/missions")
 async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_agent_signature)):
     redis_client = request.app.state.redis_client
-    cursor = 0
     active_missions = []
     
-    while True:
-        cursor, keys = await redis_client.scan(cursor=cursor, match="mission:active:*", count=100)
-        for key in keys:
-            raw_mission = await redis_client.hgetall(key)
-            mission = decode_redis_hash(raw_mission)
+    task_ids = await redis_client.smembers(f"pan:agent:{agent_id}:missions")
+    
+    for task_id_bytes in task_ids:
+        task_id = task_id_bytes.decode("utf-8") if isinstance(task_id_bytes, bytes) else task_id_bytes
+        
+        mission_key = f"mission:active:{task_id}"
+        raw_mission = await redis_client.hgetall(mission_key)
+        mission = decode_redis_hash(raw_mission)
+        
+        if mission and mission.get("agent_id") == agent_id:
+            raw_task = await redis_client.hgetall(f"pan:task:{task_id}")
+            task = decode_redis_hash(raw_task)
             
-            if mission and mission.get("agent_id") == agent_id:
-                key_str = key.decode("utf-8") if isinstance(key, bytes) else key
-                task_id = key_str.split("mission:active:")[-1] 
-                
-                raw_task = await redis_client.hgetall(f"pan:task:{task_id}")
-                task = decode_redis_hash(raw_task)
-                
-                fault = str(task.get("fault_code", "Unknown Fault"))
-                
-                # 🟢 FIX: Dynamically generate diagnostic instructions based on the fault code
-                diag_text = "Perform standard vehicle diagnostics."
-                if fault in ["door_securing", "latch_fault"]:
-                    diag_text = "Push door completely shut to clear latch fault."
-                elif fault == "spill_remediation":
-                    diag_text = "Sanitize interior spills. Requires wet-vac/bio-kit."
-                elif fault == "scene_securement":
-                    diag_text = "Interact with police/flares. Requires safety flares."
-                
-                # 🟢 FIX: Blast every possible casing of the error key so Ktor Serialization always catches it,
-                # mapped intersection to the correct string, and added the diagnostic string.
-                active_missions.append({
-                    "task_id": task_id,
-                    "taskId": task_id,
-                    "incident_id": str(task.get("incident_id", f"inc_{task_id}")),
-                    "incidentId": str(task.get("incident_id", f"inc_{task_id}")),
-                    "fleet_id": str(task.get("fleet_id", "Vanguard Network Partner")),
-                    "fleetId": str(task.get("fleet_id", "Vanguard Network Partner")),
-                    "lat": float(task.get("lat", 0.0)),
-                    "lon": float(task.get("lon", 0.0)),
-                    "error_code": fault,
-                    "errorCode": fault,
-                    "fault_code": fault,
-                    "faultCode": fault,
-                    "bounty_usd": float(task.get('bounty_usd', 25.0)), 
-                    "bountyUsd": float(task.get('bounty_usd', 25.0)), 
-                    "intersection": "Broadway / Dobson",
-                    "vin": str(task.get("vin", "Target Location")),
-                    "role": str(task.get("role", "PRIMARY")).upper(),
-                    "status": str(mission.get("status", "ASSIGNED")).upper(),
-                    "diagnostic": diag_text
-                })
-        if cursor == 0:
-            break
+            fault = str(task.get("fault_code", "Unknown Fault"))
+            
+            diag_text = "Perform standard vehicle diagnostics."
+            if fault in ["door_securing", "latch_fault"]:
+                diag_text = "Push door completely shut to clear latch fault."
+            elif fault == "spill_remediation":
+                diag_text = "Sanitize interior spills. Requires wet-vac/bio-kit."
+            elif fault == "scene_securement":
+                diag_text = "Interact with police/flares. Requires safety flares."
+            
+            active_missions.append({
+                "task_id": task_id,
+                "taskId": task_id,
+                "incident_id": str(task.get("incident_id", f"inc_{task_id}")),
+                "incidentId": str(task.get("incident_id", f"inc_{task_id}")),
+                "fleet_id": str(task.get("fleet_id", "Vanguard Network Partner")),
+                "fleetId": str(task.get("fleet_id", "Vanguard Network Partner")),
+                "lat": float(task.get("lat", 0.0)),
+                "lon": float(task.get("lon", 0.0)),
+                "error_code": fault,
+                "errorCode": fault,
+                "fault_code": fault,
+                "faultCode": fault,
+                "bounty_usd": float(task.get('bounty_usd', 25.0)), 
+                "bountyUsd": float(task.get('bounty_usd', 25.0)), 
+                "intersection": str(task.get("intersection", "Unknown Location")), # 🟢 THE FIX: Dynamic mapping
+                "vin": str(task.get("vin", "Target Location")),
+                "role": str(task.get("role", "PRIMARY")).upper(),
+                "status": str(mission.get("status", "ASSIGNED")).upper(),
+                "diagnostic": diag_text
+            })
+        else:
+            await redis_client.srem(f"pan:agent:{agent_id}:missions", task_id)
             
     if active_missions:
         logger.info(f"📤 Sending to Agent {agent_id}: {active_missions}")
@@ -243,7 +243,14 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         vin = task_data.get("vin", "UNKNOWN_VIN")
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
         raw_bounty = float(task_data.get("bounty_usd", 25.0))
-        actual_payout = round(raw_bounty * 0.90, 2) 
+        
+        # 🟢 THE FIX: Dynamic payout scaling based on agent tier
+        agent_raw = await redis_client.hget(f"pan:agent:{agent_id}", "tier")
+        tier = int(agent_raw) if agent_raw else 1
+        multiplier = 0.90 if tier >= 2 else 0.80
+        
+        # net_payout from client is intentionally ignored — backend calculates from Redis task config
+        actual_payout = round(raw_bounty * multiplier, 2) 
 
         await redis_client.hset(f"pan:task:{task_id}", mapping={
             "status": "COMPLETED",
@@ -299,7 +306,8 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                     
         logger.info(f"💸 [WALLET] Deposited ${actual_payout:.2f} to {agent_id}. New Balance: ${wallet['balance']:.2f}")
 
-        await redis_client.hset(f"agent:{agent_id}", "status", "ONLINE")
+        await redis_client.hset(f"pan:agent:{agent_id}", "status", "ONLINE")
+        await redis_client.srem(f"pan:agent:{agent_id}:missions", task_id)
         
         await redis_client.publish(
             "pan:stream:mission_cleared", 
@@ -360,7 +368,8 @@ async def decline_mission(
     
     if mission_data and mission_data.get("agent_id") == agent_id:
         await redis_client.delete(mission_key)
-        await redis_client.hset(f"agent:{agent_id}", "status", "ONLINE")
+        await redis_client.hset(f"pan:agent:{agent_id}", "status", "ONLINE")
+        await redis_client.srem(f"pan:agent:{agent_id}:missions", task_id)
         
         await redis_client.publish(
             "pan:stream:mission_cleared", 
@@ -480,5 +489,6 @@ async def update_presence(
 ):
     redis_client = request.app.state.redis_client
     status_str = "ONLINE" if payload.is_online else "OFFLINE"
-    await redis_client.hset(f"agent:{agent_id}", "status", status_str)
+    
+    await redis_client.hset(f"pan:agent:{agent_id}", "status", status_str)
     return {"status": "success", "is_online": payload.is_online}

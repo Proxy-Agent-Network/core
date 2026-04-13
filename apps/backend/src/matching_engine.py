@@ -20,6 +20,17 @@ logger = logging.getLogger("PAN_MatchingEngine")
 
 OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "http://router.project-osrm.org")
 
+RETRY_LUA_SCRIPT = """
+local tasks = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+if #tasks > 0 then
+    for i=1, #tasks do
+        redis.call('RPUSH', KEYS[2], tasks[i])
+        redis.call('ZREM', KEYS[1], tasks[i])
+    end
+end
+return tasks
+"""
+
 async def get_regional_config(redis_client, zone_id: str = "mesa_az"):
     """Fetches regional policy. Defaults to Mesa Pilot constraints."""
     config = await redis_client.hgetall(f"pan:config:zone:{zone_id}")
@@ -37,7 +48,6 @@ async def get_regional_config(redis_client, zone_id: str = "mesa_az"):
         "sentry_enabled": config.get(b"sentry_enabled") == b"true"
     }
 
-# 🟢 NEW: Mathematical straight-line fallback for off-road AVs and API drops
 def estimate_fallback_duration(lat1: float, lon1: float, lat2: float, lon2: float, patrol_mode: str) -> float:
     """Calculates Haversine distance and estimates travel time."""
     R = 6371000  # Radius of Earth in meters
@@ -78,7 +88,6 @@ async def _fetch_osrm_duration(session: aiohttp.ClientSession, agent_id: str, pa
     except Exception as e:
         logger.warning(f"⚠️ [OSRM] Network failure for {agent_id}: {e}. Executing fallback.")
     
-    # 🟢 NEW: If OSRM fails for ANY reason, mathematically estimate the time so the AV is never abandoned.
     fallback_time = estimate_fallback_duration(agent_lat, agent_lon, target_lat, target_lon, patrol_mode)
     logger.info(f"🧮 [FALLBACK] Generated straight-line ETA for {agent_id}: {fallback_time:.1f}s")
     
@@ -86,10 +95,6 @@ async def _fetch_osrm_duration(session: aiohttp.ClientSession, agent_id: str, pa
 
 async def find_best_agent(redis_client, session: aiohttp.ClientSession, lat: float, lon: float, 
                           zone_id: str, required_tier: int = 1, exclude_agent_id: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Finds best agent using 'Last Resort' hierarchy.
-    Returns: (agent_id, status_at_selection)
-    """
     config = await get_regional_config(redis_client, zone_id)
     
     nearby_agents = await redis_client.geosearch(
@@ -110,7 +115,7 @@ async def find_best_agent(redis_client, session: aiohttp.ClientSession, lat: flo
             
         a_lon, a_lat = agent_record[2]
         
-        agent_data = await redis_client.hmget(f"agent:{agent_id}", "status", "patrol_mode", "tier")
+        agent_data = await redis_client.hmget(f"pan:agent:{agent_id}", "status", "patrol_mode", "tier")
         status = agent_data[0].decode("utf-8") if agent_data[0] else "OFFLINE"
         mode = agent_data[1].decode("utf-8") if agent_data[1] else "car"
         tier = int(agent_data[2]) if agent_data[2] else 1
@@ -120,18 +125,16 @@ async def find_best_agent(redis_client, session: aiohttp.ClientSession, lat: flo
         if status == "ONLINE":
             idle_candidates.append(_fetch_osrm_duration(session, agent_id, mode, a_lat, a_lon, lat, lon))
         elif status in ["EN_ROUTE", "ON_SCENE"]:
-            queue_len = await redis_client.llen(f"agent:{agent_id}:queue")
+            queue_len = await redis_client.llen(f"pan:agent:{agent_id}:queue")
             if queue_len < config["max_queue_size"]:
                 busy_candidates.append(_fetch_osrm_duration(session, agent_id, mode, a_lat, a_lon, lat, lon))
 
-    # Priority 1: Best Idle Agent within SLA
     if idle_candidates:
         results = await asyncio.gather(*idle_candidates)
         valid_idle = sorted([r for r in results if r[1] <= config["sla_threshold_secs"]], key=lambda x: x[1])
         if valid_idle: 
             return valid_idle[0][0], "ONLINE"
 
-    # Priority 2: Busy Agent queueing (Chainable)
     if busy_candidates:
         results = await asyncio.gather(*busy_candidates)
         busy_threshold = config["sla_threshold_secs"] * config["busy_sla_multiplier"]
@@ -142,19 +145,14 @@ async def find_best_agent(redis_client, session: aiohttp.ClientSession, lat: flo
     return None, None
 
 async def _process_delayed_retries(redis_client):
-    """
-    Checks the delayed retry queue for expired tasks and moves them back 
-    to the active dispatch queue, preventing the 'Poison Pill' loop.
-    """
     now = time.time()
-    ready_tasks = await redis_client.zrangebyscore("pan:dispatch:delayed_tasks", "-inf", now)
-    
-    if ready_tasks:
-        for task_bytes in ready_tasks:
-            task_id = task_bytes.decode("utf-8")
-            # TODO: Make atomic with a Lua script for production hardening
-            await redis_client.rpush("pan:dispatch:active_tasks", task_id)
-            await redis_client.zrem("pan:dispatch:delayed_tasks", task_id)
+    await redis_client.eval(
+        RETRY_LUA_SCRIPT, 
+        2, 
+        "pan:dispatch:delayed_tasks", 
+        "pan:dispatch:active_tasks", 
+        now
+    )
 
 async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, insurtech_client):
     
@@ -175,7 +173,6 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, in
     
     is_sentry_subtask = task_data.get("role") == "sentry"
     
-    # --- BIDIRECTIONAL DUAL-DISPATCH EXCLUSION ---
     exclude_agent = None
     incident_id = task_data.get("incident_id")
     
@@ -196,14 +193,31 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, in
         return
 
     if selection_status == "ONLINE":
-        # Dispatch Primary/Direct task
+        
+        # 🟢 THE FIX: Corrected signature and required parameters for policy binding
+        if insurtech_client:
+            try:
+                await insurtech_client.bind_mission_policy(
+                    agent_id=assigned_id,
+                    mission_id=task_id,
+                    fault_code=task_data.get("fault_code", "unknown"),
+                    lat=t_lat,
+                    lon=t_lon,
+                    estimated_duration_minutes=12,  # SLA target
+                    redis_client=redis_client
+                )
+                logger.info(f"🛡️ [COMPLIANCE] Bound $5M liability policy for {task_id} to {assigned_id}")
+            except Exception as e:
+                logger.error(f"⚠️ [COMPLIANCE] Failed to bind policy for {task_id}: {e}")
+
         await redis_client.hset(f"mission:active:{task_id}", mapping={
             "task_id": task_id, "agent_id": assigned_id, "status": "ASSIGNED",
             "dispatched_at": int(time.time()), "is_sentry": str(is_sentry_subtask)
         })
-        await redis_client.hset(f"agent:{assigned_id}", "status", "EN_ROUTE")
         
-        # Add the newly assigned agent to the incident's exclusion set
+        await redis_client.hset(f"pan:agent:{assigned_id}", "status", "EN_ROUTE")
+        await redis_client.sadd(f"pan:agent:{assigned_id}:missions", task_id)
+        
         if incident_id:
             incident_agents_key = f"incident:{incident_id}:assigned_agents"
             await redis_client.sadd(incident_agents_key, assigned_id)
@@ -211,14 +225,12 @@ async def _matching_engine_loop(redis_client, session: aiohttp.ClientSession, in
             
         logger.info(f"✅ Dispatched {task_id} to {assigned_id}")
 
-        # 🟢 NEW: Fire the real-time WebSocket trigger!
-        await redis_client.publish(f"agent:{assigned_id}:dispatch", json.dumps({
+        await redis_client.publish(f"pan:agent:{assigned_id}:dispatch", json.dumps({
             "task_id": task_id,
             "status": "ASSIGNED"
         }))
     else:
-        # Append to Agent's sticky queue
-        await redis_client.rpush(f"agent:{assigned_id}:queue", task_id)
+        await redis_client.rpush(f"pan:agent:{assigned_id}:queue", task_id)
         await redis_client.hset(f"pan:task:{task_id}", "status", "QUEUED")
         logger.info(f"📌 Queued {task_id} for busy agent {assigned_id}")
 
