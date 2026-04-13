@@ -32,27 +32,27 @@ fun CameraCaptureOverlay(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
-    
+
     // Dedicated background thread for image processing to prevent UI stutter
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
-    
-    // 🟢 THE FIX: Prevent thread leaking by cleanly shutting down the executor
-    DisposableEffect(Unit) {
+
+    // 🟢 THE FIX: Let CameraX unbind completely before shutting down the executor
+    DisposableEffect(cameraProviderFuture) {
         onDispose {
-            cameraExecutor.shutdown()
-            // Optional: Explicitly unbind to release the hardware faster than the lifecycle owner
             try {
                 cameraProviderFuture.get().unbindAll()
             } catch (e: Exception) {
                 Log.e("CameraX", "Silent failure on manual unbind", e)
             }
+            // Shut down the executor only after hardware is released
+            cameraExecutor.shutdown()
         }
     }
-    
-    val imageCapture = remember { 
+
+    val imageCapture = remember {
         ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-            .build() 
+            .build()
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -77,12 +77,30 @@ fun CameraCaptureOverlay(
 
                     try {
                         cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
+                        val camera = cameraProvider.bindToLifecycle(
                             lifecycleOwner,
                             cameraSelector,
                             preview,
                             imageCapture
                         )
+
+                        // Wire up Pinch-to-Zoom
+                        val scaleGestureDetector = android.view.ScaleGestureDetector(ctx,
+                            object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                                override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                                    val currentZoomRatio = camera.cameraInfo.zoomState.value?.zoomRatio ?: 1f
+                                    camera.cameraControl.setZoomRatio(currentZoomRatio * detector.scaleFactor)
+                                    return true
+                                }
+                            }
+                        )
+
+                        previewView.setOnTouchListener { _, event ->
+                            scaleGestureDetector.onTouchEvent(event)
+                            // Allow passing the touch event down if needed, but consume it for scaling
+                            true
+                        }
+
                     } catch (e: Exception) {
                         Log.e("CameraX", "Hardware binding failed", e)
                     }
@@ -111,15 +129,15 @@ fun CameraCaptureOverlay(
                             val bytes = ByteArray(buffer.remaining())
                             buffer.get(bytes)
                             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                            
+
                             val matrix = Matrix()
                             matrix.postRotate(image.imageInfo.rotationDegrees.toFloat())
                             val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
 
-                            // 🟢 THE FIX: Free up the unrotated original 5-15MB bitmap immediately
+                            // Free up the unrotated original 5-15MB bitmap immediately
                             bitmap.recycle()
                             image.close()
-                            
+
                             onPhotoCaptured(rotatedBitmap)
                         }
 

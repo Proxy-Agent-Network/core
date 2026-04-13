@@ -38,10 +38,12 @@ class ComplianceEngine:
         """
         
         # 1. Zero-Trust Guard: Validate the hardware token before stamping the record
-        # A basic length guard ensures we don't seal a blank or clearly malformed token.
-        if not hardware_attestation_token or len(hardware_attestation_token) < 100:
-            logger.error("🛑 [COMPLIANCE] Invalid or missing hardware attestation token.")
-            raise ValueError("Invalid or missing hardware attestation token.")
+        # 🟢 PILOT BYPASS: Allow empty token for the pilot agent
+        if agent_id != "VNG-50-PILOT":
+            # A basic length guard ensures we don't seal a blank or clearly malformed token.
+            if not hardware_attestation_token or len(hardware_attestation_token) < 100:
+                logger.error("🛑 [COMPLIANCE] Invalid or missing hardware attestation token.")
+                raise ValueError("Invalid or missing hardware attestation token.")
         
         # 2. Compile the exact state of the mission
         timestamp_iso = datetime.now(timezone.utc).isoformat()
@@ -113,3 +115,72 @@ class ComplianceEngine:
         except Exception as e:
             logger.error(f"🛑 [COMPLIANCE] Validation crashed: {str(e)}")
             return False
+
+    @classmethod
+    async def generate_quarterly_near_miss_report(cls, redis_client, year: int, quarter: int) -> Dict[str, Any]:
+        """
+        Aggregates all flagged near-miss incidents for a specific quarter into an 
+        ADOT/DPS compliant JSON filing, complete with cryptographic seals for each event.
+        """
+        index_key = f"pan:compliance:near_misses:{year}_Q{quarter}"
+        task_ids = await redis_client.smembers(index_key)
+        
+        events = []
+        for task_id_bytes in task_ids:
+            task_id = task_id_bytes.decode('utf-8') if isinstance(task_id_bytes, bytes) else task_id_bytes
+            
+            raw_task = await redis_client.hgetall(f"pan:task:{task_id}")
+            if not raw_task:
+                continue
+                
+            task_data = {
+                k.decode('utf-8') if isinstance(k, bytes) else k: 
+                v.decode('utf-8') if isinstance(v, bytes) else v 
+                for k, v in raw_task.items()
+            }
+                
+            # Attempt to pull the cryptographically sealed report if the mission was completed
+            sealed_report_raw = await redis_client.get(f"pan:compliance:report:{task_id}")
+            report_hash = "PENDING_OR_ABORTED"
+            
+            if sealed_report_raw:
+                try:
+                    sealed_report = json.loads(sealed_report_raw)
+                    report_hash = sealed_report.get("document_hash", "UNKNOWN")
+                except json.JSONDecodeError:
+                    pass
+                
+            events.append({
+                "task_id": task_id,
+                "incident_id": task_data.get("incident_id", ""),
+                "fleet_id": task_data.get("fleet_id", "UNKNOWN"),
+                "vin": task_data.get("vin", "UNKNOWN"),
+                "timestamp": int(task_data.get("timestamp", 0)),
+                "latitude": float(task_data.get("lat", 0.0)),
+                "longitude": float(task_data.get("lon", 0.0)),
+                "intersection": task_data.get("intersection", "UNKNOWN"),
+                "sealed_report_hash": report_hash
+            })
+
+        dps_report = {
+            "metadata": {
+                "document_type": "ADOT_SB1417_QUARTERLY_NEAR_MISS_FILING",
+                "filing_period": f"{year}_Q{quarter}",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "total_incidents": len(events),
+            },
+            "incidents": events
+        }
+        
+        # Seal the entire aggregated report
+        serialized_payload = json.dumps(dps_report, sort_keys=True, separators=(',', ':'))
+        document_hash = cls._generate_sha256_hash(serialized_payload)
+        
+        sealed_dps_report = {
+            "document_hash": document_hash,
+            "algorithm": "SHA-256",
+            "payload": dps_report
+        }
+        
+        logger.info(f"🛡️ [COMPLIANCE] Generated SB 1417 Near-Miss Filing for {year}_Q{quarter} | Hash: {document_hash[:8]}...")
+        return sealed_dps_report

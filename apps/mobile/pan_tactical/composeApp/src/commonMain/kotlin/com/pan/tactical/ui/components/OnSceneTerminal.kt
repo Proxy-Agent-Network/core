@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -21,16 +22,31 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.pan.tactical.models.MissionData
 import com.pan.tactical.managers.SentryExtensionRequest
+import com.pan.tactical.ui.theme.PanColors
 
+enum class ContextType { PHOTO, VOICE, TEXT }
+
+data class ContextItem(
+    val id: String,
+    val type: ContextType,
+    val payloadBytes: ByteArray? = null,
+    var textContent: String? = null
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnSceneTerminal(
     activeMission: MissionData?,
-    capturedEvidence: List<ByteArray>,
+    contextItems: List<ContextItem>,
+    selectedItem: ContextItem?,
+    onItemSelected: (ContextItem) -> Unit,
+    onUpdateItem: (id: String, updatedText: String) -> Unit,
     isProcessingRedaction: Boolean,
     isResolving: Boolean,
     terminalLogs: List<String>,
@@ -38,103 +54,285 @@ fun OnSceneTerminal(
     extensionRequest: SentryExtensionRequest?,
     onRequestCameraPermission: () -> Unit,
     onCapturePhoto: () -> Unit,
-    onRemovePhoto: (Int) -> Unit,
-    onSubmitEvidence: () -> Unit,
+    onAddTextNote: (String) -> Unit,
+    onAddVoiceNote: (String) -> Unit,
+    onRemoveItem: (String) -> Unit,
+    onRunDiagnostics: () -> Unit,
     onAcceptExtension: (String, Int, Double) -> Unit,
     onDeclineExtension: () -> Unit,
-    onVerifyIdentity: (onResult: (Boolean) -> Unit) -> Unit,
     onLogEntry: (String) -> Unit
 ) {
-    // 🟢 FIX: Safely convert the role into a String first
     val isSentry = activeMission?.role.toString().uppercase() == "SENTRY"
+    var showTextDialog by remember { mutableStateOf(false) }
+    var noteText by remember { mutableStateOf("") }
+    var editingItemId: String? by remember { mutableStateOf(null) }
 
-    var biometricsPassed by remember { mutableStateOf(true) }
-    var isVerifyingBiometrics by remember { mutableStateOf(false) }
-    val requiredPhotos = 2
+    // 🟢 NEW: State for the "+" slot pop-up menu
+    var showAddMenuDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(activeMission) {
-        biometricsPassed = activeMission?.requiresAttestation != true
-        if (!biometricsPassed) {
-            onLogEntry("WARNING: Identity verification required for this asset.")
-        }
-    }
+    // Pre-calculate limits to use in both the Action Bar and the Pop-up Menu
+    val photoCount = contextItems.count { it.type == ContextType.PHOTO }
+    val canAddPhoto = photoCount < 3 && contextItems.size < 5
+    val canAddNote = contextItems.size < 5
 
     LaunchedEffect(isProcessingRedaction) {
         if (isProcessingRedaction) {
             onLogEntry("PrivacyFilter: Redacting PII and scaling to 720p...")
-        } else if (capturedEvidence.isNotEmpty()) {
+        } else if (contextItems.isNotEmpty()) {
             onLogEntry("Compliance pass complete. Evidence sanitized.")
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp).background(Color(0xFF0D1117)).padding(16.dp),
+            modifier = Modifier.fillMaxWidth().background(Color(0xFF0D1117)).padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // --- HEADER ---
             val titleText = if (isSentry) "🚧 SENTRY TRAFFIC CONTROL" else "📟 AV DIAGNOSTIC TERMINAL"
             val titleColor = if (isSentry) Color(0xFFFF9800) else Color(0xFF00FF00)
 
             Text(titleText, color = titleColor, fontSize = 16.sp, fontWeight = FontWeight.Black)
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (isSentry) {
-                Text(
-                    text = "INSTRUCTIONS: Park near the scene. If the primary agent is already there, greet them. Stand 20 feet behind the AV and redirect traffic around the AV while the primary clears the error.",
-                    color = Color(0xFFCCCCCC),
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 8.dp).padding(bottom = 12.dp)
-                )
+            // --- DIAGNOSTIC INSTRUCTION BLOCK ---
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1A1A1A), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "FAULT: ${activeMission?.errorCode ?: "UNKNOWN_ERROR"}",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = activeMission?.diagnostic ?: "Assess vehicle state and run diagnostics.",
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Box(modifier = Modifier.fillMaxWidth().height(140.dp).background(Color.Black, RoundedCornerShape(8.dp)).border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    terminalLogs.forEach { log ->
-                        Text("> $log", color = Color(0xFF00FF00), fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
+            // --- POLYMORPHIC CONTEXT DETAIL PANEL ---
+            ContextDetailPanel(
+                selectedItem = selectedItem,
+                onEditNoteRequested = { item ->
+                    editingItemId = item.id
+                    noteText = item.textContent ?: ""
+                    showTextDialog = true
+                },
+                onPlaybackAudioRequested = { /* Future actual implementation */ },
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- CONTEXT GRID (5 SLOTS) ---
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                contextItems.forEach { item ->
+                    ContextThumbnail(
+                        item = item,
+                        onRemove = { onRemoveItem(item.id) },
+                        onClick = { onItemSelected(item) },
+                        isSelected = item == selectedItem
+                    )
+                }
+
+                val emptySlots = 5 - contextItems.size
+                repeat(emptySlots) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            // 🟢 THE FIX: Make the empty slot clickable to open the menu
+                            .clickable { showAddMenuDialog = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("+", color = Color(0xFF555555), fontSize = 24.sp)
                     }
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (!biometricsPassed) {
-                SecurityCheckUI(
-                    isVerifying = isVerifyingBiometrics,
-                    onVerify = {
-                        isVerifyingBiometrics = true
-                        onVerifyIdentity { success ->
-                            isVerifyingBiometrics = false
-                            if (success) {
-                                biometricsPassed = true
-                                onLogEntry("Identity verified via StrongBox.")
-                            } else {
-                                onLogEntry("ERROR: Verification failed.")
-                            }
-                        }
-                    }
-                )
-            } else {
-                if (capturedEvidence.isNotEmpty()) {
-                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        capturedEvidence.forEachIndexed { index, imgBytes ->
-                            EvidenceThumbnail(index, imgBytes, isSentry, onRemovePhoto)
-                        }
-                    }
+            // --- ACTION BAR ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                IconButton(
+                    onClick = {
+                        if (hasCameraPermission) onCapturePhoto() else onRequestCameraPermission()
+                    },
+                    enabled = canAddPhoto,
+                    modifier = Modifier.size(56.dp).background(if (canAddPhoto) PanColors.ButtonSecondary else Color(0xFF1E1E1E), CircleShape)
+                ) {
+                    Text("📷", fontSize = 24.sp)
                 }
 
-                ActionButtons(
-                    evidenceCount = capturedEvidence.size,
-                    requiredPhotos = requiredPhotos,
-                    isProcessingRedaction = isProcessingRedaction,
-                    isResolving = isResolving,
-                    hasCameraPermission = hasCameraPermission,
-                    isSentry = isSentry,
-                    onCapturePhoto = onCapturePhoto,
-                    onRequestCameraPermission = onRequestCameraPermission,
-                    onSubmit = onSubmitEvidence
-                )
+                IconButton(
+                    onClick = { onAddVoiceNote("") },
+                    enabled = canAddNote,
+                    modifier = Modifier.size(56.dp).background(if (canAddNote) PanColors.ButtonSecondary else Color(0xFF1E1E1E), CircleShape)
+                ) {
+                    Text("🎙️", fontSize = 24.sp)
+                }
+
+                IconButton(
+                    onClick = { showTextDialog = true },
+                    enabled = canAddNote,
+                    modifier = Modifier.size(56.dp).background(if (canAddNote) PanColors.ButtonSecondary else Color(0xFF1E1E1E), CircleShape)
+                ) {
+                    Text("⌨️", fontSize = 24.sp)
+                }
             }
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- SUBMIT BUTTON ---
+            Button(
+                enabled = !isResolving && !isProcessingRedaction && contextItems.isNotEmpty(),
+                onClick = onRunDiagnostics,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4), disabledContainerColor = Color(0xFF1E3538)),
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                if (isResolving) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black)
+                } else {
+                    Text("RUN DIAGNOSTICS", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                }
+            }
+        }
+
+        // 🟢 NEW: ADD CONTEXT MENU DIALOG
+        if (showAddMenuDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddMenuDialog = false },
+                containerColor = PanColors.CardBackground,
+                title = { Text("Add Evidence", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = {
+                                showAddMenuDialog = false
+                                if (hasCameraPermission) onCapturePhoto() else onRequestCameraPermission()
+                            },
+                            enabled = canAddPhoto,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PanColors.ButtonSecondary,
+                                disabledContainerColor = Color(0xFF1E1E1E)
+                            ),
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("📷 Take Photo", color = if (canAddPhoto) Color.White else Color.Gray, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                showAddMenuDialog = false
+                                onAddVoiceNote("")
+                            },
+                            enabled = canAddNote,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PanColors.ButtonSecondary,
+                                disabledContainerColor = Color(0xFF1E1E1E)
+                            ),
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("🎙️ Voice Memo", color = if (canAddNote) Color.White else Color.Gray, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                showAddMenuDialog = false
+                                showTextDialog = true
+                            },
+                            enabled = canAddNote,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PanColors.ButtonSecondary,
+                                disabledContainerColor = Color(0xFF1E1E1E)
+                            ),
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("📝 Take Notes", color = if (canAddNote) Color.White else Color.Gray, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showAddMenuDialog = false }) {
+                        Text("CANCEL", color = Color.Gray)
+                    }
+                }
+            )
+        }
+
+        // --- TEXT NOTE DIALOG (Modified for Editing) ---
+        if (showTextDialog) {
+            val dialogTitle = if (editingItemId == null) "Add Field Note" else "Edit Note"
+            AlertDialog(
+                onDismissRequest = { showTextDialog = false; noteText = ""; editingItemId = null },
+                containerColor = PanColors.CardBackground,
+                title = { Text(dialogTitle, color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    OutlinedTextField(
+                        value = noteText,
+                        onValueChange = { noteText = it },
+                        modifier = Modifier.fillMaxWidth().height(120.dp),
+                        placeholder = { Text("Describe the scene...", color = Color.Gray) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = PanColors.QualifiedGreen,
+                            unfocusedBorderColor = Color.Gray
+                        )
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (noteText.isNotBlank()) {
+                                if (editingItemId == null) {
+                                    // Creation flow
+                                    onAddTextNote(noteText)
+                                } else {
+                                    // Update flow (editing existing note)
+                                    onUpdateItem(editingItemId!!, noteText)
+                                }
+                            }
+                            showTextDialog = false
+                            noteText = ""
+                            editingItemId = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = PanColors.QualifiedGreen)
+                    ) {
+                        Text("SAVE", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showTextDialog = false;
+                        noteText = "";
+                        editingItemId = null
+                    }) {
+                        Text("CANCEL", color = Color.Gray)
+                    }
+                }
+            )
         }
 
         AnimatedVisibility(
@@ -148,6 +346,123 @@ fun OnSceneTerminal(
                 onAccept = { onAcceptExtension(stableRequest.taskId, stableRequest.extensionMinutes, stableRequest.offeredBountyUsd) },
                 onDecline = onDeclineExtension
             )
+        }
+    }
+}
+
+@Composable
+fun ContextDetailPanel(
+    selectedItem: ContextItem?,
+    onEditNoteRequested: (ContextItem) -> Unit,
+    onPlaybackAudioRequested: (ContextItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(250.dp)
+            .background(Color.Black, RoundedCornerShape(8.dp))
+            .border(1.dp, Color(0xFF333333), RoundedCornerShape(8.dp))
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selectedItem == null) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Select an item to view or edit", color = Color.Gray, style = MaterialTheme.typography.bodyLarge)
+            }
+        } else {
+            when (selectedItem.type) {
+                ContextType.PHOTO -> {
+                    if (selectedItem.payloadBytes != null) {
+                        AsyncImage(
+                            model = selectedItem.payloadBytes,
+                            contentDescription = "Full Size Evidence",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+                ContextType.TEXT, ContextType.VOICE -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize().clickable {
+                            onEditNoteRequested(selectedItem)
+                        }
+                    ) {
+                        Text(
+                            text = if (selectedItem.type == ContextType.VOICE) "🎙️ Voice Note Transcription:" else "📝 Field Note:",
+                            color = Color.Gray,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = selectedItem.textContent ?: "(No Content)",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        Text(
+                            "Tap note to edit",
+                            color = Color(0xFF00BCD4),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.align(Alignment.End)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ContextThumbnail(item: ContextItem, onRemove: () -> Unit, onClick: () -> Unit, isSelected: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .border(2.dp, if (isSelected) Color(0xFF00BCD4) else Color.Transparent, RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF1E1E1E))
+            .clickable { onClick() }
+    ) {
+        when (item.type) {
+            ContextType.PHOTO -> {
+                if (item.payloadBytes != null) {
+                    AsyncImage(
+                        model = item.payloadBytes,
+                        contentDescription = "Evidence",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
+            ContextType.VOICE -> {
+                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text("🎙️", fontSize = 24.sp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(item.textContent ?: "Audio", color = Color.White, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
+                }
+            }
+            ContextType.TEXT -> {
+                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text("📝", fontSize = 24.sp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(item.textContent ?: "Note", color = Color.White, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(20.dp)
+                .background(Color(0xAA000000), CircleShape)
+                .clickable { onRemove() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("✕", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -171,67 +486,6 @@ fun SentryExtensionOverlay(request: SentryExtensionRequest, onAccept: () -> Unit
             Spacer(modifier = Modifier.height(8.dp))
             TextButton(onClick = onDecline, modifier = Modifier.fillMaxWidth().height(48.dp)) {
                 Text("DECLINE", color = Color.Gray, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-fun EvidenceThumbnail(index: Int, imgBytes: ByteArray, isSentry: Boolean, onRemove: (Int) -> Unit) {
-    val labelText = if (isSentry) {
-        if (index == 0) "SETUP" else "TRAFFIC"
-    } else {
-        if (index == 0) "BEFORE" else "AFTER"
-    }
-
-    Box(modifier = Modifier.size(80.dp).border(2.dp, Color(0xFF00BCD4), RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp))) {
-        AsyncImage(model = imgBytes, contentDescription = "Evidence", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        Box(modifier = Modifier.align(Alignment.BottomStart).background(Color(0xAA000000)).padding(4.dp)) {
-            Text(labelText, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-        }
-        Box(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp).background(Color(0xAA000000), RoundedCornerShape(11.dp)).clickable { onRemove(index) }, contentAlignment = Alignment.Center) {
-            Text("✕", color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-fun ActionButtons(
-    evidenceCount: Int,
-    requiredPhotos: Int,
-    isProcessingRedaction: Boolean,
-    isResolving: Boolean,
-    hasCameraPermission: Boolean,
-    isSentry: Boolean,
-    onCapturePhoto: () -> Unit,
-    onRequestCameraPermission: () -> Unit,
-    onSubmit: () -> Unit
-) {
-    val btnTextCapture = if (isSentry) "CAPTURE SCENE (${evidenceCount}/$requiredPhotos)" else "CAPTURE PHOTO (${evidenceCount}/$requiredPhotos)"
-    val btnTextSubmit = if (isSentry) "SECURE SCENE & SUBMIT" else "RE-RUN DIAGNOSTICS & SUBMIT"
-
-    if (evidenceCount < requiredPhotos) {
-        Button(enabled = !isProcessingRedaction, onClick = { if (hasCameraPermission) onCapturePhoto() else onRequestCameraPermission() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), disabledContainerColor = Color(0xFF1B3D20)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)) {
-            if (isProcessingRedaction) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
-            else Text(btnTextCapture, color = Color.White, fontWeight = FontWeight.Black)
-        }
-    } else {
-        Button(enabled = !isResolving && !isProcessingRedaction, onClick = onSubmit, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00BCD4), disabledContainerColor = Color(0xFF1E3538)), modifier = Modifier.fillMaxWidth().height(64.dp), shape = RoundedCornerShape(8.dp)) {
-            if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black)
-            else Text(btnTextSubmit, color = Color.Black, fontWeight = FontWeight.Black)
-        }
-    }
-}
-
-@Composable
-fun SecurityCheckUI(isVerifying: Boolean, onVerify: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().border(2.dp, Color.Red, RoundedCornerShape(8.dp)).background(Color(0xFF2A0000), RoundedCornerShape(8.dp)).padding(16.dp)) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Text("⚠️ IDENTITY ATTESTATION REQUIRED ⚠️", color = Color.Red, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(onClick = onVerify, enabled = !isVerifying, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) {
-                if (isVerifying) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
-                else Text("VERIFY IDENTITY", color = Color.White, fontWeight = FontWeight.Black)
             }
         }
     }

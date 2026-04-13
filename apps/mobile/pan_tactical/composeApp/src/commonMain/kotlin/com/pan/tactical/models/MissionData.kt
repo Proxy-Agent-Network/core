@@ -55,5 +55,8 @@ data class MissionData(
     val extensionMinutes: Int = 0,
 
     @SerialName("extension_bounty_usd")
-    val extensionBountyUsd: Double = 0.0
+    val extensionBountyUsd: Double = 0.0,
+
+    // 🟢 NEW: Diagnostic instruction from the backend to display on the Terminal
+    val diagnostic: String? = null
 )

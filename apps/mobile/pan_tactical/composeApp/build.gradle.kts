@@ -104,12 +104,15 @@ kotlin {
             implementation("com.google.mlkit:face-detection:16.1.6")
             implementation("com.google.mlkit:text-recognition:16.0.0")
             
-            // 🟢 NEW: CameraX (Native High-Fidelity Capture)
+            // CameraX (Native High-Fidelity Capture)
             val camerax_version = "1.3.1"
             implementation("androidx.camera:camera-core:${camerax_version}")
             implementation("androidx.camera:camera-camera2:${camerax_version}")
             implementation("androidx.camera:camera-lifecycle:${camerax_version}")
             implementation("androidx.camera:camera-view:${camerax_version}")
+
+            // Explicitly provide ListenableFuture for the KMP compiler
+            implementation("com.google.guava:guava:32.1.3-android")
 
             // Ktor Android Engine (For PanApiClient)
             implementation("io.ktor:ktor-client-okhttp:2.3.11")

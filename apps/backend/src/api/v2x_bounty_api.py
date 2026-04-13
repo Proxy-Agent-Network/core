@@ -12,6 +12,8 @@ from compliance.audit_engine import ComplianceEngine
 from utils.auth import verify_agent_signature
 from reputation.reputation_engine import ReputationEngine
 
+from api.v2x_telemetry_api import freeze_telemetry_buffer
+
 logger = logging.getLogger("V2X_Bounty_API")
 router = APIRouter()
 
@@ -28,7 +30,8 @@ class DistressPayload(BaseModel):
     secondary_start_bid_usd: float = 14.0   
     secondary_max_bid_usd: float = 24.0     
     secondary_escalation_usd_per_min: float = 2.0
-    intersection: str = "Unknown Location"  # 🟢 THE FIX: dynamic intersection support
+    intersection: str = "Unknown Location"
+    is_near_miss: bool = False  
 
 class MissionCompletePayload(BaseModel):
     agent_id: str
@@ -36,6 +39,10 @@ class MissionCompletePayload(BaseModel):
     evidence_urls: list = []
     hardware_attestation_token: str = ""
     av_signature_hex: str = ""
+
+class DiagnosticPayload(BaseModel):
+    evidence_urls: list = []
+    notes: list = []
 
 class SentryExtensionPayload(BaseModel):
     task_id: str
@@ -66,14 +73,8 @@ def decode_redis_hash(raw_hash: dict) -> dict:
         for k, v in raw_hash.items()
     }
 
-# --- ENDPOINTS ---
-
-@router.post("/v1/v2x/distress")
-async def receive_distress_signal(
-    payload: DistressPayload, 
-    request: Request,
-    fleet_id: str = Depends(verify_v2x_signature)  # 🟢 THE FIX: Enforced Webhook Auth
-):
+async def process_core_distress(payload: DistressPayload, request: Request, fleet_id: str):
+    """Shared core logic for mapping a distress signal to the active dispatch pool."""
     try:
         redis_client = request.app.state.redis_client
         
@@ -98,10 +99,21 @@ async def receive_distress_signal(
             "role": "PRIMARY",
             "incident_id": incident_id,
             "intersection": payload.intersection,
+            "is_near_miss": str(payload.is_near_miss).lower(),
         }
         
         await redis_client.hset(f"pan:task:{task_id}", mapping=task_record)
         await redis_client.rpush("pan:dispatch:active_tasks", task_id)
+
+        if payload.is_near_miss:
+            now_utc = datetime.now(timezone.utc)
+            quarter = (now_utc.month - 1) // 3 + 1
+            index_key = f"pan:compliance:near_misses:{now_utc.year}_Q{quarter}"
+            
+            await redis_client.sadd(index_key, task_id)
+            # 400 days TTL ensures it survives the compliance year for auditing
+            await redis_client.expire(index_key, 34560000)
+            logger.info(f"⚠️ [COMPLIANCE] Near-miss logged for {payload.vin} in {now_utc.year}_Q{quarter}")
 
         sentry_task_id = None
         if payload.request_secondary:
@@ -123,10 +135,21 @@ async def receive_distress_signal(
                 "required_tier": 1,     
                 "incident_id": incident_id,
                 "intersection": payload.intersection,
+                "is_near_miss": str(payload.is_near_miss).lower(),
             }
             await redis_client.hset(f"pan:task:{sentry_task_id}", mapping=sentry_record)
             await redis_client.rpush("pan:dispatch:active_tasks", sentry_task_id)
             logger.info(f"🚨 [SENTRY] Secondary T1 agent queued for incident {incident_id}.")
+
+        try:
+            await freeze_telemetry_buffer(
+                redis_client=redis_client,
+                vin=payload.vin,
+                incident_id=incident_id,
+                fleet_id=fleet_id
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ [COMPLIANCE] Non-fatal error freezing telemetry for {payload.vin}: {e}")
 
         await redis_client.publish("pan:stream:distress_alerts", json.dumps({
             "task_id": task_id,
@@ -160,6 +183,27 @@ async def receive_distress_signal(
     except Exception as e:
         logger.error(f"❌ [V2X] Failed to process distress signal for {payload.vin}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal routing failure.")
+
+# --- ENDPOINTS ---
+
+@router.post("/v1/v2x/distress")
+async def receive_distress_signal(
+    payload: DistressPayload, 
+    request: Request,
+    fleet_id: str = Depends(verify_v2x_signature)  
+):
+    """Official webhook endpoint for Fleet Partners (Requires Fleet HMAC)."""
+    return await process_core_distress(payload, request, fleet_id)
+
+@router.post("/v1/dev/inject-distress")
+async def inject_dev_distress(
+    payload: DistressPayload, 
+    request: Request,
+    agent_id: str = Depends(verify_agent_signature)  
+):
+    """🟢 NEW: Dedicated DEV menu endpoint for mobile app testing (Requires Agent JWT)."""
+    logger.info(f"🛠️ [DEV MENU] Agent {agent_id} injecting simulated distress signal.")
+    return await process_core_distress(payload, request, "DEV-FLEET-01")
 
 @router.get("/v1/agent/missions")
 async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_agent_signature)):
@@ -204,7 +248,7 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
                 "faultCode": fault,
                 "bounty_usd": float(task.get('bounty_usd', 25.0)), 
                 "bountyUsd": float(task.get('bounty_usd', 25.0)), 
-                "intersection": str(task.get("intersection", "Unknown Location")), # 🟢 THE FIX: Dynamic mapping
+                "intersection": str(task.get("intersection", "Unknown Location")), 
                 "vin": str(task.get("vin", "Target Location")),
                 "role": str(task.get("role", "PRIMARY")).upper(),
                 "status": str(mission.get("status", "ASSIGNED")).upper(),
@@ -217,6 +261,40 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
         logger.info(f"📤 Sending to Agent {agent_id}: {active_missions}")
         
     return active_missions
+
+@router.post("/v1/agent/missions/{task_id}/diagnose")
+async def run_diagnostics(
+    task_id: str, 
+    payload: DiagnosticPayload, 
+    request: Request, 
+    agent_id: str = Depends(verify_agent_signature)
+):
+    """🟢 NEW: Endpoint to submit context grid items and evaluate vehicle clearance."""
+    redis_client = request.app.state.redis_client
+    
+    mission_key = f"mission:active:{task_id}"
+    raw_mission_data = await redis_client.hgetall(mission_key)
+    mission_data = decode_redis_hash(raw_mission_data)
+    
+    if not mission_data:
+        raise HTTPException(status_code=404, detail="Mission not found.")
+        
+    if mission_data.get("agent_id") != agent_id:
+        logger.warning(f"⚠️ [SECURITY] Agent {agent_id} attempted to run diagnostics on mission {task_id}.")
+        raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
+
+    # In production, this would forward the payload to the specific AV Fleet's
+    # API to request remote diagnostic validation. For the pilot, we mock success.
+    
+    logger.info(f"🔍 [DIAGNOSTICS] Agent {agent_id} running diagnostics on {task_id}.")
+    logger.info(f"   Context attached: {len(payload.evidence_urls)} images, {len(payload.notes)} text/voice notes.")
+    
+    # Mocking instant clearance for Vanguard 50 Pilot
+    return {
+        "status": "success",
+        "is_cleared": True,
+        "message": "Vehicle systems nominal. Fault cleared."
+    }
 
 @router.post("/v1/agent/missions/{task_id}/complete")
 async def complete_mission(task_id: str, payload: MissionCompletePayload, request: Request, agent_id: str = Depends(verify_agent_signature)):
@@ -244,12 +322,10 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
         raw_bounty = float(task_data.get("bounty_usd", 25.0))
         
-        # 🟢 THE FIX: Dynamic payout scaling based on agent tier
         agent_raw = await redis_client.hget(f"pan:agent:{agent_id}", "tier")
         tier = int(agent_raw) if agent_raw else 1
         multiplier = 0.90 if tier >= 2 else 0.80
         
-        # net_payout from client is intentionally ignored — backend calculates from Redis task config
         actual_payout = round(raw_bounty * multiplier, 2) 
 
         await redis_client.hset(f"pan:task:{task_id}", mapping={
@@ -268,7 +344,7 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
             hardware_attestation_token=payload.hardware_attestation_token
         )
         
-        await redis_client.hset("pan:compliance:reports", task_id, json.dumps(sealed_report))
+        await redis_client.setex(f"pan:compliance:report:{task_id}", 31622400, json.dumps(sealed_report))
         
         wallet_key = f"pan:agent:{agent_id}:wallet"
         missions_key = f"pan:agent:{agent_id}:missions_completed"

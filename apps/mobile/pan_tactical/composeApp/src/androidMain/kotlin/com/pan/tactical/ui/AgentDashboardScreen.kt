@@ -1,7 +1,14 @@
 package com.pan.tactical.ui
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.speech.RecognizerIntent
 import androidx.fragment.app.FragmentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -24,6 +31,7 @@ import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
+import java.util.UUID
 import kotlin.math.*
 import com.pan.tactical.ui.components.OfflineLoadoutMenu
 import com.pan.tactical.ui.components.OnSceneTerminal
@@ -50,6 +58,9 @@ import com.pan.tactical.network.PanWalletClient
 import com.pan.tactical.ui.mission.MissionViewModel
 import com.pan.tactical.ui.mission.MissionPhase
 import com.pan.tactical.ui.theme.PanColors
+import com.pan.tactical.ui.components.ContextItem
+import com.pan.tactical.ui.components.ContextType
+
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
@@ -80,7 +91,7 @@ actual fun AgentDashboardScreen(
 
     val missionViewModel = remember {
         MissionViewModel(
-            apiClient = panClient, // 🟢 THE FIX: Correctly maps Mission operations to PanApiClient
+            apiClient = panClient,
             walletClient = trueWalletClient,
             scope = coroutineScope
         )
@@ -269,6 +280,69 @@ fun MainDashboardContent(
     var isFlashing by remember { mutableStateOf(false) }
     val flashAlpha by animateFloatAsState(targetValue = if (isFlashing) 0.2f else 0f, animationSpec = tween(durationMillis = 150), label = "flash")
 
+    val contextLocal = LocalContext.current
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(contextLocal, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCameraPermission = isGranted
+        if (isGranted) {
+            showCameraViewfinder = true
+        } else {
+            coroutineScope.launch { snackbarHostState.showSnackbar("Camera permission is required to capture evidence.") }
+        }
+    }
+
+    var contextItems by remember { mutableStateOf<List<ContextItem>>(emptyList()) }
+
+    // 🟢 NEW: Holds the reference to the item currently being displayed in the large panel
+    var selectedContextItem: ContextItem? by remember { mutableStateOf(null) }
+
+    // 🟢 NEW: Update an item in the hoisted list
+    val onUpdateContextItem: (id: String, updatedText: String) -> Unit = { id, updatedText ->
+        contextItems = contextItems.map { item ->
+            if (item.id == id) {
+                // Return a copy with the new textContent
+                item.copy(textContent = updatedText)
+            } else {
+                item
+            }
+        }
+        // Update the selection reference too if that was the item being edited
+        if (selectedContextItem?.id == id) {
+            selectedContextItem = selectedContextItem?.copy(textContent = updatedText)
+        }
+    }
+
+    val speechRecognizerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val data = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val spokenText = results?.getOrNull(0)
+
+            if (!spokenText.isNullOrBlank()) {
+                if (contextItems.size < 5) {
+                    val newItem = ContextItem(
+                        id = UUID.randomUUID().toString(),
+                        type = ContextType.VOICE,
+                        textContent = spokenText
+                    )
+                    contextItems = contextItems + newItem
+                    selectedContextItem = newItem // 🟢 Focus the new item
+                } else {
+                    coroutineScope.launch { snackbarHostState.showSnackbar("Maximum 5 context items reached.") }
+                }
+            }
+        }
+    }
+
     LaunchedEffect(uiState.missionPhase) {
         when (uiState.missionPhase) {
             MissionPhase.IDLE -> {
@@ -328,7 +402,6 @@ fun MainDashboardContent(
             lastTelemetryTime = now
             coroutineScope.launch {
                 try {
-                    // 🟢 THE FIX: Push telemetry using apiClient, not the wallet stub
                     apiClient.updateLocationTelemetry(lat, lon)
                 } catch (e: Exception) {
                     println("[TELEMETRY_ERROR] Failed to push GPS to Backend: ${e.message}")
@@ -338,8 +411,6 @@ fun MainDashboardContent(
     }
 
     var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
-    var hasCameraPermission by rememberSaveable { mutableStateOf(true) }
-    var capturedEvidence by remember { mutableStateOf<List<ByteArray>>(emptyList()) }
 
     val bearingDegrees = remember(agentLocation, uiState.activeMission) {
         if (uiState.activeMission == null) return@remember 0f
@@ -447,7 +518,7 @@ fun MainDashboardContent(
 
                 PostMissionOverlays(
                     isUploadingProof = homingState.isResolving,
-                    capturedEvidence = capturedEvidence,
+                    capturedEvidence = contextItems.mapNotNull { it.payloadBytes },
                     missionState = uiState.missionPhase.name,
                     lastPayoutAmount = uiState.lastPayoutAmount,
                     timeOnSceneMs = uiState.timeOnSceneMs,
@@ -475,69 +546,105 @@ fun MainDashboardContent(
                 AnimatedVisibility(visible = uiState.missionPhase == MissionPhase.ON_SCENE, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                     OnSceneTerminal(
                         activeMission = uiState.activeMission,
-                        capturedEvidence = capturedEvidence,
+                        contextItems = contextItems,
+                        // 🟢 NEW: Pass the hoisted selection and update callbacks
+                        selectedItem = selectedContextItem,
+                        onItemSelected = { selectedContextItem = it },
+                        onUpdateItem = onUpdateContextItem,
+
                         isProcessingRedaction = homingState.isResolving,
                         isResolving = homingState.isResolving,
                         terminalLogs = homingState.terminalLogs,
                         extensionRequest = homingState.extensionRequest,
                         hasCameraPermission = hasCameraPermission,
                         onRequestCameraPermission = {
-                            hasCameraPermission = true
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                         },
                         onCapturePhoto = {
-                            showCameraViewfinder = true 
-                        },
-                        onRemovePhoto = { index ->
-                            val mutableList = capturedEvidence.toMutableList()
-                            if (index in mutableList.indices) {
-                                mutableList.removeAt(index)
-                                capturedEvidence = mutableList.toList()
+                            if (hasCameraPermission) {
+                                showCameraViewfinder = true
+                            } else {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                             }
                         },
-                        onSubmitEvidence = {
+                        onAddTextNote = { text ->
+                            if (contextItems.size < 5) {
+                                val newItem = ContextItem(
+                                    id = UUID.randomUUID().toString(),
+                                    type = ContextType.TEXT,
+                                    textContent = text
+                                )
+                                contextItems = contextItems + newItem
+                                selectedContextItem = newItem // 🟢 Focus the new item
+                            } else {
+                                coroutineScope.launch { snackbarHostState.showSnackbar("Maximum 5 context items reached.") }
+                            }
+                        },
+                        onAddVoiceNote = { _ ->
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Dictate diagnostic note...")
+                            }
+                            try {
+                                speechRecognizerLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                coroutineScope.launch { snackbarHostState.showSnackbar("Speech recognition not available on this device.") }
+                            }
+                        },
+                        onRemoveItem = { id ->
+                            contextItems = contextItems.filterNot { it.id == id }
+                            // 🟢 Clear selection if the removed item was currently selected
+                            if (selectedContextItem?.id == id) {
+                                selectedContextItem = null
+                            }
+                        },
+                        onRunDiagnostics = {
                             val taskId = uiState.activeMission?.taskId
                             if (!taskId.isNullOrBlank()) {
                                 coroutineScope.launch {
-                                    // 1. Convert captured ByteArrays back to Bitmaps for the API client
-                                    val evidenceBitmaps = capturedEvidence.map { byteArray ->
-                                        BitmapFactory.decodeByteArray(byteArray, 0, byteArray.size)
-                                    }
+                                    val evidenceBitmaps = contextItems
+                                        .filter { it.type == ContextType.PHOTO && it.payloadBytes != null }
+                                        .map { BitmapFactory.decodeByteArray(it.payloadBytes!!, 0, it.payloadBytes.size) }
 
-                                    // 2. Upload to S3 and get the secure URIs
                                     val uploadedUrls = if (evidenceBitmaps.isNotEmpty()) {
                                         apiClient.uploadEvidenceArray(evidenceBitmaps)
                                     } else {
                                         emptyList()
                                     }
 
-                                    // 3. Submit the mission completion with the real S3 URIs
-                                    val success = apiClient.completeMission(
-                                        taskId = taskId,
-                                        evidenceUrls = uploadedUrls.ifEmpty { listOf("no_evidence_provided") }
-                                    )
+                                    val isCleared = true // MOCKED FOR NOW pending API update
 
-                                    if (success) {
-                                        missionViewModel.onMissionSuccess()
-                                        audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
-                                        capturedEvidence = emptyList() // Clear memory
+                                    if (isCleared) {
+                                        val hardwareSignature = biometricHelper.authenticate(
+                                            promptTitle = "Diagnostic Cleared",
+                                            promptSubtitle = "Authenticate to cryptographically seal the mission"
+                                        )
+
+                                        if (hardwareSignature != null) {
+                                            val success = apiClient.completeMission(
+                                                taskId = taskId,
+                                                evidenceUrls = uploadedUrls.ifEmpty { listOf("no_evidence_provided") }
+                                            )
+
+                                            if (success) {
+                                                missionViewModel.onMissionSuccess()
+                                                audio.speak("Diagnostics clear. Escrow funds secured.", voiceVolume)
+                                                contextItems = emptyList() // Clear memory
+                                                selectedContextItem = null
+                                            } else {
+                                                snackbarHostState.showSnackbar("ERROR: Backend rejected mission completion.")
+                                            }
+                                        } else {
+                                            snackbarHostState.showSnackbar("Biometric signature canceled.")
+                                        }
                                     } else {
-                                        snackbarHostState.showSnackbar("ERROR: Backend rejected mission completion.")
+                                        snackbarHostState.showSnackbar("Diagnostics Failed: Requires Escalation.")
                                     }
                                 }
                             }
                         },
                         onAcceptExtension = { _, _, _ -> },
                         onDeclineExtension = { },
-                        onVerifyIdentity = { onResult ->
-                            coroutineScope.launch {
-                                onResult(
-                                    biometricHelper.authenticate(
-                                        promptTitle = "Agent Attestation Required",
-                                        promptSubtitle = "Authenticate to cryptographically sign mission evidence"
-                                    )
-                                )
-                            }
-                        },
                         onLogEntry = { }
                     )
                 }
@@ -638,13 +745,30 @@ fun MainDashboardContent(
             CameraCaptureOverlay(
                 onPhotoCaptured = { rawHighResBitmap ->
                     showCameraViewfinder = false
-                    
+
                     coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         try {
                             val safeImage = com.pan.tactical.security.PrivacyFilter.sanitizeImage(rawHighResBitmap)
-                            
+
+                            val stream = java.io.ByteArrayOutputStream()
+                            safeImage.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, stream)
+                            val safeBytes = stream.toByteArray()
+
+                            safeImage.recycle()
+
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                capturedEvidence = capturedEvidence + safeImage
+                                val photoCount = contextItems.count { it.type == ContextType.PHOTO }
+                                if (photoCount < 3 && contextItems.size < 5) {
+                                    val newItem = ContextItem(
+                                        id = UUID.randomUUID().toString(),
+                                        type = ContextType.PHOTO,
+                                        payloadBytes = safeBytes
+                                    )
+                                    contextItems = contextItems + newItem
+                                    selectedContextItem = newItem // 🟢 Focus the new photo
+                                } else {
+                                    coroutineScope.launch { snackbarHostState.showSnackbar("Maximum 3 photos or 5 total items reached.") }
+                                }
                             }
                         } catch (e: Exception) {
                             android.util.Log.e("Camera", "Failed to process high-res image: ${e.message}")
@@ -675,13 +799,17 @@ fun MainDashboardContent(
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
 
                     Button(onClick = {
-                        val newList = capturedEvidence.toMutableList()
-                        newList.add(byteArrayOf(0x00))
-                        capturedEvidence = newList.toList()
-                        showDevMenu = false
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("Mock Evidence Injected!")
+                        if (contextItems.size < 5) {
+                            val newItem = ContextItem(
+                                id = UUID.randomUUID().toString(),
+                                type = ContextType.PHOTO,
+                                payloadBytes = byteArrayOf(0x00)
+                            )
+                            contextItems = contextItems + newItem
+                            selectedContextItem = newItem // 🟢 Focus the mock photo
+                            coroutineScope.launch { snackbarHostState.showSnackbar("Mock Photo Injected!") }
                         }
+                        showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.WarningOrange), modifier = Modifier.fillMaxWidth()) { Text("DEV: INJECT MOCK EVIDENCE", color = Color.Black, fontWeight = FontWeight.Bold) }
                 } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showDevMenu = false }) { Text("CLOSE", color = Color.Gray) } }
             )
@@ -694,7 +822,8 @@ fun MainDashboardContent(
                         missionViewModel.onMissionAborted(reason)
                         showAbortDialog = false; abortSliderResetKey++
                         tacticalRoute = emptyList()
-                        capturedEvidence = emptyList()
+                        contextItems = emptyList()
+                        selectedContextItem = null
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp)) { Text(reason, color = Color.White, fontWeight = FontWeight.Bold) }
                 } } }, confirmButton = {}, dismissButton = { TextButton(onClick = { showAbortDialog = false; abortSliderResetKey++ }) { Text("CANCEL", color = Color.Gray) } }
             )

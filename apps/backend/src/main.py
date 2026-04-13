@@ -20,6 +20,9 @@ from api.telemetry_socket import router as telemetry_router
 from ops.logistics_webhook_api import router as logistics_router
 from api.onboarding_api import router as onboarding_router
 
+# 🟢 THE FIX: Import the missing evidence router
+from api.evidence_api import router as evidence_router
+
 # 🛠️ NEW: Import the background workers
 from matching_engine import run_matching_engine
 from ops.sla_monitor import run_sla_monitor
@@ -116,6 +119,9 @@ app.include_router(telemetry_router, prefix="/api")
 app.include_router(wallet_router, prefix="/api")
 app.include_router(logistics_router, prefix="/logistics")
 app.include_router(onboarding_router, prefix="/api/v1")
+
+# 🟢 THE FIX: Mount the evidence router so the endpoints resolve
+app.include_router(evidence_router, prefix="/api")
 
 # --- FASTAPI NATIVE TEMPLATING ---
 logger.info("🔗 Initializing Native UI Template Engine...")

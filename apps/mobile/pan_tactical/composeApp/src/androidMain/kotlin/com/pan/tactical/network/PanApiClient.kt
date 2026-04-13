@@ -41,17 +41,12 @@ data class StatusUpdateRequest(
 @Serializable
 data class V2XDistressPayload(
     val vin: String,
-
-    @SerialName("fault_code")
-    val faultCode: String,
-
+    @SerialName("fault_code") val faultCode: String,
     val latitude: Double,
     val longitude: Double,
-
-    @SerialName("bounty_usd")
-    val bountyUsd: Double,
-
-    val timestamp: Long
+    @SerialName("bounty_usd") val bountyUsd: Double,
+    val timestamp: Long,
+    val intersection: String = "S 86th St & E Kiowa Ave" // 🟢 NEW: Match the map UI
 )
 
 @Serializable
@@ -130,7 +125,7 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 PILOT BYPASS: Hardcode hostUrl to the PC's local IP Address
+    // 泙 PILOT BYPASS: Hardcode hostUrl to the PC's local IP Address
     private val hostUrl = "http://192.168.0.84:5001"
     private val PAN_API_URL = "$hostUrl/api/v1"
 
@@ -187,8 +182,10 @@ class PanApiClient : WalletNetworkClient {
             try {
                 val jwt = getFreshJwt() ?: return@withContext false
 
-                Log.i(TAG, "🚀 Injecting V2X Distress Signal to Python Backend...")
-                val response: HttpResponse = client.post("$PAN_API_URL/v2x/distress") {
+                Log.i(TAG, "噫 Injecting V2X Distress Signal to Python Backend...")
+                
+                // 🟢 THE FIX: Route the payload to the dedicated DEV endpoint
+                val response: HttpResponse = client.post("$PAN_API_URL/dev/inject-distress") {
                     header("Authorization", "Bearer $jwt")
                     header("X-Fleet-Id", "DEV-FLEET-01")
                     contentType(ContentType.Application.Json)
@@ -410,17 +407,17 @@ class PanApiClient : WalletNetworkClient {
     // --- SPLIT-BRAIN GUARDRAILS ---
 
     override suspend fun getWalletData(): WalletResponse? {
-        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error: PanApiClient does not support secure ledger operations. Use PanWalletClient.")
+        Log.e(TAG, "尅 CRITICAL: Legacy Firebase wallet access attempted. Injection error: PanApiClient does not support secure ledger operations. Use PanWalletClient.")
         return null
     }
 
     override suspend fun linkDebitCard(cardNumber: String): Result<String> {
-        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
+        Log.e(TAG, "尅 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
         return Result.failure(IllegalStateException("MIGRATION_ERROR: Use PanWalletClient for secure ledger operations."))
     }
 
     override suspend fun withdrawFunds(amount: Double): Result<String> {
-        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
+        Log.e(TAG, "尅 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
         return Result.failure(IllegalStateException("MIGRATION_ERROR: Use PanWalletClient for secure ledger operations."))
     }
 
@@ -506,7 +503,7 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 FIX: Stub out the new listener to satisfy the interface contract.
+    // 泙 FIX: Stub out the new listener to satisfy the interface contract.
     // The legacy PanApiClient doesn't use WebSockets, so this does nothing.
     override suspend fun listenForMissions(
         onMissionAssigned: (MissionData) -> Unit,
