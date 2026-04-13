@@ -355,3 +355,5 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             await pubsub.unsubscribe()
             if hasattr(pubsub, 'close'):
                 await pubsub.close()
+        except Exception:
+            pass
