@@ -103,6 +103,13 @@ kotlin {
             // ML Kit (On-Device Face & Text Privacy Redaction)
             implementation("com.google.mlkit:face-detection:16.1.6")
             implementation("com.google.mlkit:text-recognition:16.0.0")
+            
+            // 🟢 NEW: CameraX (Native High-Fidelity Capture)
+            val camerax_version = "1.3.1"
+            implementation("androidx.camera:camera-core:${camerax_version}")
+            implementation("androidx.camera:camera-camera2:${camerax_version}")
+            implementation("androidx.camera:camera-lifecycle:${camerax_version}")
+            implementation("androidx.camera:camera-view:${camerax_version}")
 
             // Ktor Android Engine (For PanApiClient)
             implementation("io.ktor:ktor-client-okhttp:2.3.11")
@@ -130,7 +137,7 @@ kotlin {
             implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
             implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
             
-            // 🟢 NEW: Ktor WebSockets Plugin for real-time dispatch 
+            // Ktor WebSockets Plugin for real-time dispatch 
             implementation("io.ktor:ktor-client-websockets:2.3.11")
 
             implementation("io.coil-kt.coil3:coil-compose:3.0.4")

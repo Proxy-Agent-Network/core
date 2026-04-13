@@ -36,12 +36,12 @@ import com.pan.tactical.ui.components.FeedbackIssueChip
 import com.pan.tactical.ui.components.RankUpOverlay
 import com.pan.tactical.ui.components.TacticalStatusBar
 import com.pan.tactical.ui.components.MissionControlsPanel
+import com.pan.tactical.ui.screens.components.CameraCaptureOverlay
 import com.pan.tactical.models.AgentCapability
 import com.pan.tactical.models.AgentCapabilityUiModel
 import com.pan.tactical.AudioEngine
 import com.pan.tactical.getCurrentTimeMs
 import com.pan.tactical.getNativeMapUrl
-import com.pan.tactical.rememberSharedCameraManager
 import com.pan.tactical.rememberSharedLocationManager
 import com.pan.tactical.security.BiometricAuthHelper
 import com.pan.tactical.security.AndroidBiometricAuthHelper
@@ -80,7 +80,7 @@ actual fun AgentDashboardScreen(
 
     val missionViewModel = remember {
         MissionViewModel(
-            apiClient = trueWalletClient,
+            apiClient = panClient, // 🟢 THE FIX: Correctly maps Mission operations to PanApiClient
             walletClient = trueWalletClient,
             scope = coroutineScope
         )
@@ -218,6 +218,7 @@ fun MainDashboardContent(
     var showAbortDialog by rememberSaveable { mutableStateOf(false) }
     var showDevMenu by rememberSaveable { mutableStateOf(false) }
     var abortSliderResetKey by rememberSaveable { mutableIntStateOf(0) }
+    var showCameraViewfinder by remember { mutableStateOf(false) }
 
     var storeBalance by rememberSaveable { mutableDoubleStateOf(0.0) }
     var storeMissions by rememberSaveable { mutableIntStateOf(0) }
@@ -327,7 +328,8 @@ fun MainDashboardContent(
             lastTelemetryTime = now
             coroutineScope.launch {
                 try {
-                    rawWalletClient.updateLocationTelemetry(lat, lon)
+                    // 🟢 THE FIX: Push telemetry using apiClient, not the wallet stub
+                    apiClient.updateLocationTelemetry(lat, lon)
                 } catch (e: Exception) {
                     println("[TELEMETRY_ERROR] Failed to push GPS to Backend: ${e.message}")
                 }
@@ -338,13 +340,6 @@ fun MainDashboardContent(
     var tacticalRoute by remember { mutableStateOf<List<Pair<Double, Double>>>(emptyList()) }
     var hasCameraPermission by rememberSaveable { mutableStateOf(true) }
     var capturedEvidence by remember { mutableStateOf<List<ByteArray>>(emptyList()) }
-
-    val cameraManager = rememberSharedCameraManager { imageData ->
-        val bytes = imageData as? ByteArray ?: return@rememberSharedCameraManager
-        val newList = capturedEvidence.toMutableList()
-        newList.add(bytes)
-        capturedEvidence = newList.toList()
-    }
 
     val bearingDegrees = remember(agentLocation, uiState.activeMission) {
         if (uiState.activeMission == null) return@remember 0f
@@ -422,14 +417,14 @@ fun MainDashboardContent(
                             val targetLat = uiState.activeMission?.lat ?: 0.0
                             val targetLon = uiState.activeMission?.lon ?: 0.0
 
-                            // 🟢 FIX: Fetch actual road polyline from OSRM
                             coroutineScope.launch {
-                                val realRoute = (rawWalletClient as? PanWalletClient)?.getTacticalRoute(
+                                val realRoute = apiClient.getTacticalRoute(
                                     agentLocation.first, agentLocation.second,
                                     targetLat, targetLon
                                 )
-                                if (realRoute != null && realRoute.isNotEmpty()) {
-                                    tacticalRoute = realRoute
+                                if (realRoute != null && realRoute.first.isNotEmpty()) {
+                                    val mappedRoute = realRoute.first.map { Pair(it.latitude, it.longitude) }
+                                    tacticalRoute = mappedRoute
                                 } else {
                                     tacticalRoute = listOf(agentLocation, Pair(targetLat, targetLon))
                                 }
@@ -490,7 +485,7 @@ fun MainDashboardContent(
                             hasCameraPermission = true
                         },
                         onCapturePhoto = {
-                            cameraManager.launchCamera()
+                            showCameraViewfinder = true 
                         },
                         onRemovePhoto = { index ->
                             val mutableList = capturedEvidence.toMutableList()
@@ -503,15 +498,28 @@ fun MainDashboardContent(
                             val taskId = uiState.activeMission?.taskId
                             if (!taskId.isNullOrBlank()) {
                                 coroutineScope.launch {
-                                    val success = rawWalletClient.completeMission(
+                                    // 1. Convert captured ByteArrays back to Bitmaps for the API client
+                                    val evidenceBitmaps = capturedEvidence.map { byteArray ->
+                                        BitmapFactory.decodeByteArray(byteArray, 0, byteArray.size)
+                                    }
+
+                                    // 2. Upload to S3 and get the secure URIs
+                                    val uploadedUrls = if (evidenceBitmaps.isNotEmpty()) {
+                                        apiClient.uploadEvidenceArray(evidenceBitmaps)
+                                    } else {
+                                        emptyList()
+                                    }
+
+                                    // 3. Submit the mission completion with the real S3 URIs
+                                    val success = apiClient.completeMission(
                                         taskId = taskId,
-                                        evidenceUrls = listOf("mock_evidence_bypass.jpg")
+                                        evidenceUrls = uploadedUrls.ifEmpty { listOf("no_evidence_provided") }
                                     )
 
                                     if (success) {
                                         missionViewModel.onMissionSuccess()
                                         audio.speak("Mission accomplished. Escrow funds secured.", voiceVolume)
-                                        capturedEvidence = emptyList()
+                                        capturedEvidence = emptyList() // Clear memory
                                     } else {
                                         snackbarHostState.showSnackbar("ERROR: Backend rejected mission completion.")
                                     }
@@ -620,23 +628,49 @@ fun MainDashboardContent(
             )
         }
 
+        // --- CAMERAX OVERLAY ---
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showCameraViewfinder,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize().zIndex(20f)
+        ) {
+            CameraCaptureOverlay(
+                onPhotoCaptured = { rawHighResBitmap ->
+                    showCameraViewfinder = false
+                    
+                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val safeImage = com.pan.tactical.security.PrivacyFilter.sanitizeImage(rawHighResBitmap)
+                            
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                capturedEvidence = capturedEvidence + safeImage
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("Camera", "Failed to process high-res image: ${e.message}")
+                        }
+                    }
+                },
+                onCancel = { showCameraViewfinder = false }
+            )
+        }
+
         if (showDevMenu) {
             AlertDialog(onDismissRequest = { showDevMenu = false }, containerColor = PanColors.CardBackground, title = { Text("DEV: INJECT MISSION", color = Color.White, fontWeight = FontWeight.Black) },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
-                    // 🟢 FIX: Moved mock locations to snap directly to actual road networks near the Agent
                     Button(onClick = {
-                        coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.3161, -111.6601, "scene_securement") }
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.3161, -111.6601, "scene_securement") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
 
                     Button(onClick = {
-                        coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.3061, -111.6451, "spill_remediation") }
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.3061, -111.6451, "spill_remediation") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Bio/Liquid Remediation (Tier 2)", color = Color.White) }
 
                     Button(onClick = {
-                        coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.2961, -111.6601, "latch_fault") }
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.2961, -111.6601, "latch_fault") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
 
