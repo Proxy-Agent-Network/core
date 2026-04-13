@@ -59,18 +59,17 @@ Every mission automatically generates a sealed, immutable Optical Health Report 
 ### 📈 Dynamic Surge Pricing
 The network automatically raises bounties when agent utilization exceeds 75%, ensuring critical incidents are always staffed. Bounties are anchored to the OSM color taxonomy and capped at 3x the base rate.
 
-### 🧠 AI-Assisted Dispatch (Proxy-Alpha Companion Mode)
-Vanguard Agents have access to Proxy-Alpha, a tactical AI engine powered by Gemini 2.5 Flash. Proxy-Alpha pre-loads mission context at dispatch — vehicle VIN, active fault code, UDS library, agent certifications, and live telemetry — before the agent says a word. Agents activate Proxy-Alpha hands-free via the Communicator Pin wake word ("Hey Dispatch") and receive field guidance through the pin's integrated speaker. All compliance-relevant interactions are automatically transcribed and appended to the SB 1417 report. Secured behind a semantic prompt injection firewall.
+### 🦺 Project Copperfield — Vanguard Field System (Coming Late 2026)
+PAN Agents in the Vanguard 50 pilot can upgrade their gear with the full Project Copperfield wearable platform — four integrated intelligent garments that together make a Vanguard Agent the safest, most documented, and most capable field operator on any incident scene. See [Vanguard Field System](#vanguard-field-system) below.
 
-### 🦺 Project Copperfield — Vanguard Field System
-PAN Agents in the Vanguard 50 pilot are equipped with the full Project Copperfield wearable platform — four integrated intelligent garments that together make a Vanguard Agent the safest, most documented, and most capable field operator on any incident scene. See [Vanguard Field System](#vanguard-field-system) below.
+### 🧠 AI-Assisted Dispatch (Proxy-Alpha Companion Mode - Coming Early 2027)
+Vanguard Agents have access to Proxy-Alpha, a tactical AI engine powered by Gemini 2.5 Flash. Proxy-Alpha pre-loads mission context at dispatch — vehicle VIN, active fault code, UDS library, agent certifications, and live telemetry — before the agent says a word. Agents activate Proxy-Alpha hands-free via the Communicator Pin wake word ("Hey Dispatch") and receive field guidance through the pin's integrated speaker. All compliance-relevant interactions are automatically transcribed and appended to the SB 1417 report. Secured behind a semantic prompt injection firewall.
 
 ---
 
 ## Operational Status Matrix (OSM)
 
-PAN uses a standardized color taxonomy for task classification, pricing, and dashboard visualization.
-
+PAN uses a standardized color taxonomy for task classification, pricing, and dashboard visualization.  Prices listed below are the defaults and can be adjusted in the fleet management dashboard.
 | Color | Category | Tier | Base Bounty |
 |---|---|---|---|
 | 🔴 RED | Biological / Foreign Object | Critical | $65.00 |
@@ -85,7 +84,7 @@ PAN uses a standardized color taxonomy for task classification, pricing, and das
 
 ## Vanguard Field System
 
-**Project Copperfield** is PAN's proprietary intelligent wearable platform — four components designed as a unified system, each functional independently but achieving maximum capability when deployed together.
+**Project Copperfield** is PAN's proprietary intelligent wearable platform — four components designed as a unified system, each functional independently but achieving maximum capability when deployed together.  These components will be released late 2026 to early 2027.
 
 ```
   ┌─────────────────────────────────────────────────────────────────┐
@@ -97,7 +96,7 @@ PAN uses a standardized color taxonomy for task classification, pricing, and das
   │  Haptic navigation        back panel · Spine haptics            │
   │  Cryptographic TPM        SB 1417 logging                       │
   │                                                                 │
-  │  👕 Aegis Polo VFP-1 v1.2  🧤 Gauntlets VFG-1 v1.3            │
+  │  👕 Aegis Polo VFP-1 v1.2  🧤 Gauntlets VFG-1 v1.3             │
   │  Biometric monitoring     Gesture control · Culture             │
   │  Voice AI (Proxy-Alpha)   Tool NFC · Multi-agent                │
   │  Thermal management       bonuses · Easter egg                  │
@@ -105,17 +104,17 @@ PAN uses a standardized color taxonomy for task classification, pricing, and das
   └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 🧢 HapHat v2.3
+### 🧢 HapHat v2.3 (Q3 2026)
 An intelligent trucker hat housing five haptic motors in the sweatband, a full RGB NeoPixel brim strip, and a passive NFC identity panel. The hat communicates mission state and directional navigation through haptic patterns without the agent looking at their phone. NFC brim-tap provides instant agent identity verification to fleet managers and AV panels — no app installation required. PCM cooling liner maintains forehead temperature during 115°F Mesa summer operations.
 
-### 🦺 PANOPLY Vest v1.2
-An ANSI/ISEA 107-2020 Class 3 hi-vis vest with active intelligence. The Rear Awareness & Threat Detection System (RATS) uses layered mmWave radar, wide-angle camera, and ultrasonic sensors to warn the agent of approaching vehicles through haptic spine strip and LED back panel — before they turn around. The 16×24 flexible LED back panel dynamically displays OSM mission status to fleet managers and first responders at 50+ meter range. A five-motor haptic spine strip communicates navigation direction and proximity without requiring agent attention. Available in three tiers, unlocked by mission milestones.
+### 🦺 PANOPLY Vest v1.2 (Q4 2026)
+An ANSI/ISEA 107-2020 Class 3 hi-vis vest with active intelligence. The Rear Awareness & Threat Detection System (RATS) uses layered mmWave radar, wide-angle camera, and ultrasonic sensors to warn the agent of approaching vehicles through haptic spine strip and LED back panel — before they turn around. The 16×24 flexible LED back panel dynamically displays OSM mission status to fleet managers and first responders at 50+ meter range. A five-motor haptic spine strip communicates navigation direction and proximity without requiring agent attention. 
 
-### 👕 Aegis Polo VFP-1 v1.2
-The innermost and most intimate component — worn directly against the skin. The Aegis Polo monitors the agent's biometrics (heart rate, SpO₂, skin temperature, galvanic skin response), reads their personal breathing zone air quality, and listens for their voice via the chest-mounted Communicator Pin. When vest RATS detects a Zone 2 threat and polo biometrics simultaneously detect a stress spike, the system recognizes the agent already knows — and escalates directly to Zone 1 maximum response, skipping the redundant warning. D3O rib impact panels protect against vehicle sideswipe. Bioluminescent collar stripe ensures passive nighttime visibility even when all electronics fail. Available at Tier 3 (200 missions completed).
+### 👕 Aegis Polo VFP-1 v1.2 (Q1 2027)
+The innermost and most intimate component — worn directly against the skin. The Aegis Polo monitors the agent's biometrics (heart rate, SpO₂, skin temperature, galvanic skin response), reads their personal breathing zone air quality, and listens for their voice via the chest-mounted Communicator Pin. When vest RATS detects a Zone 2 threat and polo biometrics simultaneously detect a stress spike, the system recognizes the agent already knows — and escalates directly to Zone 1 maximum response, skipping the redundant warning. D3O rib impact panels protect against vehicle sideswipe. Bioluminescent collar stripe ensures passive nighttime visibility even when all electronics fail.
 
-### 🧤 Gauntlets VFG-1 v1.3
-Cut-resistant HPPE field gloves with embedded IMU, NFC, haptic motor, and PCM back-of-hand cooling. A snap gesture toggles the hat brim light — hands-free, both hands on the work. Multi-agent bonuses reward verified physical interactions between agents on the same incident. First to the scene with Gauntlets? Earn a $2 Solo Glove Welcome bonus for greeting un-equipped agents. When both agents are gloved, base greetings (handshake, fist bump) earn $5 each, while flourish upgrades (Secret Handshake, BOOM Explosion) earn $7. The gesture system includes an undisclosed number of hidden easter eggs discovered naturally through use. Sold at cost — no PAN margin. Single-glove purchase always available. Unlock: 10 completed missions.
+### 🧤 Gauntlets VFG-1 v1.3 (Q2 2027)
+Cut-resistant HPPE field gloves with embedded IMU, NFC, haptic motor, and PCM back-of-hand cooling. A snap gesture toggles the hat brim light — hands-free, both hands on the work. Multi-agent bonuses reward verified physical interactions between agents on the same incident. First to the scene with Gauntlets? Earn a $2 Solo Glove Welcome bonus for greeting un-equipped agents. When both agents are gloved, base greetings (handshake, fist bump) earn $5 each, while flourish upgrades (Secret Handshake, BOOM Explosion) earn $7. The gesture system includes an undisclosed number of hidden easter eggs discovered naturally through use. Sold at cost — no PAN margin. Single-glove purchase always available.
 
 ### Composite Threat Response
 The polo and vest together enable a capability unavailable from any single component. When the vest's RATS radar classifies an approaching vehicle at Zone 2 range and the polo's biometric patch simultaneously detects the agent's stress response spiking — the system knows the agent has already perceived the threat. The Zone 2 warning sequence is redundant. The system skips directly to Zone 1 maximum response across all channels simultaneously: hat, spine strip, LED panel, gloves, and phone alarm. The agent's own physiology becomes an input to the threat escalation algorithm.
@@ -184,25 +183,17 @@ PAN is actively recruiting its founding Vanguard 50 — the first cohort of fiel
 - Based in or near Mesa, AZ (Gilbert, Chandler, Tempe sectors welcome)
 
 ### What You Earn
-- **Tier 1 tasks** (door securing, validation): $14.00 base
-- **Tier 2 tasks** (sensor faults, calibrations): $45.00 base
-- **Tier 3 tasks** (bio remediation, defleeting): $65.00 base
+- **Tier 1 tasks** (door securing, validation): $10.00 base
+- **Tier 2 tasks** (sensor faults, calibrations): $30.00 base
+- **Tier 3 tasks** (bio remediation, defleeting): $50.00 base
 - **Surge multiplier** up to 3x during high-demand periods
 - **Instant Lightning payout** — funds in your wallet within seconds of mission completion
-- **Collaboration bonuses** — earn $2 for greeting un-equipped agents, or up to $7 each for verified bilateral gestures on shared incidents
 
 ### Tier Progression
 Vanguard Agents unlock expanded capabilities and equipment as they complete missions:
 
-| Milestone | Unlock |
-|---|---|
-| 10 missions | Gauntlets VFG-1 (purchase at cost) |
-| 50 missions | Tier 2 certification · PANOPLY Vest Tier 2 features |
-| 100 missions | 💯 milestone reward |
-| 200 missions | Tier 3 certification · Aegis Polo VFP-1 · PANOPLY Vest Tier 3 features |
-
 ### Apply
-[Request Access →](https://www.proxyagent.network/)
+[Request Access →](https://www.proxyagent.network/enlist/)
 
 ---
 
@@ -269,12 +260,11 @@ console.log(response.taskId);
 
 PAN is built for regulatory compliance from the ground up.
 
-- **SB 1417 (California):** Every mission generates a sealed Optical Health Report with timestamped photographic evidence, hardware attestation token, and cryptographic hash stored immutably. The pipeline now includes voice transcripts (via Communicator Pin), RATS threat event logs, biometric safety events, dual air quality readings (ambient + personal breathing zone), and conductivity hazard events — all appended automatically.
+- **SB 1417 (Arizona):** Every mission generates a sealed Optical Health Report with timestamped photographic evidence, hardware attestation token, and cryptographic hash stored immutably. The pipeline now includes photos, voice transcripts, RATS threat event logs, biometric safety events, dual air quality readings (ambient + personal breathing zone), and conductivity hazard events — all appended automatically.
 - **CPUC AV Incident Reporting:** Compliance export API bundles and signs reports for state regulators.
 - **Zero-Knowledge Agent Privacy:** Vanguard Agents' personal data is stored with AES-256 encryption. Fleet partners see only task outcomes, never agent identities. Companion Mode voice transcripts are never shared with fleet partners in full — compliance-flagged excerpts only.
 - **IDOR Protection:** All mission assignments are cryptographically bound — agents can only complete missions assigned to them.
 - **On-Device Privacy Filtering:** All photographic and video evidence is processed through an on-device ML redaction pipeline before leaving the agent's phone. Faces and license plates are redacted locally — raw PII never touches the network.
-- **NARCAN-Certified Agents:** Agents holding medical response certification can carry Narcan emergency supplies in the Aegis Polo's sealed emergency pocket. All Good Samaritan administrations are automatically documented with voice transcript, GPS, and timestamp via Companion Mode. *(Awaiting final Arizona Good Samaritan statutory review prior to Vanguard 50 deployment).*
 
 See [COMPLIANCE.md](docs/legal/COMPLIANCE.md) for full details.
 
@@ -324,7 +314,6 @@ We are building the bridge between digital intelligence and physical reality. We
 
 - **Rust Protocol Engineer** — Migrate settlement layer to high-frequency Lightning interactions
 - **Legal Engineering Lead** — Productize Power of Attorney templates for autonomous entities
-- **Developer Relations** — Build the "Hello World" tutorials that 10,000 AI developers will use
 - **iOS Engineer** — Complete the KMP iOS client and UWB ranging implementation
 - **Firmware Engineer** — AndroidBleHapHatService real implementation · ESP32 GATT server · OTA update pipeline
 - **Hardware Engineer** — PANOPLY vest PCBA · Aegis Polo sensor integration · Gauntlets flex PCB
@@ -337,7 +326,7 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines.
 
 ## Status
 
-🚧 **Private Beta** — Mesa, AZ Sector 1 | Vanguard 50 Pilot | Go-Live: Memorial Day 2026
+🚧 **Private Beta** — Mesa, AZ Sector 1 | Vanguard 50 Pilot | Go-Live: Summer/Fall 2026
 
 | System | Status |
 |---|---|
@@ -345,15 +334,15 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines.
 | Android PAN Tactical app | ✅ Pilot-ready |
 | Lightning settlement | ✅ Mainnet |
 | SB 1417 compliance pipeline | ✅ Complete |
+| OSRM tactical routing | ✅ Complete |
 | Checkr background verification | 🔧 Integration in progress |
-| HapHat v2.3 | 🔧 Mock → real BLE implementation |
-| PANOPLY Vest v1.2 | 📐 Spec complete · prototype pending |
-| Aegis Polo VFP-1 v1.2 | 📐 Spec complete · prototype pending |
-| Gauntlets VFG-1 v1.3 | 📐 Spec complete · prototype pending |
-| OSRM tactical routing | 🔧 Phase 6 wiring in progress |
-| iOS client | 📋 Planned |
+| iOS client | 📋 Work in progress |
+| HapHat v2.3 | 🔧 Mock → real BLE implementation (Q3 2026) |
+| PANOPLY Vest v1.2 | 📐 Spec complete · prototype pending (Q4 2026) |
+| Aegis Polo VFP-1 v1.2 | 📐 Spec complete · prototype pending (Q1 2027) |
+| Gauntlets VFG-1 v1.3 | 📐 Spec complete · prototype pending (Q2 2027) |
 
-[Request Early Access →](https://www.proxyagent.network/)
+[Request Early Access →](https://www.proxyagent.network/partners/)
 
 ---
 
