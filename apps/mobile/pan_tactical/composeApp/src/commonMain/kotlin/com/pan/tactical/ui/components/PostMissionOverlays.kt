@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pan.tactical.ui.toCurrency
+import kotlin.math.round
 
 @Composable
 fun PostMissionOverlays(
@@ -26,6 +27,7 @@ fun PostMissionOverlays(
     timeOnSceneMs: Long,
     totalResponseTimeMs: Long,
     lastTxHash: String,
+    isVeteran: Boolean = false, // 🟢 Defaults to false (25%) if not passed from Dashboard!
     onReturnToPatrol: () -> Unit
 ) {
     if (isUploadingProof) {
@@ -56,17 +58,20 @@ fun PostMissionOverlays(
         val remTravelSecs = travelSecs % 60
         // -------------------------
 
-        // 🟢 THE FIX: Audit Category Color Shift
-        // Based on internal SLAs and SB 1417 audit tracking:
-        // Optimal (Green) < 12m
-        // Watchlist (Yellow) 12m - 20m
-        // Critical (Orange/Red) >= 20m
-
+        // Audit Category Color Shift
         val tacticalColor = when {
             totalSecs < 720 -> Color(0xFF4CAF50) // < 12 mins (Qualified Green)
             totalSecs < 1200 -> Color(0xFFFF9800) // 12 - 20 mins (Warning Orange)
             else -> Color(0xFFF44336) // >= 20 mins (Critical Red)
         }
+
+        // --- FEE TRANSPARENCY MATH (Reverse Calculation with strict rounding) ---
+        val feePercentage = if (isVeteran) 0.15 else 0.25
+        val feePercentText = if (isVeteran) "15%" else "25%"
+
+        // Reconstruct the gross bounty from the net payout, rounded to 2 decimal places
+        val grossBounty = round((lastPayoutAmount / (1.0 - feePercentage)) * 100) / 100.0
+        val feeAmount = round((grossBounty - lastPayoutAmount) * 100) / 100.0
 
         Box(
             modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp),
@@ -81,10 +86,20 @@ fun PostMissionOverlays(
             ) {
                 Text("MISSION ACCOMPLISHED", color = Color(0xFF4CAF50), fontSize = 22.sp, fontWeight = FontWeight.Black)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("ESCROW RELEASED:", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                Text("TAKE HOME PAYOUT:", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
 
                 val formattedPayout = lastPayoutAmount.toCurrency()
                 Text(formattedPayout, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Bold)
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "${grossBounty.toCurrency()} - ${feeAmount.toCurrency()} ($feePercentText) network fee",
+                    color = Color(0xFFAAAAAA),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -102,7 +117,6 @@ fun PostMissionOverlays(
                     }
                     HorizontalDivider(color = Color.DarkGray)
 
-                    // 🟢 THE FIX: Applied the dynamic color here to the label and value
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("TOTAL MISSION TIME", color = tacticalColor, fontSize = 14.sp, fontWeight = FontWeight.Black)
                         Text("${totalMins}m ${remSecs}s", color = tacticalColor, fontSize = 14.sp, fontWeight = FontWeight.Black)

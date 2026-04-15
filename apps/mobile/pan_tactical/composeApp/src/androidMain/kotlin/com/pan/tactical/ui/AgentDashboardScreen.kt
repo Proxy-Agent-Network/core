@@ -203,6 +203,9 @@ fun MainDashboardContent(
     val uriHandler = LocalUriHandler.current
 
     val uiState by missionViewModel.uiState.collectAsState()
+    
+    // 🟢 MOCKED FEE STATUS for UI testing
+    val isVeteran = true 
 
     val homingState = object {
         val isResolving = false
@@ -299,21 +302,16 @@ fun MainDashboardContent(
     }
 
     var contextItems by remember { mutableStateOf<List<ContextItem>>(emptyList()) }
-
-    // 🟢 NEW: Holds the reference to the item currently being displayed in the large panel
     var selectedContextItem: ContextItem? by remember { mutableStateOf(null) }
-
-    // 🟢 NEW: Update an item in the hoisted list
+    
     val onUpdateContextItem: (id: String, updatedText: String) -> Unit = { id, updatedText ->
         contextItems = contextItems.map { item ->
             if (item.id == id) {
-                // Return a copy with the new textContent
                 item.copy(textContent = updatedText)
             } else {
                 item
             }
         }
-        // Update the selection reference too if that was the item being edited
         if (selectedContextItem?.id == id) {
             selectedContextItem = selectedContextItem?.copy(textContent = updatedText)
         }
@@ -335,7 +333,7 @@ fun MainDashboardContent(
                         textContent = spokenText
                     )
                     contextItems = contextItems + newItem
-                    selectedContextItem = newItem // 🟢 Focus the new item
+                    selectedContextItem = newItem
                 } else {
                     coroutineScope.launch { snackbarHostState.showSnackbar("Maximum 5 context items reached.") }
                 }
@@ -358,12 +356,11 @@ fun MainDashboardContent(
                 }
 
                 val rawBounty = uiState.activeMission?.bountyUsd ?: 0.0
-                val netPayout = rawBounty * 0.90
-                val cleanBounty = if (netPayout % 1.0 == 0.0) netPayout.toInt().toString() else netPayout.toString()
+                val cleanBounty = if (rawBounty % 1.0 == 0.0) rawBounty.toInt().toString() else rawBounty.toString()
                 val cleanCategory = uiState.activeMission?.errorCode?.substringAfter(": ") ?: uiState.activeMission?.errorCode ?: "Unknown"
                 val cleanDistance = ((distanceMiles * 10.0).roundToInt() / 10.0).toString()
 
-                audio.speak("Agent, Mission: $cleanCategory. $cleanDistance Miles Away. Payout, $cleanBounty dollars.", voiceVolume)
+                audio.speak("Agent, Mission: $cleanCategory. $cleanDistance Miles Away. Gross Bounty, $cleanBounty dollars.", voiceVolume)
 
                 countdownProgress.snapTo(1f)
 
@@ -484,6 +481,8 @@ fun MainDashboardContent(
                         activeMission = uiState.activeMission,
                         countdownProgress = countdownProgress.value,
                         flashAlpha = flashAlpha,
+                        isVeteran = isVeteran,
+                        distanceMiles = distanceMiles,
                         onAccept = {
                             val targetLat = uiState.activeMission?.lat ?: 0.0
                             val targetLon = uiState.activeMission?.lon ?: 0.0
@@ -516,14 +515,17 @@ fun MainDashboardContent(
                     )
                 }
 
+                val correctedPayout = uiState.lastPayoutAmount * if (isVeteran) 0.85 else 0.75
+
                 PostMissionOverlays(
                     isUploadingProof = homingState.isResolving,
                     capturedEvidence = contextItems.mapNotNull { it.payloadBytes },
                     missionState = uiState.missionPhase.name,
-                    lastPayoutAmount = uiState.lastPayoutAmount,
+                    lastPayoutAmount = correctedPayout, // 🟢 Passed corrected payout
                     timeOnSceneMs = uiState.timeOnSceneMs,
                     totalResponseTimeMs = uiState.totalResponseTimeMs,
                     lastTxHash = uiState.lastTxHash,
+                    isVeteran = isVeteran, 
                     onReturnToPatrol = {
                         missionViewModel.onReturnToPatrol()
                     }
@@ -547,11 +549,10 @@ fun MainDashboardContent(
                     OnSceneTerminal(
                         activeMission = uiState.activeMission,
                         contextItems = contextItems,
-                        // 🟢 NEW: Pass the hoisted selection and update callbacks
                         selectedItem = selectedContextItem,
                         onItemSelected = { selectedContextItem = it },
                         onUpdateItem = onUpdateContextItem,
-
+                        
                         isProcessingRedaction = homingState.isResolving,
                         isResolving = homingState.isResolving,
                         terminalLogs = homingState.terminalLogs,
@@ -575,7 +576,7 @@ fun MainDashboardContent(
                                     textContent = text
                                 )
                                 contextItems = contextItems + newItem
-                                selectedContextItem = newItem // 🟢 Focus the new item
+                                selectedContextItem = newItem
                             } else {
                                 coroutineScope.launch { snackbarHostState.showSnackbar("Maximum 5 context items reached.") }
                             }
@@ -593,7 +594,6 @@ fun MainDashboardContent(
                         },
                         onRemoveItem = { id ->
                             contextItems = contextItems.filterNot { it.id == id }
-                            // 🟢 Clear selection if the removed item was currently selected
                             if (selectedContextItem?.id == id) {
                                 selectedContextItem = null
                             }
@@ -612,7 +612,7 @@ fun MainDashboardContent(
                                         emptyList()
                                     }
 
-                                    val isCleared = true // MOCKED FOR NOW pending API update
+                                    val isCleared = true 
 
                                     if (isCleared) {
                                         val hardwareSignature = biometricHelper.authenticate(
@@ -629,7 +629,7 @@ fun MainDashboardContent(
                                             if (success) {
                                                 missionViewModel.onMissionSuccess()
                                                 audio.speak("Diagnostics clear. Escrow funds secured.", voiceVolume)
-                                                contextItems = emptyList() // Clear memory
+                                                contextItems = emptyList() 
                                                 selectedContextItem = null
                                             } else {
                                                 snackbarHostState.showSnackbar("ERROR: Backend rejected mission completion.")
@@ -735,7 +735,6 @@ fun MainDashboardContent(
             )
         }
 
-        // --- CAMERAX OVERLAY ---
         androidx.compose.animation.AnimatedVisibility(
             visible = showCameraViewfinder,
             enter = fadeIn(),
@@ -765,7 +764,7 @@ fun MainDashboardContent(
                                         payloadBytes = safeBytes
                                     )
                                     contextItems = contextItems + newItem
-                                    selectedContextItem = newItem // 🟢 Focus the new photo
+                                    selectedContextItem = newItem 
                                 } else {
                                     coroutineScope.launch { snackbarHostState.showSnackbar("Maximum 3 photos or 5 total items reached.") }
                                 }
@@ -784,17 +783,17 @@ fun MainDashboardContent(
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
                     Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.3161, -111.6601, "scene_securement") }
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.3161, -111.6601, "scene_securement", "N Dobson Rd / E Baseline Rd") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
 
                     Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.3061, -111.6451, "spill_remediation") }
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.3061, -111.6451, "spill_remediation", "E Southern Ave / S Power Rd") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Bio/Liquid Remediation (Tier 2)", color = Color.White) }
 
                     Button(onClick = {
-                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.2961, -111.6601, "latch_fault") }
+                        coroutineScope.launch { apiClient.triggerBackendDispatch(33.2961, -111.6601, "latch_fault", "E Guadalupe Rd / S Dobson Rd") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
 
@@ -806,7 +805,7 @@ fun MainDashboardContent(
                                 payloadBytes = byteArrayOf(0x00)
                             )
                             contextItems = contextItems + newItem
-                            selectedContextItem = newItem // 🟢 Focus the mock photo
+                            selectedContextItem = newItem 
                             coroutineScope.launch { snackbarHostState.showSnackbar("Mock Photo Injected!") }
                         }
                         showDevMenu = false

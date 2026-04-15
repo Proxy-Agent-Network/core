@@ -28,6 +28,9 @@ import kotlinx.serialization.json.*
 import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
+// All DTOs here are prefixed with "Wallet" to avoid redeclaration conflicts with the
+// similarly named DTOs in PanApiClient.kt. Both files share the same package
+// (com.pan.tactical.network), so all top-level class names must be unique.
 
 @Serializable
 data class KeyRegistrationPayload(val agent_id: String, val public_key_b64: String, val play_integrity_token: String)
@@ -60,7 +63,11 @@ data class NetworkWalletResponse(
 )
 
 @Serializable
-data class FeedbackPayload(
+data class WaitlistPayload(val item_id: String, val email: String)
+
+// Wallet-prefixed to avoid collision with PanApiClient's DTOs of the same names
+@Serializable
+data class WalletFeedbackPayload(
     val is_positive: Boolean,
     val category: String? = null,
     val label: String? = null,
@@ -68,34 +75,32 @@ data class FeedbackPayload(
 )
 
 @Serializable
-data class WaitlistPayload(
-    val item_id: String,
-    val email: String
-)
+data class WalletTelemetryPayload(val lat: Double, val lon: Double)
 
 @Serializable
-data class TelemetryPayload(val lat: Double, val lon: Double)
-
-@Serializable
-data class PresencePayload(
+data class WalletPresencePayload(
     @SerialName("is_online") val isOnline: Boolean
 )
 
 @Serializable
-data class DeclinePayload(val reason: String)
+data class WalletDeclinePayload(val reason: String)
 
 @Serializable
-data class DistressPayload(
+data class WalletDistressPayload(
     val vin: String,
     val fault_code: String,
     val latitude: Double,
     val longitude: Double,
     val bounty_usd: Double,
-    val timestamp: Int
+    val timestamp: Int,
+    // Intersection string displayed to agent on the mission alert overlay.
+    // Real fleet partners (Waymo/Zoox) populate this from their V2X stack.
+    // Dev menu dispatches pass known Mesa street names.
+    val intersection: String = "Unknown Location"
 )
 
 @Serializable
-data class MissionCompletePayload(
+data class WalletMissionCompletePayload(
     @SerialName("agent_id") val agentId: String,
     @SerialName("net_payout") val netPayout: Double,
     @SerialName("evidence_urls") val evidenceUrls: List<String>,
@@ -113,7 +118,7 @@ class PanWalletClient : WalletNetworkClient {
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }
-        // 🟢 NEW: Installed the WebSocket plugin with active keepalives
+        // WebSocket plugin with active keepalives to prevent carrier NAT timeouts
         install(WebSockets) {
             pingInterval = 20_000
         }
@@ -159,13 +164,12 @@ class PanWalletClient : WalletNetworkClient {
                         play_integrity_token = playIntegrityToken
                     ))
                 }
-
                 if (response.status.isSuccess()) {
                     Result.success("Hardware bound to identity.")
                 } else {
                     val errorDetail = try {
                         response.body<ErrorPayload>().detail
-                    } catch(e: Exception) {
+                    } catch (e: Exception) {
                         "Registry rejected key (HTTP ${response.status.value})"
                     }
                     Log.w(TAG, "Key Ceremony rejected: $errorDetail")
@@ -184,13 +188,9 @@ class PanWalletClient : WalletNetworkClient {
                 val response = client.get("$baseUrl/") {
                     attachAgentSignature()
                 }
-
-                if (!response.status.isSuccess()) {
-                    return@withContext null
-                }
+                if (!response.status.isSuccess()) return@withContext null
 
                 val data = response.body<NetworkWalletResponse>()
-
                 WalletResponse(
                     balance = data.balance,
                     linkedCard = data.linkedCard,
@@ -221,14 +221,11 @@ class PanWalletClient : WalletNetworkClient {
                     attachAgentSignature()
                     setBody(LinkCardPayload(card_number = cardNumber))
                 }
-
-                if (response.status.isSuccess()) {
-                    Result.success("Card linked successfully.")
-                } else {
-                    Result.failure(Exception("Network rejected card linking"))
-                }
+                if (response.status.isSuccess()) Result.success("Card linked.")
+                else Result.failure(Exception("Failed to link card."))
             } catch (e: Exception) {
-                Result.failure(Exception("Connection to PAN Network lost."))
+                Log.e(TAG, "linkDebitCard failed: ${e.message}", e)
+                Result.failure(e)
             }
         }
     }
@@ -241,26 +238,28 @@ class PanWalletClient : WalletNetworkClient {
                     attachAgentSignature()
                     setBody(WithdrawPayload(amount = amount))
                 }
-
-                if (response.status.isSuccess()) {
-                    Result.success("Transfer initiated.")
-                } else {
-                    Result.failure(Exception("Withdrawal rejected"))
-                }
+                if (response.status.isSuccess()) Result.success("Withdrawal initiated.")
+                else Result.failure(Exception("Withdrawal failed."))
             } catch (e: Exception) {
-                Result.failure(Exception("Connection to PAN Network lost."))
+                Log.e(TAG, "withdrawFunds failed: ${e.message}", e)
+                Result.failure(e)
             }
         }
     }
 
-    suspend fun submitMissionFeedback(taskId: String, isPositive: Boolean, category: String, label: String, ventText: String): Boolean {
+    suspend fun submitMissionFeedback(
+        taskId: String,
+        isPositive: Boolean,
+        category: String,
+        label: String,
+        ventText: String
+    ): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val targetUrl = "$hostUrl/api/v1/agent/missions/$taskId/feedback"
-                val response = client.post(targetUrl) {
+                val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/feedback") {
                     contentType(ContentType.Application.Json)
                     attachAgentSignature()
-                    setBody(FeedbackPayload(
+                    setBody(WalletFeedbackPayload(
                         is_positive = isPositive,
                         category = category.ifBlank { null },
                         label = label.ifBlank { null },
@@ -275,14 +274,10 @@ class PanWalletClient : WalletNetworkClient {
     suspend fun joinWaitlist(itemId: String, email: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val targetUrl = "$hostUrl/api/v1/store/waitlist"
-                val response = client.post(targetUrl) {
+                val response = client.post("$hostUrl/api/v1/store/waitlist") {
                     contentType(ContentType.Application.Json)
                     attachAgentSignature()
-                    setBody(WaitlistPayload(
-                        item_id = itemId,
-                        email = email
-                    ))
+                    setBody(WaitlistPayload(item_id = itemId, email = email))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) { false }
@@ -308,26 +303,29 @@ class PanWalletClient : WalletNetworkClient {
                 }
                 emptyList()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to get tactical route", e)
+                Log.e(TAG, "Failed to get tactical route: ${e.message}", e)
                 emptyList()
             }
         }
     }
 
-    override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean {
+    // Switched from production fleet endpoint (/v2x/distress + fake sk_test_ header)
+    // to the agent-authenticated dev endpoint (/dev/inject-distress + real JWT).
+    // Wires through the intersection string so the mission alert shows real street names.
+    override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String, intersection: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val response = client.post("$hostUrl/api/v1/v2x/distress") {
+                val response = client.post("$hostUrl/api/v1/dev/inject-distress") {
                     contentType(ContentType.Application.Json)
-                    header("X-Fleet-Id", "DEV-FLEET-01")
-                    header("Authorization", "Bearer sk_test_mock_waymo_token_123")
-                    setBody(DistressPayload(
+                    attachAgentSignature()
+                    setBody(WalletDistressPayload(
                         vin = "DEV-VIN-${(Math.random() * 1000).toInt()}",
                         fault_code = errorCode,
                         latitude = lat,
                         longitude = lon,
                         bounty_usd = 50.0,
-                        timestamp = (System.currentTimeMillis() / 1000).toInt()
+                        timestamp = (System.currentTimeMillis() / 1000).toInt(),
+                        intersection = intersection
                     ))
                 }
                 response.status.isSuccess()
@@ -341,7 +339,7 @@ class PanWalletClient : WalletNetworkClient {
                 val response = client.post("$hostUrl/api/v1/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
                     attachAgentSignature()
-                    setBody(TelemetryPayload(lat, lon))
+                    setBody(WalletTelemetryPayload(lat, lon))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) { false }
@@ -354,22 +352,21 @@ class PanWalletClient : WalletNetworkClient {
                 val response = client.post("$hostUrl/api/v1/agent/presence") {
                     contentType(ContentType.Application.Json)
                     attachAgentSignature()
-                    setBody(PresencePayload(isOnline = isOnline))
+                    setBody(WalletPresencePayload(isOnline = isOnline))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) { false }
         }
     }
 
-    override suspend fun fetchActiveMissions(): List<com.pan.tactical.models.MissionData> {
+    override suspend fun fetchActiveMissions(): List<MissionData> {
         return withContext(Dispatchers.IO) {
             try {
                 val response = client.get("$hostUrl/api/v1/agent/missions") {
                     attachAgentSignature()
                 }
-                if (response.status.isSuccess()) {
-                    response.body<List<com.pan.tactical.models.MissionData>>()
-                } else emptyList()
+                if (response.status.isSuccess()) response.body<List<MissionData>>()
+                else emptyList()
             } catch (e: Exception) { emptyList() }
         }
     }
@@ -391,7 +388,7 @@ class PanWalletClient : WalletNetworkClient {
                 val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/decline") {
                     contentType(ContentType.Application.Json)
                     attachAgentSignature()
-                    setBody(DeclinePayload(reason ?: "Agent aborted"))
+                    setBody(WalletDeclinePayload(reason ?: "Agent aborted"))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) { false }
@@ -407,21 +404,22 @@ class PanWalletClient : WalletNetworkClient {
                 val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/complete") {
                     contentType(ContentType.Application.Json)
                     attachAgentSignature()
-                    setBody(
-                        MissionCompletePayload(
-                            agentId = secureUid,
-                            netPayout = 0.0,
-                            evidenceUrls = evidenceUrls,
-                            hardwareAttestationToken = safeToken
-                        )
-                    )
+                    setBody(WalletMissionCompletePayload(
+                        agentId = secureUid,
+                        netPayout = 0.0,
+                        evidenceUrls = evidenceUrls,
+                        hardwareAttestationToken = safeToken
+                    ))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) { false }
         }
     }
 
-    // 🟢 NEW: The persistent real-time stream that replaces the 3-second poller
+    // The persistent real-time stream that replaces the 3-second poller.
+    // Auto-reconnects on drop with a 3-second backoff.
+    // On connect, immediately polls fetchActiveMissions() to catch any missed
+    // dispatches that arrived while the socket was down.
     override suspend fun listenForMissions(
         onMissionAssigned: (MissionData) -> Unit,
         onMissionCleared: () -> Unit
@@ -443,13 +441,12 @@ class PanWalletClient : WalletNetworkClient {
                     for (frame in incoming) {
                         if (frame !is Frame.Text) continue
                         val text = frame.readText()
-
                         try {
                             val json = Json.parseToJsonElement(text).jsonObject
                             val type = json["type"]?.jsonPrimitive?.content
 
                             if (type == "NEW_MISSION") {
-                                // If the socket signals a dispatch, pull the safe object via HTTP
+                                // Signal received — pull the full mission object via HTTP
                                 val currentMissions = fetchActiveMissions()
                                 if (currentMissions.isNotEmpty()) {
                                     withContext(Dispatchers.Main) { onMissionAssigned(currentMissions.first()) }

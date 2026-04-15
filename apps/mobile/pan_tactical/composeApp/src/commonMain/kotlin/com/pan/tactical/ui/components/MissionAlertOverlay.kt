@@ -3,10 +3,7 @@ package com.pan.tactical.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
@@ -15,118 +12,188 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pan.tactical.models.MissionData
-import com.pan.tactical.ui.theme.PanColors
+
+// KMP-safe currency formatter since String.format is platform-specific
+private fun formatCurrency(value: Double): String {
+    val wholePart = value.toInt()
+    val fractionalPart = ((value - wholePart) * 100).toInt()
+    return "$wholePart.${fractionalPart.toString().padStart(2, '0')}"
+}
 
 @Composable
 fun MissionAlertOverlay(
     activeMission: MissionData?,
     countdownProgress: Float,
-    flashAlpha: Float,
+    flashAlpha: Float, // Retained for compatibility with the view model
+    isVeteran: Boolean = false, // 🟢 NEW: Drives the 15% vs 25% math
+    distanceMiles: Double = 0.0, // 🟢 NEW: Dynamically render distance
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
-    // 🟢 FIX: Safely convert the role (which is likely an Enum) into a String first
     val isSentry = activeMission?.role.toString().uppercase() == "SENTRY"
+    val alertTitle = if (isSentry) "SENTRY DISPATCH" else "MISSION ALERT"
 
-    val alertTitle = if (isSentry) "SENTRY DISPATCH" else "RESCUE DISPATCH"
-    val titleColor = if (isSentry) PanColors.WarningOrange else Color(0xFFF44336)
-    val flashColor = if (isSentry) PanColors.WarningOrange else PanColors.QualifiedGreen
+    // Format the fault code to look clean (e.g., "scene_securement" -> "Scene Securement")
+    val displayFault = activeMission?.errorCode?.replace("_", " ")?.split(" ")?.joinToString(" ") {
+        it.replaceFirstChar { char -> char.uppercase() }
+    } ?: "Unknown Alert"
 
+    // --- FEE TRANSPARENCY MATH ---
+    val grossBounty = activeMission?.bountyUsd ?: 0.0
+    val feePercentage = if (isVeteran) 0.15 else 0.25
+    val feeAmount = grossBounty * feePercentage
+    val netPayout = grossBounty - feeAmount
+    val feePercentText = if (isVeteran) "15%" else "25%"
+
+    // The mockup floats at the bottom over the map
     Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp),
-        contentAlignment = Alignment.Center
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Box(modifier = Modifier.fillMaxSize().background(flashColor.copy(alpha = flashAlpha)))
-
         Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFA1A1D21), RoundedCornerShape(16.dp)) // Deep dark gray from mockup
+                .border(1.dp, Color(0xFF333333), RoundedCornerShape(16.dp))
+                .padding(20.dp)
         ) {
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Box(modifier = Modifier.size(32.dp).background(titleColor, CircleShape), contentAlignment = Alignment.Center) {
-                    Text("!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
+            // --- HEADER ---
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Swapped missing Material Icon for a clean native emoji
                 Text(
-                    text = alertTitle,
-                    color = titleColor,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp,
-                    textAlign = TextAlign.Center
+                    text = "⚠️",
+                    fontSize = 28.sp
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(modifier = Modifier.size(32.dp).background(titleColor, CircleShape), contentAlignment = Alignment.Center) {
-                    Text("!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = alertTitle,
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = displayFault,
+                        color = Color(0xFF00BCD4), // Cyan accent
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
 
-            Box(
-                modifier = Modifier.fillMaxWidth().height(12.dp).background(PanColors.SurfaceMid, shape = RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(countdownProgress).background(flashColor, shape = RoundedCornerShape(8.dp)))
-            }
+            Spacer(modifier = Modifier.height(20.dp))
 
-            val rawBounty = activeMission?.bountyUsd ?: 0.0
-            val netPayout = rawBounty * 0.90
-            val wholePart = netPayout.toInt()
-            val fractionalPart = ((netPayout - wholePart) * 100).toInt()
-            val formattedBounty = "$$wholePart.${fractionalPart.toString().padStart(2, '0')}"
-
-            Text("GUARANTEED NET PAYOUT", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Text(formattedBounty, color = PanColors.QualifiedGreen, fontSize = 48.sp, fontWeight = FontWeight.Black)
-
-            Text(activeMission?.intersection ?: "Broadway / Dobson", color = PanColors.WarningOrange, fontSize = 20.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
-
-            val displayFault = activeMission?.errorCode?.replace("_", " ")?.uppercase() ?: "UNKNOWN FAULT"
-            Text(displayFault, color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-
-            Spacer(modifier = Modifier.height(8.dp))
+            // --- BOUNTY & FEE BREAKDOWN ---
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(PanColors.SurfaceMid, shape = RoundedCornerShape(8.dp))
-                    .border(2.dp, PanColors.CyanAccent, shape = RoundedCornerShape(8.dp))
-                    .padding(vertical = 16.dp),
+                    .background(Color(0xFF121212), RoundedCornerShape(12.dp))
+                    .padding(vertical = 20.dp),
                 contentAlignment = Alignment.Center
             ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "$${formatCurrency(netPayout)}",
+                        color = Color(0xFF4CAF50), // Green payout
+                        fontSize = 56.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "$${formatCurrency(grossBounty)} - $${formatCurrency(feeAmount)} ($feePercentText) fee",
+                        color = Color(0xFFAAAAAA),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // --- LOCATION INFO ---
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "DISTANCE: 2.5 MILES",
-                    color = PanColors.CyanAccent,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.sp
+                    text = "📍",
+                    fontSize = 20.sp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text("Target Location", color = Color.Gray, fontSize = 12.sp)
+                    Text(
+                        text = activeMission?.intersection ?: "Calculating Location...",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- DISTANCE INFO ---
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "🚗",
+                    fontSize = 20.sp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                val distanceText = if (distanceMiles > 0) "${formatCurrency(distanceMiles)} Miles" else "Calculating..."
+                Text(
+                    text = distanceText,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- SLA PROGRESS BAR ---
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(Color(0xFF333333), RoundedCornerShape(2.dp)),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(countdownProgress)
+                        .background(Color(0xFF00BCD4), RoundedCornerShape(2.dp))
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // --- ACTION BUTTONS ---
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Button(
                     onClick = onDecline,
-                    colors = ButtonDefaults.buttonColors(containerColor = PanColors.SurfaceLight),
-                    modifier = Modifier.weight(1f).height(64.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A4A4A)),
+                    modifier = Modifier.weight(1f).height(60.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("DECLINE", color = Color.White)
+                    Text("DECLINE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
 
                 Button(
                     onClick = onAccept,
-                    colors = ButtonDefaults.buttonColors(containerColor = PanColors.QualifiedGreen),
-                    modifier = Modifier.weight(1f).height(64.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF66BB6A)),
+                    modifier = Modifier.weight(1f).height(60.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("ACCEPT", color = Color.White, fontWeight = FontWeight.Black)
+                    Text("ACCEPT", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 18.sp)
                 }
             }
         }

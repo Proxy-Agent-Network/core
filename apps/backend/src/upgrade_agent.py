@@ -16,6 +16,11 @@ def grant_god_mode():
         "status": "ONLINE",
         "tier": 3,
         "clearance": 3,
+        # 🟢 FIX: Added is_veteran field to match the new fee structure.
+        # Backend complete_mission() reads this to apply the 15% (veteran) vs 25% (public) fee.
+        # The VNG-50-PILOT is also hardcoded as veteran in the backend, but this ensures
+        # real agents seeded via this script will also get the correct rate.
+        "is_veteran": "true",
         "vehicle_class": "TACTICAL",
         "lat": 33.4150,
         "lon": -111.8310,
@@ -39,6 +44,7 @@ def grant_god_mode():
     
     print(f"✅ SUCCESS: {AGENT_ID} granted Tier 3 God Mode!")
     print("   -> Profile, Geo-Index, and Loadout successfully seeded.")
+    print(f"   -> is_veteran: true (15% fee tier)")
 
 def revoke_god_mode():
     r = redis.Redis(host='localhost', port=6379, decode_responses=True)

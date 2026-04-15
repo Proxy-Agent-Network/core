@@ -53,8 +53,6 @@ class MissionViewModel(
     private var currentRank: AgentRank? = null
     private var socketJob: Job? = null
 
-    private var agentPayoutMultiplier: Double = 0.80
-
     // ─── BOOT ─────────────────────────────────────────────────────────────────
 
     fun initialize() {
@@ -63,7 +61,6 @@ class MissionViewModel(
             if (data != null) {
                 val missions = data.missionsCompleted
                 currentRank = rankForMissions(missions)
-                agentPayoutMultiplier = 0.90
                 _uiState.update { it.copy(missionsCompleted = missions) }
             }
 
@@ -242,15 +239,16 @@ class MissionViewModel(
 
     fun onMissionSuccess() {
         val state = _uiState.value
+        
+        // 🟢 THE FIX: Pass the raw, unmodified Gross Bounty to the UI State.
+        // The UI (AgentDashboardScreen/PostMissionOverlays) will handle the 15%/25% math.
         val rawBounty = state.activeMission?.bountyUsd ?: 0.0
-
-        val finalPayout = rawBounty * agentPayoutMultiplier
         val now = getCurrentTimeMs()
 
         _uiState.update {
             it.copy(
                 missionPhase = MissionPhase.COMPLETED,
-                lastPayoutAmount = finalPayout,
+                lastPayoutAmount = rawBounty, // 🟢 Passed raw gross bounty
                 lastTxHash = "tx_$now",
                 timeOnSceneMs = if (it.sceneArrivalTime > 0) now - it.sceneArrivalTime else 252000L,
                 totalResponseTimeMs = if (it.missionAcceptTime > 0) now - it.missionAcceptTime else 252000L + 300000L

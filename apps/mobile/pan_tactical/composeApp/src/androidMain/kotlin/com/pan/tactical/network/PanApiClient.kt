@@ -2,6 +2,8 @@ package com.pan.tactical.network
 
 import android.graphics.Bitmap
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
+import com.pan.tactical.BuildConfig
 import com.pan.tactical.models.MissionData
 import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.WalletNetworkClient
@@ -41,16 +43,24 @@ data class StatusUpdateRequest(
 @Serializable
 data class V2XDistressPayload(
     val vin: String,
-    @SerialName("fault_code") val faultCode: String,
+
+    @SerialName("fault_code")
+    val faultCode: String,
+
     val latitude: Double,
     val longitude: Double,
-    @SerialName("bounty_usd") val bountyUsd: Double,
+
+    @SerialName("bounty_usd")
+    val bountyUsd: Double,
+
     val timestamp: Long,
-    val intersection: String = "S 86th St & E Kiowa Ave" // 🟢 NEW: Match the map UI
+
+    // Intersection string displayed to agent on the mission alert overlay
+    val intersection: String = "Unknown Location"
 )
 
 @Serializable
-data class LegacyTelemetryPayload(
+data class TelemetryPayload(
     @SerialName("agent_id")
     val agentId: String,
 
@@ -60,7 +70,7 @@ data class LegacyTelemetryPayload(
 )
 
 @Serializable
-data class LegacyMissionCompletePayload(
+data class MissionCompletePayload(
     @SerialName("agent_id")
     val agentId: String,
 
@@ -96,12 +106,12 @@ data class FcmTokenPayload(
 )
 
 @Serializable
-data class LegacyDeclinePayload(
+data class DeclinePayload(
     val reason: String
 )
 
 @Serializable
-data class LegacyPresencePayload(
+data class PresencePayload(
     @SerialName("is_online")
     val isOnline: Boolean
 )
@@ -125,7 +135,8 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 泙 PILOT BYPASS: Hardcode hostUrl to the PC's local IP Address
+    // 🟢 PILOT BYPASS: Hardcode hostUrl to the PC's local IP Address
+    // private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val hostUrl = "http://192.168.0.84:5001"
     private val PAN_API_URL = "$hostUrl/api/v1"
 
@@ -133,6 +144,7 @@ class PanApiClient : WalletNetworkClient {
     private val attestationEngine = com.pan.tactical.security.AttestationEngine()
 
     private val secureUid: String?
+        //get() = FirebaseAuth.getInstance().currentUser?.uid
         get() = "VNG-50-PILOT"
 
     private var cachedJwt: String? = null
@@ -177,25 +189,25 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String): Boolean {
+    override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String, intersection: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val jwt = getFreshJwt() ?: return@withContext false
 
-                Log.i(TAG, "噫 Injecting V2X Distress Signal to Python Backend...")
-                
-                // 🟢 THE FIX: Route the payload to the dedicated DEV endpoint
+                Log.i(TAG, "🚀 Injecting V2X Distress Signal via Dev Endpoint...")
+                // 🟢 FIX: Use the agent-authenticated dev endpoint instead of the production
+                // fleet endpoint. No fake X-Fleet-Id or sk_test_ token needed.
                 val response: HttpResponse = client.post("$PAN_API_URL/dev/inject-distress") {
                     header("Authorization", "Bearer $jwt")
-                    header("X-Fleet-Id", "DEV-FLEET-01")
                     contentType(ContentType.Application.Json)
                     setBody(V2XDistressPayload(
-                        vin = "DEV-VIN-777",
+                        vin = "DEV-VIN-${(Math.random() * 1000).toInt()}",
                         faultCode = errorCode,
                         latitude = lat,
                         longitude = lon,
                         bountyUsd = 25.00,
-                        timestamp = System.currentTimeMillis() / 1000
+                        timestamp = System.currentTimeMillis() / 1000,
+                        intersection = intersection
                     ))
                 }
                 response.status.isSuccess()
@@ -253,6 +265,7 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
+    // 🛡️ FIX: Added override modifier to satisfy the WalletNetworkClient interface
     override suspend fun updatePresence(isOnline: Boolean): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -260,7 +273,7 @@ class PanApiClient : WalletNetworkClient {
                 val response: HttpResponse = client.post("$PAN_API_URL/agent/presence") {
                     contentType(ContentType.Application.Json)
                     header("Authorization", "Bearer $jwt")
-                    setBody(LegacyPresencePayload(isOnline = isOnline))
+                    setBody(PresencePayload(isOnline = isOnline))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -279,7 +292,7 @@ class PanApiClient : WalletNetworkClient {
                 val response: HttpResponse = client.post("$PAN_API_URL/telemetry/ingest") {
                     contentType(ContentType.Application.Json)
                     header("Authorization", "Bearer $jwt")
-                    setBody(LegacyTelemetryPayload(
+                    setBody(TelemetryPayload(
                         agentId = uid,
                         latitude = lat,
                         longitude = lon,
@@ -303,7 +316,7 @@ class PanApiClient : WalletNetworkClient {
     ): Pair<List<LatLng>, List<Triple<String, Double, Double>>> {
         return withContext(Dispatchers.IO) {
             try {
-                val osrmBase = "https://router.project-osrm.org"
+                val osrmBase = BuildConfig.OSRM_BASE_URL
                 val urlString = "$osrmBase/route/v1/$mode/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson&steps=true"
                 val response: HttpResponse = client.get(urlString)
 
@@ -359,6 +372,7 @@ class PanApiClient : WalletNetworkClient {
         return withContext(Dispatchers.IO) {
             val uploadedUrls = mutableListOf<String>()
 
+            // 🛡️ FIXED: Catch missing JWT cleanly with logs rather than silently failing
             val jwt = getFreshJwt() ?: run {
                 Log.e(TAG, "Evidence upload aborted: JWT unavailable. Agent identity missing.")
                 return@withContext uploadedUrls
@@ -372,6 +386,7 @@ class PanApiClient : WalletNetworkClient {
 
                     val byteArray = stream.toByteArray()
 
+                    // 🛡️ FIXED: Prevent memory leak of 1280x1280 ARGB bitmaps
                     redactedBitmap.recycle()
 
                     Log.d(TAG, "Uploading encrypted evidence: ${byteArray.size / 1024}KB")
@@ -407,17 +422,17 @@ class PanApiClient : WalletNetworkClient {
     // --- SPLIT-BRAIN GUARDRAILS ---
 
     override suspend fun getWalletData(): WalletResponse? {
-        Log.e(TAG, "尅 CRITICAL: Legacy Firebase wallet access attempted. Injection error: PanApiClient does not support secure ledger operations. Use PanWalletClient.")
+        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error: PanApiClient does not support secure ledger operations. Use PanWalletClient.")
         return null
     }
 
     override suspend fun linkDebitCard(cardNumber: String): Result<String> {
-        Log.e(TAG, "尅 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
+        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
         return Result.failure(IllegalStateException("MIGRATION_ERROR: Use PanWalletClient for secure ledger operations."))
     }
 
     override suspend fun withdrawFunds(amount: Double): Result<String> {
-        Log.e(TAG, "尅 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
+        Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
         return Result.failure(IllegalStateException("MIGRATION_ERROR: Use PanWalletClient for secure ledger operations."))
     }
 
@@ -459,6 +474,7 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
+    // 🛡️ FIX: Updated method signature to accept the optional reason parameter
     override suspend fun declineMission(taskId: String, reason: String?): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -467,7 +483,7 @@ class PanApiClient : WalletNetworkClient {
                 val response = client.post("$PAN_API_URL/agent/missions/$taskId/decline") {
                     header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
-                    setBody(LegacyDeclinePayload(finalReason))
+                    setBody(DeclinePayload(finalReason))
                 }
                 response.status.isSuccess()
             } catch (e: Exception) {
@@ -487,9 +503,9 @@ class PanApiClient : WalletNetworkClient {
                     header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
                     setBody(
-                        LegacyMissionCompletePayload(
+                        MissionCompletePayload(
                             agentId = uid,
-                            netPayout = 0.0,
+                            netPayout = 0.0, // Backend calculates payout from Redis task config — do not send client-side value
                             evidenceUrls = evidenceUrls,
                             hardwareAttestationToken = strongBoxManager.generateJwt(uid)
                         )
@@ -501,15 +517,6 @@ class PanApiClient : WalletNetworkClient {
                 false
             }
         }
-    }
-
-    // 泙 FIX: Stub out the new listener to satisfy the interface contract.
-    // The legacy PanApiClient doesn't use WebSockets, so this does nothing.
-    override suspend fun listenForMissions(
-        onMissionAssigned: (MissionData) -> Unit,
-        onMissionCleared: () -> Unit
-    ) {
-        Log.e(TAG, "MIGRATION_ERROR: WebSockets are not supported on legacy PanApiClient. Use PanWalletClient.")
     }
 
     // --- SENTRY OPERATIONS ---
@@ -539,6 +546,15 @@ class PanApiClient : WalletNetworkClient {
 
     override suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String> =
         Result.failure(UnsupportedOperationException("Not implemented in PanApiClient"))
+
+    // PanApiClient handles mission operations via HTTP. WebSocket listening is
+    // owned exclusively by PanWalletClient. This stub satisfies the interface.
+    override suspend fun listenForMissions(
+        onMissionAssigned: (MissionData) -> Unit,
+        onMissionCleared: () -> Unit
+    ) {
+        Log.e(TAG, "🛑 listenForMissions called on PanApiClient. Use PanWalletClient for WebSocket dispatch stream.")
+    }
 
     fun close() = client.close()
 }

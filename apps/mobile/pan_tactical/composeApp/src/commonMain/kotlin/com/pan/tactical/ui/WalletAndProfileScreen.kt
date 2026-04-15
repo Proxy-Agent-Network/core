@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -77,6 +78,8 @@ fun WalletAndProfileScreen(
     var history by remember { mutableStateOf<List<TransactionLog>>(emptyList()) }
     var missionsCompleted by remember { mutableIntStateOf(0) }
     var vtsScore by remember { mutableDoubleStateOf(100.0) }
+    // 🟢 NEW: State for Veteran Discount Badge
+    var isVeteran by remember { mutableStateOf(true) } // Defaulting to true for Pilot
 
     var showLinkCardDialog by remember { mutableStateOf(false) }
     var cardNumber by rememberSaveable { mutableStateOf("") }
@@ -93,6 +96,8 @@ fun WalletAndProfileScreen(
                 history = walletData.history
                 missionsCompleted = walletData.missionsCompleted
                 vtsScore = walletData.vanguardTrustScore
+                // Note: If you add isVeteran to WalletResponse, sync it here:
+                // isVeteran = walletData.isVeteran
             }
         } catch (e: Exception) {
             snackbarHostState.showSnackbar("ERROR: Failed to load wallet data.")
@@ -277,6 +282,41 @@ fun WalletAndProfileScreen(
                     AgentRankCard(
                         missionsCompleted = missionsCompleted
                     )
+
+                    // 🟢 NEW: Fee Discount Badge
+                    if (isVeteran) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF1E3538)) // Muted Cyan
+                                .padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "★ VETERAN STATUS VERIFIED: 15% PLATFORM FEE ★",
+                                color = PanColors.CyanAccent,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF2A2A2A)) 
+                                .padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "STANDARD TIER: 25% PLATFORM FEE",
+                                color = Color.Gray,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
 
                     Row(
                         modifier = Modifier
