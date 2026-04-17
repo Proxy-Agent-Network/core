@@ -2,6 +2,8 @@
 package com.pan.tactical.network
 
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
+import com.pan.tactical.BuildConfig
 import com.pan.tactical.models.MissionData
 import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.TransactionLog
@@ -28,9 +30,6 @@ import kotlinx.serialization.json.*
 import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
-// All DTOs here are prefixed with "Wallet" to avoid redeclaration conflicts with the
-// similarly named DTOs in PanApiClient.kt. Both files share the same package
-// (com.pan.tactical.network), so all top-level class names must be unique.
 
 @Serializable
 data class KeyRegistrationPayload(val agent_id: String, val public_key_b64: String, val play_integrity_token: String)
@@ -65,7 +64,6 @@ data class NetworkWalletResponse(
 @Serializable
 data class WaitlistPayload(val item_id: String, val email: String)
 
-// Wallet-prefixed to avoid collision with PanApiClient's DTOs of the same names
 @Serializable
 data class WalletFeedbackPayload(
     val is_positive: Boolean,
@@ -93,9 +91,6 @@ data class WalletDistressPayload(
     val longitude: Double,
     val bounty_usd: Double,
     val timestamp: Int,
-    // Intersection string displayed to agent on the mission alert overlay.
-    // Real fleet partners (Waymo/Zoox) populate this from their V2X stack.
-    // Dev menu dispatches pass known Mesa street names.
     val intersection: String = "Unknown Location"
 )
 
@@ -118,7 +113,6 @@ class PanWalletClient : WalletNetworkClient {
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }
-        // WebSocket plugin with active keepalives to prevent carrier NAT timeouts
         install(WebSockets) {
             pingInterval = 20_000
         }
@@ -130,20 +124,22 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    private val hostUrl = "http://192.168.0.84:5001"
+    private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val baseUrl = "$hostUrl/api/v1/wallet"
 
-    private val secureUid: String
-        get() = "VNG-50-PILOT"
+    // 🛡️ PHASE 2 FIX: Real identity enforcement via Firebase Auth
+    private val secureUid: String?
+        get() = FirebaseAuth.getInstance().currentUser?.uid
 
     private val jwtMutex = Mutex()
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
 
     private suspend fun getFreshJwt(): String = jwtMutex.withLock {
+        val uid = secureUid ?: throw IllegalStateException("Agent identity missing. Cannot sign JWT.")
         val now = System.currentTimeMillis() / 1000
         if (cachedJwt == null || now >= jwtExpiresAt - 30) {
-            cachedJwt = StrongBoxManager().generateJwt(secureUid)
+            cachedJwt = StrongBoxManager().generateJwt(uid)
             jwtExpiresAt = now + 300
         }
         return cachedJwt!!
@@ -287,7 +283,9 @@ class PanWalletClient : WalletNetworkClient {
     suspend fun getTacticalRoute(startLat: Double, startLon: Double, endLat: Double, endLon: Double): List<Pair<Double, Double>> {
         return withContext(Dispatchers.IO) {
             try {
-                val response = client.get("https://router.project-osrm.org/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson")
+                // 🛡️ PHASE 2 FIX: OSRM Route Engine Hardcode Removed
+                val osrmBase = BuildConfig.OSRM_BASE_URL
+                val response = client.get("$osrmBase/route/v1/driving/$startLon,$startLat;$endLon,$endLat?overview=full&geometries=geojson")
                 val jsonString = response.bodyAsText()
                 val element = Json.parseToJsonElement(jsonString)
                 val routes = element.jsonObject["routes"]?.jsonArray
@@ -309,9 +307,6 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    // Switched from production fleet endpoint (/v2x/distress + fake sk_test_ header)
-    // to the agent-authenticated dev endpoint (/dev/inject-distress + real JWT).
-    // Wires through the intersection string so the mission alert shows real street names.
     override suspend fun triggerBackendDispatch(lat: Double, lon: Double, errorCode: String, intersection: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -398,17 +393,14 @@ class PanWalletClient : WalletNetworkClient {
     override suspend fun completeMission(taskId: String, evidenceUrls: List<String>): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val jwt = getFreshJwt()
-                // 🛡️ FIX: Removed jwt.padEnd(105, 'x') masking. A real ES256 JWT is
-                // 200-300 chars — anything shorter means StrongBox failed to initialize.
-                // Padding it silently hid that failure and sent a malformed token to the
-                // backend. Let it fail loudly here so the root cause is immediately visible.
-
+                val uid = secureUid ?: return@withContext false
+                val jwt = getFreshJwt() // Fetch once, use twice
+                
                 val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/complete") {
                     contentType(ContentType.Application.Json)
-                    attachAgentSignature()
+                    header("Authorization", "Bearer $jwt")
                     setBody(WalletMissionCompletePayload(
-                        agentId = secureUid,
+                        agentId = uid,
                         netPayout = 0.0,
                         evidenceUrls = evidenceUrls,
                         hardwareAttestationToken = jwt
@@ -419,23 +411,25 @@ class PanWalletClient : WalletNetworkClient {
         }
     }
 
-    // The persistent real-time stream that replaces the 3-second poller.
-    // Auto-reconnects on drop with a 3-second backoff.
-    // On connect, immediately polls fetchActiveMissions() to catch any missed
-    // dispatches that arrived while the socket was down.
     override suspend fun listenForMissions(
         onMissionAssigned: (MissionData) -> Unit,
         onMissionCleared: () -> Unit
     ) {
-        val wsUrl = hostUrl.replace("http://", "ws://")
+        val wsUrl = hostUrl.replace("https://", "wss://").replace("http://", "ws://")
 
         while (true) {
             try {
                 val jwt = getFreshJwt()
-                client.webSocket("$wsUrl/api/v1/agent/stream?token=$jwt&agent_id=$secureUid") {
+                val uid = secureUid ?: throw IllegalStateException("Agent identity missing")
+                
+                client.webSocket(
+                    urlString = "$wsUrl/api/v1/agent/stream?agent_id=$uid",
+                    request = {
+                        header("Authorization", "Bearer $jwt")
+                    }
+                ) {
                     Log.i(TAG, "🟢 [WEBSOCKET] Connected to real-time dispatch stream.")
 
-                    // Double-check for missions immediately upon connection to clear any races
                     val activeMissions = fetchActiveMissions()
                     if (activeMissions.isNotEmpty()) {
                         withContext(Dispatchers.Main) { onMissionAssigned(activeMissions.first()) }
@@ -449,7 +443,6 @@ class PanWalletClient : WalletNetworkClient {
                             val type = json["type"]?.jsonPrimitive?.content
 
                             if (type == "NEW_MISSION") {
-                                // Signal received — pull the full mission object via HTTP
                                 val currentMissions = fetchActiveMissions()
                                 if (currentMissions.isNotEmpty()) {
                                     withContext(Dispatchers.Main) { onMissionAssigned(currentMissions.first()) }

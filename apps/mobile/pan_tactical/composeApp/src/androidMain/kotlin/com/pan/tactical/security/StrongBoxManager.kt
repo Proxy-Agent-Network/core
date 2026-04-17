@@ -40,99 +40,63 @@ class StrongBoxManager {
             )
                 .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                 .setDigests(KeyProperties.DIGEST_SHA256)
-                // 🟢 PILOT BYPASS: Disabled StrongBox requirement for local testing.
-                // This allows emulators and local builds to generate a standard Keystore key
-                // without crashing when the physical TPM 2.0 chip is unavailable or unprovisioned.
-                // .setIsStrongBoxBacked(true)
+                .setUserAuthenticationRequired(true)
+                .setIsStrongBoxBacked(true) // 🛡️ PHASE 2 FIX: Enforced hardware root-of-trust
                 .build()
 
+            keyPairGenerator.initialize(parameterSpec)
             try {
-                keyPairGenerator.initialize(parameterSpec)
                 keyPairGenerator.generateKeyPair()
-            } catch (e: Exception) {
-                // Generic catch applied for the pilot bypass
-                throw SecurityException("CRITICAL: Failed to generate mock hardware key. ${e.message}")
+            } catch (e: StrongBoxUnavailableException) {
+                // If this is thrown, the device does not meet Vanguard 50 pilot requirements.
+                // The app must gracefully deny onboarding.
+                throw IllegalStateException("Device lacks required hardware secure element.", e)
             }
         }
     }
 
     /**
-     * 泙 NEW: Extracts the Public Key Certificate to send to the PAN Backend.
-     * This must be called during the initial Agent Onboarding Key Ceremony.
-     */
-    fun getPublicKeyBase64(): String {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
-        keyStore.load(null)
-
-        // 🟢 PILOT BYPASS: Auto-generate the key if it's missing instead of crashing
-        if (!keyStore.containsAlias(KEY_ALIAS)) {
-            generateHardwareKey()
-        }
-
-        val cert = keyStore.getCertificate(KEY_ALIAS)
-        return Base64.encodeToString(cert.encoded, Base64.URL_SAFE or Base64.NO_WRAP)
-    }
-
-    /**
-     * Signs the SB 1417 Audit Log or the L402 Preimage.
-     * The Private Key never leaves the physical hardware chip; we just pass the
-     * data to the chip, and the chip hands us back the signature.
-     */
-    fun signPayload(payload: String): ByteArray {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
-        keyStore.load(null)
-
-        // 🟢 PILOT BYPASS: Auto-generate the key if it's missing instead of crashing
-        if (!keyStore.containsAlias(KEY_ALIAS)) {
-            generateHardwareKey()
-        }
-
-        // Retrieve the key handle (not the actual key data, which is locked in hardware)
-        val privateKey = keyStore.getKey(KEY_ALIAS, null) as PrivateKey
-
-        // ECDSA (Elliptic Curve Digital Signature Algorithm) is lightweight and highly secure
-        val signature = Signature.getInstance("SHA256withECDSA")
-        signature.initSign(privateKey)
-        signature.update(payload.toByteArray(Charsets.UTF_8))
-
-        return signature.sign()
-    }
-
-    /**
-     * Generates a standard ES256 JSON Web Token (JWT).
-     * Proves the agent possesses the hardware TPM.
-     * * 泙 NOTE: Call generateHardwareKey() before invoking this method.
-     * Throws SecurityException if the hardware key has not been initialized.
+     * Creates a signed JWT using the physical hardware key.
+     * The private key NEVER leaves the secure element.
      */
     fun generateJwt(agentId: String): String {
-        // 1. Create Header
+        // Ensure the key exists in hardware before trying to use it
+        generateHardwareKey()
+
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
+        keyStore.load(null)
+
+        val privateKey = keyStore.getKey(KEY_ALIAS, null) as PrivateKey
+
+        // 1. Build the JWT Header
         val header = JSONObject().apply {
             put("alg", "ES256")
             put("typ", "JWT")
-        }.toString()
+        }
 
-        // 2. Create Payload (Expires in 5 minutes to prevent replay attacks)
+        // 2. Build the JWT Payload (Expires in 5 minutes)
         val now = System.currentTimeMillis() / 1000
         val payload = JSONObject().apply {
+            put("iss", "pan_tactical_hardware")
             put("sub", agentId)
-            put("aud", "pan_ops_hub")
             put("iat", now)
             put("exp", now + 300)
-        }.toString()
+            put("attestation_level", "strongbox")
+        }
 
-        // 3. Base64Url encode Header and Payload
-        val b64Header = Base64.encodeToString(header.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-        val b64Payload = Base64.encodeToString(payload.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-
+        val b64Header = Base64.encodeToString(header.toString().toByteArray(), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        val b64Payload = Base64.encodeToString(payload.toString().toByteArray(), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
         val dataToSign = "$b64Header.$b64Payload"
 
-        // 4. Sign via TPM (Hardware Enclave)
-        val derSignature = signPayload(dataToSign)
+        // 3. Ask the Hardware to sign the data (The OS passes it to the chip)
+        val signature = Signature.getInstance("SHA256withECDSA")
+        signature.initSign(privateKey)
+        signature.update(dataToSign.toByteArray())
+        val derSignatureBytes = signature.sign()
 
-        // 5. Convert Android's native DER format to the JWT RAW format
-        val rawSignature = convertDerToRaw(derSignature)
-
-        val b64Signature = Base64.encodeToString(rawSignature, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        // 4. Convert the DER signature back into a standard JWT signature
+        val rawSignatureBytes = convertDerToRaw(derSignatureBytes)
+        val b64Signature = Base64.encodeToString(rawSignatureBytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 
         return "$dataToSign.$b64Signature"
     }
@@ -161,10 +125,13 @@ class StrongBoxManager {
         val cleanR = if (rBytes.size == 33 && rBytes[0] == 0.toByte()) rBytes.copyOfRange(1, 33) else rBytes
         val cleanS = if (sBytes.size == 33 && sBytes[0] == 0.toByte()) sBytes.copyOfRange(1, 33) else sBytes
 
-        // Pad to exactly 32 bytes each
-        val paddedR = ByteArray(32).apply { System.arraycopy(cleanR, 0, this, 32 - cleanR.size, cleanR.size) }
-        val paddedS = ByteArray(32).apply { System.arraycopy(cleanS, 0, this, 32 - cleanS.size, cleanS.size) }
+        // Ensure exactly 32 bytes for each
+        val finalR = ByteArray(32)
+        System.arraycopy(cleanR, maxOf(0, cleanR.size - 32), finalR, maxOf(0, 32 - cleanR.size), minOf(32, cleanR.size))
 
-        return paddedR + paddedS
+        val finalS = ByteArray(32)
+        System.arraycopy(cleanS, maxOf(0, cleanS.size - 32), finalS, maxOf(0, 32 - cleanS.size), minOf(32, cleanS.size))
+
+        return finalR + finalS
     }
 }

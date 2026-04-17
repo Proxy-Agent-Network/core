@@ -55,7 +55,6 @@ data class V2XDistressPayload(
 
     val timestamp: Long,
 
-    // Intersection string displayed to agent on the mission alert overlay
     val intersection: String = "Unknown Location"
 )
 
@@ -135,17 +134,15 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🟢 PILOT BYPASS: Hardcode hostUrl to the PC's local IP Address
-    // private val hostUrl = BuildConfig.PAN_API_BASE_URL
-    private val hostUrl = "http://192.168.0.84:5001"
+    private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val PAN_API_URL = "$hostUrl/api/v1"
 
     private val strongBoxManager = StrongBoxManager()
     private val attestationEngine = com.pan.tactical.security.AttestationEngine()
 
+    // 🛡️ PHASE 2 FIX: Locked identity to actual Firebase Auth
     private val secureUid: String?
-        //get() = FirebaseAuth.getInstance().currentUser?.uid
-        get() = "VNG-50-PILOT"
+        get() = FirebaseAuth.getInstance().currentUser?.uid
 
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
@@ -195,8 +192,6 @@ class PanApiClient : WalletNetworkClient {
                 val jwt = getFreshJwt() ?: return@withContext false
 
                 Log.i(TAG, "🚀 Injecting V2X Distress Signal via Dev Endpoint...")
-                // 🟢 FIX: Use the agent-authenticated dev endpoint instead of the production
-                // fleet endpoint. No fake X-Fleet-Id or sk_test_ token needed.
                 val response: HttpResponse = client.post("$PAN_API_URL/dev/inject-distress") {
                     header("Authorization", "Bearer $jwt")
                     contentType(ContentType.Application.Json)
@@ -265,7 +260,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🛡️ FIX: Added override modifier to satisfy the WalletNetworkClient interface
     override suspend fun updatePresence(isOnline: Boolean): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -372,7 +366,6 @@ class PanApiClient : WalletNetworkClient {
         return withContext(Dispatchers.IO) {
             val uploadedUrls = mutableListOf<String>()
 
-            // 🛡️ FIXED: Catch missing JWT cleanly with logs rather than silently failing
             val jwt = getFreshJwt() ?: run {
                 Log.e(TAG, "Evidence upload aborted: JWT unavailable. Agent identity missing.")
                 return@withContext uploadedUrls
@@ -385,8 +378,6 @@ class PanApiClient : WalletNetworkClient {
                     redactedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, stream)
 
                     val byteArray = stream.toByteArray()
-
-                    // 🛡️ FIXED: Prevent memory leak of 1280x1280 ARGB bitmaps
                     redactedBitmap.recycle()
 
                     Log.d(TAG, "Uploading encrypted evidence: ${byteArray.size / 1024}KB")
@@ -397,8 +388,6 @@ class PanApiClient : WalletNetworkClient {
                             formData {
                                 append("evidence_file", byteArray, Headers.build {
                                     append(HttpHeaders.ContentType, "image/jpeg")
-                                    // 🛡️ FIX: Use UUID instead of timestamp — timestamp filenames
-                                    // leak capture time and are guessable for enumeration attacks.
                                     append(HttpHeaders.ContentDisposition, "filename=\"evidence_${java.util.UUID.randomUUID()}.jpg\"")
                                 })
                             }
@@ -421,8 +410,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // --- SPLIT-BRAIN GUARDRAILS ---
-
     override suspend fun getWalletData(): WalletResponse? {
         Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error: PanApiClient does not support secure ledger operations. Use PanWalletClient.")
         return null
@@ -437,8 +424,6 @@ class PanApiClient : WalletNetworkClient {
         Log.e(TAG, "🛑 CRITICAL: Legacy Firebase wallet access attempted. Injection error.")
         return Result.failure(IllegalStateException("MIGRATION_ERROR: Use PanWalletClient for secure ledger operations."))
     }
-
-    // -------------------------------
 
     override suspend fun fetchActiveMissions(): List<MissionData> {
         return withContext(Dispatchers.IO) {
@@ -476,7 +461,6 @@ class PanApiClient : WalletNetworkClient {
         }
     }
 
-    // 🛡️ FIX: Updated method signature to accept the optional reason parameter
     override suspend fun declineMission(taskId: String, reason: String?): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -507,10 +491,8 @@ class PanApiClient : WalletNetworkClient {
                     setBody(
                         MissionCompletePayload(
                             agentId = uid,
-                            netPayout = 0.0, // Backend calculates payout from Redis task config — do not send client-side value
+                            netPayout = 0.0,
                             evidenceUrls = evidenceUrls,
-                            // 🛡️ FIX: Use getFreshJwt() so attestation token reuses the cached
-                            // JWT rather than hitting the TPM hardware on every mission completion.
                             hardwareAttestationToken = jwt
                         )
                     )
@@ -522,8 +504,6 @@ class PanApiClient : WalletNetworkClient {
             }
         }
     }
-
-    // --- SENTRY OPERATIONS ---
 
     suspend fun acceptSentryExtension(taskId: String, extensionMinutes: Int, bountyUsd: Double): Boolean {
         return withContext(Dispatchers.IO) {
@@ -551,8 +531,6 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String> =
         Result.failure(UnsupportedOperationException("Not implemented in PanApiClient"))
 
-    // PanApiClient handles mission operations via HTTP. WebSocket listening is
-    // owned exclusively by PanWalletClient. This stub satisfies the interface.
     override suspend fun listenForMissions(
         onMissionAssigned: (MissionData) -> Unit,
         onMissionCleared: () -> Unit
