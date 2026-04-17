@@ -61,6 +61,31 @@ class DeclinePayload(BaseModel):
 class PresencePayload(BaseModel):
     is_online: bool = Field(..., description="True to enter the dispatch pool, False to exit")
 
+# Valid task categories agents can set a minimum payout floor for.
+# Mirrors the fault_code values used in process_core_distress and fetch_agent_missions.
+VALID_TASK_CATEGORIES = {
+    "door_securing",
+    "latch_fault",
+    "spill_remediation",
+    "scene_securement",
+    "sensor_obstruction",
+    "sentry_traffic_direction",
+    "general_diagnostics",
+}
+
+MAX_PAYOUT_FLOOR_HISTORY = 90  # Retain 90 snapshots — enough for full pilot duration
+
+class PayoutFloorsPayload(BaseModel):
+    """
+    Agent-defined minimum acceptable payout per task category.
+    The dispatch engine will not route tasks to this agent if the
+    offered bounty is below their floor for that category.
+
+    Keys must be valid VALID_TASK_CATEGORIES. Values are USD floats >= 0.
+    Partial updates are supported — omitted categories are left unchanged.
+    """
+    floors: dict = Field(..., description="Map of task_category → minimum_usd")
+
 # --- HELPER ---
 
 def decode_redis_hash(raw_hash: dict) -> dict:
@@ -270,6 +295,10 @@ async def run_diagnostics(
     if mission_data.get("agent_id") != agent_id:
         raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
+    # ⚠️ PILOT STUB: Always returns cleared. Before connecting a real fleet operator,
+    # this must call the V2X diagnostic API to verify the fault is actually resolved.
+    # Returning is_cleared=True on a live vehicle without confirmation invalidates
+    # the SB 1417 audit trail. Flag for pre-fleet integration review.
     return {
         "status": "success",
         "is_cleared": True,
@@ -301,9 +330,11 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
         raw_bounty = float(task_data.get("bounty_usd", 25.0))
         
-        # 🟢 THE FIX: Hardcode the VNG-50-PILOT account to be recognized as a Veteran 
-        # so the backend math (15%) perfectly matches the Android UI math.
-        if agent_id == "VNG-50-PILOT":
+        # 🟡 PHASE 2 TARGET: Remove this entire bypass block and rely solely on
+        # the Redis is_veteran field for all agents including real Vanguard agents.
+        # Env-gated so it is inert in production even before Phase 2 lands.
+        import os as _os
+        if agent_id == "VNG-50-PILOT" and _os.getenv("ENVIRONMENT") != "production":
             is_veteran = True
         else:
             veteran_raw = await redis_client.hget(f"pan:agent:{agent_id}", "is_veteran")
@@ -549,3 +580,107 @@ async def update_presence(
     
     await redis_client.hset(f"pan:agent:{agent_id}", "status", status_str)
     return {"status": "success", "is_online": payload.is_online}
+
+
+@router.post("/v1/agent/payout-floors")
+async def set_payout_floors(
+    payload: PayoutFloorsPayload,
+    request: Request,
+    agent_id: str = Depends(verify_agent_signature)
+):
+    """
+    Agent sets their minimum acceptable payout per task category.
+
+    Redis schema (two keys per agent):
+      pan:agent:{id}:payout_floors         → Hash  (category → min_usd, current live values)
+      pan:agent:{id}:payout_floor_history  → List  (JSON snapshots, newest at index 0)
+
+    The history list is the DAO governance seed — it records every change with a
+    timestamp so pilot pricing behavior can be migrated to the Sovereign Agent DAO
+    as the founding floor-setting dataset. Never overwrite, always append.
+    """
+    redis_client = request.app.state.redis_client
+
+    # 1. Validate all submitted categories and values.
+    invalid_categories = [k for k in payload.floors if k not in VALID_TASK_CATEGORIES]
+    if invalid_categories:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid task categories: {invalid_categories}. Valid options: {sorted(VALID_TASK_CATEGORIES)}"
+        )
+
+    invalid_values = [k for k, v in payload.floors.items() if not isinstance(v, (int, float)) or v < 0]
+    if invalid_values:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Payout floor values must be non-negative numbers. Invalid fields: {invalid_values}"
+        )
+
+    floors_key = f"pan:agent:{agent_id}:payout_floors"
+    history_key = f"pan:agent:{agent_id}:payout_floor_history"
+
+    # 2. Fetch the current floors so we can merge (partial update support).
+    existing_raw = await redis_client.hgetall(floors_key)
+    existing_floors = {
+        (k.decode() if isinstance(k, bytes) else k): float(v.decode() if isinstance(v, bytes) else v)
+        for k, v in existing_raw.items()
+    }
+
+    merged_floors = {**existing_floors, **{k: float(v) for k, v in payload.floors.items()}}
+
+    # 3. Persist the merged floors as the live lookup hash.
+    await redis_client.hset(floors_key, mapping={k: str(v) for k, v in merged_floors.items()})
+
+    # 4. Append a timestamped snapshot to the history list (newest at head).
+    #    This is the DAO governance seed — never mutate, always append.
+    snapshot = json.dumps({
+        "timestamp": int(time.time()),
+        "agent_id": agent_id,
+        "floors": merged_floors,
+        "changed_fields": list(payload.floors.keys()),
+    })
+    await redis_client.lpush(history_key, snapshot)
+
+    # 5. Trim history to the cap — keeps memory bounded for a 90-snapshot window.
+    await redis_client.ltrim(history_key, 0, MAX_PAYOUT_FLOOR_HISTORY - 1)
+
+    logger.info(
+        f"💰 [PAYOUT_FLOORS] Agent {agent_id} updated floors for: {list(payload.floors.keys())}"
+    )
+
+    return {
+        "status": "success",
+        "active_floors": merged_floors,
+        "message": f"Payout floors updated for {len(payload.floors)} category(ies)."
+    }
+
+
+@router.get("/v1/agent/payout-floors")
+async def get_payout_floors(
+    request: Request,
+    agent_id: str = Depends(verify_agent_signature)
+):
+    """
+    Returns the agent's current payout floors and their change history.
+    Used by the mobile app to populate the payout preferences screen.
+    """
+    redis_client = request.app.state.redis_client
+
+    floors_key = f"pan:agent:{agent_id}:payout_floors"
+    history_key = f"pan:agent:{agent_id}:payout_floor_history"
+
+    raw_floors = await redis_client.hgetall(floors_key)
+    active_floors = {
+        (k.decode() if isinstance(k, bytes) else k): float(v.decode() if isinstance(v, bytes) else v)
+        for k, v in raw_floors.items()
+    }
+
+    raw_history = await redis_client.lrange(history_key, 0, 9)
+    history = [json.loads(entry) for entry in raw_history]
+
+    return {
+        "agent_id": agent_id,
+        "active_floors": active_floors,
+        "valid_categories": sorted(VALID_TASK_CATEGORIES),
+        "recent_history": history,
+    }

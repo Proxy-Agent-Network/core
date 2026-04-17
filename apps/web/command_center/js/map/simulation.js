@@ -205,238 +205,104 @@ window.agentAbortsMission = function(agentId, faultId) {
     }, 2500); 
 };
 
+// --- E2E END-TO-END DISPATCH (Replaces Local Simulation) ---
 window.sendDispatch = function() {
-    const uid = document.getElementById('disp-uid').value;
-    
-    if (!uid) { 
-        if (!window.selectedFaultId || !window.simFaults[window.selectedFaultId]) {
-            alert("DEMO MODE: First click a Cyan AV car on the map to target it.");
-            return;
-        }
-
-        const fault = window.simFaults[window.selectedFaultId];
-        const faultPos = new google.maps.LatLng(fault.lat, fault.lon);
-
-        let qualifiedAgents = [];
-        Object.keys(window.simAgents).forEach(agentId => {
-            let a = window.simAgents[agentId];
-            if (a.status.status === "ONLINE" && a.capabilities.includes(fault.errorCode)) {
-                let agentPos = new google.maps.LatLng(a.status.latitude, a.status.longitude);
-                let dist = google.maps.geometry.spherical.computeDistanceBetween(faultPos, agentPos);
-                qualifiedAgents.push({ id: agentId, agent: a, distance: dist });
-            }
-        });
-
-        if (qualifiedAgents.length === 0) {
-            alert("No qualified agents are currently online for this task!");
-            return;
-        }
-
-        let target = window.getBestAgent(qualifiedAgents, faultPos, window.faultPrices[fault.errorCode] || 15.00);
-
-        if (target) {
-            let agent = target.agent;
-            let agentId = target.id;
-
-            agent.status.status = "PENDING";
-            window.mergeAndRender();
-            
-            let milesAway = (target.distance / 1609.34).toFixed(1);
-            window.showDemoAlert(`Auto-Dispatching closest agent (${agentId.replace('SIM-VANGUARD-', 'VAN-')}) - ${milesAway}mi away<br>Waiting for Acceptance...`, 3500);
-
-            setTimeout(() => {
-                let didAccept = Math.random() > 0.10; 
-                
-                if (didAccept) {
-                    agent.status.status = "BUSY_ON_WAY";
-                    agent.status.currentFaultId = window.selectedFaultId;
-                    fault.status = "ASSIGNED";
-                    fault.assignedAgent = agentId;
-                    fault.assignedAt = Date.now();
-                    
-                    let price = window.faultPrices[fault.errorCode] || 15.00;
-                    fault.lockedPrice = price;
-                    window.addLedgerEntry(-price, 'ESCROW_LOCK', `Escrow Locked: ${window.capNames[fault.errorCode]}`, fault.id, { errorCode: fault.errorCode });
-
-                    fault.history.push({ time: Date.now(), event: 'ASSIGNED_MANUAL', agentId: agentId });
-
-                    let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
-                    let p2 = new google.maps.LatLng(fault.lat, fault.lon);
-
-                    window.ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
-                        if (status === 'OK') {
-                            agent.route = res.routes[0].overview_path;
-                            agent.routeIndex = 0;
-                        } else {
-                            agent.route = [];
-                            for (let j = 0; j <= 20; j++) {
-                                agent.route.push(google.maps.geometry.spherical.interpolate(p1, p2, j/20));
-                            }
-                            agent.routeIndex = 0;
-                        }
-                    });
-
-                    window.selectedFaultId = null; 
-                    window.showDemoAlert(`✅ Agent ${agentId.replace('SIM-VANGUARD-', 'VAN-')} Accepted!<br>En route to stranded AV.`, 3000);
-                    window.mergeAndRender();
-                } else {
-                    agent.status.status = "ONLINE"; 
-                    window.mergeAndRender();
-                    window.showDemoAlert(`❌ Agent ${agentId.replace('SIM-VANGUARD-', 'VAN-')} declined or timed out.<br>Please re-deploy.`, 2500);
-                }
-            }, 3500);
-        }
-        return; 
-    }
-
-    if (uid.startsWith("SIM-")) { 
-        if (!window.selectedFaultId || !window.simFaults[window.selectedFaultId]) {
-            alert("DEMO MODE: First click a Cyan AV car on the map to target it.");
-            return;
-        }
-
-        let agent = window.simAgents[uid];
-        let fault = window.simFaults[window.selectedFaultId];
-
-        if (agent.status.status !== "ONLINE") {
-            alert("This agent is currently busy. Please select an ONLINE agent.");
-            return;
-        }
-
-        agent.status.status = "PENDING";
-        document.getElementById('disp-uid').value = ""; 
-        
-        window.mergeAndRender();
-        window.showDemoAlert(`Targeting specific agent (${uid.replace('SIM-VANGUARD-', 'VAN-')})...<br>Waiting for Acceptance.`, 3500);
-
-        setTimeout(() => {
-            agent.status.status = "BUSY_ON_WAY";
-            agent.status.currentFaultId = window.selectedFaultId;
-            fault.status = "ASSIGNED";
-            fault.assignedAgent = uid;
-            fault.assignedAt = Date.now();
-            
-            let price = window.faultPrices[fault.errorCode] || 15.00;
-            fault.lockedPrice = price;
-            window.addLedgerEntry(-price, 'ESCROW_LOCK', `Escrow Locked: Targeted Dispatch`, fault.id, { errorCode: fault.errorCode });
-
-            fault.history.push({ time: Date.now(), event: 'ASSIGNED_MANUAL_UID', agentId: uid });
-
-            let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
-            let p2 = new google.maps.LatLng(fault.lat, fault.lon);
-
-            window.ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
-                if (status === 'OK') {
-                    agent.route = res.routes[0].overview_path;
-                    agent.routeIndex = 0;
-                } else {
-                    agent.route = [];
-                    for (let j = 0; j <= 20; j++) {
-                        agent.route.push(google.maps.geometry.spherical.interpolate(p1, p2, j/20));
-                    }
-                    agent.routeIndex = 0;
-                }
-            });
-
-            window.selectedFaultId = null; 
-            window.showDemoAlert(`✅ Agent ${uid.replace('SIM-VANGUARD-', 'VAN-')} Accepted!<br>En route to stranded AV.`, 3000);
-            window.mergeAndRender();
-        }, 3500);
-
-        return; 
-    }
-
+    // For E2E testing, clicking "Deploy" from the manual panel should just 
+    // trigger spawnFault with the specific parameters from the UI.
     const center = window.map.getCenter();
-    const payload = {
-        type: "MISSION", lat: Number(center.lat()), lon: Number(center.lng()),
-        errorCode: String(document.getElementById('disp-error').value), bounty: String(document.getElementById('disp-bounty').value),
-        intersection: String(document.getElementById('disp-loc').value), timestamp: Date.now()
-    };
+    const errorSelect = document.getElementById('disp-error');
+    const bountyInput = document.getElementById('disp-bounty');
     
-    window.firebaseSet(window.firebaseRef(window.firebaseDb, 'dispatch/' + window.escapeHTML(uid)), payload).then(() => {
-        alert("MISSION DEPLOYED TO " + window.escapeHTML(uid).substring(0,8) + "...");
-        document.getElementById('disp-uid').value = ""; 
-    }).catch(error => { alert("SECURITY BLOCK: Dispatch failed."); });
+    const payload = {
+        vin: "MANUAL-TARGET-" + Math.floor(Math.random() * 9999),
+        fault_code: errorSelect ? errorSelect.value.split(':')[0] : 'manual_override',
+        latitude: center.lat(),
+        longitude: center.lng(),
+        bounty_usd: bountyInput ? parseFloat(bountyInput.value.replace('$', '')) : 25.0,
+        osm_color: "RED",
+        request_secondary: false,
+        intersection: document.getElementById('disp-loc') ? document.getElementById('disp-loc').value : "Target Location",
+        is_near_miss: false
+    };
+
+    console.log("[E2E] Sending Manual Dispatch Request", payload);
+    
+    fetch('/api/v1/dev/inject-distress', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Node-ID': 'DEV-ADMIN-01',
+            'X-Timestamp': Date.now().toString(),
+            'X-Signature': 'mock_dev_signature'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        window.showDemoAlert(`🚀 Manual Dispatch Confirmed!<br>Task: ${data.task_id}`, 3000);
+        if (document.getElementById('disp-uid')) document.getElementById('disp-uid').value = "";
+    })
+    .catch(err => {
+        console.error("🚨 Manual Dispatch Failed:", err);
+        window.showDemoAlert(`❌ Network Error. Dispatch failed.`, 3000);
+    });
 };
 
-window.spawnFault = function(forceAutoAssign = false, forceState = "BUSY_ON_WAY") {
-    let healthyIds = Object.keys(window.healthyFleet || {});
-    let lat, lon;
-
-    if (healthyIds.length > 0) {
-        let victimId = healthyIds[Math.floor(Math.random() * healthyIds.length)];
-        let victimCar = window.healthyFleet[victimId];
-
-        lat = victimCar.lat;
-        lon = victimCar.lng;
-
-        delete window.healthyFleet[victimId];
-        if (window.healthyAVMarkers && window.healthyAVMarkers[victimId]) {
-            window.healthyAVMarkers[victimId].setMap(null);
-            delete window.healthyAVMarkers[victimId];
-        }
-    } else {
-        lat = 33.37 + Math.random() * 0.09; 
-        lon = -111.87 + Math.random() * 0.19;
-    }
-
-    const faultId = "FLT-" + Math.floor(Math.random() * 90000 + 10000);
-    const capKeys = Object.keys(window.capNames);
+// --- E2E END-TO-END INJECTION (Replaces Local Simulation) ---
+window.spawnFault = async function(forceAutoAssign = false, forceState = "BUSY_ON_WAY") {
+    console.log("[E2E] Triggering live distress injection to PAN Engine...");
+    
+    // 1. Generate realistic test data
+    const lat = 33.37 + Math.random() * 0.09; 
+    const lon = -111.87 + Math.random() * 0.19;
+    const faultId = "AV-ACT-" + Math.floor(Math.random() * 90000 + 10000);
+    
+    // Pick a random fault code that matches our backend schema
+    const capKeys = ['door_securing', 'cabin_sweep', 'spill_remediation', 'sensor_cleaning', 'scene_securement'];
     const errorCode = capKeys[Math.floor(Math.random() * capKeys.length)];
 
-    const randomPastTime = Math.floor(Math.random() * 120000); 
-    window.simFaults[faultId] = { 
-        id: faultId, lat: lat, lon: lon, errorCode: errorCode, 
-        status: "UNASSIGNED", assignedAgent: null, 
-        timestamp: Date.now() - randomPastTime,
-        history: [{ time: Date.now() - randomPastTime, event: 'CREATED' }]
+    // 2. Build payload matching DistressPayload in v2x_bounty_api.py
+    const payload = {
+        vin: faultId,
+        fault_code: errorCode,
+        latitude: lat,
+        longitude: lon,
+        bounty_usd: window.faultPrices ? (window.faultPrices[errorCode] || 25.0) : 25.0,
+        osm_color: "CYAN",
+        request_secondary: false,
+        intersection: "Simulated Intersection",
+        is_near_miss: false
     };
 
-    if (forceAutoAssign) {
-        let availableAgents = Object.keys(window.simAgents).filter(uid => {
-            let a = window.simAgents[uid];
-            return a.status.status === "ONLINE" && a.capabilities.includes(errorCode);
+    try {
+        // 3. Execute HTTP POST to your FastAPI backend
+        const response = await fetch('/api/v1/dev/inject-distress', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // Note: v2x_bounty_api.py requires agent_signature for this dev endpoint
+                'X-Node-ID': 'DEV-ADMIN-01', 
+                'X-Timestamp': Date.now().toString(),
+                'X-Signature': 'mock_dev_signature' // Update with actual dev auth logic if strictly enforced
+            },
+            body: JSON.stringify(payload)
         });
 
-        if (availableAgents.length > 0) {
-            let uid = availableAgents[Math.floor(Math.random() * availableAgents.length)];
-            let agent = window.simAgents[uid];
-            
-            agent.status.status = forceState;
-            agent.status.currentFaultId = faultId;
-            window.simFaults[faultId].status = "ASSIGNED";
-            window.simFaults[faultId].assignedAgent = uid;
-            window.simFaults[faultId].assignedAt = Date.now() - randomPastTime; 
-            
-            let price = window.faultPrices[errorCode] || 15.00;
-            window.simFaults[faultId].lockedPrice = price;
-            
-            window.addLedgerEntry(-price, 'ESCROW_LOCK', `Escrow Locked: System Auto-Spawn`, faultId, { errorCode: errorCode });
-            window.simFaults[faultId].history.push({ time: Date.now() - randomPastTime, event: 'ASSIGNED_SEED', agentId: uid });
-
-            if (forceState === "BUSY_ON_SITE") {
-                agent.status.latitude = lat;
-                agent.status.longitude = lon;
-            } else {
-                let p1 = new google.maps.LatLng(agent.status.latitude, agent.status.longitude);
-                let p2 = new google.maps.LatLng(lat, lon);
-
-                window.ds.route({ origin: p1, destination: p2, travelMode: 'DRIVING' }, (res, status) => {
-                    if (status === 'OK') {
-                        agent.route = res.routes[0].overview_path;
-                        agent.routeIndex = 0;
-                    } else {
-                        agent.route = [];
-                        for (let j = 0; j <= 20; j++) {
-                            agent.route.push(google.maps.geometry.spherical.interpolate(p1, p2, j/20));
-                        }
-                        agent.routeIndex = 0;
-                    }
-                });
-            }
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || "Server rejected dispatch injection.");
         }
+
+        const data = await response.json();
+        window.showDemoAlert(`✅ Distress Ingested by Engine!<br>Task ID: ${data.task_id}`, 3000);
+        
+        // Notice we do NOT manually update the map here.
+        // The server will calculate routing and broadcast via WebSockets.
+        
+    } catch (error) {
+        console.error("🚨 Dispatch Injection Failed:", error);
+        window.showDemoAlert(`❌ API Error: ${error.message}`, 4000);
     }
-    window.mergeAndRender();
 };
 
 window.autoPilotSweep = function() {
@@ -624,15 +490,17 @@ window.generateSimulatedAgents = function() {
         };
     }
 
-    window.spawnFault(true, "BUSY_ON_WAY"); 
-    window.spawnFault(true, "BUSY_ON_WAY"); 
-    window.spawnFault(true, "BUSY_ON_SITE"); 
-    window.spawnFault(true, "BUSY_ON_SITE"); 
-    window.spawnFault(false); 
-    window.spawnFault(false);
+    // window.spawnFault(true, "BUSY_ON_WAY"); 
+    // window.spawnFault(true, "BUSY_ON_WAY"); 
+    // window.spawnFault(true, "BUSY_ON_SITE"); 
+    // window.spawnFault(true, "BUSY_ON_SITE"); 
+    // window.spawnFault(false); 
+    // window.spawnFault(false);
 
-    setInterval(window.animateAgents, 150);
-    setInterval(window.continuousSimulationLoop, 4000);
+    // 🛑 E2E MIGRATION: Disabled the local simulation heartbeat.
+    // The server handles routing now.
+    // setInterval(window.animateAgents, 150);
+    // setInterval(window.continuousSimulationLoop, 4000);
 };
 
 window.animateAgents = function() {

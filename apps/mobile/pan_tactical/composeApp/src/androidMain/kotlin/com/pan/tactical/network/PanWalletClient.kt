@@ -399,7 +399,10 @@ class PanWalletClient : WalletNetworkClient {
         return withContext(Dispatchers.IO) {
             try {
                 val jwt = getFreshJwt()
-                val safeToken = if (jwt.length < 100) jwt.padEnd(105, 'x') else jwt
+                // 🛡️ FIX: Removed jwt.padEnd(105, 'x') masking. A real ES256 JWT is
+                // 200-300 chars — anything shorter means StrongBox failed to initialize.
+                // Padding it silently hid that failure and sent a malformed token to the
+                // backend. Let it fail loudly here so the root cause is immediately visible.
 
                 val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/complete") {
                     contentType(ContentType.Application.Json)
@@ -408,7 +411,7 @@ class PanWalletClient : WalletNetworkClient {
                         agentId = secureUid,
                         netPayout = 0.0,
                         evidenceUrls = evidenceUrls,
-                        hardwareAttestationToken = safeToken
+                        hardwareAttestationToken = jwt
                     ))
                 }
                 response.status.isSuccess()

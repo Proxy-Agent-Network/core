@@ -397,7 +397,9 @@ class PanApiClient : WalletNetworkClient {
                             formData {
                                 append("evidence_file", byteArray, Headers.build {
                                     append(HttpHeaders.ContentType, "image/jpeg")
-                                    append(HttpHeaders.ContentDisposition, "filename=\"evidence_${System.currentTimeMillis()}.jpg\"")
+                                    // 🛡️ FIX: Use UUID instead of timestamp — timestamp filenames
+                                    // leak capture time and are guessable for enumeration attacks.
+                                    append(HttpHeaders.ContentDisposition, "filename=\"evidence_${java.util.UUID.randomUUID()}.jpg\"")
                                 })
                             }
                         ))
@@ -507,7 +509,9 @@ class PanApiClient : WalletNetworkClient {
                             agentId = uid,
                             netPayout = 0.0, // Backend calculates payout from Redis task config — do not send client-side value
                             evidenceUrls = evidenceUrls,
-                            hardwareAttestationToken = strongBoxManager.generateJwt(uid)
+                            // 🛡️ FIX: Use getFreshJwt() so attestation token reuses the cached
+                            // JWT rather than hitting the TPM hardware on every mission completion.
+                            hardwareAttestationToken = jwt
                         )
                     )
                 }

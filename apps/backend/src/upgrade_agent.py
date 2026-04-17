@@ -1,6 +1,12 @@
 import redis
 import time
 import sys
+import os
+
+# 🛡️ PRODUCTION GUARD: This script directly seeds Redis with Tier 3 clearance.
+# It must never run outside a local development environment.
+if os.getenv("ENVIRONMENT") == "production":
+    raise SystemExit("🛑 FATAL: upgrade_agent.py must never run in production. Aborting.")
 
 # This is the exact ID we hardcoded in PanBootSequence.kt
 AGENT_ID = "VNG-50-PILOT" 

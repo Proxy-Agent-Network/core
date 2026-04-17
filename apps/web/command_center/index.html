@@ -8,8 +8,6 @@
     
     <link rel="stylesheet" href="css/command_center.css">
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
-
     <script src="js/core/state.js?v=999"></script>
     <script src="js/ui/dashboard_ui.js?v=999"></script>
     <script src="js/ui/dossier_ui.js?v=1"></script>
@@ -333,48 +331,90 @@
 </script>
 
 <script>
-    // Connect to the local Python WebSocket Server
-    const socket = io();
+    // Connect to the local FastAPI Native WebSocket Server
+    // We use the dev-token-777 as defined in telemetry_socket.py for local testing
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/telemetry/stream?token=dev-token-777`;
+    
+    const socket = new WebSocket(wsUrl);
 
-    socket.on('partner_fault_ingested', function(data) {
-        console.log("⚠️ INCOMING B2B PING:", data);
+    socket.onopen = function(e) {
+        console.log("🟢 [OPS_HUB] Successfully connected to PAN Telemetry WebSocket");
+    };
 
-        // 1. Create a dynamic, high-priority UI Notification
-        const toast = document.createElement('div');
-        toast.style.position = 'fixed';
-        toast.style.top = '70px'; // Pushed down 50px so it clears the new top bar
-        toast.style.right = '20px';
-        toast.style.background = 'rgba(15, 23, 42, 0.95)';
-        toast.style.border = '1px solid #00BCD4';
-        toast.style.borderLeft = '4px solid #00BCD4';
-        toast.style.color = '#fff';
-        toast.style.padding = '15px 20px';
-        toast.style.borderRadius = '4px';
-        toast.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 188, 212, 0.2)';
-        toast.style.zIndex = '9999';
-        toast.style.fontFamily = 'monospace';
-        toast.style.animation = 'fadeIn 0.3s ease-out';
+    socket.onmessage = function(event) {
+        // The native WebSocket API gives us raw strings, so we parse it to JSON
+        const message = JSON.parse(event.data);
         
-        toast.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <strong style="color: #00BCD4; font-size: 14px;">⚠️ AUTOMATED TELEMETRY INGESTED</strong>
-                <span style="font-size: 10px; color: #888;">JUST NOW</span>
-            </div>
-            <div style="font-size: 13px; color: #cbd5e1; line-height: 1.4;">
-                <strong>ASSET:</strong> <span style="color: #fff;">${data.asset_id}</span><br>
-                <strong>FAULT:</strong> <span style="color: #F44336;">${data.fault_code.toUpperCase()}</span><br>
-                <strong>ESCROW LOCK:</strong> <span style="color: #4CAF50;">${data.bounty}</span>
-            </div>
-        `;
-        
-        document.body.appendChild(toast);
+        // 1. Handle New Distress Signals (Replacing your old partner_fault_ingested)
+        if (message.type === "DISTRESS_ALERT") {
+            const data = message.payload;
+            console.log("⚠️ INCOMING DISTRESS ALERT:", data);
 
-        // 3. Remove the notification after 6 seconds
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transition = 'opacity 0.5s';
-            setTimeout(() => toast.remove(), 500);
-        }, 6000);
-    });
+            const toast = document.createElement('div');
+            toast.style.position = 'fixed';
+            toast.style.top = '70px';
+            toast.style.right = '20px';
+            toast.style.background = 'rgba(15, 23, 42, 0.95)';
+            toast.style.border = '1px solid #00BCD4';
+            toast.style.borderLeft = '4px solid #00BCD4';
+            toast.style.color = '#fff';
+            toast.style.padding = '15px 20px';
+            toast.style.borderRadius = '4px';
+            toast.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 188, 212, 0.2)';
+            toast.style.zIndex = '9999';
+            toast.style.fontFamily = 'monospace';
+            toast.style.animation = 'fadeIn 0.3s ease-out';
+            
+            toast.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong style="color: #00BCD4; font-size: 14px;">⚠️ AV DISTRESS UPLINK</strong>
+                    <span style="font-size: 10px; color: #888;">JUST NOW</span>
+                </div>
+                <div style="font-size: 13px; color: #cbd5e1; line-height: 1.4;">
+                    <strong>TASK:</strong> <span style="color: #fff;">${data.task_id}</span><br>
+                    <strong>FAULT:</strong> <span style="color: #F44336;">${data.fault_code.toUpperCase()}</span><br>
+                    <strong>ESCROW:</strong> <span style="color: #4CAF50;">$${data.bounty_usd.toFixed(2)}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.5s';
+                setTimeout(() => toast.remove(), 500);
+            }, 6000);
+        }
+        
+        // 2. Handle Live GPS Telemetry (Replacing agent_telemetry_update)
+        else if (message.type === "AGENT_LOCATION") {
+            const data = message.payload;
+            console.log("📍 Live Agent Telemetry:", data);
+
+            // Update the global state dictionary 
+            if (!window.liveAgents) window.liveAgents = {};
+            
+            window.liveAgents[data.agent_id] = {
+                id: data.agent_id,
+                lat: data.lat, 
+                lng: data.lon, 
+                status: data.status
+            };
+
+            // Force the map to redraw with the new server-provided coordinates
+            if (typeof window.mergeAndRender === 'function') {
+                window.mergeAndRender();
+            }
+        }
+    };
+
+    socket.onclose = function(event) {
+        console.log("🔴 [OPS_HUB] Disconnected from Telemetry Stream. Reason:", event.reason);
+    };
+    
+    socket.onerror = function(error) {
+        console.error("🚨 [OPS_HUB] WebSocket Error:", error);
+    };
 </script>
 {% endblock %}

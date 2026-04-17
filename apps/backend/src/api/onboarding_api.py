@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel
 import os
+import json
 import secrets
 import time
 import re
@@ -326,7 +327,10 @@ async def checkr_webhook_listener(request: Request):
     if not hmac.compare_digest(expected_sig, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    data = await request.json()
+    # 🛡️ FIX: Parse from the already-read raw_body bytes instead of calling
+    # request.json() — on some ASGI servers the body stream is consumed after
+    # request.body() and a second read returns an empty payload.
+    data = json.loads(raw_body)
     
     if data.get("type") == "report.completed":
         report = data.get("data", {}).get("object", {})
