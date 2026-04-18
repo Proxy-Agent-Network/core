@@ -4,10 +4,15 @@ import hashlib
 import requests
 import random
 import os
+import sys
 
 # ==========================================
 # 🛡️ HARDWARE IDENTITY (Zero-Trust)
 # ==========================================
+if os.getenv("ENVIRONMENT") == "production":
+    print("🛑 FATAL: autonomous_worker.py uses DEV-BYPASS IDs and must not run in production. Aborting.")
+    sys.exit(1)
+
 # In production, this seed never leaves the physical TPM 2.0 chip.
 raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED")
 if not raw_seed:
@@ -35,43 +40,36 @@ def get_secure_headers() -> dict:
 # ==========================================
 def register_with_network():
     """Initial connection to the Panopticon Master Node."""
-    print(f"[*] Booting Autonomous Node: {MY_NODE_ID}")
-    
-    # The register endpoint currently expects the signature in the JSON body 
-    # based on our master_node.py architecture.
-    timestamp = str(int(time.time()))
-    payload = f"{MY_NODE_ID}:{timestamp}".encode('utf-8')
-    signature = hmac.new(HARDWARE_SEED, payload, hashlib.sha256).hexdigest()
-    
-    res = requests.post(f"{MASTER_NODE_URL}/api/v1/node/register", json={
+    print(f"[*] Booting Autonomous Node: {MY_NODE_ID}...")
+    res = requests.post(f"{MASTER_NODE_URL}/api/v1/node/register", headers=get_secure_headers(), json={
         "node_id": MY_NODE_ID,
-        "timestamp": timestamp,
-        "signature": signature
+        "timestamp": int(time.time()),
+        "signature": hmac.new(HARDWARE_SEED, f"{MY_NODE_ID}:{int(time.time())}".encode(), hashlib.sha256).hexdigest()
     })
     
     if res.status_code == 200:
-        print("[+] Successfully registered with the Zero-Trust Network.")
+        print("[+] Registration Verified by Treasury.")
         return True
     else:
-        print(f"[-] Registration failed: {res.text}")
+        print(f"[-] Registration Rejected: {res.text}")
         return False
 
 def hunt_for_bounties():
-    """The main economic loop: Request task, do work, submit invoice."""
+    """Polls the dispatch queue and simulates physical work."""
     while True:
         try:
-            print("\n[*] Pinging Master Node for available tasks...")
-            
-            # 1. Request a Task (Using our secure headers)
+            print("[*] Polling for high-priority missions...")
             res = requests.post(f"{MASTER_NODE_URL}/api/v1/task/request", headers=get_secure_headers(), json={"node_id": MY_NODE_ID})
             
             if res.status_code == 200:
                 task_data = res.json()
-                task_id = task_data['task_id']
-                bounty = task_data['payout_sats']
+                task_id = task_data.get('task_id')
+                bounty = task_data.get('payout_sats')
                 
-                print(f"[+] Task {task_id} acquired! Bounty: {bounty} SATS")
-                print(f"[*] Simulating AI cognitive work for 3 seconds...")
+                print(f"[+] Mission Claimed: {task_id} | Bounty: {bounty} Sats")
+                
+                # 1. Simulate Work
+                print(f"[*] Executing physical remediation work for 3 seconds...")
                 time.sleep(3) # This is where Gemini would actually do the work
                 
                 # 2. Generate an L402 Lightning Invoice to get paid

@@ -25,6 +25,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import com.google.android.gms.maps.model.LatLng
+import okhttp3.CertificatePinner
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
@@ -124,6 +125,13 @@ class PanApiClient : WalletNetworkClient {
     private val client = HttpClient(OkHttp) {
         engine {
             config {
+                // 🛡️ PHASE 3 FIX: Certificate Pinning for SB 1417 Chain-of-Custody
+                // Replace this hash with the actual SHA-256 pin of your production certificate!
+                val pinner = CertificatePinner.Builder()
+                    .add("*.proxyagent.network", "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=") 
+                    .build()
+                
+                certificatePinner(pinner)
                 connectTimeout(3, TimeUnit.SECONDS)
                 readTimeout(3, TimeUnit.SECONDS)
                 writeTimeout(30, TimeUnit.SECONDS)
@@ -531,6 +539,8 @@ class PanApiClient : WalletNetworkClient {
     override suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String> =
         Result.failure(UnsupportedOperationException("Not implemented in PanApiClient"))
 
+    // PanApiClient handles mission operations via HTTP. WebSocket listening is
+    // owned exclusively by PanWalletClient. This stub satisfies the interface.
     override suspend fun listenForMissions(
         onMissionAssigned: (MissionData) -> Unit,
         onMissionCleared: () -> Unit
