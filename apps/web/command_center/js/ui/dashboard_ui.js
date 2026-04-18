@@ -232,12 +232,36 @@ window.executeDeposit = function() {
     if(isNaN(amt) || amt <= 0) return;
     
     window.closeDepositModal();
-    window.showDemoAlert("⏳ Establishing secure connection via Plaid API...", 2500);
+    window.showDemoAlert("⏳ Establishing secure connection to Payment Gateway...", 2500);
     
-    setTimeout(() => {
-        window.addLedgerEntry(amt, 'DEPOSIT', 'ACH Transfer - Retainer Replenished', 'DEP-' + Math.floor(Math.random()*9000+1000));
-        window.showDemoAlert(`✅ $${amt.toFixed(2)} ACH Transfer Successful.<br>Funds instantly available.`, 3000);
-    }, 2500);
+    // PHASE 5 FIX: Deposit flow is now strictly server-authoritative
+    fetch('/api/v1/wallet/deposit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            amount: amt,
+            // Cryptographic idempotency key to prevent double-charging on network retries
+            idempotency_key: crypto.randomUUID() 
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // Rely purely on the server's response for the new balance
+            window.fleetBalance = data.new_balance;
+            document.getElementById('wallet-balance-display').innerText = window.formatMoney(window.fleetBalance);
+            
+            // Append to ledger using the cryptographic receipt ID from the backend
+            window.addLedgerEntry(amt, 'DEPOSIT', 'ACH Transfer - Retainer Replenished', data.receipt_id);
+            window.showDemoAlert(`✅ $${amt.toFixed(2)} ACH Transfer Successful.<br>Funds securely settled.`, 3000);
+        } else {
+            window.showDemoAlert(`❌ Deposit Failed: ${data.error || 'Server rejected transaction'}`, 4000);
+        }
+    })
+    .catch(err => {
+        console.error("Deposit Error:", err);
+        window.showDemoAlert(`❌ Network Error: Transaction aborted for safety.`, 4000);
+    });
 };
 
 window.openAutoDispatchModal = function() { document.getElementById('auto-dispatch-modal').style.display = 'flex'; };

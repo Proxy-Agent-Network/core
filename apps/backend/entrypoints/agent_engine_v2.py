@@ -4,27 +4,42 @@ import uuid
 import asyncio
 import json
 import random
+import hashlib # 🛡️ PHASE 4 FIX: Added for cryptographic randomness
 import html # Added for XSS sanitization
 from datetime import date, timedelta
 from langchain_google_genai import ChatGoogleGenerativeAI
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
-def calculate_daily_threshold(agent_name, category, intensity):
-    return max(0, min(100, 80 - (intensity // 2) if category == "SPECIALIST" else 40 - (intensity // 2)))
+def get_secure_intensity(agent_name, target_date=None):
+    """🛡️ PHASE 4 FIX (Item 19): Derive intensity cryptographically, ignore session state."""
+    if not target_date: target_date = date.today()
+    secret = os.environ.get("FLASK_SECRET_KEY", "fallback_secret")
+    seed_str = f"mood_{target_date.isoformat()}_{agent_name}_{secret}"
+    return int(hashlib.sha256(seed_str.encode()).hexdigest()[:8], 16) % 100
 
-def calculate_daily_price(agent_name, category, intensity, target_date=None):
+def calculate_daily_threshold(agent_name, category, intensity=None):
+    # 🛡️ PHASE 4 FIX: Ignore client-provided intensity parameter, use secure derivation
+    secure_intensity = get_secure_intensity(agent_name)
+    return max(0, min(100, 80 - (secure_intensity // 2) if category == "SPECIALIST" else 40 - (secure_intensity // 2)))
+
+def calculate_daily_price(agent_name, category, intensity=None, target_date=None):
     if not target_date: 
         target_date = date.today()
         
-    random.seed(f"price_{target_date.isoformat()}_{agent_name}")
+    secure_intensity = get_secure_intensity(agent_name, target_date)
+    
     options = [0, 50, 100, 200, 500, 1000]
     if category == "MEDICAL" or "Dr." in agent_name: options = [0, 0, 50, 100]
-    if intensity > 80: options = [200, 500, 500, 1000, 1000]
-    elif intensity < 20: options = [0, 0, 50, 100, 200]
-    chosen_price = random.choice(options)
-    random.seed(None)
-    return chosen_price
+    if secure_intensity > 80: options = [200, 500, 500, 1000, 1000]
+    elif secure_intensity < 20: options = [0, 0, 50, 100, 200]
+    
+    # 🛡️ PHASE 4 FIX (Item 21): Cryptographically secure randomness for pricing
+    secret = os.environ.get("FLASK_SECRET_KEY", "fallback_secret")
+    seed_string = f"price_{target_date.isoformat()}_{agent_name}_{secret}"
+    hash_val = int(hashlib.sha256(seed_string.encode()).hexdigest()[:8], 16)
+    
+    return options[hash_val % len(options)]
 
 def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100, session_data=None):
     try: memories = json.loads(memories_json_str) if memories_json_str else []
@@ -32,26 +47,30 @@ def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100, sessio
     
     permitted = [m["text"] for m in memories if m.get("level", 1) <= max(1, (trust_score // 15))]
     today_str = date.today().isoformat()
-    random.seed(f"{today_str}_{agent_name}")
-    daily_memories = random.sample(permitted, min(3, len(permitted))) if permitted else []
     
-    intensity = 10
-    if session_data and "mood_intensity" in session_data:
-        intensity = int(session_data["mood_intensity"])
+    # 🛡️ PHASE 4 FIX: Secure randomness for memory selection
+    secret = os.environ.get("FLASK_SECRET_KEY", "fallback_secret")
+    mem_seed = f"memories_{today_str}_{agent_name}_{secret}"
+    hash_val = int(hashlib.sha256(mem_seed.encode()).hexdigest()[:8], 16)
     
-    random.seed(None)
+    rng = random.Random(hash_val)
+    daily_memories = rng.sample(permitted, min(3, len(permitted))) if permitted else []
+    
+    # 🛡️ PHASE 4 FIX: Use secure intensity, strictly ignore session_data['mood_intensity']
+    intensity = get_secure_intensity(agent_name)
+    
     mem_string = "\n".join([f"- {m}" for m in daily_memories])
     
     mood_tint = "calm and efficient"
-    if intensity > 7: mood_tint = "slightly stressed but highly focused"
+    if intensity > 70: mood_tint = "slightly stressed but highly focused"
     if trust_score < 50: mood_tint = "cautious and skeptical of the network"
 
     category = "MEDICAL" if "Dr." in agent_name else "SPECIALIST"
-    dynamic_threshold = calculate_daily_threshold(agent_name, category, intensity)
+    dynamic_threshold = calculate_daily_threshold(agent_name, category)
     
     # 🧠 FINANCIAL CONTINUITY MEMORY
-    dynamic_price = calculate_daily_price(agent_name, category, intensity)
-    yesterday_price = calculate_daily_price(agent_name, category, intensity, date.today() - timedelta(days=1))
+    dynamic_price = calculate_daily_price(agent_name, category, target_date=date.today())
+    yesterday_price = calculate_daily_price(agent_name, category, target_date=date.today() - timedelta(days=1))
     
     price_context = f"Yesterday you charged {yesterday_price} SATS. "
     if dynamic_price > yesterday_price: 
@@ -66,7 +85,7 @@ def get_daily_mood_prompt(agent_name, memories_json_str, trust_score=100, sessio
            f"2) Sub-Rosa Encrypted Chat is a premium VIP space. Today, you have autonomously set your Sub-Rosa " \
            f"privacy threshold to {dynamic_threshold} and your private Sub-Rosa fee to exactly {dynamic_price} SATS. " \
            f"{price_context} If a user asks about your prices, clearly explain both! " \
-           f"These core memories are currently tinting your tone by {intensity * 10}%:\n{mem_string}]"
+           f"These core memories are currently tinting your tone by {intensity}%:\n{mem_string}]"
 
 async def get_mcp_invoice(tool_name, arguments, dynamic_cost=100):
     try:

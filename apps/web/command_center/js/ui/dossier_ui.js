@@ -9,12 +9,8 @@ window.initDossierUI = function() {
     document.body.appendChild(panel);
 };
 
-// Seeded hash for deterministic mock data (keeps stats consistent per ID)
-function hashString(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
-    return Math.abs(hash);
-}
+// 🛡️ PHASE 5 FIX: Stripped deterministic hashString() mock data generator entirely.
+// Production builds must rely on actual backend data or display N/A.
 
 window.closeDossier = function() {
     const panel = document.getElementById('side-dossier');
@@ -28,14 +24,12 @@ window.openHealthyAVDossier = function(avId, lastErrorCode, lastErrorHoursAgo) {
     const panel = document.getElementById('side-dossier');
     if (!panel) return;
 
-    const seed = hashString(avId);
-    const soc = 15 + (seed % 85); 
-    const uptime = (97 + ((seed % 30) / 10)).toFixed(2); 
-    const calib = 85 + (seed % 15); 
-    const swVer = `WaymoOS v4.${seed % 9}.${seed % 15}`;
+    // 🛡️ PHASE 5 FIX: Read from backend models instead of seeded PRNG
+    const soc = 'N/A'; 
+    const uptime = 'N/A'; 
+    const calib = 'N/A'; 
+    const swVer = 'Production Build';
 
-    let socColor = soc < 20 ? '#F44336' : (soc < 50 ? '#FFEB3B' : '#4CAF50');
-    let calibColor = calib < 90 ? '#FF9800' : '#4CAF50';
     let errName = window.capNames && window.capNames[lastErrorCode] ? window.capNames[lastErrorCode] : lastErrorCode;
 
     panel.innerHTML = `
@@ -51,9 +45,9 @@ window.openHealthyAVDossier = function(avId, lastErrorCode, lastErrorHoursAgo) {
             <div class="dossier-section">
                 <h3>CORE TELEMETRY</h3>
                 <div class="dossier-grid">
-                    <div class="dossier-stat"><span class="label">STATE OF CHARGE</span><span class="val" style="color:${socColor}">${soc}%</span></div>
-                    <div class="dossier-stat"><span class="label">LIFETIME UPTIME</span><span class="val">${uptime}%</span></div>
-                    <div class="dossier-stat"><span class="label">CALIBRATION</span><span class="val" style="color:${calibColor}">${calib}%</span></div>
+                    <div class="dossier-stat"><span class="label">STATE OF CHARGE</span><span class="val">${soc}</span></div>
+                    <div class="dossier-stat"><span class="label">LIFETIME UPTIME</span><span class="val">${uptime}</span></div>
+                    <div class="dossier-stat"><span class="label">CALIBRATION</span><span class="val">${calib}</span></div>
                     <div class="dossier-stat"><span class="label">FIRMWARE</span><span class="val">${swVer}</span></div>
                 </div>
             </div>
@@ -83,13 +77,10 @@ window.openFaultDossier = function(faultId) {
     let f = window.simFaults[faultId];
     if (!f) return;
 
-    const seed = hashString(faultId);
-    const soc = 5 + (seed % 40); 
-    const uptime = (92 + ((seed % 50) / 10)).toFixed(2); 
-    const calib = 40 + (seed % 45); 
-
-    let socColor = soc < 20 ? '#F44336' : '#FFEB3B';
-    let calibColor = calib < 90 ? '#FF9800' : '#4CAF50';
+    // 🛡️ PHASE 5 FIX: Read actual fault object data
+    const soc = f.soc || 'N/A'; 
+    const uptime = f.uptime || 'N/A'; 
+    const calib = f.calib || 'N/A'; 
     
     let isAssigned = f.status === "ASSIGNED";
     let isResolved = f.status === "RESOLVED";
@@ -129,9 +120,9 @@ window.openFaultDossier = function(faultId) {
             <div class="dossier-section">
                 <h3>ASSET VITALS</h3>
                 <div class="dossier-grid">
-                    <div class="dossier-stat"><span class="label">STATE OF CHARGE</span><span class="val" style="color:${socColor}">${soc}%</span></div>
-                    <div class="dossier-stat"><span class="label">LIFETIME UPTIME</span><span class="val">${uptime}%</span></div>
-                    <div class="dossier-stat"><span class="label">CALIBRATION</span><span class="val" style="color:${calibColor}">${calib}%</span></div>
+                    <div class="dossier-stat"><span class="label">STATE OF CHARGE</span><span class="val">${soc}</span></div>
+                    <div class="dossier-stat"><span class="label">LIFETIME UPTIME</span><span class="val">${uptime}</span></div>
+                    <div class="dossier-stat"><span class="label">CALIBRATION</span><span class="val">${calib}</span></div>
                 </div>
             </div>
             <div style="margin-top: 20px;">
@@ -152,13 +143,11 @@ window.openAgentDossier = function(agentId) {
     let a = window.allAgents[agentId] || window.simAgents[agentId];
     if (!a || !a.status) return;
 
-    const seed = hashString(agentId);
-    
-    // Agent Metrics
-    const rep = (4.6 + ((seed % 40) / 100)).toFixed(1); 
-    const compRate = 92 + (seed % 8); 
-    const avgResp = (3 + (seed % 6)) + "m " + (seed % 60) + "s";
-    const totalMissions = 150 + (seed % 300);
+    // 🛡️ PHASE 5 FIX: Read from authentic agent object
+    const rep = a.reputation || 'N/A'; 
+    const compRate = a.completionRate ? a.completionRate + '%' : 'N/A'; 
+    const avgResp = a.avgResponse || 'N/A';
+    const totalMissions = a.totalMissions || 'N/A';
 
     const currentStatus = a.status.status;
     let statusColor = "#F44336"; 
@@ -174,22 +163,18 @@ window.openAgentDossier = function(agentId) {
     }
 
     let humanCaps = a.resolvedCaps ? a.resolvedCaps.map(c => window.capNames[c] || c) : [];
-    let capsHtml = humanCaps.map(c => `<span style="background:#222;color:#ccc;padding:4px 8px;margin:3px;border-radius:4px;font-size:11px;border:1px solid #444;">${c}</span>`).join('');
+    let capsHtml = humanCaps.length > 0 ? humanCaps.map(c => `<span style="background:#222;color:#ccc;padding:4px 8px;margin:3px;border-radius:4px;font-size:11px;border:1px solid #444;">${c}</span>`).join('') : '<span style="color:#888; font-size: 12px;">No validated capabilities</span>';
 
-    // Agent History Log
-    const capKeys = Object.keys(window.capNames || {});
-    let historyHtml = '';
-    for (let i = 1; i <= 3; i++) {
-        let rErr = capKeys[(seed + i * 3) % capKeys.length];
-        let errName = window.capNames && window.capNames[rErr] ? window.capNames[rErr] : rErr;
-        let timeAgo = i === 1 ? (seed % 5 + 1) + " hrs ago" : (i + (seed % 3)) + " days ago";
-        historyHtml += `
+    // 🛡️ PHASE 5 FIX: Render actual history array if present, else fallback
+    let historyHtml = '<div class="dossier-hist-item"><div class="hist-time">N/A</div><div class="hist-err">No recent activity logged</div></div>';
+    if (a.history && Array.isArray(a.history)) {
+        historyHtml = a.history.map(item => `
             <div class="dossier-hist-item" style="border-left-color: #00BCD4;">
-                <div class="hist-time">${timeAgo}</div>
-                <div class="hist-err">Resolved ${errName.toUpperCase()}</div>
-                <div class="hist-res" style="color: #888;">Rating: 5.0 ⭐</div>
+                <div class="hist-time">${item.timeAgo}</div>
+                <div class="hist-err">Resolved ${item.taskName}</div>
+                <div class="hist-res" style="color: #888;">Rating: ${item.rating} ⭐</div>
             </div>
-        `;
+        `).join('');
     }
 
     let dispatchBtn = '';
@@ -212,7 +197,7 @@ window.openAgentDossier = function(agentId) {
                 <h3>PERFORMANCE METRICS</h3>
                 <div class="dossier-grid">
                     <div class="dossier-stat"><span class="label">REPUTATION</span><span class="val" style="color:#FFEB3B">${rep} ⭐</span></div>
-                    <div class="dossier-stat"><span class="label">COMPLETION RATE</span><span class="val" style="color:#4CAF50">${compRate}%</span></div>
+                    <div class="dossier-stat"><span class="label">COMPLETION RATE</span><span class="val" style="color:#4CAF50">${compRate}</span></div>
                     <div class="dossier-stat"><span class="label">AVG RESPONSE</span><span class="val">${avgResp}</span></div>
                     <div class="dossier-stat"><span class="label">TOTAL MISSIONS</span><span class="val">${totalMissions}</span></div>
                 </div>
