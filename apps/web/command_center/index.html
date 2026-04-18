@@ -3,7 +3,7 @@
 {% block title %}PAN Command Center{% endblock %}
 
 {% block extra_head %}
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.gstatic.com https://cdnjs.cloudflare.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com http://localhost:5000 http://127.0.0.1:5000 ws://localhost:5000 ws://127.0.0.1:5000; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'nonce-{{ csp_nonce }}' https://maps.googleapis.com https://www.gstatic.com https://cdnjs.cloudflare.com; style-src 'self' 'nonce-{{ csp_nonce }}' https://fonts.googleapis.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://maps.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com ws://localhost:5000 ws://127.0.0.1:5000; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     
     <link rel="stylesheet" href="css/command_center.css">
@@ -294,7 +294,7 @@
 
 <script src="secrets.js"></script>
 
-<script type="module">
+<script type="module" nonce="{{ csp_nonce }}">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -330,11 +330,13 @@
     
 </script>
 
-<script>
-    // Connect to the local FastAPI Native WebSocket Server
-    // We use the dev-token-777 as defined in telemetry_socket.py for local testing
+<script nonce="{{ csp_nonce }}">
+    // 🛡️ PHASE 3 FIX: WebSocket auth token injected server-side via Jinja2.
+    // dev-token-777 removed — the ops hub now uses the session CSRF token as
+    // a lightweight connection credential. The telemetry stream endpoint must
+    // validate this on the server side before accepting the connection.
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/telemetry/stream?token=dev-token-777`;
+    const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/telemetry/stream?token={{ ops_hub_token }}`;
     
     const socket = new WebSocket(wsUrl);
 
