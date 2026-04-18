@@ -63,7 +63,7 @@
     <div class="admin-header">
         <h1><i class="fas fa-eye"></i> PANOPTICON OVERSIGHT</h1>
         <div style="font-family: 'Courier Prime', monospace; color: var(--admin-gold);">
-            NODE: {{ node_id }} | CLEARANCE: L9
+            NODE: {{ node_id | bleach }} | CLEARANCE: L9
         </div>
     </div>
 
@@ -72,7 +72,7 @@
             ● SECURE ADMIN LINK ACTIVE
             <input type="password" id="admin-token" class="token-input" placeholder="Enter X-Admin-Token...">
         </div>
-        <div class="balance-display" id="hud-balance">{{ balance|default(0) }} SATS</div>
+        <div class="balance-display" id="hud-balance">{{ balance | default(0) | bleach }} SATS</div>
     </div>
 
     <div class="admin-container">
@@ -197,7 +197,8 @@
     {% include 'components/footer.html' %}
 
     <script>
-        let rawSatsBalance = {{ balance|default(20000) }};
+        // 🛡️ PHASE 6 FIX: Treat balance as a string to completely neutralize JavaScript context injection, then parse safely.
+        let rawSatsBalance = parseFloat("{{ balance | default(20000) | bleach }}") || 0;
         let currentUnit = localStorage.getItem('currencyUnit') || 'SATS';
         const RATES = { SATS: 1, BTC: 0.00000001, USD: 0.00065, CAD: 0.00088, EUR: 0.00060, GBP: 0.00051 };
 

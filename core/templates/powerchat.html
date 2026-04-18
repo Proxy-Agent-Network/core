@@ -169,6 +169,7 @@
         }
         
         function showModal(title, message) { 
+            // innerText is naturally safe from XSS
             document.getElementById('modal-title').innerText = title; 
             document.getElementById('modal-message').innerText = message; 
             document.getElementById('notification-modal').style.display = 'flex'; 
@@ -305,7 +306,8 @@
                 avatar.innerHTML = '⚙️';
             } else {
                 let img = agentName || (text.includes('Charlie:') ? 'charlie' : 'bob');
-                img = img.toLowerCase().replace(/ /g, '_');
+                // 🛑 SECURITY FIX: Sanitize the avatar string to prevent path traversal / XSS in the image tag
+                img = DOMPurify.sanitize(img).toLowerCase().replace(/ /g, '_');
                 avatar.innerHTML = `<img src="/static/images/roster/${img}-50.jpg" onerror="this.innerHTML='🤖'">`;
             }
             

@@ -8,6 +8,7 @@ import secrets
 import jinja2
 import traceback
 import uuid
+import bleach
 from datetime import date, timedelta
 
 # --- 1. INJECT MONOREPO PATHS ---
@@ -68,6 +69,16 @@ TEMPLATE_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "template
 STATIC_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "static")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
+
+def sanitize_html(text):
+    """🛡️ PHASE 6 FIX: Global Bleach Sanitizer for all Jinja Templates."""
+    if not isinstance(text, str):
+        return text
+    allowed_tags = ['p', 'b', 'i', 'strong', 'em', 'a', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'br']
+    return bleach.clean(text, tags=allowed_tags, strip=True)
+
+# Register the global filter
+app.jinja_env.filters['bleach'] = sanitize_html
 
 CMD_CENTER_DIR = os.path.join(ROOT_DIR, 'apps', 'web', 'command_center')
 
@@ -462,24 +473,25 @@ def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None: db.close()
 
-# --- 🔐 USER AUTHENTICATION ROUTES ---
+# --- USER AUTHENTICATION ROUTES ---
 @app.route('/login', methods=['GET', 'POST'])
-# 🛑 SECURITY FIX: Prevent brute-forcing of the admin dashboard
+# SECURITY FIX: Prevent brute-forcing of the admin dashboard
 @rate_limit(max_requests=5, window_seconds=60)
 def login():
     if request.method == 'POST':
         password = request.form.get('password')
-        expected_password = os.environ.get('DASHBOARD_PASSWORD')
+        # 🛡️ PHASE 6 FIX: Consolidate admin credentials (Item 34)
+        expected_password = os.environ.get('ADMIN_SECRET_TOKEN')
         
-        # 🛑 SECURITY FIX: Fail securely if the environment variable is missing
+        # SECURITY FIX: Fail securely if the environment variable is missing
         if not expected_password:
-            print(" [SECURITY] 🚨 CRITICAL: Login attempted but DASHBOARD_PASSWORD is not set in the environment!")
-            return "Server Configuration Error: Admin password not securely configured. Login disabled.", 500
+            print(" [SECURITY] 🚨 CRITICAL: Login attempted but ADMIN_SECRET_TOKEN is not set in the environment!")
+            return "Server Configuration Error: Admin credential not securely configured. Login disabled.", 500
             
-        # 🛑 SECURITY FIX: Prevent Cryptographic Timing Attacks and Session Fixation
+        # SECURITY FIX: Prevent Cryptographic Timing Attacks and Session Fixation
         if password and secrets.compare_digest(password, expected_password):
             session.clear() # Wipe pre-auth token/state
-            session.permanent = True # 🛑 SECURITY FIX: Enforce cookie expiration
+            session.permanent = True # SECURITY FIX: Enforce cookie expiration
             session['authenticated'] = True
             return redirect(url_for('command_center_root'))
         return "Invalid Password. Connection Terminated.", 401
@@ -971,7 +983,7 @@ def legal(doc_type):
     
     import bleach
     allowed_tags = ['p', 'b', 'i', 'strong', 'em', 'a', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'br']
-    safe_content = bleach.clean(doc['content'], tags=allowed_tags, strip=True)
+    safe_content = sanitize_html(doc['content'])
     
     return render_template('legal.html', title=doc['title'], content=safe_content, balance=balance, owned=owned)
 

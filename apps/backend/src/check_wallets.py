@@ -1,7 +1,13 @@
+import os
 import asyncio
 import redis.asyncio as redis
 
 async def main():
+    # 🛡️ PHASE 6 FIX: Hard environment guard against financial manipulation in production
+    if os.environ.get("ENVIRONMENT") != "development":
+        print(" [SECURITY] 🚨 CRITICAL: check_wallets.py is a dev-only script. Aborting execution!")
+        return
+
     r = redis.Redis(host='localhost', port=6379, decode_responses=True)
     
     # Give everyone a cool $100 just to be safe

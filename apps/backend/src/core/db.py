@@ -1,4 +1,5 @@
 import os
+import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -12,10 +13,17 @@ class DBWrapper:
     def __init__(self):
         self.conn = psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
         
+    def quote_identifier(self, identifier: str) -> str:
+        """
+        🛡️ PHASE 6 FIX: Safely quote SQL identifiers (tables/columns) to prevent injection.
+        Policy: Strictly enforces alphanumeric and underscore formats.
+        """
+        if not re.match(r'^[a-zA-Z0-9_]+$', identifier):
+            raise ValueError(f"Invalid SQL identifier format detected: {identifier}")
+        return f'"{identifier}"'
+        
     def execute(self, query, params=None):
         # 🛑 SECURITY FIX: Pure native parameterization
-        # The query already contains %s placeholders from app.py.
-        # Passing it directly to psycopg2 prevents SQL corruption from escaped strings.
         c = self.conn.cursor()
         c.execute(query, params)
         return c
