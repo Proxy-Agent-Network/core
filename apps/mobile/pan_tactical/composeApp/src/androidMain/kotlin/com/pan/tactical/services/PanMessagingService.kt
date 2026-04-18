@@ -33,7 +33,9 @@ class PanMessagingService : FirebaseMessagingService() {
 
     // 3. Build the high-priority Heads-Up Notification
     private fun sendNotification(title: String, messageBody: String) {
-        val intent = Intent(this, Class.forName("network.proxyagent.pantactical.MainActivity")).apply {
+        
+        // 🛡️ PHASE 4 FIX: Strongly-typed Intent for compile-time safety
+        val intent = Intent(this, com.pan.tactical.MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
 

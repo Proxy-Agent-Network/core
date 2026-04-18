@@ -11,7 +11,6 @@
 -keep class com.pan.tactical.models.** { *; }
 -keep class com.pan.tactical.network.*Payload { *; }
 -keep class com.pan.tactical.network.*Request { *; }
--keepclassmembers class com.pan.tactical.** { *; }
 
 # Ktor Network Engine
 -keep class io.ktor.** { *; }

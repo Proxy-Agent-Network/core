@@ -6,6 +6,8 @@ import asyncio
 import threading
 import secrets
 import jinja2
+import traceback
+import uuid
 from datetime import date, timedelta
 
 # --- 1. INJECT MONOREPO PATHS ---
@@ -155,6 +157,24 @@ def inject_csrf_token():
         csp_nonce=g.csp_nonce,
         ops_hub_token=ops_hub_token,
     )
+
+# ==========================================
+# GLOBAL EXCEPTION HANDLER (ANTI-LEAK)
+# ==========================================
+@app.errorhandler(Exception)
+def handle_global_exception(e):
+    correlation_id = str(uuid.uuid4())
+    
+    # Log the full stack trace and correlation ID securely on the server
+    print(f" [SECURITY] 🚨 CRITICAL: Unhandled Exception [Correlation ID: {correlation_id}]")
+    print(traceback.format_exc())
+    
+    # PHASE 4 FIX: Return a sanitized response to the client
+    return jsonify({
+        "status": "error",
+        "message": "An internal operational error occurred.",
+        "correlation_id": correlation_id
+    }), 500
 
 # ==========================================
 # ⏱️ RATE LIMITING ENGINE (Sliding Window)
@@ -1321,26 +1341,28 @@ def start_watercooler_heartbeat():
     print(" [SYSTEM] 💧 Unhinged Watercooler Engine Online (with Connection Management).")
 
 # ==========================================
-# ⚙️ MARKETPLACE SIMULATION HEARTBEAT
+# MARKETPLACE SIMULATION HEARTBEAT
 # ==========================================
 def start_marketplace_heartbeat():
     def loop():
+        _heartbeat_tick = 0  # 🛡️ PHASE 4 OPTIMIZATION: Tick counter for heavy jobs
+        
         while True:
             # Run simulation every 10 seconds
             time.sleep(10)
             now = time.time()
+            _heartbeat_tick += 1
             
-            # 🛑 SECURITY FIX: Mutex protected O(N) cache cleanup to prevent Thread Collision
+            # SECURITY FIX: Mutex protected O(N) cache cleanup to prevent Thread Collision
             with SIG_LOCK:
                 expired_keys = [k for k, v in USED_SIGNATURES.items() if now - v > 300]
                 for k in expired_keys:
                     del USED_SIGNATURES[k]
 
-            # 🛑 SECURITY FIX: Prevent Memory Leak (OOM DoS) by cleaning up inactive IPs in rate limiter
+            # SECURITY FIX: Prevent Memory Leak (OOM DoS) by cleaning up inactive IPs
             with RATE_LIMIT_LOCK:
                 expired_ips = []
                 for ip, timestamps in list(RATE_LIMIT_DATA.items()):
-                    # Retain only timestamps from the last hour (3600 seconds)
                     valid_timestamps = [t for t in timestamps if now - t < 3600]
                     if not valid_timestamps:
                         expired_ips.append(ip)
@@ -1354,9 +1376,11 @@ def start_marketplace_heartbeat():
                 from core.db import get_db_conn
                 db = get_db_conn()
                 try:
-                    # Logic moved from dashboard_live to this safe background thread
+                    # 🛡️ PHASE 4 FIX: Prevent unbounded DB growth, but run efficiently
+                    if _heartbeat_tick % 60 == 0:  # Run once every 10 minutes (60 * 10s)
+                        db.execute("DELETE FROM consumed_invoices WHERE consumed_at < NOW() - INTERVAL '30 days'")
+                    
                     simulate_rival_snatch(db)
-                    # Note: run_automation_daemon refactored to accept conn
                     run_automation_daemon(db, MY_NODE_ID)
                     db.commit()
                 finally:

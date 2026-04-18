@@ -5,9 +5,10 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.pan.tactical.managers.MissionEventManager
 import com.pan.tactical.network.PanApiClient
-import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class PanFirebaseMessagingService : FirebaseMessagingService() {
@@ -15,6 +16,9 @@ class PanFirebaseMessagingService : FirebaseMessagingService() {
     companion object {
         private const val TAG = "PanFCM"
     }
+
+    // 🛡️ PHASE 4 FIX: Use a tied CoroutineScope instead of GlobalScope to prevent memory leaks
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
@@ -32,7 +36,6 @@ class PanFirebaseMessagingService : FirebaseMessagingService() {
                     return
                 }
                 
-                // Safely parse the incoming strings with visible warnings for malformed payloads
                 val minutes = data["extension_minutes"]?.toIntOrNull() ?: run { 
                     Log.w(TAG, "Missing extension_minutes in payload, using default 10")
                     10 
@@ -42,7 +45,6 @@ class PanFirebaseMessagingService : FirebaseMessagingService() {
                     5.00 
                 }
 
-                // Fire the event to wake up the Compose UI
                 MissionEventManager.triggerExtensionRequest(taskId, minutes, bountyUsd)
             }
             "NEW_DISPATCH" -> {
@@ -54,20 +56,25 @@ class PanFirebaseMessagingService : FirebaseMessagingService() {
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.i(TAG, "🔑 New FCM Device Token generated.")
         
-        // Launch on a background scope — onNewToken runs on main thread and the 
-        // service lifecycle is too short for scoped coroutines
-        GlobalScope.launch(Dispatchers.IO) {
+        // 🛡️ PHASE 4 FIX: Launch on the Service's dedicated scope
+        serviceScope.launch {
             try {
-                // NOTE: Requires adding registerFcmToken(token: String) to PanApiClient
-                PanApiClient().registerFcmToken(token)
+                val client = PanApiClient()
+                client.registerFcmToken(token)
+                client.close() // Close the client engine to free resources immediately
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to register FCM token: ${e.message}")
             }
         }
+    }
+
+    // 🛡️ PHASE 4 FIX: Clean up all running coroutines when the OS destroys the service
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
     }
 }

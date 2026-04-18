@@ -1,3 +1,4 @@
+import uuid
 import logging
 import os
 from fastapi import FastAPI, Request, status
@@ -51,11 +52,17 @@ app.include_router(onboarding_router, prefix="/api", tags=["Agent Onboarding"])
 # --- Global Exception Handler ---
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled Exception on {request.url}: {exc}")
-    # Prevent leaking stack traces in 500 errors
+    correlation_id = str(uuid.uuid4())
+    # Log the full trace securely on the server with the ID
+    logger.error(f"Unhandled Exception on {request.url} [Correlation ID: {correlation_id}]: {exc}")
+    
+    # PHASE 4 FIX: Return sanitized response with Correlation ID
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An internal operational error occurred."},
+        content={
+            "detail": "An internal operational error occurred.",
+            "correlation_id": correlation_id
+        },
     )
 
 # --- Root/Health Check ---
