@@ -1,175 +1,87 @@
-import os
-import secrets
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logging
-import asyncio
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+import os
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-import redis.asyncio as redis
+from v2x_bounty_api import router as v2x_router
+from onboarding_api import router as onboarding_router
 
-# 1. Import our newly hardened async routers
-from api.wallet_api import router as wallet_router
-from api.v2x_bounty_api import router as v2x_router
-from api.telemetry_socket import router as telemetry_router
-from ops.logistics_webhook_api import router as logistics_router
-from api.onboarding_api import router as onboarding_router
+# --- Logging Setup ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("Gateway")
 
-# 🟢 THE FIX: Import the missing evidence router
-from api.evidence_api import router as evidence_router
-
-# 🛠️ NEW: Import the background workers
-from matching_engine import run_matching_engine
-from ops.sla_monitor import run_sla_monitor
-
-# 🛠️ NEW: Import missing dependencies for Lifespan initialization
-from reputation.reputation_engine import ReputationEngine
-
-# 🛡️ Q3 HARDWARE/POLICY BYPASS: Disabled InsurTech Client initialization
-# TODO (Q3): Re-enable InsurTech integration once hardware/policies are ready
-# from integrations.insurtech_client import InsurTechClient
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Panopticon_Master")
-
-# --- GLOBAL PATH RESOLUTION ---
-# Establish absolute paths dynamically so the app is immune to how uvicorn is invoked
-BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # e.g., .../apps/backend/src
-PUBLIC_WEBSITE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../web/public_website"))
-WEB_DIR = os.path.join(PUBLIC_WEBSITE_DIR, "templates")
-
-# --- LIFESPAN MANAGER ---
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("🚀 Initiating Panopticon Boot Sequence...")
-    
-    redis_host = os.environ.get("REDIS_HOST")
-    if not redis_host:
-        raise RuntimeError("FATAL: REDIS_HOST environment variable is not set.")
-    
-    redis_port = int(os.environ.get("REDIS_PORT", 6379))
-        
-    # BUG 1 FIX: Removed decode_responses=True to preserve byte-handling logic downstream
-    app.state.redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
-    
-    try:
-        await app.state.redis_client.ping()
-        logger.info(f"🔌 Redis connection verified at {redis_host}:{redis_port}")
-    except redis.ConnectionError as e:
-        logger.critical(f"🛑 FATAL: Cannot connect to Redis at {redis_host}:{redis_port}: {e}")
-        raise RuntimeError(f"Redis initialization failed: {e}")
-
-    # BUG 2 FIX: Instantiate Reputation Engine safely at startup using an absolute path
-    taxonomy_path = os.path.join(BASE_DIR, "reputation", "schemas", "feedback_taxonomy.json")
-    app.state.reputation_engine = ReputationEngine(
-        app.state.redis_client,
-        taxonomy_path=taxonomy_path
-    )
-    logger.info(f"✅ Reputation Engine initialized with taxonomy: {taxonomy_path}")
-
-    # 🛡️ Q3 HARDWARE/POLICY BYPASS: Disabled InsurTech Client initialization
-    # insurtech_client = InsurTechClient()
-    # app.state.insurtech_client = insurtech_client
-    # logger.info("🛡️ InsurTech Client initialized.")
-
-    # Pass redis and None for insurtech_client (Q3 Bypass) to the matching engine
-    engine_task = asyncio.create_task(
-        run_matching_engine(app.state.redis_client, None),
-        name="matching_engine"
-    )
-    app.state.matching_engine_task = engine_task
-
-    # 🟢 NEW: Spin up the 12-Minute SLA Enforcer
-    sla_task = asyncio.create_task(
-        run_sla_monitor(app.state.redis_client),
-        name="sla_monitor"
-    )
-    app.state.sla_monitor_task = sla_task
-
-    yield # --- SYSTEM IS LIVE ---
-    
-    # --- SHUTDOWN SEQUENCE ---
-    logger.info("🛑 Initiating Graceful Shutdown...")
-    
-    # Clean up the workers on shutdown
-    engine_task.cancel()
-    sla_task.cancel()
-    await asyncio.gather(engine_task, sla_task, return_exceptions=True)
-    
-    await app.state.redis_client.aclose()
-
-
-# --- CORE FASTAPI APPLICATION ---
+# --- App Initialization ---
 app = FastAPI(
-    title="Proxy Agent Network (PAN) - Sector 1 Engine",
-    description="The Last-Mile Physical Redundancy Protocol for Autonomous Fleets.",
-    version="2.0.0",
-    lifespan=lifespan
+    title="Proxy Agent Network - Operational Gateway",
+    description="High-Speed Mission Dispatch & Telemetry API",
+    version="2.0.0"
 )
 
-# --- MOUNT ASYNC ROUTERS (V2 Architecture) ---
-# Note: Onboarding router is mounted with /api/v1 to match the V2X/Wallet patterns.
-app.include_router(v2x_router, prefix="/api")
-app.include_router(telemetry_router, prefix="/api") 
-app.include_router(wallet_router, prefix="/api")
-app.include_router(logistics_router, prefix="/logistics")
-app.include_router(onboarding_router, prefix="/api/v1")
+# 🛡️ PHASE 3 FIX: Strict CORS Origins
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://command.proxyagent.network").split(",")
+if os.getenv("ENVIRONMENT") != "production":
+    allowed_origins.extend([
+        "http://localhost:5000", 
+        "http://127.0.0.1:5000", 
+        "http://localhost:3000", 
+        "http://localhost", 
+        "https://pan-tactical.local"
+    ])
 
-# 🟢 THE FIX: Mount the evidence router so the endpoints resolve
-app.include_router(evidence_router, prefix="/api")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"], # Restrict allowed methods
+    allow_headers=["Authorization", "Content-Type", "X-Node-ID", "X-Timestamp", "X-Signature"],
+)
 
-# --- FASTAPI NATIVE TEMPLATING ---
-logger.info("🔗 Initializing Native UI Template Engine...")
+# --- Templates ---
+# Ensure your templates directory is correctly mapped here
+templates = Jinja2Templates(directory="apps/web/public_website/templates")
 
-# Fail fast if templates are missing
-if not os.path.exists(WEB_DIR):
-    logger.error(f"🛑 CRITICAL: Could not find templates directory at {WEB_DIR}!")
-    raise RuntimeError(f"FATAL: Web templates directory not found at {WEB_DIR}")
+# --- Router Registration ---
+app.include_router(v2x_router, prefix="/api", tags=["V2X Dispatch"])
+app.include_router(onboarding_router, prefix="/api", tags=["Agent Onboarding"])
 
-logger.info(f"✅ Found web templates directory at: {WEB_DIR}")
-templates = Jinja2Templates(directory=WEB_DIR)
-
-# Mount Static Files (CSS, JS, Images)
-# Mounts the root public_website folder so /css, /images, etc. all resolve natively
-if os.path.exists(PUBLIC_WEBSITE_DIR):
-    app.mount("/static", StaticFiles(directory=PUBLIC_WEBSITE_DIR), name="static")
-    logger.info(f"✅ Mounted static directory from: {PUBLIC_WEBSITE_DIR}")
-else:
-    logger.warning(f"⚠️ Static directory not found at {PUBLIC_WEBSITE_DIR}. Assets may fail to load.")
-
-# --- UI ROUTES ---
-@app.get("/enlist", response_class=HTMLResponse)
-async def view_enlist_portal(request: Request):
-    """Renders the Vanguard 50 Onboarding Portal"""
-    return templates.TemplateResponse(
-        request=request,
-        name="enlist.html",
-        context={
-            "request": request, 
-            # 🟢 Generate a unique, cryptographically secure CSRF token per render
-            "csrf_token": secrets.token_hex(32)
-        }
+# --- Global Exception Handler ---
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled Exception on {request.url}: {exc}")
+    # Prevent leaking stack traces in 500 errors
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An internal operational error occurred."},
     )
+
+# --- Root/Health Check ---
+@app.get("/")
+async def root_health_check():
+    return {
+        "network": "Proxy Agent Network",
+        "gateway_status": "ONLINE",
+        "v2x_dispatch": "ACTIVE",
+        "compliance_mode": "SB-1417-STRICT"
+    }
+
+# --- Frontend HTML Routes ---
+@app.get("/enlist", response_class=HTMLResponse)
+async def enlist_page(request: Request):
+    """Serves the Vanguard 50 onboarding wizard (Checkr/Stripe flow)."""
+    return templates.TemplateResponse("enlist.html", {"request": request})
 
 @app.get("/enlist-success", response_class=HTMLResponse)
-async def view_enlist_success(request: Request):
-    """Renders the Enlistment Success & Referral Page"""
-    return templates.TemplateResponse(
-        request=request,
-        name="enlist_success.html",
-        context={"request": request}
-    )
-
-@app.get("/", response_class=RedirectResponse)
-async def view_home():
-    """Redirects the root URL to the enlistment portal"""
-    return RedirectResponse(url="/enlist")
+async def enlist_success(request: Request):
+    """Serves the success landing page after background check initiation."""
+    return templates.TemplateResponse("enlist_success.html", {"request": request})
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    # Standard entry point for local debugging. 
+    # In production, use `uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4`
+    logger.info("Starting up Tactical Gateway via Uvicorn...")
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -3,6 +3,7 @@ import time
 import logging
 import json
 import asyncio
+import secrets
 from typing import Dict
 from pydantic import BaseModel
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends
@@ -14,6 +15,11 @@ logger = logging.getLogger("PAN_TelemetryStream")
 router = APIRouter()
 
 AGENT_STATE_TTL_SECONDS = 60 * 60 * 24 * 30
+
+# 🛡️ Connection cap: prevents Redis pubsub DoS from repeated ops hub connects.
+# One command center per deployment is the expected topology.
+MAX_OPS_HUB_CONNECTIONS = 5
+_active_ops_hub_connections = 0
 
 # --- HTTP TELEMETRY INGEST ---
 
@@ -189,6 +195,19 @@ async def agent_mission_stream(websocket: WebSocket):
 
 @router.websocket("/v1/telemetry/stream")
 async def websocket_telemetry_endpoint(websocket: WebSocket):
+    global _active_ops_hub_connections
+
+    # 🛡️ Connection cap: reject if too many ops hub sessions are already active.
+    if _active_ops_hub_connections >= MAX_OPS_HUB_CONNECTIONS:
+        logger.warning("🚨 [OPS_HUB] Max concurrent connections reached. Rejecting new client.")
+        await websocket.close(code=1008)
+        return
+
+    # 🛡️ Token resolution: use OPS_HUB_TOKEN env var in all environments.
+    # In production this MUST be set. In dev it falls back to dev-token-777.
+    # index.html injects this same value via the {{ ops_hub_token }} Jinja2
+    # template variable (set in app.py context_processor from os.environ).
+    # DO NOT use the Flask CSRF token here — it is per-session and unknown to FastAPI.
     expected_token = os.getenv("OPS_HUB_TOKEN")
     if not expected_token:
         if os.getenv("ENVIRONMENT") == "production":
@@ -197,14 +216,16 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
         logger.warning("⚠️ Using insecure dev token. Set OPS_HUB_TOKEN for production.")
         
     token = websocket.query_params.get("token")
-    
-    if token != expected_token:
+
+    # 🛡️ Use secrets.compare_digest to prevent cryptographic timing attacks.
+    if not token or not secrets.compare_digest(token, expected_token):
         logger.warning("🚨 Unauthorized WebSocket connection attempt blocked.")
         await websocket.close(code=1008)
         return
 
     await websocket.accept()
-    logger.info("🟢 [OPS_HUB] New Command Center UI connected to telemetry stream.")
+    _active_ops_hub_connections += 1
+    logger.info(f"🟢 [OPS_HUB] New Command Center UI connected to telemetry stream. ({_active_ops_hub_connections}/{MAX_OPS_HUB_CONNECTIONS} active)")
     
     redis_client = websocket.app.state.redis_client
     
@@ -326,7 +347,20 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                         task_id = payload.get("task_id")
                         
                         if not task_id or not isinstance(task_id, str) or not task_id.startswith("tsk_"):
-                            logger.warning(f"⚠️ Invalid task_id in dispatch command: {task_id}")
+                            logger.warning(f"⚠️ Invalid task_id format in dispatch command: {task_id}")
+                            continue
+
+                        # 🛡️ Validate the task actually exists in Redis before enqueuing.
+                        # Prevents a malicious ops-hub client from injecting arbitrary
+                        # tsk_* strings into pan:dispatch:active_tasks.
+                        raw_task = await redis_client.hgetall(f"pan:task:{task_id}")
+                        if not raw_task:
+                            logger.warning(f"⚠️ [OPS_HUB] Rejected dispatch for unknown task: {task_id}")
+                            continue
+
+                        task_status = decode_redis_hash(raw_task).get("status", "")
+                        if task_status in ("COMPLETED", "declined", "CANCELLED"):
+                            logger.warning(f"⚠️ [OPS_HUB] Rejected dispatch for already-closed task: {task_id} (status={task_status})")
                             continue
                             
                         logger.info(f"🚀 Ops Command triggered manual dispatch for {task_id}")
@@ -351,6 +385,8 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"❌ Telemetry Stream crashed: {str(e)}", exc_info=True)
     finally:
+        _active_ops_hub_connections -= 1
+        logger.info(f"🔴 [OPS_HUB] Connection closed. ({_active_ops_hub_connections}/{MAX_OPS_HUB_CONNECTIONS} active)")
         try:
             await pubsub.unsubscribe()
             if hasattr(pubsub, 'close'):

@@ -1,3 +1,4 @@
+import os
 import logging
 import json
 import time
@@ -220,6 +221,11 @@ async def inject_dev_distress(
     request: Request,
     agent_id: str = Depends(verify_agent_signature)  
 ):
+    # 🛡️ PHASE 3 FIX: Prevent production spoofing of distress signals
+    if os.getenv("ENVIRONMENT") == "production":
+        logger.error(f"🚨 Security Alert: Agent {agent_id} attempted to hit dev distress endpoint in production!")
+        raise HTTPException(status_code=403, detail="Dev endpoints disabled in production.")
+        
     return await process_core_distress(payload, request, "DEV-FLEET-01")
 
 @router.get("/v1/agent/missions")

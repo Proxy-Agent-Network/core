@@ -111,18 +111,16 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1) # 🛑 SECURITY FI
 
 @app.before_request
 def enforce_csrf_protection():
-    # 1. Assign a mathematically secure token to every session
     if 'csrf_token' not in session:
         session['csrf_token'] = secrets.token_hex(32)
         
-    # 2. Only intercept state-changing requests (POST, PUT, DELETE)
     if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
-        
-        # If authenticated via API headers, CSRF is impossible (CORS blocked)
-        if request.headers.get('X-Admin-Token') or request.headers.get('X-API-Key') or request.headers.get('X-Node-ID'):
-            return # Safe to proceed
+        # 🛡️ PHASE 3 FIX: Removed the insecure header-presence CSRF bypass.
+        # Now, if you are using cookie-based session auth, CSRF is strictly enforced.
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            return # Safe to proceed; stateless API requests don't use cookies/CSRF
             
-        # If relying on the browser session cookie, strictly enforce the token
         if session.get('authenticated') and request.endpoint != 'login':
             client_token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
             
@@ -139,8 +137,24 @@ def set_csrf_cookie(response):
 
 @app.context_processor
 def inject_csrf_token():
-    # Expose the token to Jinja HTML templates
-    return dict(csrf_token=session.get('csrf_token', ''))
+    # csp_nonce: per-request random value for nonce-based CSP in dashboard templates.
+    # Generated once per request and stored on g so all templates in the same
+    # request share the same nonce (required — the nonce in the CSP meta tag and
+    # the nonce on every <script> tag must match exactly).
+    if 'csp_nonce' not in g:
+        g.csp_nonce = secrets.token_hex(16)
+
+    # ops_hub_token: the shared secret for the /v1/telemetry/stream WebSocket.
+    # Both Flask (template render) and FastAPI (telemetry_socket.py) read this
+    # from the same OPS_HUB_TOKEN environment variable so the handshake succeeds.
+    # The CSRF token is NOT used here — it is per-session and unknown to FastAPI.
+    ops_hub_token = os.environ.get('OPS_HUB_TOKEN', 'dev-token-777')
+
+    return dict(
+        csrf_token=session.get('csrf_token', ''),
+        csp_nonce=g.csp_nonce,
+        ops_hub_token=ops_hub_token,
+    )
 
 # ==========================================
 # ⏱️ RATE LIMITING ENGINE (Sliding Window)
@@ -1133,11 +1147,18 @@ def admin_portal():
     balance = get_secure_balance(conn, MY_NODE_ID)
     return render_template('admin.html', node_id=MY_NODE_ID, balance=balance)
 
+ALLOWED_ADMIN_SESSION_KEYS = {"brownout_mode", "ui_theme", "mood_intensity"}
+
 @app.route('/api/v1/admin/settings', methods=['POST'])
-@admin_required  # 🛑 SECURITY FIX: Enforce admin authentication
+@admin_required
 def update_admin_settings():
     data = request.json
-    session[data.get('key')] = data.get('value')
+    key = data.get('key')
+    
+    if key not in ALLOWED_ADMIN_SESSION_KEYS:
+        abort(400, f"Invalid session key. Allowed: {ALLOWED_ADMIN_SESSION_KEYS}")
+        
+    session[key] = data.get('value')
     return jsonify({"status": "success"})
 
 # ==========================================
@@ -1610,6 +1631,7 @@ def mock_submit():
 # 🧪 DEV TOOLS: TEMPORAL DVR SEEDER (MANHATTAN GRID)
 # ==========================================
 @app.route('/seed-dvr')
+@admin_required  # 🛡️ PHASE 3 FIX: Enforce auth outside production
 def seed_dvr():
     """Generates realistic street-grid data using Manhattan Distance routing."""
     # 🛑 THE FIX: Hard block in production
