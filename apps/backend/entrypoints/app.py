@@ -42,7 +42,6 @@ except ImportError:
     print(" [WARN] ⚠️  lightning_engine.py not found. Running without payment rails.")
     lnd = None
 
-# In app.py
 try:
     from proxy_core import NodeHardware
     print(" [SYSTEM] 🔒 Connecting to Rust TPM Engine...")
@@ -57,9 +56,20 @@ except Exception as e:
         MY_NODE_ID = hw_bridge.get_fingerprint()
         HW_SECURED = True
     except Exception as legacy_e:
-        # 🛑 THE FIX: Fail loud and fail closed. 
-        print(f" [SECURITY] 🚨 CRITICAL: Hardware Root of Trust totally failed! ({legacy_e})")
-        raise RuntimeError("Cannot boot Agent Node without secure hardware attestation. Aborting.")
+        # 🛡️ DEV BYPASS: Allow local testing without physical TPM hardware
+        if os.environ.get("ENVIRONMENT") != "production":
+            print(" [DEV BYPASS] ⚠️ Mocking Hardware Root of Trust for local development.")
+            class MockNodeHardware:
+                def get_fingerprint(self): return "0x8F9B-MOCK-DEV-NODE"
+                def encrypt_data(self, data): return f"SECURE::{data}"
+                def decrypt_data(self, data): return data.replace("SECURE::", "")
+            hw_bridge = MockNodeHardware()
+            MY_NODE_ID = hw_bridge.get_fingerprint()
+            HW_SECURED = False
+        else:
+            # 🛑 THE FIX: Fail loud and fail closed in PROD. 
+            print(f" [SECURITY] 🚨 CRITICAL: Hardware Root of Trust totally failed! ({legacy_e})")
+            raise RuntimeError("Cannot boot Agent Node without secure hardware attestation. Aborting.")
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -903,12 +913,12 @@ def get_vendor_sla_report():
         "infractions": infractions[:8] # Show top 8 infractions
     })
 
-@app.route('/css/<path:filename>')
+@app.route('/command/css/<path:filename>')
 def command_center_css(filename):
     """Allows the browser to fetch the extracted stylesheets."""
     return send_from_directory(os.path.join(CMD_CENTER_DIR, 'css'), filename)
 
-@app.route('/js/<path:filename>')
+@app.route('/command/js/<path:filename>')
 def command_center_js(filename):
     """Allows the browser to fetch the extracted JavaScript modules."""
     return send_from_directory(os.path.join(CMD_CENTER_DIR, 'js'), filename)
@@ -1773,6 +1783,6 @@ if __name__ == '__main__':
         except Exception as e:
             pass
 
-    start_watercooler_heartbeat()
+    # start_watercooler_heartbeat()
     start_marketplace_heartbeat()
     app.run(host='0.0.0.0', port=5000)
