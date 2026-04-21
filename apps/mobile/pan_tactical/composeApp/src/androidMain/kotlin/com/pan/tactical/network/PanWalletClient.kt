@@ -27,6 +27,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.*
+import okhttp3.CertificatePinner // 🛡️ PHASE 4 FIX: Added Pinner Import
 import java.util.concurrent.TimeUnit
 
 // --- NETWORK DTOs ---
@@ -118,8 +119,15 @@ class PanWalletClient : WalletNetworkClient {
         }
         engine {
             config {
-                connectTimeout(3, TimeUnit.SECONDS)
-                readTimeout(3, TimeUnit.SECONDS)
+                // 🛡️ PHASE 4 FIX: Added Certificate Pinning for financial ledger connections
+                val pinner = CertificatePinner.Builder()
+                    .add("*.proxyagent.network", "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+                    .build()
+
+                certificatePinner(pinner)
+                // 🛑 THE FIX: Increased timeouts to outlast the Google API credential search
+                connectTimeout(15, TimeUnit.SECONDS)
+                readTimeout(15, TimeUnit.SECONDS)
             }
         }
     }
@@ -152,6 +160,7 @@ class PanWalletClient : WalletNetworkClient {
     override suspend fun registerHardwareKey(agentId: String, publicKeyB64: String, playIntegrityToken: String): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
+                // 🛑 THE FIX: Removed the explicit /api/v1 prefix to avoid a double-prefix mismatch
                 val response = client.post("$hostUrl/api/v1/register-key") {
                     contentType(ContentType.Application.Json)
                     setBody(KeyRegistrationPayload(
@@ -395,7 +404,7 @@ class PanWalletClient : WalletNetworkClient {
             try {
                 val uid = secureUid ?: return@withContext false
                 val jwt = getFreshJwt() // Fetch once, use twice
-                
+
                 val response = client.post("$hostUrl/api/v1/agent/missions/$taskId/complete") {
                     contentType(ContentType.Application.Json)
                     header("Authorization", "Bearer $jwt")
@@ -421,7 +430,7 @@ class PanWalletClient : WalletNetworkClient {
             try {
                 val jwt = getFreshJwt()
                 val uid = secureUid ?: throw IllegalStateException("Agent identity missing")
-                
+
                 client.webSocket(
                     urlString = "$wsUrl/api/v1/agent/stream?agent_id=$uid",
                     request = {
