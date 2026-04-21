@@ -1,171 +1,235 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investor Relations | ProxyAgent.Network Mesa Pilot</title>
+    <style>
+        /* Base Global Styles */
+        :root {
+            --bg-dark: #0a192f;
+            --white: #e6f1ff;
+            --slate: #8892b0;
+            --copper: #b87333;
+            --success: #64ffda;
+            --accent: #0077aa;
+        }
+        body { margin: 0; font-family: 'Inter', -apple-system, sans-serif; background-color: var(--bg-dark); color: var(--white); line-height: 1.6; }
+        
+        /* Navigation Bar */
+        .navbar { display: flex; justify-content: space-between; align-items: center; padding: 15px 40px; background-color: #ffffff; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .nav-logo { font-size: 1.8rem; font-weight: 900; color: var(--copper); text-decoration: none; }
+        .nav-logo span { color: #112240; }
+        .nav-links { display: flex; gap: 20px; align-items: center; }
+        .nav-links a { text-decoration: none; color: #112240; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: color 0.3s; }
+        .nav-links a:hover { color: var(--copper); }
+        .btn-login { border: 1px solid var(--copper); padding: 8px 20px; border-radius: 4px; color: var(--copper) !important; }
+        .btn-login:hover { background: rgba(184, 115, 51, 0.1); }
+        .btn-enlist { background-color: var(--copper); color: #ffffff !important; padding: 8px 20px; border-radius: 4px; }
+        .btn-enlist:hover { background-color: #9a5f29; }
+        
+        /* Footer */
+        .footer { text-align: center; padding: 40px 20px; background-color: #020c1b; color: var(--slate); font-size: 0.85rem; border-top: 1px solid #112240; }
 
-{% block title %}Investor Relations | ProxyAgent.Network Mesa Pilot{% endblock %}
+        /* Page Specific Styles */
+        .container-ir { max-width: 1100px; margin: 0 auto; padding: 40px 20px 80px; }
+        .top-nav-local { margin-bottom: 40px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
+        .top-nav-local a { color: var(--slate); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
+        .top-nav-local a:hover { color: var(--copper); }
 
-{% block extra_css %}
-<style>
-    .container-ir { max-width: 1100px; margin: 0 auto; padding: 40px 20px 80px; }
-    
-    /* Utility Nav */
-    .top-nav-local { margin-bottom: 40px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
-    .top-nav-local a { color: var(--slate); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
-    .top-nav-local a:hover { color: var(--copper); }
+        .header-ir { border-left: 4px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
+        .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 0.85rem; }
+        .header-ir h1 { font-size: 3.2rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; line-height: 1.1; color: var(--white); }
+        .lead-text { color: var(--slate); font-size: 1.2rem; max-width: 800px; }
+        
+        .roi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 60px; }
+        .card { background: #112240; padding: 35px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); transition: transform 0.3s ease; }
+        .card:hover { transform: translateY(-5px); border-color: rgba(184, 115, 51, 0.4); }
+        .card h3 { color: var(--copper); margin-top: 0; text-transform: uppercase; font-size: 1rem; letter-spacing: 1px; }
+        .big-number { display: block; font-size: 3.5rem; font-weight: 800; margin: 10px 0; color: var(--white); line-height: 1; }
+        
+        .tech-moat { background: var(--bg-dark); padding: 40px; border-radius: 8px; border: 1px solid #112240; margin-bottom: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+        .tech-moat h2 { margin-top: 0; font-size: 2rem; color: var(--white); }
+        .tech-feature { margin-bottom: 20px; }
+        .tech-feature h4 { color: var(--copper); margin: 0 0 5px 0; font-size: 1.1rem; }
+        .tech-feature p { color: var(--slate); font-size: 0.95rem; margin: 0; }
+        
+        .terminal { background: #000; padding: 20px; border-radius: 6px; border: 1px solid #333; font-family: monospace; font-size: 0.85rem; color: var(--success); }
+        .term-comment { color: #666; }
+        .term-key { color: var(--copper); }
+        
+        .container-ir h2 { font-size: 2rem; margin-bottom: 20px; color: var(--white); }
+        .table-container { overflow-x: auto; background: rgba(2, 12, 27, 0.5); border-radius: 8px; border: 1px solid #112240; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        th, td { text-align: left; padding: 20px; border-bottom: 1px solid #112240; }
+        th { background: #112240; color: var(--copper); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
+        td { color: var(--white); }
+        .highlight-row { background: rgba(184, 115, 51, 0.08); }
+        .highlight-text { color: var(--copper); font-weight: bold; }
+        
+        .regulatory-section { margin-top: 60px; padding: 30px; border-left: 4px solid var(--success); background: rgba(100, 255, 218, 0.05); border-radius: 0 4px 4px 0; }
+        .regulatory-section h4 { color: var(--success); margin: 0 0 12px 0; font-size: 1.2rem; }
+        .regulatory-section p { color: var(--slate); font-size: 0.95rem; margin: 0 0 10px 0; line-height: 1.7; }
+        .regulatory-section ul { color: var(--slate); font-size: 0.95rem; margin: 10px 0; padding-left: 20px; line-height: 1.8; }
+        .regulatory-section ul li strong { color: var(--white); }
+        
+        .bill-citation { margin-top: 30px; padding: 18px 22px; background: rgba(2, 12, 27, 0.7); border-left: 3px solid var(--slate); border-radius: 0 4px 4px 0; font-size: 0.8rem; color: var(--slate); line-height: 1.7; font-family: monospace; }
+        .bill-citation strong { color: var(--white); font-family: 'Inter', sans-serif; }
+        .bill-citation a { color: var(--copper); text-decoration: none; }
+        .bill-citation a:hover { text-decoration: underline; }
 
-    /* Header */
-    .header-ir { border-left: 4px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
-    .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 0.85rem; }
-    .header-ir h1 { font-size: 3.2rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; line-height: 1.1; }
-    .lead-text { color: var(--slate); font-size: 1.2rem; max-width: 800px; }
-    
-    /* ROI Grid */
-    .roi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 60px; }
-    .card { background: #112240; padding: 35px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); transition: transform 0.3s ease; }
-    .card:hover { transform: translateY(-5px); border-color: rgba(184, 115, 51, 0.4); }
-    .card h3 { color: var(--copper); margin-top: 0; text-transform: uppercase; font-size: 1rem; letter-spacing: 1px; }
-    .big-number { display: block; font-size: 3.5rem; font-weight: 800; margin: 10px 0; color: var(--white); line-height: 1; }
-    
-    /* Technology Moat Section */
-    .tech-moat { background: var(--bg-dark); padding: 40px; border-radius: 8px; border: 1px solid #112240; margin-bottom: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
-    .tech-moat h2 { margin-top: 0; font-size: 2rem; }
-    .tech-feature { margin-bottom: 20px; }
-    .tech-feature h4 { color: var(--copper); margin: 0 0 5px 0; font-size: 1.1rem; }
-    .tech-feature p { color: var(--slate); font-size: 0.95rem; margin: 0; }
-    
-    /* Code Visualizer */
-    .terminal { background: #000; padding: 20px; border-radius: 6px; border: 1px solid #333; font-family: monospace; font-size: 0.85rem; color: var(--success); }
-    .term-comment { color: #666; }
-    .term-key { color: var(--copper); }
-    
-    /* Table Style */
-    .container-ir h2 { font-size: 2rem; margin-bottom: 20px; }
-    .table-container { overflow-x: auto; background: rgba(2, 12, 27, 0.5); border-radius: 8px; border: 1px solid #112240; }
-    table { width: 100%; border-collapse: collapse; min-width: 600px; }
-    th, td { text-align: left; padding: 20px; border-bottom: 1px solid #112240; }
-    th { background: #112240; color: var(--copper); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
-    .highlight-row { background: rgba(184, 115, 51, 0.08); }
-    .highlight-text { color: var(--copper); font-weight: bold; }
-    
-    /* Legal Badge Box */
-    .compliance-box { margin-top: 60px; padding: 25px; border-left: 4px solid var(--success); background: rgba(100, 255, 218, 0.05); }
-    .compliance-box h4 { color: var(--success); margin: 0 0 10px 0; font-size: 1.2rem; }
-    
-    /* Buttons */
-    .footer-cta { margin-top: 80px; text-align: center; border-top: 1px solid #112240; padding-top: 50px; }
-    .btn { padding: 16px 32px; border-radius: 4px; font-weight: bold; text-decoration: none; transition: all 0.3s ease; font-size: 1.1rem; display: inline-block; cursor: pointer; }
-    .btn-primary { background-color: var(--copper); color: white; border: 1px solid var(--copper); }
-    .btn-primary:hover { background-color: transparent; color: var(--copper); }
-    
-    @media (max-width: 800px) {
-        .tech-moat { grid-template-columns: 1fr; }
-        .header-ir h1 { font-size: 2.5rem; }
-    }
-</style>
-{% endblock %}
+        .footer-cta { margin-top: 80px; text-align: center; border-top: 1px solid #112240; padding-top: 50px; }
+        .btn { padding: 16px 32px; border-radius: 4px; font-weight: bold; text-decoration: none; transition: all 0.3s ease; font-size: 1.1rem; display: inline-block; cursor: pointer; }
+        .btn-primary { background-color: var(--copper); color: white; border: 1px solid var(--copper); }
+        .btn-primary:hover { background-color: transparent; color: var(--copper); }
+        
+        @media (max-width: 800px) { .tech-moat { grid-template-columns: 1fr; } .header-ir h1 { font-size: 2.5rem; } .navbar { flex-direction: column; gap: 15px; } .nav-links { flex-wrap: wrap; justify-content: center; } }
+    </style>
+</head>
+<body>
 
-{% block content %}
-<div class="container-ir">
-    <div class="top-nav-local">
-        <a href="/">← RETURN TO BASE COMMAND (HOME)</a>
-    </div>
-
-    <div class="header-ir">
-        <div class="subtitle">Investment Thesis Q1 2026</div>
-        <h1>Securing the Autonomous Human Infrastructure.</h1>
-        <p class="lead-text">
-            While $3B+ per use case is spent on AI, the "Last Inch" of physical reliability remains a $1.5B annual operational drain. PAN solves this via a decentralized, hardware-attested human layer.
-        </p>
-    </div>
-
-    <div class="roi-grid">
-        <div class="card">
-            <h3>Mesa Operations Domain</h3>
-            <span class="big-number">239k</span>
-            <p style="color: var(--slate); font-size: 0.95rem; margin:0;">Sq. ft. Waymo/Magna facility located within our Sector 1 response zone. Capacity for tens of thousands of AV conversions annually.</p>
+    <nav class="navbar">
+        <a href="/" class="nav-logo">((PAN))<span>//</span></a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/mission">Mission</a>
+            <a href="/sector-ops">Sector Ops</a>
+            <a href="/rates">SLA Rates</a>
+            <a href="/investors">Investors</a>
+            <a href="/partners">Partners</a>
+            <a href="/login" class="btn-login">Login</a>
+            <a href="/enlist" class="btn-enlist">Enlist Now</a>
         </div>
-        <div class="card">
-            <h3>Recovery Market Size</h3>
-            <span class="big-number">$2.46B</span>
-            <p style="color: var(--slate); font-size: 0.95rem; margin:0;">The global automated recovery market projected for 2026, growing at a 14.7% CAGR as incidents rise with fleet expansion.</p>
-        </div>
-        <div class="card">
-            <h3>OpEx Reduction</h3>
-            <span class="big-number">92%</span>
-            <p style="color: var(--slate); font-size: 0.95rem; margin:0;">Cost savings for a $12.00 "Door Close" mission via PAN vs. a $150,000/year centralized chase van dispatch.</p>
-        </div>
-    </div>
+    </nav>
 
-    <div class="tech-moat">
-        <div>
-            <h2>The Core Protocol Moat</h2>
-            <div class="tech-feature">
-                <h4>[1] Hardware-Backed Identity</h4>
-                <p>Utilizing <strong>Apple Secure Enclave</strong> and <strong>Android StrongBox</strong> to cryptographically sign every intervention. High-fidelity verification of the veteran "Node" on-site.</p>
+    <div class="container-ir">
+        <div class="top-nav-local">
+            <a href="/">&larr; RETURN TO BASE COMMAND (HOME)</a>
+        </div>
+
+        <div class="header-ir">
+            <div class="subtitle">Investment Thesis Q1 2026</div>
+            <h1>Securing the Autonomous Human Infrastructure.</h1>
+            <p class="lead-text">
+                While the AV industry has spent billions on perception, planning, and compute, the "Last Inch" of physical reliability remains a material operational drain. PAN delivers a decentralized, hardware-attested human layer designed to integrate with the emerging regulatory environment.
+            </p>
+        </div>
+
+        <div class="roi-grid">
+            <div class="card">
+                <h3>Mesa Operations Domain</h3>
+                <span class="big-number">239k</span>
+                <p style="color: var(--slate); font-size: 0.95rem; margin:0;">Sq. ft. Waymo/Magna facility located within our Sector 1 response zone. Capacity for tens of thousands of AV conversions annually.</p>
             </div>
-            <div class="tech-feature">
-                <h4>[2] Instant L402 Settlements</h4>
-                <p>Using the Lightning Network to settle $20.00 missions the millisecond diagnostic clearing is confirmed. Eliminating legacy payroll friction and 30-day net invoicing.</p>
+            <div class="card">
+                <h3>Recovery Market Size</h3>
+                <span class="big-number">$2.46B</span>
+                <p style="color: var(--slate); font-size: 0.95rem; margin:0;">Global automated recovery market projected for 2026 (company estimate based on third-party industry reports; source available on request), growing at ~14.7% CAGR as fleet expansion drives incident volume.</p>
             </div>
-            <div class="tech-feature">
-                <h4>[3] Automated Audit Logs</h4>
-                <p>Every mission generates a "Sensor Diagnostic Report" that satisfies the data-logging mandates of Arizona's new 2026 safety statutes.</p>
+            <div class="card">
+                <h3>OpEx Reduction</h3>
+                <span class="big-number">92%</span>
+                <p style="color: var(--slate); font-size: 0.95rem; margin:0;">Illustrative cost reduction for a $12.00 Tier-1 "Door Close" mission via PAN vs. a chase-van dispatch modeled at $150,000/year fully-loaded. Not all interventions are substitutable; see full unit economics below.</p>
             </div>
         </div>
-        <div class="terminal">
-            <span class="term-comment"># LIVE_TELEMETRY: PROTOCOL_AUDIT_LOG</span><br><br>
-            <span class="term-key">TIMESTAMP:</span> 2026-03-04T06:42:01Z<br>
-            <span class="term-key">EVENT_TYPE:</span> SB1417_COMPLIANT_LOG<br>
-            <span class="term-key">FLEET_ID:</span> WAYMO_MESA_FACTORY_771<br>
-            <br>
-            <span class="term-comment"># VERIFYING HARDWARE ATTESTATION...</span><br>
-            <span class="term-key">AGENT:</span> VETERAN_NODE_052 (USMC_RET)<br>
-            <span class="term-key">SECURE_CHIP:</span> TPM_2.0_VALIDATED<br>
-            <br>
-            <span class="term-comment"># MISSION: SENSOR_RECLAMATION</span><br>
-            <span class="term-key">DIAGNOSTIC_STATE:</span> <span style="color:black; background:var(--success); padding:2px 5px; font-weight:bold;">CLEARED</span>
+
+        <div class="tech-moat">
+            <div>
+                <h2>The Core Protocol Moat</h2>
+                <div class="tech-feature">
+                    <h4>[1] Hardware-Backed Identity</h4>
+                    <p>Utilizing <strong>Apple Secure Enclave</strong> and <strong>Android StrongBox</strong> to cryptographically sign every intervention. High-fidelity verification of the veteran "Node" on-site.</p>
+                </div>
+                <div class="tech-feature">
+                    <h4>[2] Instant L402 Settlements</h4>
+                    <p>Using the Lightning Network to settle $20.00 missions the millisecond diagnostic clearing is confirmed. Eliminating legacy payroll friction and 30-day net invoicing.</p>
+                </div>
+                <div class="tech-feature">
+                    <h4>[3] Audit-Compatible Records</h4>
+                    <p>Every mission generates a cryptographically signed intervention record with tamper-resistant telemetry, structured for compatibility with the data-retention and reporting direction of Arizona's 2026 AV safety statutes.</p>
+                </div>
+            </div>
+            <div class="terminal">
+                <span class="term-comment"># LIVE_TELEMETRY: INTERVENTION_RECORD</span><br><br>
+                <span class="term-key">TIMESTAMP:</span> 2026-03-04T06:42:01Z<br>
+                <span class="term-key">EVENT_TYPE:</span> SB1417_COMPATIBLE_LOG<br>
+                <span class="term-key">FLEET_ID:</span> WAYMO_MESA_FACTORY_771<br>
+                <br>
+                <span class="term-comment"># VERIFYING HARDWARE ATTESTATION...</span><br>
+                <span class="term-key">AGENT:</span> VETERAN_NODE_052 (USMC_RET)<br>
+                <span class="term-key">SECURE_CHIP:</span> TPM_2.0_VALIDATED<br>
+                <br>
+                <span class="term-comment"># MISSION: SENSOR_RECLAMATION</span><br>
+                <span class="term-key">DIAGNOSTIC_STATE:</span> <span style="color:black; background:var(--success); padding:2px 5px; font-weight:bold;">CLEARED</span>
+            </div>
+        </div>
+
+        <h2>Strategic Unit Economics</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Recovery Model</th>
+                        <th>Fixed CapEx</th>
+                        <th>Marginal Cost/Event</th>
+                        <th>Response Time</th>
+                        <th>Audit Record</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Centralized Chase Van</td>
+                        <td>$150,000 / unit</td>
+                        <td>$240.00+</td>
+                        <td>45 - 60 Min</td>
+                        <td>Manual / Delayed</td>
+                    </tr>
+                    <tr class="highlight-row">
+                        <td class="highlight-text">Proxy Agent Network</td>
+                        <td class="highlight-text">$0 (BYOD)</td>
+                        <td class="highlight-text">$12.00 - $55.00</td>
+                        <td class="highlight-text">&lt; 12 Min</td>
+                        <td class="highlight-text">Automated / Cryptographic</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="regulatory-section">
+            <h4>Regulatory Tailwind: Arizona SB 1417 (2026)</h4>
+            <p>
+                Arizona SB 1417&mdash;introduced in the 57th Legislature's 2nd Regular Session and setting an effective date of December 31, 2026&mdash;would materially raise the operational and reporting burden on AV fleets operating in the state. Key provisions PAN's architecture is designed to complement:
+            </p>
+            <ul>
+                <li><strong>&sect; 28-9702(C)(3):</strong> $5,000,000 per-occurrence liability insurance requirement on the AV manufacturer/operator.</li>
+                <li><strong>&sect; 28-9702(C)(5):</strong> Quarterly safety performance reports to ADOT and DPS covering miles driven, collisions, near-miss events, and material software/map updates.</li>
+                <li><strong>&sect; 28-9710:</strong> Tamper-resistant operational data retention for not less than 12 months, with defined access rights for ADOT, DPS, and authorized agencies.</li>
+                <li><strong>&sect; 28-9712(B)(2)(e):</strong> Independent performance audits conducted by ADOT, drawing on "system diagnostic data indicating sensor failures or computational errors" among other inputs.</li>
+                <li><strong>&sect; 28-9708(H):</strong> Civil penalties up to $25,000 per violation, per day, deposited into the new Autonomous Vehicle Safety Fund.</li>
+            </ul>
+            <p>
+                PAN does not perform the state audit function and is not an ADOT-recognized third-party safety assessor. PAN's value is operational: our hardware-attested, cryptographically sealed intervention records are structured to drop cleanly into the reporting and data-retention obligations the bill would impose on our fleet customers&mdash;reducing the friction of producing audit-ready trails at quarterly filing deadlines.
+            </p>
+        </div>
+
+        <div class="bill-citation">
+            <strong>Full Citation:</strong> Arizona Senate Bill 1417, 57th Legislature, 2nd Regular Session, 2026. Introduced by Senator Bolick. "Autonomous Vehicles; Safety; Data." 
+            Amends A.R.S. &sect;&sect; 28-9701, 28-9702, 28-9703, 28-9707, 28-9708; adds &sect;&sect; 28-9709, 28-9710, 28-9711, 28-9712. 
+            Effective from and after December 31, 2026, upon enactment. 
+            Bill text and status: <a href="https://www.azleg.gov" target="_blank" rel="noopener">azleg.gov</a>. 
+            ADOT rulemaking defining reporting formats and the structure of third-party performance audits (&sect; 28-9703(B)) remains pending. 
+            Nothing on this page constitutes legal advice or a representation of compliance with rules not yet promulgated.
+        </div>
+
+        <div class="footer-cta">
+            <p style="color: var(--slate); margin-bottom: 25px;">Pre-seed round active &middot; Limited distribution to accredited partners</p>
+            <a href="/partners" class="btn btn-primary">REQUEST VIRTUAL DATA ROOM ACCESS</a>
         </div>
     </div>
 
-    <h2>Strategic Unit Economics</h2>
-    <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>Recovery Model</th>
-                    <th>Fixed CapEx</th>
-                    <th>Marginal Cost/Event</th>
-                    <th>Response Time</th>
-                    <th>SB 1417 Audit</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Centralized Chase Van</td>
-                    <td>$150,000 / unit</td>
-                    <td>$240.00+</td>
-                    <td>45 - 60 Min</td>
-                    <td>Manual / Delayed</td>
-                </tr>
-                <tr class="highlight-row">
-                    <td class="highlight-text">Proxy Agent Network</td>
-                    <td class="highlight-text">$0 (BYOD)</td>
-                    <td class="highlight-text">$12.00 - $55.00</td>
-                    <td class="highlight-text">&lt; 12 Min</td>
-                    <td class="highlight-text">Automated / Instant</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
+    <footer class="footer">
+        &copy; 2026 Proxy Agent Network. All Rights Reserved.
+    </footer>
 
-    <div class="compliance-box">
-        <h4>Compliance Engine: SB 1417 (Arizona, 2026)</h4>
-        <p style="color: var(--slate); margin: 0; font-size: 0.95rem;">
-            Arizona's 2026 AV statutes require <strong>independent audits of system diagnostic data indicating sensor failures</strong>. PAN is the only network providing hardware-verified, third-party maintenance logs that bridge the gap between machine error and state compliance.
-        </p>
-    </div>
-
-    <div class="footer-cta">
-        <p style="color: var(--slate); margin-bottom: 25px;">Micro-Seed Round ($24,048) Opening May 16, 2026</p>
-        <a href="/partners" class="btn btn-primary">REQUEST VIRTUAL DATA ROOM ACCESS</a>
-    </div>
-</div>
-{% endblock %}
+</body>
+</html>

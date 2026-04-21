@@ -1,113 +1,175 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investor Relations | ProxyAgent.Network</title>
+    <style>
+        /* Base Global Styles */
+        :root {
+            --bg-dark: #0a192f;
+            --white: #e6f1ff;
+            --slate: #8892b0;
+            --copper: #b87333;
+            --success: #64ffda;
+            --accent: #0077aa;
+        }
+        body { margin: 0; font-family: 'Inter', -apple-system, sans-serif; background-color: var(--bg-dark); color: var(--white); line-height: 1.6; }
+        
+        /* Navigation Bar */
+        .navbar { display: flex; justify-content: space-between; align-items: center; padding: 15px 40px; background-color: #ffffff; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .nav-logo { font-size: 1.8rem; font-weight: 900; color: var(--copper); text-decoration: none; }
+        .nav-logo span { color: #112240; }
+        .nav-links { display: flex; gap: 20px; align-items: center; }
+        .nav-links a { text-decoration: none; color: #112240; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: color 0.3s; }
+        .nav-links a:hover { color: var(--copper); }
+        .btn-login { border: 1px solid var(--copper); padding: 8px 20px; border-radius: 4px; color: var(--copper) !important; }
+        .btn-login:hover { background: rgba(184, 115, 51, 0.1); }
+        .btn-enlist { background-color: var(--copper); color: #ffffff !important; padding: 8px 20px; border-radius: 4px; }
+        .btn-enlist:hover { background-color: #9a5f29; }
+        
+        /* Footer */
+        .footer { text-align: center; padding: 40px 20px; background-color: #020c1b; color: var(--slate); font-size: 0.85rem; border-top: 1px solid #112240; }
 
-{% block title %}Investor Relations | ProxyAgent.Network{% endblock %}
+        /* Page Specific Styles */
+        .container-investors { max-width: 1100px; margin: 0 auto; padding: 80px 20px; }
+        .header-investors { border-left: 5px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
+        .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; }
+        .header-investors h1 { font-size: 3.5rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; color: var(--white); }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 50px; }
+        .card { background: #112240; padding: 35px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); transition: 0.3s; }
+        .card:hover { border-color: var(--copper); transform: translateY(-5px); }
+        .card h3 { margin-top: 0; font-size: 1.1rem; color: var(--slate); text-transform: uppercase; }
+        .big-number { display: block; font-size: 3.5rem; font-weight: 800; color: var(--white); margin: 15px 0; }
+        .card p { font-size: 0.95rem; color: var(--slate); margin: 0; }
 
-{% block extra_css %}
-<style>
-    .container-investors { max-width: 1100px; margin: 0 auto; padding: 80px 20px; }
-    .header-investors { border-left: 5px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
-    .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; }
-    .header-investors h1 { font-size: 3.5rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; }
-    
-    /* Dashboard Cards */
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 50px; }
-    .card { background: #112240; padding: 35px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); transition: 0.3s; }
-    .card:hover { border-color: var(--copper); transform: translateY(-5px); }
-    .card h3 { margin-top: 0; font-size: 1.1rem; color: var(--slate); text-transform: uppercase; }
-    .big-number { display: block; font-size: 3.5rem; font-weight: 800; color: var(--white); margin: 15px 0; }
-    .card p { font-size: 0.95rem; color: var(--slate); margin: 0; }
+        .table-container { background: #020c1b; border-radius: 12px; padding: 30px; border: 1px solid #112240; margin-top: 40px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; color: var(--copper); padding: 15px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #112240; }
+        td { padding: 20px 15px; border-bottom: 1px solid #112240; font-size: 1rem; color: var(--white); }
+        .highlight-row { background: rgba(184, 115, 51, 0.05); color: var(--white); font-weight: bold; }
+        .legal-tag { background: rgba(100, 255, 218, 0.1); color: var(--success); padding: 4px 12px; border-radius: 15px; font-size: 0.75rem; font-weight: bold; }
 
-    /* Comparison Table */
-    .table-container { background: #020c1b; border-radius: 12px; padding: 30px; border: 1px solid #112240; margin-top: 40px; }
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; color: var(--copper); padding: 15px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #112240; }
-    td { padding: 20px 15px; border-bottom: 1px solid #112240; font-size: 1rem; }
-    .highlight-row { background: rgba(184, 115, 51, 0.05); color: var(--white); font-weight: bold; }
-    .legal-tag { background: rgba(100, 255, 218, 0.1); color: var(--accent); padding: 4px 12px; border-radius: 15px; font-size: 0.75rem; font-weight: bold; }
+        .footer-cta { text-align: center; margin-top: 100px; padding-top: 40px; border-top: 1px solid #112240; }
+        .btn-link { color: var(--copper); text-decoration: none; font-weight: bold; border-bottom: 2px solid transparent; transition: 0.3s; font-size: 1.2rem; }
+        .btn-link:hover { border-bottom-color: var(--copper); }
 
-    .footer-cta { text-align: center; margin-top: 100px; padding-top: 40px; border-top: 1px solid #112240; }
-    .btn-link { color: var(--copper); text-decoration: none; font-weight: bold; border-bottom: 2px solid transparent; transition: 0.3s; font-size: 1.2rem; }
-    .btn-link:hover { border-bottom-color: var(--copper); }
+        .infrastructure-row { margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+        .infra-text h2 { font-size: 2.2rem; margin-top: 0; color: var(--white); }
+        .infra-text p { color: var(--slate); font-size: 1.1rem; }
 
-    .infrastructure-row { margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
-    .infra-text h2 { font-size: 2.2rem; margin-top: 0; color: var(--white); }
-    .infra-text p { color: var(--slate); font-size: 1.1rem; }
-</style>
-{% endblock %}
+        .bill-citation { margin-top: 40px; padding: 20px 25px; background: rgba(2, 12, 27, 0.5); border-left: 3px solid var(--slate); border-radius: 0 4px 4px 0; font-size: 0.85rem; color: var(--slate); line-height: 1.7; }
+        .bill-citation strong { color: var(--white); }
+        .bill-citation a { color: var(--copper); text-decoration: none; }
+        .bill-citation a:hover { text-decoration: underline; }
 
-{% block content %}
-<div class="container-investors">
-    <div class="header-investors">
-        <div class="subtitle">Micro-Seed Opportunity // Q1 2026</div>
-        <h1>Securing the Autonomous Economy.</h1>
-        <p style="color: var(--slate); font-size: 1.25rem; max-width: 800px;">
-            Proxy Agent Network (PAN) is the decentralized "Physical API" for autonomous fleets, 
-            bridging the gap between AI diagnostics and physical reclamation through a certified Veteran workforce.
-        </p>
+        @media (max-width: 800px) { .infrastructure-row { grid-template-columns: 1fr; } .header-investors h1 { font-size: 2.5rem; } .navbar { flex-direction: column; gap: 15px; } .nav-links { flex-wrap: wrap; justify-content: center; } }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/" class="nav-logo">((PAN))<span>//</span></a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/mission">Mission</a>
+            <a href="/sector-ops">Sector Ops</a>
+            <a href="/rates">SLA Rates</a>
+            <a href="/investors">Investors</a>
+            <a href="/partners">Partners</a>
+            <a href="/login" class="btn-login">Login</a>
+            <a href="/enlist" class="btn-enlist">Enlist Now</a>
+        </div>
+    </nav>
+
+    <div class="container-investors">
+        <div class="header-investors">
+            <div class="subtitle">Pre-Seed Opportunity // 2026</div>
+            <h1>Securing the Autonomous Economy.</h1>
+            <p style="color: var(--slate); font-size: 1.25rem; max-width: 800px;">
+                Proxy Agent Network (PAN) is the decentralized "Physical API" for autonomous fleets, 
+                bridging the gap between AI diagnostics and physical reclamation through a certified Veteran workforce.
+            </p>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>Round Stage</h3>
+                <span class="legal-tag" style="background: rgba(184, 115, 51, 0.15); color: var(--copper);">PRE-SEED &middot; ACTIVE</span>
+                <p style="margin-top: 15px;">Raising to fund the Mesa Sector 1 pilot: Vanguard agent provisioning, liability coverage, and initial fleet-integration work. Round size and terms shared under NDA.</p>
+            </div>
+            <div class="card">
+                <h3>Platform Margin</h3>
+                <span class="big-number">20.0%</span>
+                <p>Sustainable net platform fee. Incentivized Founding Agents (Vanguard 50) share 10.0% from platform share.</p>
+            </div>
+            <div class="card">
+                <h3>Regulatory Tailwind</h3>
+                <span class="legal-tag">AZ SB 1417 ALIGNED</span>
+                <p style="margin-top: 15px;">Hardware-attested intervention records and L402 settlement logs are designed to integrate with Arizona's forthcoming 2026 AV safety reporting framework.</p>
+            </div>
+        </div>
+
+        <div class="infrastructure-row">
+            <div class="infra-text">
+                <h2>Hardware-Attested Trust Layer</h2>
+                <p>In 2026, identity is infrastructure. PAN utilizes Apple Secure Enclave and Android TPM 2.0 to ensure every "Sensor Handshake" is cryptographically verified. This zero-trust architecture produces tamper-resistant intervention records that are compatible with the data-retention and audit-trail direction of Arizona's forthcoming SB 1417 framework.</p>
+                
+            </div>
+            <div class="card" style="background: var(--bg-dark);">
+                <h3>Mesa Operations</h3>
+                <p style="color: var(--white); font-weight: bold; font-size: 1.2rem;">239k Sq. Ft.</p>
+                <p>Direct proximity to Waymo/Magna Integration Hub. We are the "Last-Mile" human redundant layer for the world's highest-density AV corridor.</p>
+            </div>
+        </div>
+
+        <h2 style="margin-top: 80px; margin-bottom: 30px; color: var(--white);">The Unit Economics of Autonomy</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Recovery Model</th>
+                        <th>Avg. Cost/Event</th>
+                        <th>Response Time</th>
+                        <th>Settlement Engine</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Legacy Chase Van (CapEx)</td>
+                        <td>$240.00+</td>
+                        <td>45 - 60 Min</td>
+                        <td>Legacy Payroll (Bi-Weekly)</td>
+                    </tr>
+                    <tr class="highlight-row">
+                        <td>PAN Veteran Network</td>
+                        <td>$12.00 - $55.00</td>
+                        <td>&lt; 12 Min</td>
+                        <td>L402 Lightning (Instant)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="bill-citation">
+            <strong>Regulatory Reference:</strong> Arizona Senate Bill 1417, 57th Legislature, 2nd Regular Session, 2026. 
+            Introduced by Senator Bolick. Relates to autonomous vehicles, safety, and data. 
+            Amends A.R.S. &sect;&sect; 28-9701, 28-9702, 28-9703, 28-9707, 28-9708; adds &sect;&sect; 28-9709, 28-9710, 28-9711, 28-9712. 
+            Effective date: December 31, 2026, upon enactment. 
+            Bill status and text: <a href="https://www.azleg.gov" target="_blank" rel="noopener">azleg.gov</a>. 
+            Nothing on this page should be construed as legal advice or a guarantee of compliance with rules that remain subject to ADOT rulemaking.
+        </div>
+
+        <div class="footer-cta">
+            <p style="color: var(--slate); margin-bottom: 20px;">Strictly Confidential // Limited Distribution to Accredited Partners</p>
+            <a href="/partners" class="btn-link">REQUEST VIRTUAL DATA ROOM (VDR) ACCESS &rarr;</a>
+        </div>
     </div>
 
-    <div class="grid">
-        <div class="card">
-            <h3>Q1 Capital Target</h3>
-            <span class="big-number">$24,048</span>
-            <p>Allocated for "Vanguard 100" Inventory, SB 1417 Liability Shield ($5M), and Tier-1 Mobile Infrastructure.</p>
-        </div>
-        <div class="card">
-            <h3>Platform Margin</h3>
-            <span class="big-number">20.0%</span>
-            <p>Sustainable net platform fee. Incentivized Founding Agents (Vanguard 50) share 10.0% from platform share.</p>
-        </div>
-        <div class="card">
-            <h3>Compliance Moat</h3>
-            <span class="legal-tag">AZ SB 1417 COMPLIANT</span>
-            <p style="margin-top: 15px;">Proprietary L402 "Proof of Maintenance" logging built specifically for 2026 state-mandated safety audits.</p>
-        </div>
-    </div>
+    <footer class="footer">
+        &copy; 2026 Proxy Agent Network. All Rights Reserved.
+    </footer>
 
-    <div class="infrastructure-row">
-        <div class="infra-text">
-            <h2>Hardware-Attested Trust Layer</h2>
-            <p>In 2026, identity is infrastructure. PAN utilizes Apple Secure Enclave and Android TPM 2.0 to ensure every "Sensor Handshake" is cryptographically verified. This zero-trust architecture is what allows us to secure $5M in liability coverage where traditional gig-platforms fail.</p>
-            
-        </div>
-        <div class="card" style="background: var(--bg-dark);">
-            <h3>Mesa Operations</h3>
-            <p style="color: var(--white); font-weight: bold; font-size: 1.2rem;">239k Sq. Ft.</p>
-            <p>Direct proximity to Waymo/Magna Integration Hub. We are the "Last-Mile" human redundant layer for the world's highest-density AV corridor.</p>
-        </div>
-    </div>
-
-    <h2 style="margin-top: 80px; margin-bottom: 30px;">The Unit Economics of Autonomy</h2>
-    <div class="table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>Recovery Model</th>
-                    <th>Avg. Cost/Event</th>
-                    <th>Response Time</th>
-                    <th>Settlement Engine</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Legacy Chase Van (CapEx)</td>
-                    <td>$240.00+</td>
-                    <td>45 - 60 Min</td>
-                    <td>Legacy Payroll (Bi-Weekly)</td>
-                </tr>
-                <tr class="highlight-row">
-                    <td>PAN Veteran Network</td>
-                    <td>$12.00 - $55.00</td>
-                    <td>&lt; 12 Min</td>
-                    <td>L402 Lightning (Instant)</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="footer-cta">
-        <p style="color: var(--slate); margin-bottom: 20px;">Strictly Confidential // Limited Distribution to Accredited Partners</p>
-        <a href="/partners" class="btn-link">REQUEST VIRTUAL DATA ROOM (VDR) ACCESS →</a>
-    </div>
-</div>
-{% endblock %}
+</body>
+</html>
