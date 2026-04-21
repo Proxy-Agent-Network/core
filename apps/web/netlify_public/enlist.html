@@ -1,279 +1,150 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vanguard 50 Enlistment | ProxyAgent.Network</title>
+    <link rel="stylesheet" href="static/css/main.css">
+    <style>
+        .form-wrapper { max-width: 850px; margin: 40px auto; background: var(--bg-card); border: 1px solid var(--border-color); border-top: 4px solid var(--copper); border-radius: 6px; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); position: relative; overflow: hidden;}
+        .header-enlist { text-align: center; margin-bottom: 40px; border-bottom: 1px dashed var(--border-color); padding-bottom: 30px; }
+        .header-enlist h1 { font-size: 2.2rem; margin: 0 0 10px 0; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; color: var(--text-main); }
+        .input-group { display: flex; flex-direction: column; }
+        .full-width { grid-column: span 2; }
+        .file-drop-zone { border: 2px dashed var(--border-color); background: var(--bg-main); padding: 30px; text-align: center; border-radius: 6px; cursor: pointer; transition: 0.3s; }
+        .file-drop-zone:hover { border-color: var(--copper); background: var(--copper-bg); }
+        .file-drop-zone input[type="file"] { display: none; }
+        .file-icon { font-size: 2rem; color: var(--text-muted); margin-bottom: 10px; display: block;}
+        .file-name-display { margin-top: 10px; color: var(--teal); font-family: monospace; font-size: 0.85rem; font-weight: bold; display: none; }
+        .hardware-box { background: var(--bg-main); border: 1px solid var(--border-color); padding: 20px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .hw-status { font-family: monospace; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+        .signature-box { background: var(--bg-main); border: 1px solid var(--border-color); padding: 25px; border-radius: 4px; }
+        .sig-agreement { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; line-height: 1.5; }
+        .sig-agreement a { color: var(--copper); text-decoration: underline; }
+        .sig-input { font-family: monospace !important; font-style: italic; font-size: 1.2rem !important; color: var(--teal) !important; background: var(--bg-card) !important; border: 1px dashed var(--border-color) !important;}
+        .checkbox-label { display: flex; align-items: flex-start; gap: 12px; font-size: 0.95rem; color: var(--text-main); cursor: pointer; }
+        .checkbox-label input { margin-top: 4px; accent-color: var(--copper); width: 18px; height: 18px; cursor: pointer; }
+        .task-desc { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;}
+        .submit-btn { grid-column: span 2; padding: 18px; background: var(--copper-bg); color: var(--copper); border: 1px solid var(--copper); font-weight: bold; font-size: 1.1rem; cursor: pointer; border-radius: 4px; transition: 0.3s; letter-spacing: 2px; margin-top: 30px; font-family: monospace; text-transform: uppercase; width: 100%; }
+        .submit-btn:hover:not(:disabled) { background: var(--copper); color: var(--bg-main); }
+        .status-msg { margin-top: 20px; text-align: center; font-size: 0.95rem; min-height: 25px; grid-column: span 2; font-family: monospace; font-weight: bold; }
+        .error-text { color: var(--alert); }
+        @media (max-width: 768px) { .form-grid, .task-grid { grid-template-columns: 1fr; } .full-width { grid-column: span 1; } .submit-btn { grid-column: span 1; } .hardware-box { flex-direction: column; gap: 15px; align-items: flex-start; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="index.html" class="nav-logo" style="display: flex; align-items: center;">
+            <picture>
+                <source srcset="static/images/pan-logo-dark-mode-v2.png" media="(prefers-color-scheme: dark)">
+                <img src="static/images/pan-logo-light-mode-v2.png" alt="Proxy Agent Network" style="height: 45px; object-fit: contain;">
+            </picture>
+        </a>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="our-mission.html">Mission</a>
+            <a href="operations.html">Sector Ops</a>
+            <a href="rates.html">SLA Rates</a>
+            <a href="investors.html">Investors</a>
+            <a href="partners.html">Partners</a>
+            <a href="login.html" class="btn-login">Login</a>
+            <a href="enlist.html" class="btn-enlist">Enlist Now</a>
+        </div>
+    </nav>
 
-{% block title %}Vanguard 50 Enlistment | ProxyAgent.Network{% endblock %}
+    <div class="form-wrapper">
+        <div class="header-enlist">
+            <div class="badge">VANGUARD 50 // SECTOR 1 (MESA)</div>
+            <h1>Operator Enlistment</h1>
+            <p class="subtext">Phase 1 Pre-Screening. Establish your cryptographic identity and operational baseline.</p>
+        </div>
 
-{% block extra_css %}
-<style>
-    .form-wrapper { max-width: 850px; margin: 40px auto; background: var(--bg-dark); border: 1px solid #112240; border-top: 4px solid var(--copper); border-radius: 6px; padding: 40px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); position: relative; overflow: hidden;}
-    .form-wrapper::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--copper), transparent); opacity: 0.5; }
-    
-    .header-enlist { text-align: center; margin-bottom: 40px; border-bottom: 1px dashed #112240; padding-bottom: 30px; }
-    .header-enlist h1 { font-size: 2.2rem; margin: 0 0 10px 0; font-family: 'Inter', sans-serif; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; color: var(--white); }
-    .badge { display: inline-block; background: rgba(100, 255, 218, 0.1); color: var(--success); border: 1px solid var(--success); padding: 4px 12px; border-radius: 20px; font-family: 'Courier Prime', monospace; font-size: 0.85rem; letter-spacing: 2px; margin-bottom: 15px; font-weight: bold;}
-    .subtext { color: var(--slate); font-family: 'Inter', sans-serif; font-size: 0.95rem; margin-top: 10px; }
+        <form action="/api/v1/enlist" method="POST" id="enlistForm" class="grid form-grid" enctype="multipart/form-data">
+            <div class="full-width section-title">1. Identity & Comms Protocol</div>
+            <div class="input-group full-width">
+                <label>REFERRAL CLEARANCE CODE (OPTIONAL)</label>
+                <input type="text" id="referralCodeUsed" name="referral_code_used" placeholder="e.g. VNG-XXXX-ALPHA">
+            </div>
+            <div class="input-group">
+                <label>FULL LEGAL NAME</label>
+                <input type="text" id="fullName" name="full_name" required placeholder="John Doe">
+            </div>
+            <div class="input-group">
+                <label>TACTICAL CALLSIGN</label>
+                <input type="text" id="callsign" name="callsign" required placeholder="e.g. 'Ghost', 'Maverick'">
+            </div>
+            <div class="input-group">
+                <label>SECURE EMAIL ADDRESS</label>
+                <input type="email" id="email" name="email" required placeholder="name@domain.com">
+            </div>
+            <div class="input-group">
+                <label>MOBILE NUMBER</label>
+                <input type="tel" id="phone" name="phone" required placeholder="(555) 555-5555">
+            </div>
 
-    .section-title { color: var(--copper); font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px; margin: 40px 0 20px 0; border-bottom: 1px solid #112240; padding-bottom: 8px; font-family: 'Courier Prime', monospace; font-weight: bold; display: flex; align-items: center; gap: 10px;}
-    .section-title::before { content: '>>'; color: var(--slate); }
-    
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .full-width { grid-column: span 2; }
-    
-    .input-group { display: flex; flex-direction: column; }
-    .input-group label { font-size: 0.75rem; font-weight: bold; color: var(--slate); margin-bottom: 8px; letter-spacing: 1px; font-family: 'Courier Prime', monospace; text-transform: uppercase;}
-    
-    .input-group input[type="text"], .input-group input[type="email"], .input-group input[type="tel"], .input-group select { padding: 14px 15px; background-color: #061121; border: 1px solid #233554; border-radius: 4px; color: var(--white); font-size: 1rem; font-family: 'Inter', sans-serif; transition: 0.3s; }
-    .input-group input:focus, .input-group select:focus { outline: none; border-color: var(--copper); background-color: #0a192f; box-shadow: 0 0 10px rgba(184, 115, 51, 0.1); }
-    .input-group option { background-color: var(--bg-dark); color: var(--white); }
+            <div class="full-width section-title">2. Veteran Credential Upload</div>
+            <div class="input-group full-width">
+                <div class="file-drop-zone" id="dropZone" onclick="document.getElementById('fileUpload').click()">
+                    <span class="file-icon">📄</span>
+                    <span style="color: var(--text-main);"><strong>Click to browse</strong> or drag & drop file here.</span>
+                    <input type="file" id="fileUpload" name="veteran_credential" accept=".pdf, .jpg, .jpeg, .png" required>
+                    <div class="file-name-display" id="fileNameDisplay"></div>
+                </div>
+            </div>
+            <div class="input-group">
+                <label>MILITARY BRANCH & YEARS</label>
+                <input type="text" id="branch" name="military_branch" required placeholder="e.g. USMC, 4 Years">
+            </div>
+            <div class="input-group">
+                <label>LOCAL VFW / LEGION POST (OPTIONAL)</label>
+                <input type="text" id="vfw" name="vfw_post" placeholder="e.g. Post 1760 Mesa">
+            </div>
 
-    .file-drop-zone { border: 2px dashed #233554; background: rgba(6, 17, 33, 0.5); padding: 30px; text-align: center; border-radius: 6px; cursor: pointer; transition: 0.3s; }
-    .file-drop-zone:hover, .file-drop-zone.dragover { border-color: var(--copper); background: rgba(184, 115, 51, 0.05); }
-    .file-drop-zone input[type="file"] { display: none; }
-    .file-icon { font-size: 2rem; color: var(--slate); margin-bottom: 10px; display: block;}
-    .file-text { color: var(--slate); font-family: 'Inter', sans-serif; font-size: 0.9rem; }
-    .file-text strong { color: var(--copper); }
-    .file-name-display { margin-top: 10px; color: var(--success); font-family: 'Courier Prime', monospace; font-size: 0.85rem; font-weight: bold; display: none; }
+            <div class="full-width section-title">3. Hardware & Logistics</div>
+            <div class="input-group full-width">
+                <label>CRYPTOGRAPHIC ENCLAVE VERIFICATION</label>
+                <div class="hardware-box">
+                    <div class="hw-status">
+                        <span style="color: var(--copper); font-weight: bold;">[!] PROVISIONING DEFERRED</span><br>
+                        Hardware attestation (TPM 2.0) will be conducted in-person during onboarding.
+                    </div>
+                </div>
+            </div>
+            <div class="input-group">
+                <label>PRIMARY OPERATING ZIP CODE</label>
+                <input type="text" id="zipcode" name="zip_code" required placeholder="e.g. 85201" pattern="[0-9]{5}">
+            </div>
+            <div class="input-group">
+                <label>PRIMARY DEPLOYMENT VEHICLE</label>
+                <select id="vehicle" name="vehicle_class" required>
+                    <option value="" disabled selected>Select transport class...</option>
+                    <option value="Car">Standard Commuter (Car/Truck/SUV)</option>
+                    <option value="Motorcycle">Motorcycle / Scooter</option>
+                </select>
+            </div>
 
-    /* Updated Hardware Box */
-    .hardware-box { background: #061121; border: 1px solid #233554; padding: 20px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
-    .hw-status { font-family: 'Courier Prime', monospace; font-size: 0.85rem; color: var(--slate); line-height: 1.5; }
+            <div class="full-width section-title">4. Initial Mission Capabilities (Tier 1)</div>
+            <div class="grid task-grid full-width" style="grid-template-columns: 1fr 1fr;">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="task_sensor_cleaning" value="Accepted" checked> 
+                    <div><b>Sensor Calibration & Cleaning</b><span class="task-desc">Precision wiping of exterior LiDAR, radar, and camera arrays.</span></div>
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" name="task_door_securing" value="Accepted" checked> 
+                    <div><b>Door & Latch Securing</b><span class="task-desc">Responding to "door open" faults. Ensuring cabin is fully sealed.</span></div>
+                </label>
+            </div>
 
-    .signature-box { background: #061121; border: 1px solid #233554; padding: 25px; border-radius: 4px; }
-    .sig-agreement { font-size: 0.85rem; color: var(--slate); margin-bottom: 15px; line-height: 1.5; }
-    .sig-agreement a { color: var(--copper); text-decoration: underline; }
-    .sig-input { font-family: 'Courier Prime', monospace !important; font-style: italic; font-size: 1.2rem !important; letter-spacing: 1px; color: var(--success) !important; background: #020c1b !important; border: 1px dashed #233554 !important;}
+            <div class="full-width section-title">5. Legal Mandate & Signature</div>
+            <div class="input-group full-width signature-box">
+                <label>DIGITAL SIGNATURE (TYPE FULL LEGAL NAME)</label>
+                <input type="text" id="signature" name="digital_signature" class="sig-input" required placeholder="Type name to sign...">
+            </div>
 
-    .task-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #061121; padding: 20px; border: 1px solid #233554; border-radius: 4px; }
-    .checkbox-label { display: flex; align-items: flex-start; gap: 12px; font-family: 'Inter', sans-serif; font-size: 0.95rem; color: var(--white); cursor: pointer; }
-    .checkbox-label input { margin-top: 4px; accent-color: var(--copper); width: 18px; height: 18px; cursor: pointer; }
-    .task-desc { display: block; font-size: 0.75rem; color: var(--slate); margin-top: 4px; line-height: 1.4;}
-
-    .submit-btn { grid-column: span 2; padding: 18px; background: rgba(184, 115, 51, 0.1); color: var(--copper); border: 1px solid var(--copper); font-weight: bold; font-size: 1.1rem; cursor: pointer; border-radius: 4px; transition: 0.3s; letter-spacing: 2px; margin-top: 30px; font-family: 'Courier Prime', monospace; text-transform: uppercase; width: 100%; }
-    .submit-btn:hover:not(:disabled) { background: var(--copper); color: var(--navy); box-shadow: 0 0 20px rgba(184, 115, 51, 0.3); }
-    .submit-btn:disabled { border-color: #233554; color: #555; background: transparent; cursor: not-allowed; }
-
-    .status-msg { margin-top: 20px; text-align: center; font-size: 0.95rem; min-height: 25px; grid-column: span 2; font-family: 'Courier Prime', monospace; font-weight: bold; }
-    .success-text { color: var(--success); }
-    .error-text { color: var(--alert); }
-
-    @media (max-width: 768px) {
-        .form-grid, .task-grid { grid-template-columns: 1fr; }
-        .full-width { grid-column: span 1; }
-        .submit-btn { grid-column: span 1; }
-        .hardware-box { flex-direction: column; gap: 15px; align-items: flex-start; }
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="form-wrapper">
-    <div class="header-enlist">
-        <div class="badge">VANGUARD 50 // SECTOR 1 (MESA)</div>
-        <h1>Operator Enlistment</h1>
-        <p class="subtext">Phase 1 Pre-Screening. Establish your cryptographic identity and operational baseline.</p>
+            <button type="submit" class="submit-btn" id="submitBtn">SUBMIT ENLISTMENT DOSSIER</button>
+            <div class="status-msg" id="statusMsg"></div>
+        </form>
     </div>
-
-    <form action="/api/v1/enlist" method="POST" id="enlistForm" class="form-grid" enctype="multipart/form-data">
-        
-        <div class="full-width section-title">1. Identity & Comms Protocol</div>
-        
-        <div class="input-group full-width">
-            <label>REFERRAL CLEARANCE CODE (OPTIONAL)</label>
-            <input type="text" id="referralCodeUsed" name="referral_code_used" placeholder="e.g. VNG-XXXX-ALPHA">
-            <span class="task-desc" style="margin-top: 8px;">If a current Vanguard agent referred you, enter their code here.</span>
-        </div>
-        
-        <div class="input-group">
-            <label>FULL LEGAL NAME</label>
-            <input type="text" id="fullName" name="full_name" required placeholder="John Doe">
-        </div>
-        
-        <div class="input-group">
-            <label>TACTICAL CALLSIGN</label>
-            <input type="text" id="callsign" name="callsign" required placeholder="e.g. 'Ghost', 'Maverick'">
-        </div>
-
-        <div class="input-group">
-            <label>SECURE EMAIL ADDRESS</label>
-            <input type="email" id="email" name="email" required placeholder="name@domain.com">
-        </div>
-
-        <div class="input-group">
-            <label>MOBILE NUMBER</label>
-            <input type="tel" id="phone" name="phone" required placeholder="(555) 555-5555">
-        </div>
-
-        <div class="full-width section-title">2. Veteran Credential Upload</div>
-        <p class="subtext full-width" style="margin-top: -15px; margin-bottom: 15px;">PAN Vanguard 50 requires verified military or first-responder service. Upload a redacted DD-214 or Veteran ID.</p>
-        
-        <div class="input-group full-width">
-            <div class="file-drop-zone" id="dropZone" onclick="document.getElementById('fileUpload').click()">
-                <span class="file-icon">📄</span>
-                <span class="file-text"><strong>Click to browse</strong> or drag & drop file here.</span>
-                <br><span style="font-size: 0.75rem; color: #555;">PDF, JPG, or PNG (Max 5MB)</span>
-                <input type="file" id="fileUpload" name="veteran_credential" accept=".pdf, .jpg, .jpeg, .png" required>
-                <div class="file-name-display" id="fileNameDisplay"></div>
-            </div>
-        </div>
-
-        <div class="input-group">
-            <label>MILITARY BRANCH & YEARS</label>
-            <input type="text" id="branch" name="military_branch" required placeholder="e.g. USMC, 4 Years">
-        </div>
-
-        <div class="input-group">
-            <label>LOCAL VFW / LEGION POST (OPTIONAL)</label>
-            <input type="text" id="vfw" name="vfw_post" placeholder="e.g. Post 1760 Mesa">
-        </div>
-
-        <div class="full-width section-title">3. Hardware & Logistics</div>
-
-        <div class="input-group full-width">
-            <label>CRYPTOGRAPHIC ENCLAVE VERIFICATION</label>
-            <div class="hardware-box">
-                <div class="hw-status">
-                    <span style="color: var(--copper); font-weight: bold;">[!] PROVISIONING DEFERRED</span><br>
-                    Hardware attestation (TPM 2.0) will be conducted in-person during onboarding.<br>
-                    <span style="color: var(--slate); font-size: 0.75rem;">Minimum Requirements: iPhone 13+ (iOS 16) or Pixel 6+ / Flagship Android (Android 13+)</span>
-                </div>
-                <input type="hidden" name="hardware_verified" value="false">
-            </div>
-        </div>
-
-        <div class="input-group">
-            <label>PRIMARY OPERATING ZIP CODE</label>
-            <input type="text" id="zipcode" name="zip_code" required placeholder="e.g. 85201" pattern="[0-9]{5}">
-        </div>
-
-        <div class="input-group">
-            <label>PRIMARY DEPLOYMENT VEHICLE</label>
-            <select id="vehicle" name="vehicle_class" required>
-                <option value="" disabled selected>Select transport class...</option>
-                <option value="Car">Standard Commuter (Car/Truck/SUV)</option>
-                <option value="Motorcycle">Motorcycle / Scooter</option>
-                <option value="EBike">E-Bike / Micromobility</option>
-                <option value="Foot">Foot Patrol (High Density Zones)</option>
-            </select>
-        </div>
-
-        <div class="full-width section-title">4. Initial Mission Capabilities (Tier 1)</div>
-        <p class="subtext full-width" style="margin-top: -15px; margin-bottom: 15px;">All new Vanguard 50 agents start with Tier 1 baseline clearance. Uncheck any basic tasks you cannot perform.</p>
-
-        <div class="task-grid full-width">
-            <label class="checkbox-label">
-                <input type="checkbox" name="task_sensor_cleaning" value="Accepted" checked> 
-                <div>
-                    <b>Sensor Calibration & Cleaning</b>
-                    <span class="task-desc">Precision wiping of exterior LiDAR, radar, and camera arrays.</span>
-                </div>
-            </label>
-
-            <label class="checkbox-label">
-                <input type="checkbox" name="task_door_securing" value="Accepted" checked> 
-                <div>
-                    <b>Door & Latch Securing</b>
-                    <span class="task-desc">Responding to "door open" faults. Ensuring cabin is fully sealed.</span>
-                </div>
-            </label>
-
-            <label class="checkbox-label">
-                <input type="checkbox" name="task_trash_removal" value="Accepted" checked> 
-                <div>
-                    <b>Cabin Debris Clearing</b>
-                    <span class="task-desc">Removal of light trash or debris left behind by passengers.</span>
-                </div>
-            </label>
-
-            <label class="checkbox-label">
-                <input type="checkbox" name="task_lost_item" value="Accepted" checked> 
-                <div>
-                    <b>Lost Item Recovery</b>
-                    <span class="task-desc">Retrieving and securing valuables left inside grounded AVs.</span>
-                </div>
-            </label>
-        </div>
-
-        <div class="input-group full-width" style="margin-top: 10px;">
-            <label class="checkbox-label" style="background: rgba(184, 115, 51, 0.05); border: 1px solid var(--copper); padding: 20px; border-radius: 4px; align-items: center;">
-                <input type="checkbox" name="bootcamp_interest" value="Yes" style="width: 24px; height: 24px; margin-top: 0; flex-shrink: 0;">
-                <div style="margin-left: 5px;">
-                    <b style="color: var(--copper); font-size: 1.05rem; letter-spacing: 1px;">[OPTIONAL] ADVANCED TIER 2 & TIER 3 BOOT CAMP</b>
-                    <span class="task-desc" style="font-size: 0.85rem; color: var(--white); margin-top: 6px;">I am interested in attending a paid, in-person training session in Mesa to unlock high-bounty dispatches (Manual Repositioning, Accident Scene Escort, Biohazard Remediation, and TPMS/Tire Repair).</span>
-                </div>
-            </label>
-        </div>
-
-        <div class="full-width section-title">5. Legal Mandate & Signature</div>
-        <div class="input-group full-width signature-box">
-            <p class="sig-agreement">By signing below, I attest under penalty of perjury that the veteran credentials provided are accurate. I agree to the <a href="/human/proxy_node_agreement.html" target="_blank">Proxy Node Master Service Agreement (MSA)</a> and understand I will act as an independent contractor operating under PAN's Zero-Trust Network protocols.</p>
-            <label>DIGITAL SIGNATURE (TYPE FULL LEGAL NAME)</label>
-            <input type="text" id="signature" name="digital_signature" class="sig-input" required placeholder="Type name to sign...">
-        </div>
-
-        <button type="submit" class="submit-btn" id="submitBtn">SUBMIT ENLISTMENT DOSSIER</button>
-        <div class="status-msg" id="statusMsg"></div>
-    </form>
-</div>
-
-<script>
-    // --- File Upload UI Logic ---
-    const fileInput = document.getElementById('fileUpload');
-    const dropZone = document.getElementById('dropZone');
-    const fileNameDisplay = document.getElementById('fileNameDisplay');
-    const fileText = document.querySelector('.file-text');
-
-    fileInput.addEventListener('change', function(e) {
-        if (this.files && this.files[0]) {
-            fileText.style.display = 'none';
-            fileNameDisplay.style.display = 'block';
-            fileNameDisplay.innerHTML = `[SECURED] ${this.files[0].name} ready for upload.`;
-            dropZone.style.borderColor = "var(--success)";
-        }
-    });
-
-    // --- Backend Submit Logic ---
-    document.getElementById('enlistForm').addEventListener('submit', function(e) {
-        e.preventDefault(); 
-        
-        const form = e.target;
-        const btn = document.getElementById('submitBtn');
-        const status = document.getElementById('statusMsg');
-        
-        // Ensure signature matches name
-        const name = document.getElementById('fullName').value.trim().toLowerCase();
-        const sig = document.getElementById('signature').value.trim().toLowerCase();
-        if (name !== sig) {
-            status.innerHTML = "<span class='error-text'>[!] Signature must exactly match Full Legal Name.</span>";
-            return;
-        }
-
-        btn.innerHTML = "TRANSMITTING DOSSIER...";
-        btn.style.opacity = "0.7";
-        btn.style.pointerEvents = "none";
-        status.innerHTML = "";
-
-        const data = new FormData(form);
-
-        fetch(form.action, {
-            method: form.method,
-            body: data
-            // 🟢 THE FIX: Let the browser set the multipart form boundary automatically
-        }).then(response => response.json())
-          .then(result => {
-            if (result.status === "success") {
-                // 🟢 THE FIX: Securely route to success page with real Backend ID
-                window.location.href = "/enlist-success?ref=" + result.agent_id;
-            } else {
-                status.innerHTML = "<span class='error-text'>[!] TRANSMISSION FAILED: " + (result.detail || "Server error") + "</span>";
-                btn.innerHTML = "RETRY TRANSMISSION";
-                btn.style.opacity = "1";
-                btn.style.pointerEvents = "auto";
-            }
-        }).catch(error => {
-            status.innerHTML = "<span class='error-text'>[!] OFFLINE: Unable to reach command server. Check your connection.</span>";
-            btn.innerHTML = "RETRY TRANSMISSION";
-            btn.style.opacity = "1";
-            btn.style.pointerEvents = "auto";
-        });
-    });
-</script>
-{% endblock %}
+    <footer class="footer">&copy; 2026 Proxy Agent Network. All Rights Reserved.</footer>
+</body>
+</html>

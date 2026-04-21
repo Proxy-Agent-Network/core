@@ -4,76 +4,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProxyAgent.Network | Built for Arizona SB 1417 (2026) AV Safety Framework | Mesa AZ</title>
+    <link rel="stylesheet" href="static/css/main.css">
     <style>
-        /* Base Global Styles */
-        :root {
-            --bg-dark: #0a192f;
-            --white: #e6f1ff;
-            --slate: #8892b0;
-            --copper: #b87333;
-            --success: #64ffda;
-            --accent: #0077aa;
-        }
-        body { margin: 0; font-family: 'Inter', -apple-system, sans-serif; background-color: var(--bg-dark); color: var(--white); line-height: 1.6; }
-        
-        /* Navigation Bar */
-        .navbar { display: flex; justify-content: space-between; align-items: center; padding: 15px 40px; background-color: #ffffff; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .nav-logo { font-size: 1.8rem; font-weight: 900; color: var(--copper); text-decoration: none; }
-        .nav-logo span { color: #112240; }
-        .nav-links { display: flex; gap: 20px; align-items: center; }
-        .nav-links a { text-decoration: none; color: #112240; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: color 0.3s; }
-        .nav-links a:hover { color: var(--copper); }
-        .btn-login { border: 1px solid var(--copper); padding: 8px 20px; border-radius: 4px; color: var(--copper) !important; }
-        .btn-login:hover { background: rgba(184, 115, 51, 0.1); }
-        .btn-enlist { background-color: var(--copper); color: #ffffff !important; padding: 8px 20px; border-radius: 4px; }
-        .btn-enlist:hover { background-color: #9a5f29; }
-        
-        /* Footer */
-        .footer { text-align: center; padding: 40px 20px; background-color: #020c1b; color: var(--slate); font-size: 0.85rem; border-top: 1px solid #112240; }
-        
-        /* Page Specific Styles */
-        .hero { padding: 80px 20px 100px; background: radial-gradient(circle at top, #112240 0%, #0A192F 100%); text-align: center; border-bottom: 1px solid rgba(184, 115, 51, 0.2); }
+        .hero { padding: 80px 20px 100px; text-align: center; border-bottom: 1px solid var(--border-color); }
         .tagline { color: var(--copper); font-weight: bold; letter-spacing: 3px; text-transform: uppercase; font-size: 0.9rem; margin-bottom: 15px; }
-        h1 { font-size: 3.5rem; margin: 0; font-weight: 800; letter-spacing: -1px; line-height: 1.1; color: var(--white); }
-        .hero p { max-width: 800px; margin: 25px auto 45px; font-size: 1.25rem; color: var(--slate); }
-        .compliance-badge { display: inline-block; background: rgba(100, 255, 218, 0.1); border: 1px solid var(--success); color: var(--success); padding: 8px 20px; border-radius: 50px; font-size: 0.85rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 30px; }
+        .hero h1 { font-size: 3.5rem; margin: 0; font-weight: 800; letter-spacing: -1px; line-height: 1.1; color: var(--text-main); }
+        .hero p { max-width: 800px; margin: 25px auto 45px; font-size: 1.25rem; color: var(--text-muted); }
         .cta-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
-        .btn { padding: 18px 36px; border-radius: 4px; font-weight: bold; text-decoration: none; transition: 0.3s ease; font-size: 1.1rem; display: inline-block; }
-        .btn-primary { background-color: var(--copper); color: white; border: 1px solid var(--copper); }
-        .btn-primary:hover { background-color: transparent; color: var(--copper); }
-        .btn-secondary { border: 2px solid var(--copper); color: var(--white); }
-        .btn-secondary:hover { background: rgba(184, 115, 51, 0.1); }
         .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 30px; max-width: 1000px; margin: -50px auto 60px; padding: 0 20px; }
-        .stat-card { background: #112240; padding: 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        .stat-number { display: block; font-size: 2.5rem; font-weight: 800; color: var(--copper); }
-        .stat-label { color: var(--slate); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; }
-        .live-log { max-width: 900px; margin: 40px auto 80px; background: #020c1b; border-radius: 8px; overflow: hidden; border: 1px solid #112240; }
-        .log-header { background: #112240; padding: 12px 20px; font-size: 0.8rem; font-family: monospace; color: var(--copper); display: flex; justify-content: space-between; font-weight: bold; letter-spacing: 1px; }
-        .log-entry { padding: 15px 20px; border-bottom: 1px solid #112240; font-family: 'Courier New', Courier, monospace; display: flex; justify-content: space-between; font-size: 0.95rem; }
+        .stat-number { display: block; font-size: 2.5rem; font-weight: 800; color: var(--text-main); }
+        .stat-label { color: var(--text-muted); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; }
+        .live-log { max-width: 900px; margin: 40px auto 80px; background: var(--bg-main); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); }
+        .log-header { background: var(--bg-card); padding: 12px 20px; font-size: 0.8rem; font-family: monospace; color: var(--copper); display: flex; justify-content: space-between; font-weight: bold; letter-spacing: 1px; border-bottom: 1px solid var(--border-color); }
+        .log-entry { padding: 15px 20px; border-bottom: 1px solid var(--border-color); font-family: monospace; display: flex; justify-content: space-between; font-size: 0.95rem; color: var(--text-main); }
         .log-entry:last-child { border-bottom: none; }
-        .pay-status { color: var(--success); font-weight: bold; }
-        .audit-tag { font-size: 0.75rem; color: var(--slate); background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px; }
-        .bill-footnote { max-width: 900px; margin: -40px auto 60px; padding: 15px 20px; font-size: 0.75rem; color: var(--slate); text-align: center; font-family: monospace; line-height: 1.6; }
+        .pay-status { color: var(--teal); font-weight: bold; }
+        .audit-tag { font-size: 0.75rem; color: var(--text-muted); background: var(--bg-card); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border-color); }
+        .bill-footnote { max-width: 900px; margin: -40px auto 60px; padding: 15px 20px; font-size: 0.75rem; color: var(--text-muted); text-align: center; font-family: monospace; line-height: 1.6; }
         .bill-footnote a { color: var(--copper); text-decoration: none; }
-        .bill-footnote a:hover { text-decoration: underline; }
-        
-        @media (max-width: 800px) { .navbar { flex-direction: column; gap: 15px; } .nav-links { flex-wrap: wrap; justify-content: center; } }
-        @media (max-width: 600px) { h1 { font-size: 2.2rem; } .cta-group { flex-direction: column; align-items: center; } .btn { width: 80%; text-align: center; } .log-entry { flex-direction: column; gap: 10px; } }
+        @media (max-width: 600px) { .hero h1 { font-size: 2.2rem; } .cta-group { flex-direction: column; align-items: center; } .log-entry { flex-direction: column; gap: 10px; } }
     </style>
 </head>
 <body>
-
     <nav class="navbar">
-        <a href="/" class="nav-logo">((PAN))<span>//</span></a>
+        <a href="index.html" class="nav-logo" style="display: flex; align-items: center;">
+            <picture>
+                <source srcset="static/images/pan-logo-dark-mode-v2.png" media="(prefers-color-scheme: dark)">
+                <img src="static/images/pan-logo-light-mode-v2.png" alt="Proxy Agent Network" style="height: 45px; object-fit: contain;">
+            </picture>
+        </a>
         <div class="nav-links">
-            <a href="/">Home</a>
-            <a href="/mission">Mission</a>
-            <a href="/sector-ops">Sector Ops</a>
-            <a href="/rates">SLA Rates</a>
-            <a href="/investors">Investors</a>
-            <a href="/partners">Partners</a>
-            <a href="/login" class="btn-login">Login</a>
-            <a href="/enlist" class="btn-enlist">Enlist Now</a>
+            <a href="index.html">Home</a>
+            <a href="our-mission.html">Mission</a>
+            <a href="operations.html">Sector Ops</a>
+            <a href="rates.html">SLA Rates</a>
+            <a href="investors.html">Investors</a>
+            <a href="partners.html">Partners</a>
+            <a href="login.html" class="btn-login">Login</a>
+            <a href="enlist.html" class="btn-enlist">Enlist Now</a>
         </div>
     </nav>
 
@@ -81,60 +49,28 @@
         <div class="compliance-badge">Built For AZ SB 1417 &middot; Effective Dec 31, 2026</div>
         <div class="tagline">The Mesa 50 Initiative</div>
         <h1>Infrastructure with Honor.</h1>
-        <p>
-            The decentralized physical layer for autonomous fleets in Mesa, AZ. 
-            Hardware-attested intervention records designed to integrate cleanly with <strong>Arizona SB 1417</strong>&mdash;the state's forthcoming AV safety data framework. 
-            Powered by Veterans. Settled via L402.
-        </p>
-        
+        <p>The decentralized physical layer for autonomous fleets in Mesa, AZ. Hardware-attested intervention records designed to integrate cleanly with <strong>Arizona SB 1417</strong>&mdash;the state's forthcoming AV safety data framework. Powered by Veterans. Settled via L402.</p>
         <div class="cta-group">
-            <a href="/investors" class="btn btn-primary">INVESTOR &amp; PARTNER PORTAL</a>
-            <a href="/enlist" class="btn btn-secondary">VETERAN ENLISTMENT</a>
+            <a href="investors.html" class="btn btn-primary">INVESTOR &amp; PARTNER PORTAL</a>
+            <a href="enlist.html" class="btn btn-secondary">VETERAN ENLISTMENT</a>
         </div>
     </section>
 
     <div class="stats-row">
-        <div class="stat-card">
-            <span class="stat-number">50</span>
-            <span class="stat-label">Veteran Proxy Agents</span>
-        </div>
-        <div class="stat-card">
-            <span class="stat-number">30m</span>
-            <span class="stat-label">Ephemeral Key TTL</span>
-        </div>
-        <div class="stat-card">
-            <span class="stat-number">&lt; 12m</span>
-            <span class="stat-label">Avg. Response Time</span>
-        </div>
+        <div class="stat-card"><span class="stat-number">50</span><span class="stat-label">Veteran Proxy Agents</span></div>
+        <div class="stat-card"><span class="stat-number">30m</span><span class="stat-label">Ephemeral Key TTL</span></div>
+        <div class="stat-card"><span class="stat-number">&lt; 12m</span><span class="stat-label">Avg. Response Time</span></div>
     </div>
 
     <div class="live-log">
-        <div class="log-header">
-            <span>MESA SECTOR INTERVENTION LOG</span>
-            <span>CRYPTO SEAL: VERIFIED</span>
-        </div>
-        <div class="log-entry">
-            <span>[16:42:01] WAYMO_PHX_882: Sensor Reclamation Complete <span class="audit-tag">REC: MSA-LOG-992</span></span>
-            <span class="pay-status">+$15.00 PAID (L402)</span>
-        </div>
-        <div class="log-entry">
-            <span>[16:38:14] AMZN_ZOOX_M12: Hardware Attestation Verified <span class="audit-tag">REC: MSA-LOG-991</span></span>
-            <span class="pay-status">+$10.00 PAID (L402)</span>
-        </div>
-        <div class="log-entry">
-            <span>[16:31:55] WAYMO_PHX_771: Optical Path Restoration <span class="audit-tag">REC: MSA-LOG-990</span></span>
-            <span class="pay-status">+$45.00 PAID (L402)</span>
-        </div>
+        <div class="log-header"><span>MESA SECTOR INTERVENTION LOG</span><span>CRYPTO SEAL: VERIFIED</span></div>
+        <div class="log-entry"><span>[16:42:01] WAYMO_PHX_882: Sensor Reclamation Complete <span class="audit-tag">REC: MSA-LOG-992</span></span><span class="pay-status">+$15.00 PAID (L402)</span></div>
+        <div class="log-entry"><span>[16:38:14] AMZN_ZOOX_M12: Hardware Attestation Verified <span class="audit-tag">REC: MSA-LOG-991</span></span><span class="pay-status">+$10.00 PAID (L402)</span></div>
+        <div class="log-entry"><span>[16:31:55] WAYMO_PHX_771: Optical Path Restoration <span class="audit-tag">REC: MSA-LOG-990</span></span><span class="pay-status">+$45.00 PAID (L402)</span></div>
     </div>
 
-    <p class="bill-footnote">
-        SB 1417 reference: Arizona 57th Legislature, 2nd Regular Session, 2026 &middot; Introduced by Sen. Bolick &middot; Effective Dec 31, 2026 upon enactment &middot; 
-        <a href="https://www.azleg.gov" target="_blank" rel="noopener">azleg.gov</a>
-    </p>
+    <p class="bill-footnote">SB 1417 reference: Arizona 57th Legislature, 2nd Regular Session, 2026 &middot; Introduced by Sen. Bolick &middot; Effective Dec 31, 2026 upon enactment &middot; <a href="https://www.azleg.gov" target="_blank" rel="noopener">azleg.gov</a></p>
 
-    <footer class="footer">
-        &copy; 2026 Proxy Agent Network. All Rights Reserved.
-    </footer>
-
+    <footer class="footer">&copy; 2026 Proxy Agent Network. All Rights Reserved.</footer>
 </body>
 </html>

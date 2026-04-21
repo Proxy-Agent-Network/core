@@ -1,282 +1,113 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLA Rate Matrix | ProxyAgent.Network</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
 
-{% block title %}SLA Rate Matrix | ProxyAgent.Network{% endblock %}
-
-{% block extra_css %}
-<style>
-    .container-rates { max-width: 1200px; margin: 0 auto; padding: 40px 20px 80px; }
-    
-    .top-nav-rates { margin-bottom: 40px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
-    .top-nav-rates a { color: var(--slate); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
-    .top-nav-rates a:hover { color: var(--copper); }
-
-    .header-rates { border-left: 4px solid var(--copper); padding-left: 20px; margin-bottom: 50px; }
-    .header-rates h1 { font-size: 3rem; margin: 5px 0; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
-    .badge { color: var(--success); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; font-family: monospace; }
-    .intro-text { color: var(--slate); font-size: 1.1rem; max-width: 800px; margin-top: 15px; }
-
-    .vanguard-banner { background: linear-gradient(90deg, rgba(184, 115, 51, 0.1) 0%, rgba(2, 12, 27, 1) 100%); border: 1px solid var(--copper); border-left: 4px solid var(--copper); padding: 30px; border-radius: 4px; margin-bottom: 50px; display: flex; align-items: center; gap: 20px; }
-    .vanguard-icon { font-size: 2.5rem; line-height: 1; }
-    .vanguard-content h3 { margin: 0 0 5px 0; color: var(--white); font-size: 1.4rem; text-transform: uppercase; letter-spacing: 1px; }
-    .vanguard-content p { margin: 0; color: var(--slate); font-size: 1rem; }
-    .highlight { color: var(--copper); font-weight: bold; }
-
-    .rate-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 30px; margin-bottom: 60px; }
-    .category-card { background: var(--bg-dark); border: 1px solid #112240; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
-    .category-card h3 { background: #112240; margin: 0; padding: 15px 20px; color: var(--copper); font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #1d2d50; }
-    
-    .container-rates table { width: 100%; border-collapse: collapse; }
-    .container-rates th { text-align: left; padding: 12px 20px; font-size: 0.75rem; color: var(--slate); text-transform: uppercase; border-bottom: 1px dashed #112240; }
-    .container-rates td { padding: 15px 20px; border-bottom: 1px solid #112240; vertical-align: top; }
-    .container-rates tr:last-child td { border-bottom: none; }
-    .container-rates tr:hover { background: rgba(255,255,255,0.02); }
-    
-    .service-id { font-family: monospace; color: var(--white); font-weight: bold; font-size: 0.9rem; display: block; margin-bottom: 4px; }
-    .desc { color: var(--slate); font-size: 0.85rem; line-height: 1.4; }
-    .req { color: var(--copper); font-size: 0.75rem; font-style: italic; margin-top: 4px; display: block; }
-    
-    .price-col { text-align: right; min-width: 90px; vertical-align: middle; }
-    .usd { display: block; font-size: 1.2rem; font-weight: 800; color: var(--success); }
-
-    /* Process Section Styles */
-    .process-section { margin-top: 60px; padding: 40px; background: rgba(255,255,255,0.01); border: 1px solid #112240; border-radius: 8px; }
-    .process-section h2 { margin-top: 0; font-size: 2rem; margin-bottom: 10px; }
-    .process-section p.subtitle { color: var(--slate); margin-top: 0; margin-bottom: 30px; font-size: 1.05rem; }
-    .step-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
-    .step-card { background: var(--bg-dark); border: 1px solid #233554; border-radius: 6px; padding: 25px; position: relative; }
-    .step-number { background: var(--copper); color: var(--navy); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-bottom: 15px; font-size: 0.9rem; }
-    .step-card h4 { color: var(--white); font-size: 1.1rem; margin-top: 0; margin-bottom: 10px; }
-    .step-card p { color: var(--slate); font-size: 0.9rem; margin: 0; line-height: 1.5; }
-    .calc-box { background: #0a192f; padding: 12px; border-radius: 4px; margin-top: 15px; font-family: monospace; font-size: 0.8rem; color: var(--success); border: 1px dashed #233554; }
-
-    .roi-section { margin-top: 60px; border-top: 1px solid #112240; padding-top: 60px; }
-    .roi-section h2 { text-align: center; margin-bottom: 40px; font-size: 2.2rem; }
-    .roi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; }
-    .roi-card { padding: 30px; background: rgba(255,255,255,0.02); border: 1px solid #233554; border-radius: 8px; text-align: center; transition: 0.3s; }
-    .roi-card:hover { transform: translateY(-5px); border-color: var(--copper); }
-    .roi-card h4 { color: var(--white); font-size: 1.2rem; margin-top: 0; }
-    .roi-card p { color: var(--slate); font-size: 0.95rem; margin-bottom: 0; }
-
-    @media (max-width: 900px) {
-        .rate-grid { grid-template-columns: 1fr; }
-        .vanguard-banner { flex-direction: column; text-align: center; }
-        .header-rates h1 { font-size: 2.4rem; }
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="container-rates">
-    
-    <div class="top-nav-rates">
-        <a href="/">← RETURN TO BASE COMMAND</a>
-    </div>
-
-    <div class="header-rates">
-        <span class="badge">MESA, AZ SECTOR [SLA MATRIX - MARCH 2026]</span>
-        <h1>Service Rate Card</h1>
-        <p class="intro-text">
-            Baseline L402 smart-contract minimums for autonomous fleet interventions. 
-            All tasks include <strong>SB 1417 Hardware Attestation</strong> and a cryptographically signed audit log.
-            <i>*Real-time pricing is subject to sector density and agent-set thresholds.</i>
-        </p>
-    </div>
-
-    <div class="vanguard-banner">
-        <div class="vanguard-icon">🎖️</div>
-        <div class="vanguard-content">
-            <h3>The Vanguard 50: Elite Squad</h3>
-            <p>The first 50 Veterans to certify in the Mesa Sector earn a <strong>Lifetime 10% Bonus</strong> on all mission rewards. This payout is subsidized by the PAN Platform Fee to maintain fleet price parity while rewarding our founding Agents.</p>
+    <nav class="navbar">
+        <a href="/" class="nav-logo" style="display: flex; align-items: center;">
+            <picture>
+                <source srcset="/static/images/pan-logo-dark-mode-v2.png" media="(prefers-color-scheme: dark)">
+                <img src="/static/images/pan-logo-light-mode-v2.png" alt="Proxy Agent Network" style="height: 45px; object-fit: contain;">
+            </picture>
+        </a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/our-mission.html">Mission</a>
+            <a href="/operations.html">Sector Ops</a>
+            <a href="/rates.html">SLA Rates</a>
+            <a href="/investors.html">Investors</a>
+            <a href="/partners.html">Partners</a>
+            <a href="/login.html" class="btn-login">Login</a>
+            <a href="/enlist.html" class="btn-enlist">Enlist Now</a>
         </div>
-    </div>
+    </nav>
 
-    <div class="rate-grid">
-        
-        <div class="category-card">
-            <h3>Tier 1: General Assistance</h3>
-            <table>
-                <tr><th>Service Protocol</th><th style="text-align:right;">Min. Bid</th></tr>
-                <tr>
-                    <td>
-                        <span class="service-id">door_securing</span>
-                        <div class="desc">Door Securing - Push door completely shut.</div>
-                    </td>
-                    <td class="price-col"><span class="usd">$10.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">cabin_sweep</span>
-                        <div class="desc">Cabin Sweep & Trash - Bag and dispose of trash.</div>
-                    </td>
-                    <td class="price-col"><span class="usd">$10.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">lost_item</span>
-                        <div class="desc">Lost Item Recovery - Retrieve and secure item.</div>
-                    </td>
-                    <td class="price-col"><span class="usd">$10.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">path_clearing</span>
-                        <div class="desc">Path Clearing - Remove debris/cones from path.</div>
-                    </td>
-                    <td class="price-col"><span class="usd">$10.00</span></td>
-                </tr>
-            </table>
+    <div class="container-rates">
+        <div class="top-nav-rates">
+            <a href="/">← RETURN TO BASE COMMAND</a>
         </div>
 
-        <div class="category-card">
-            <h3>Tier 2: Specialized Ops</h3>
-            <table>
-                <tr><th>Service Protocol</th><th style="text-align:right;">Min. Bid</th></tr>
-                <tr>
-                    <td>
-                        <span class="service-id">spill_remediation</span>
-                        <div class="desc">Bio/Liquid Remediation - Sanitize interior spills.</div>
-                        <span class="req">*Requires wet-vac/bio-kit</span>
-                    </td>
-                    <td class="price-col"><span class="usd">$30.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">tire_pressure</span>
-                        <div class="desc">Tire Pressure - Refill low tire.</div>
-                        <span class="req">*Requires air compressor</span>
-                    </td>
-                    <td class="price-col"><span class="usd">$30.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">battery_jump</span>
-                        <div class="desc">12V System Jump - Wake AV with jump-box.</div>
-                        <span class="req">*Requires jump kit</span>
-                    </td>
-                    <td class="price-col"><span class="usd">$30.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">passenger_escort</span>
-                        <div class="desc">Passenger Escort - Calm and escort passenger.</div>
-                        <span class="req">*High-vis vest required</span>
-                    </td>
-                    <td class="price-col"><span class="usd">$30.00</span></td>
-                </tr>
-            </table>
+        <div class="header-rates">
+            <span class="badge">MESA, AZ SECTOR [SLA MATRIX - MARCH 2026]</span>
+            <h1>Service Rate Card</h1>
+            <p class="intro-text">
+                Baseline L402 smart-contract minimums for autonomous fleet interventions. 
+                All tasks include <strong>SB 1417 Hardware Attestation</strong> and a cryptographically signed audit log.
+                <i>*Real-time pricing is subject to sector density and agent-set thresholds.</i>
+            </p>
         </div>
 
-        <div class="category-card">
-            <h3>Tier 3: Advanced Hardware</h3>
-            <table>
-                <tr><th>Service Protocol</th><th style="text-align:right;">Min. Bid</th></tr>
-                <tr>
-                    <td>
-                        <span class="service-id">sensor_cleaning</span>
-                        <div class="desc">Sensor Cleaning - Microfiber clean LIDAR dome.</div>
-                        <span class="req">*Certified cleaning kit</span>
-                    </td>
-                    <td class="price-col"><span class="usd">$50.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">scene_securement</span>
-                        <div class="desc">First Responder Liaison - Interact with police/flares.</div>
-                        <span class="req">*Requires safety flares</span>
-                    </td>
-                    <td class="price-col"><span class="usd">$50.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">tire_replacement</span>
-                        <div class="desc">Tire Replacement - Swap spare or plug blowout.</div>
-                        <span class="req">*Requires jack/plug kit</span>
-                    </td>
-                    <td class="price-col"><span class="usd">$50.00</span></td>
-                </tr>
-                <tr>
-                    <td>
-                        <span class="service-id">manual_override</span>
-                        <div class="desc">Manual Drive Takeover - Manually extract AV.</div>
-                        <span class="req">*Special ops clearance</span>
-                    </td>
-                    <td class="price-col"><span class="usd">$50.00</span></td>
-                </tr>
-            </table>
+        <div class="vanguard-banner">
+            <div class="vanguard-icon">🎖️</div>
+            <div class="vanguard-content">
+                <h3>The Vanguard 50: Elite Squad</h3>
+                <p>The first 50 Veterans to certify in the Mesa Sector earn a <strong>Lifetime 10% Bonus</strong> on all mission rewards. This payout is subsidized by the PAN Platform Fee to maintain fleet price parity while rewarding our founding Agents.</p>
+            </div>
         </div>
 
-    </div>
-
-    <div class="process-section">
-        <h2>Transparent Dispatch & Platform Fees</h2>
-        <p class="subtitle">How our 5%-10% matching fee and instant L402 SATs settlement works.</p>
-        
-        <div class="step-grid">
-            <div class="step-card">
-                <div class="step-number">1</div>
-                <h4>The Bid Request</h4>
-                <p>The AV Company issues an automated bid for a task and pays a standard 5% dispatch fee directly into the routing engine.</p>
-                <div class="calc-box">
-                    AV Bid: $12.00<br>
-                    + 5% Fee: $0.60<br>
-                    ----------------<br>
-                    Total Auth: $12.60
-                </div>
+        <div class="rate-grid">
+            <div class="category-card">
+                <h3>Tier 1: General Assistance</h3>
+                <table>
+                    <tr><th>Service Protocol</th><th style="text-align:right;">Min. Bid</th></tr>
+                    <tr><td><span class="service-id">door_securing</span><div class="desc">Door Securing - Push door completely shut.</div></td><td class="price-col"><span class="usd">$10.00</span></td></tr>
+                    <tr><td><span class="service-id">cabin_sweep</span><div class="desc">Cabin Sweep & Trash - Bag and dispose of trash.</div></td><td class="price-col"><span class="usd">$10.00</span></td></tr>
+                    <tr><td><span class="service-id">lost_item</span><div class="desc">Lost Item Recovery - Retrieve and secure item.</div></td><td class="price-col"><span class="usd">$10.00</span></td></tr>
+                    <tr><td><span class="service-id">path_clearing</span><div class="desc">Path Clearing - Remove debris/cones from path.</div></td><td class="price-col"><span class="usd">$10.00</span></td></tr>
+                </table>
             </div>
 
-            <div class="step-card">
-                <div class="step-number">2</div>
-                <h4>Conversion & Match</h4>
-                <p>The total authorized amount is converted into exact SATs (Satoshis) at real-time market value to enable instant transfer. PAN matches the AV with the closest Agent whose minimum bid meets the request criteria.</p>
-                <div class="calc-box">
-                    $12.60 ➔ 16,870 SATs<br>
-                    Match: Agent w/ $10 Min.
-                </div>
+            <div class="category-card">
+                <h3>Tier 2: Specialized Ops</h3>
+                <table>
+                    <tr><th>Service Protocol</th><th style="text-align:right;">Min. Bid</th></tr>
+                    <tr><td><span class="service-id">spill_remediation</span><div class="desc">Bio/Liquid Remediation - Sanitize interior spills.</div><span class="req">*Requires wet-vac/bio-kit</span></td><td class="price-col"><span class="usd">$30.00</span></td></tr>
+                    <tr><td><span class="service-id">tire_pressure</span><div class="desc">Tire Pressure - Refill low tire.</div><span class="req">*Requires air compressor</span></td><td class="price-col"><span class="usd">$30.00</span></td></tr>
+                    <tr><td><span class="service-id">battery_jump</span><div class="desc">12V System Jump - Wake AV with jump-box.</div><span class="req">*Requires jump kit</span></td><td class="price-col"><span class="usd">$30.00</span></td></tr>
+                    <tr><td><span class="service-id">passenger_escort</span><div class="desc">Passenger Escort - Calm and escort passenger.</div><span class="req">*High-vis vest required</span></td><td class="price-col"><span class="usd">$30.00</span></td></tr>
+                </table>
             </div>
 
-            <div class="step-card">
-                <div class="step-number">3</div>
-                <h4>Escrow & Execution</h4>
-                <p>The SATs are instantly moved from the AV's wallet to a secure Escrow holding for up to 60 minutes. The Agent arrives on scene, completes the verified photo protocol, and clears the fault code.</p>
-                <div class="calc-box">
-                    Status: SLA Active<br>
-                    Cancel/Timeout ➔ Auto-Reassign
-                </div>
+            <div class="category-card">
+                <h3>Tier 3: Advanced Hardware</h3>
+                <table>
+                    <tr><th>Service Protocol</th><th style="text-align:right;">Min. Bid</th></tr>
+                    <tr><td><span class="service-id">sensor_cleaning</span><div class="desc">Sensor Cleaning - Microfiber clean LIDAR dome.</div><span class="req">*Certified cleaning kit</span></td><td class="price-col"><span class="usd">$50.00</span></td></tr>
+                    <tr><td><span class="service-id">scene_securement</span><div class="desc">First Responder Liaison - Interact with police/flares.</div><span class="req">*Requires safety flares</span></td><td class="price-col"><span class="usd">$50.00</span></td></tr>
+                    <tr><td><span class="service-id">tire_replacement</span><div class="desc">Tire Replacement - Swap spare or plug blowout.</div><span class="req">*Requires jack/plug kit</span></td><td class="price-col"><span class="usd">$50.00</span></td></tr>
+                    <tr><td><span class="service-id">manual_override</span><div class="desc">Manual Drive Takeover - Manually extract AV.</div><span class="req">*Special ops clearance</span></td><td class="price-col"><span class="usd">$50.00</span></td></tr>
+                </table>
             </div>
+        </div>
 
-            <div class="step-card">
-                <div class="step-number">4</div>
-                <h4>Task Complete & Payout</h4>
-                <p>Once the AV clears the error, Escrow instantly releases the funds over the Lightning Network. The Agent takes their fee, and PAN retains the difference.</p>
-                <div class="calc-box">
-                    Agent: 12,131 SATs<br>
-                    ($10 - $1 Network Fee)<br>
-                    PAN Retains: 4,739 SATs
-                </div>
+        <div class="process-section">
+            <h2>Transparent Dispatch & Platform Fees</h2>
+            <p class="subtitle">How our 5%-10% matching fee and instant L402 SATs settlement works.</p>
+            <div class="step-grid">
+                <div class="step-card"><div class="step-number">1</div><h4>The Bid Request</h4><p>The AV Company issues an automated bid for a task and pays a standard 5% dispatch fee directly into the routing engine.</p><div class="calc-box">AV Bid: $12.00<br>+ 5% Fee: $0.60<br>----------------<br>Total Auth: $12.60</div></div>
+                <div class="step-card"><div class="step-number">2</div><h4>Conversion & Match</h4><p>The total authorized amount is converted into exact SATs (Satoshis) at real-time market value to enable instant transfer. PAN matches the AV with the closest Agent whose minimum bid meets the request criteria.</p><div class="calc-box">$12.60 ➔ 16,870 SATs<br>Match: Agent w/ $10 Min.</div></div>
+                <div class="step-card"><div class="step-number">3</div><h4>Escrow & Execution</h4><p>The SATs are instantly moved from the AV's wallet to a secure Escrow holding for up to 60 minutes. The Agent arrives on scene, completes the verified photo protocol, and clears the fault code.</p><div class="calc-box">Status: SLA Active<br>Cancel/Timeout ➔ Auto-Reassign</div></div>
+                <div class="step-card"><div class="step-number">4</div><h4>Task Complete & Payout</h4><p>Once the AV clears the error, Escrow instantly releases the funds over the Lightning Network. The Agent takes their fee, and PAN retains the difference.</p><div class="calc-box">Agent: 12,131 SATs<br>($10 - $1 Network Fee)<br>PAN Retains: 4,739 SATs</div></div>
+            </div>
+        </div>
+
+        <div class="roi-section">
+            <h2>The Zero-Downtime ROI</h2>
+            <div class="roi-grid">
+                <div class="roi-card"><span style="font-size: 2rem; display: block; margin-bottom:10px;">📉</span><h4>The $10 Door Close</h4><p>Internal chase vans cost fleets ~$55/hr in labor/overhead. A PAN "Flash Task" saves operators <b>80%</b> on minor cabin incidents.</p></div>
+                <div class="roi-card"><span style="font-size: 2rem; display: block; margin-bottom:10px;">⏱️</span><h4>Rapid Audit Ready</h4><p>Meet SB 1417 diagnostic requirements instantly. Our Agents generate the verified data logs that keep your fleet legally operational.</p></div>
+                <div class="roi-card"><span style="font-size: 2rem; display: block; margin-bottom:10px;">📈</span><h4>The Veteran Edge</h4><p>Military discipline ensures high-integrity execution. Professional field kits (HP Potion) protect your $150k sensor arrays from damage.</p></div>
             </div>
         </div>
     </div>
 
-    <div class="roi-section">
-        <h2>The Zero-Downtime ROI</h2>
-        <div class="roi-grid">
-            <div class="roi-card">
-                <span style="font-size: 2rem; display: block; margin-bottom:10px;">📉</span>
-                <h4>The $10 Door Close</h4>
-                <p>Internal chase vans cost fleets ~$55/hr in labor/overhead. A PAN "Flash Task" saves operators <b>80%</b> on minor cabin incidents.</p>
-            </div>
-            <div class="roi-card">
-                <span style="font-size: 2rem; display: block; margin-bottom:10px;">⏱️</span>
-                <h4>Rapid Audit Ready</h4>
-                <p>Meet SB 1417 diagnostic requirements instantly. Our Agents generate the verified data logs that keep your fleet legally operational.</p>
-            </div>
-            <div class="roi-card">
-                <span style="font-size: 2rem; display: block; margin-bottom:10px;">📈</span>
-                <h4>The Veteran Edge</h4>
-                <p>Military discipline ensures high-integrity execution. Professional field kits (HP Potion) protect your $150k sensor arrays from damage.</p>
-            </div>
-        </div>
-    </div>
-
-</div>
-{% endblock %}
+    <footer class="footer">
+        &copy; 2026 Proxy Agent Network. All Rights Reserved.
+    </footer>
+</body>
+</html>

@@ -3,167 +3,185 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Investor Relations | ProxyAgent.Network</title>
+    <title>Investor Relations | ProxyAgent.Network Mesa Pilot</title>
+    
+    <link rel="stylesheet" href="static/css/main.css">
+    
     <style>
-        /* Base Global Styles */
-        :root {
-            --bg-dark: #0a192f;
-            --white: #e6f1ff;
-            --slate: #8892b0;
-            --copper: #b87333;
-            --success: #64ffda;
-            --accent: #0077aa;
-        }
-        body { margin: 0; font-family: 'Inter', -apple-system, sans-serif; background-color: var(--bg-dark); color: var(--white); line-height: 1.6; }
+        .container-ir { max-width: 1100px; margin: 0 auto; padding: 40px 20px 80px; }
+        .top-nav-local { margin-bottom: 40px; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; }
+        .top-nav-local a { color: var(--text-muted); text-decoration: none; transition: 0.3s; display: inline-flex; align-items: center; }
+        .top-nav-local a:hover { color: var(--copper); }
         
-        /* Navigation Bar */
-        .navbar { display: flex; justify-content: space-between; align-items: center; padding: 15px 40px; background-color: #ffffff; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .nav-logo { font-size: 1.8rem; font-weight: 900; color: var(--copper); text-decoration: none; }
-        .nav-logo span { color: #112240; }
-        .nav-links { display: flex; gap: 20px; align-items: center; }
-        .nav-links a { text-decoration: none; color: #112240; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; transition: color 0.3s; }
-        .nav-links a:hover { color: var(--copper); }
-        .btn-login { border: 1px solid var(--copper); padding: 8px 20px; border-radius: 4px; color: var(--copper) !important; }
-        .btn-login:hover { background: rgba(184, 115, 51, 0.1); }
-        .btn-enlist { background-color: var(--copper); color: #ffffff !important; padding: 8px 20px; border-radius: 4px; }
-        .btn-enlist:hover { background-color: #9a5f29; }
+        .header-ir { border-left: 4px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
+        .header-ir h1 { font-size: 3.2rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; line-height: 1.1; color: var(--text-main); }
+        .lead-text { color: var(--text-muted); font-size: 1.2rem; max-width: 800px; }
         
-        /* Footer */
-        .footer { text-align: center; padding: 40px 20px; background-color: #020c1b; color: var(--slate); font-size: 0.85rem; border-top: 1px solid #112240; }
-
-        /* Page Specific Styles */
-        .container-investors { max-width: 1100px; margin: 0 auto; padding: 80px 20px; }
-        .header-investors { border-left: 5px solid var(--copper); padding-left: 25px; margin-bottom: 60px; }
-        .subtitle { color: var(--copper); font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; }
-        .header-investors h1 { font-size: 3.5rem; margin: 10px 0; letter-spacing: -1px; font-weight: 800; color: var(--white); }
+        .tech-moat { background: var(--bg-main); padding: 40px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+        .tech-moat h2 { margin-top: 0; font-size: 2rem; color: var(--text-main); }
+        .tech-feature { margin-bottom: 20px; }
+        .tech-feature h4 { color: var(--copper); margin: 0 0 5px 0; font-size: 1.1rem; }
+        .tech-feature p { color: var(--text-muted); font-size: 0.95rem; margin: 0; }
         
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-bottom: 50px; }
-        .card { background: #112240; padding: 35px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); transition: 0.3s; }
-        .card:hover { border-color: var(--copper); transform: translateY(-5px); }
-        .card h3 { margin-top: 0; font-size: 1.1rem; color: var(--slate); text-transform: uppercase; }
-        .big-number { display: block; font-size: 3.5rem; font-weight: 800; color: var(--white); margin: 15px 0; }
-        .card p { font-size: 0.95rem; color: var(--slate); margin: 0; }
-
-        .table-container { background: #020c1b; border-radius: 12px; padding: 30px; border: 1px solid #112240; margin-top: 40px; overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; color: var(--copper); padding: 15px; font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid #112240; }
-        td { padding: 20px 15px; border-bottom: 1px solid #112240; font-size: 1rem; color: var(--white); }
-        .highlight-row { background: rgba(184, 115, 51, 0.05); color: var(--white); font-weight: bold; }
-        .legal-tag { background: rgba(100, 255, 218, 0.1); color: var(--success); padding: 4px 12px; border-radius: 15px; font-size: 0.75rem; font-weight: bold; }
-
-        .footer-cta { text-align: center; margin-top: 100px; padding-top: 40px; border-top: 1px solid #112240; }
-        .btn-link { color: var(--copper); text-decoration: none; font-weight: bold; border-bottom: 2px solid transparent; transition: 0.3s; font-size: 1.2rem; }
-        .btn-link:hover { border-bottom-color: var(--copper); }
-
-        .infrastructure-row { margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
-        .infra-text h2 { font-size: 2.2rem; margin-top: 0; color: var(--white); }
-        .infra-text p { color: var(--slate); font-size: 1.1rem; }
-
-        .bill-citation { margin-top: 40px; padding: 20px 25px; background: rgba(2, 12, 27, 0.5); border-left: 3px solid var(--slate); border-radius: 0 4px 4px 0; font-size: 0.85rem; color: var(--slate); line-height: 1.7; }
-        .bill-citation strong { color: var(--white); }
+        .regulatory-section { margin-top: 60px; padding: 30px; border-left: 4px solid var(--teal); background: var(--teal-bg); border-radius: 0 4px 4px 0; }
+        .regulatory-section h4 { color: var(--teal); margin: 0 0 12px 0; font-size: 1.2rem; }
+        .regulatory-section p { color: var(--text-muted); font-size: 0.95rem; margin: 0 0 10px 0; line-height: 1.7; }
+        .regulatory-section ul { color: var(--text-muted); font-size: 0.95rem; margin: 10px 0; padding-left: 20px; line-height: 1.8; }
+        .regulatory-section ul li strong { color: var(--text-main); }
+        
+        .bill-citation { margin-top: 30px; padding: 18px 22px; background: var(--bg-card); border-left: 3px solid var(--slate); border-radius: 0 4px 4px 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.7; font-family: monospace; border: 1px solid var(--border-color); }
+        .bill-citation strong { color: var(--text-main); font-family: 'Inter', sans-serif; }
         .bill-citation a { color: var(--copper); text-decoration: none; }
         .bill-citation a:hover { text-decoration: underline; }
-
-        @media (max-width: 800px) { .infrastructure-row { grid-template-columns: 1fr; } .header-investors h1 { font-size: 2.5rem; } .navbar { flex-direction: column; gap: 15px; } .nav-links { flex-wrap: wrap; justify-content: center; } }
+        
+        .footer-cta { margin-top: 80px; text-align: center; border-top: 1px solid var(--border-color); padding-top: 50px; }
+        
+        @media (max-width: 800px) { .tech-moat { grid-template-columns: 1fr; } .header-ir h1 { font-size: 2.5rem; } }
     </style>
 </head>
 <body>
 
     <nav class="navbar">
-        <a href="/" class="nav-logo">((PAN))<span>//</span></a>
+        <a href="index.html" class="nav-logo" style="display: flex; align-items: center;">
+            <picture>
+                <source srcset="static/images/pan-logo-dark-mode-v2.png" media="(prefers-color-scheme: dark)">
+                <img src="static/images/pan-logo-light-mode-v2.png" alt="Proxy Agent Network" style="height: 45px; object-fit: contain;">
+            </picture>
+        </a>
         <div class="nav-links">
-            <a href="/">Home</a>
-            <a href="/mission">Mission</a>
-            <a href="/sector-ops">Sector Ops</a>
-            <a href="/rates">SLA Rates</a>
-            <a href="/investors">Investors</a>
-            <a href="/partners">Partners</a>
-            <a href="/login" class="btn-login">Login</a>
-            <a href="/enlist" class="btn-enlist">Enlist Now</a>
+            <a href="index.html">Home</a>
+            <a href="our-mission.html">Mission</a>
+            <a href="operations.html">Sector Ops</a>
+            <a href="rates.html">SLA Rates</a>
+            <a href="investors.html">Investors</a>
+            <a href="partners.html">Partners</a>
+            <a href="login.html" class="btn-login">Login</a>
+            <a href="enlist.html" class="btn-enlist">Enlist Now</a>
         </div>
     </nav>
 
-    <div class="container-investors">
-        <div class="header-investors">
-            <div class="subtitle">Pre-Seed Opportunity // 2026</div>
-            <h1>Securing the Autonomous Economy.</h1>
-            <p style="color: var(--slate); font-size: 1.25rem; max-width: 800px;">
-                Proxy Agent Network (PAN) is the decentralized "Physical API" for autonomous fleets, 
-                bridging the gap between AI diagnostics and physical reclamation through a certified Veteran workforce.
+    <div class="container-ir">
+        <div class="top-nav-local">
+            <a href="index.html">&larr; RETURN TO BASE COMMAND (HOME)</a>
+        </div>
+
+        <div class="header-ir">
+            <div class="subtitle">Investment Thesis Q1 2026</div>
+            <h1>Securing the Autonomous Human Infrastructure.</h1>
+            <p class="lead-text">
+                While the AV industry has spent billions on perception, planning, and compute, the "Last Inch" of physical reliability remains a material operational drain. PAN delivers a decentralized, hardware-attested human layer designed to integrate with the emerging regulatory environment.
             </p>
         </div>
 
-        <div class="grid">
+        <div class="roi-grid">
             <div class="card">
-                <h3>Round Stage</h3>
-                <span class="legal-tag" style="background: rgba(184, 115, 51, 0.15); color: var(--copper);">PRE-SEED &middot; ACTIVE</span>
-                <p style="margin-top: 15px;">Raising to fund the Mesa Sector 1 pilot: Vanguard agent provisioning, liability coverage, and initial fleet-integration work. Round size and terms shared under NDA.</p>
+                <h3>Mesa Operations Domain</h3>
+                <span class="big-number">239k</span>
+                <p>Sq. ft. Waymo/Magna facility located within our Sector 1 response zone. Capacity for tens of thousands of AV conversions annually.</p>
             </div>
             <div class="card">
-                <h3>Platform Margin</h3>
-                <span class="big-number">20.0%</span>
-                <p>Sustainable net platform fee. Incentivized Founding Agents (Vanguard 50) share 10.0% from platform share.</p>
+                <h3>Recovery Market Size</h3>
+                <span class="big-number">$2.46B</span>
+                <p>Global automated recovery market projected for 2026 (company estimate based on third-party industry reports; source available on request), growing at ~14.7% CAGR as fleet expansion drives incident volume.</p>
             </div>
             <div class="card">
-                <h3>Regulatory Tailwind</h3>
-                <span class="legal-tag">AZ SB 1417 ALIGNED</span>
-                <p style="margin-top: 15px;">Hardware-attested intervention records and L402 settlement logs are designed to integrate with Arizona's forthcoming 2026 AV safety reporting framework.</p>
+                <h3>OpEx Reduction</h3>
+                <span class="big-number">92%</span>
+                <p>Illustrative cost reduction for a $12.00 Tier-1 "Door Close" mission via PAN vs. a chase-van dispatch modeled at $150,000/year fully-loaded. Not all interventions are substitutable; see full unit economics below.</p>
             </div>
         </div>
 
-        <div class="infrastructure-row">
-            <div class="infra-text">
-                <h2>Hardware-Attested Trust Layer</h2>
-                <p>In 2026, identity is infrastructure. PAN utilizes Apple Secure Enclave and Android TPM 2.0 to ensure every "Sensor Handshake" is cryptographically verified. This zero-trust architecture produces tamper-resistant intervention records that are compatible with the data-retention and audit-trail direction of Arizona's forthcoming SB 1417 framework.</p>
-                
+        <div class="tech-moat">
+            <div>
+                <h2>The Core Protocol Moat</h2>
+                <div class="tech-feature">
+                    <h4>[1] Hardware-Backed Identity</h4>
+                    <p>Utilizing <strong>Apple Secure Enclave</strong> and <strong>Android StrongBox</strong> to cryptographically sign every intervention. High-fidelity verification of the veteran "Node" on-site.</p>
+                </div>
+                <div class="tech-feature">
+                    <h4>[2] Instant L402 Settlements</h4>
+                    <p>Using the Lightning Network to settle $20.00 missions the millisecond diagnostic clearing is confirmed. Eliminating legacy payroll friction and 30-day net invoicing.</p>
+                </div>
+                <div class="tech-feature">
+                    <h4>[3] Audit-Compatible Records</h4>
+                    <p>Every mission generates a cryptographically signed intervention record with tamper-resistant telemetry, structured for compatibility with the data-retention and reporting direction of Arizona's 2026 AV safety statutes.</p>
+                </div>
             </div>
-            <div class="card" style="background: var(--bg-dark);">
-                <h3>Mesa Operations</h3>
-                <p style="color: var(--white); font-weight: bold; font-size: 1.2rem;">239k Sq. Ft.</p>
-                <p>Direct proximity to Waymo/Magna Integration Hub. We are the "Last-Mile" human redundant layer for the world's highest-density AV corridor.</p>
+            <div class="terminal">
+                <span class="code-comment"># LIVE_TELEMETRY: INTERVENTION_RECORD</span><br><br>
+                <span class="highlight">TIMESTAMP:</span> 2026-03-04T06:42:01Z<br>
+                <span class="highlight">EVENT_TYPE:</span> SB1417_COMPATIBLE_LOG<br>
+                <span class="highlight">FLEET_ID:</span> WAYMO_MESA_FACTORY_771<br>
+                <br>
+                <span class="code-comment"># VERIFYING HARDWARE ATTESTATION...</span><br>
+                <span class="highlight">AGENT:</span> VETERAN_NODE_052 (USMC_RET)<br>
+                <span class="highlight">SECURE_CHIP:</span> TPM_2.0_VALIDATED<br>
+                <br>
+                <span class="code-comment"># MISSION: SENSOR_RECLAMATION</span><br>
+                <span class="highlight">DIAGNOSTIC_STATE:</span> <span style="color:var(--bg-card); background:var(--teal); padding:2px 5px; font-weight:bold;">CLEARED</span>
             </div>
         </div>
 
-        <h2 style="margin-top: 80px; margin-bottom: 30px; color: var(--white);">The Unit Economics of Autonomy</h2>
+        <h2>Strategic Unit Economics</h2>
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
                         <th>Recovery Model</th>
-                        <th>Avg. Cost/Event</th>
+                        <th>Fixed CapEx</th>
+                        <th>Marginal Cost/Event</th>
                         <th>Response Time</th>
-                        <th>Settlement Engine</th>
+                        <th>Audit Record</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>Legacy Chase Van (CapEx)</td>
+                        <td>Centralized Chase Van</td>
+                        <td>$150,000 / unit</td>
                         <td>$240.00+</td>
                         <td>45 - 60 Min</td>
-                        <td>Legacy Payroll (Bi-Weekly)</td>
+                        <td>Manual / Delayed</td>
                     </tr>
-                    <tr class="highlight-row">
-                        <td>PAN Veteran Network</td>
-                        <td>$12.00 - $55.00</td>
-                        <td>&lt; 12 Min</td>
-                        <td>L402 Lightning (Instant)</td>
+                    <tr style="background: var(--copper-bg);">
+                        <td class="highlight">Proxy Agent Network</td>
+                        <td class="highlight">$0 (BYOD)</td>
+                        <td class="highlight">$12.00 - $55.00</td>
+                        <td class="highlight">&lt; 12 Min</td>
+                        <td class="highlight">Automated / Cryptographic</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
+        <div class="regulatory-section">
+            <h4>Regulatory Tailwind: Arizona SB 1417 (2026)</h4>
+            <p>
+                Arizona SB 1417&mdash;introduced in the 57th Legislature's 2nd Regular Session and setting an effective date of December 31, 2026&mdash;would materially raise the operational and reporting burden on AV fleets operating in the state. Key provisions PAN's architecture is designed to complement:
+            </p>
+            <ul>
+                <li><strong>&sect; 28-9702(C)(3):</strong> $5,000,000 per-occurrence liability insurance requirement on the AV manufacturer/operator.</li>
+                <li><strong>&sect; 28-9702(C)(5):</strong> Quarterly safety performance reports to ADOT and DPS covering miles driven, collisions, near-miss events, and material software/map updates.</li>
+                <li><strong>&sect; 28-9710:</strong> Tamper-resistant operational data retention for not less than 12 months, with defined access rights for ADOT, DPS, and authorized agencies.</li>
+                <li><strong>&sect; 28-9712(B)(2)(e):</strong> Independent performance audits conducted by ADOT, drawing on "system diagnostic data indicating sensor failures or computational errors" among other inputs.</li>
+                <li><strong>&sect; 28-9708(H):</strong> Civil penalties up to $25,000 per violation, per day, deposited into the new Autonomous Vehicle Safety Fund.</li>
+            </ul>
+            <p>
+                PAN does not perform the state audit function and is not an ADOT-recognized third-party safety assessor. PAN's value is operational: our hardware-attested, cryptographically sealed intervention records are structured to drop cleanly into the reporting and data-retention obligations the bill would impose on our fleet customers&mdash;reducing the friction of producing audit-ready trails at quarterly filing deadlines.
+            </p>
+        </div>
+
         <div class="bill-citation">
-            <strong>Regulatory Reference:</strong> Arizona Senate Bill 1417, 57th Legislature, 2nd Regular Session, 2026. 
-            Introduced by Senator Bolick. Relates to autonomous vehicles, safety, and data. 
+            <strong>Full Citation:</strong> Arizona Senate Bill 1417, 57th Legislature, 2nd Regular Session, 2026. Introduced by Senator Bolick. "Autonomous Vehicles; Safety; Data." 
             Amends A.R.S. &sect;&sect; 28-9701, 28-9702, 28-9703, 28-9707, 28-9708; adds &sect;&sect; 28-9709, 28-9710, 28-9711, 28-9712. 
-            Effective date: December 31, 2026, upon enactment. 
-            Bill status and text: <a href="https://www.azleg.gov" target="_blank" rel="noopener">azleg.gov</a>. 
-            Nothing on this page should be construed as legal advice or a guarantee of compliance with rules that remain subject to ADOT rulemaking.
+            Effective from and after December 31, 2026, upon enactment. 
+            Bill text and status: <a href="https://www.azleg.gov" target="_blank" rel="noopener">azleg.gov</a>. 
+            ADOT rulemaking defining reporting formats and the structure of third-party performance audits (&sect; 28-9703(B)) remains pending. 
+            Nothing on this page constitutes legal advice or a representation of compliance with rules not yet promulgated.
         </div>
 
         <div class="footer-cta">
-            <p style="color: var(--slate); margin-bottom: 20px;">Strictly Confidential // Limited Distribution to Accredited Partners</p>
-            <a href="/partners" class="btn-link">REQUEST VIRTUAL DATA ROOM (VDR) ACCESS &rarr;</a>
+            <p class="subtext" style="margin-bottom: 25px;">Pre-seed round active &middot; Limited distribution to accredited partners</p>
+            <a href="partners.html" class="btn btn-primary">REQUEST VIRTUAL DATA ROOM ACCESS</a>
         </div>
     </div>
 
