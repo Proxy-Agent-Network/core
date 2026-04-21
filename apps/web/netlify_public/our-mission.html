@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Our Mission | ProxyAgent.Network{% endblock %}
+
+{% block extra_css %}
+<style>
+    .content-mission { flex: 1; padding: 60px 20px; }
+    .container-mission { max-width: 1000px; margin: 0 auto; }
+    
+    .mission-header { border-bottom: 2px solid var(--copper); padding-bottom: 20px; margin-bottom: 40px; }
+    .mission-header h1 { font-size: 3.5rem; margin: 0; font-weight: 900; letter-spacing: -1px; line-height: 1.1; text-transform: uppercase; }
+    .status-badge { background: rgba(100, 255, 218, 0.1); border: 1px solid var(--success); color: var(--success); padding: 5px 15px; font-weight: bold; font-family: monospace; font-size: 0.8rem; display: inline-block; margin-bottom: 15px; letter-spacing: 1px; }
+    .subtext { color: var(--slate); font-size: 1.1rem; margin-top: 15px; }
+    
+    .briefing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 40px; }
+    .brief-box { border: 1px solid #112240; padding: 30px; background: var(--bg-dark); border-radius: 6px; transition: 0.3s; }
+    .brief-box:hover { border-color: #233554; transform: translateY(-3px); }
+    .brief-box h3 { color: var(--copper); margin-top: 0; border-left: 3px solid var(--copper); padding-left: 15px; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px; }
+    .brief-box p { color: var(--slate); font-size: 0.95rem; margin-bottom: 0; }
+    
+    /* REGULATORY SECTION */
+    .regulatory-moat { 
+        margin: 40px 0; 
+        padding: 30px; 
+        border-left: 4px solid var(--success); 
+        background: rgba(100, 255, 218, 0.03);
+    }
+    .regulatory-moat h2 { color: var(--success); font-size: 1.4rem; text-transform: uppercase; margin-top: 0; }
+
+    /* HARDWARE CHECKER */
+    .checker-section { background: var(--bg-dark); border: 1px solid #112240; padding: 40px; border-radius: 6px; margin-top: 30px; text-align: center; }
+    .checker-title { color: var(--white); font-size: 1.5rem; font-weight: 800; margin-bottom: 30px; letter-spacing: 1px; text-transform: uppercase; }
+    .device-row { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px; }
+    .device-cat { flex: 1; min-width: 200px; padding: 25px; border: 1px solid #233554; background: rgba(255,255,255,0.02); border-radius: 4px; }
+    .device-cat h4 { color: var(--copper); font-size: 1.1rem; margin-bottom: 10px; margin-top: 0; text-transform: uppercase; letter-spacing: 1px;}
+    .device-cat p { font-size: 1.05rem; font-weight: bold; margin: 0; color: var(--white); }
+    .ver-tag { display: block; color: var(--success); font-size: 0.75rem; margin-top: 8px; font-family: monospace; }
+
+    .apply-btn {
+        display: block; width: 100%; text-align: center; 
+        background: rgba(184, 115, 51, 0.1); border: 1px solid var(--copper);
+        color: var(--copper); padding: 20px; font-size: 1.2rem; font-weight: bold;
+        text-decoration: none; margin-top: 50px; transition: 0.3s; border-radius: 4px;
+        letter-spacing: 2px; text-transform: uppercase;
+    }
+    .apply-btn:hover { background: var(--copper); color: var(--navy); }
+
+    @media (max-width: 768px) {
+        .mission-header h1 { font-size: 2.4rem; }
+        .device-row { flex-direction: column; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-mission">
+    <div class="container-mission">
+        <div class="mission-header">
+            <span class="status-badge">OPERATIONAL STATUS: MESA SECTOR ACTIVE</span>
+            <h1>Our Mission</h1>
+            <p class="subtext">Securing the future of autonomous transit. Powered by Veterans.</p>
+        </div>
+
+        <div class="briefing-grid">
+            <div class="brief-box">
+                <h3>01. Objective</h3>
+                <p>Maintain 99.9% uptime for Mesa AV fleets. We provide the rapid physical layer that restores grounded assets to revenue-generating status in under 12 minutes.</p>
+            </div>
+            <div class="brief-box">
+                <h3>02. Secure Auth</h3>
+                <p>Identity is hardware-locked. Utilizing the <strong>Apple Secure Enclave</strong> and <strong>Android StrongBox</strong>, we ensure that only certified Veterans can initiate a vehicle reclamation sequence.</p>
+            </div>
+            <div class="brief-box">
+                <h3>03. SB 1417 Audit</h3>
+                <p>Every mission generates a cryptographically signed report. This satisfies Arizona's 2026 mandates for independent sensor diagnostic auditing and $5M liability thresholds.</p>
+            </div>
+            <div class="brief-box">
+                <h3>04. Instant Pay</h3>
+                <p>Settled via L402. Payment triggers the moment the vehicle's <strong>Unified Diagnostic Service (UDS)</strong> clears the relevant fault code across LIDAR, Camera, or Ultrasonic suites.</p>
+            </div>
+        </div>
+
+        <div class="regulatory-moat">
+            <h2>The SB 1417 Compliance Bridge</h2>
+            <p>Under Arizona SB 1417, fleet operators are required to provide independent verification of sensor diagnostic health. PAN doesn't just "clean" hardware; we provide the <strong>Human-in-the-loop</strong> verification that satisfies state-mandated safety audits. We are the only veteran-led network in Mesa built specifically to satisfy this new regulatory standard.</p>
+        </div>
+
+        <div class="checker-section">
+            <div class="checker-title">Hardware Compatibility</div>
+            <div class="device-row">
+                <div class="device-cat">
+                    <h4>Apple</h4>
+                    <p>iPhone 13 or Newer</p>
+                    <span class="ver-tag">[SECURE ENCLAVE VERIFIED]</span>
+                </div>
+                <div class="device-cat">
+                    <h4>Samsung</h4>
+                    <p>Galaxy S21 or Newer</p>
+                    <span class="ver-tag">[STRONGBOX VERIFIED]</span>
+                </div>
+                <div class="device-cat">
+                    <h4>Google</h4>
+                    <p>Pixel 6 or Newer</p>
+                    <span class="ver-tag">[STRONGBOX VERIFIED]</span>
+                </div>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--slate); margin-top: 30px; max-width: 600px; margin-left: auto; margin-right: auto;">
+                *Devices must be running current OS updates. Hardware-backed security is mandatory per Arizona SB 1417 (2026) compliance standards.
+            </p>
+        </div>
+
+        <a href="/enlist" class="apply-btn">Request Mission Briefing</a>
+    </div>
+</div>
+{% endblock %}
