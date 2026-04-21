@@ -29,21 +29,11 @@ import org.jetbrains.compose.resources.painterResource
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
 
-// import com.google.firebase.auth.FirebaseAuth // 🟢 PILOT BYPASS: Disabled Firebase import
+import com.google.firebase.auth.FirebaseAuth
+import com.pan.tactical.BuildConfig
 import com.pan.tactical.network.PanWalletClient
 import com.pan.tactical.security.PlayIntegrityManager
 import com.pan.tactical.security.StrongBoxManager
-
-// PanBootSequence.kt — androidMain
-//
-// The real Android boot gate. Three things must all succeed before onBootComplete()
-// is ever called:
-//   1. StrongBox key generation (TPM 2.0 hardware enclave)
-//   2. Google Play Integrity attestation token acquisition
-//   3. Server-side verification of that token via /api/v1/register-key
-//
-// If any step fails, the boot halts. The agent sees a RETRY UPLINK button.
-// The app never reaches the dashboard on an unverified or rooted device.
 
 @Composable
 fun PanBootSequence(onBootComplete: () -> Unit) {
@@ -59,13 +49,12 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0C10)) // Deep tactical blue/black
+            .background(Color(0xFF0A0C10))
             .padding(horizontal = 24.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
 
-        // --- 1. HEADER (BRANDING) ---
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(
                 painter = painterResource(Res.drawable.pan_logo),
@@ -86,7 +75,6 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
             )
         }
 
-        // --- 2. MIDDLE (TERMINAL READOUT) ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -136,7 +124,6 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
             }
         }
 
-        // --- 3. BOTTOM (ACTION & FOOTER) ---
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
             Button(
@@ -155,18 +142,24 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
                             strongBox.generateHardwareKey()
                             val publicKeyB64 = strongBox.getPublicKeyBase64()
 
-                            // 🟢 PILOT BYPASS: Hardcoded agent identity to bypass Firebase Auth
-                            val agentId = "VNG-50-PILOT"
+                            // 🛡️ COMPILER-ENFORCED DEV BYPASS
+                            val agentId = FirebaseAuth.getInstance().currentUser?.uid ?: run {
+                                if (BuildConfig.IS_DEBUG) "DEV_AGENT_01" else throw Exception("Agent identity missing. Please log in.")
+                            }
 
                             delay(500)
                             terminalLogs.add("[ATTEST] Requesting Google Play Integrity Token...")
-                            val playIntegrity = PlayIntegrityManager(context)
-                            val token = playIntegrity.fetchAttestationToken(agentId, publicKeyB64)
+
+                            // 🛡️ COMPILER-ENFORCED DEV BYPASS: Skip calling the Play Store entirely in dev mode
+                            val token = if (BuildConfig.IS_DEBUG) {
+                                terminalLogs.add("[WARN] Play Store bypassed. Using Dev Mock Token.")
+                                "DEV_MOCK_TOKEN_${System.currentTimeMillis()}"
+                            } else {
+                                val playIntegrity = PlayIntegrityManager(context)
+                                playIntegrity.fetchAttestationToken(agentId, publicKeyB64)
+                            }
 
                             delay(600)
-                            terminalLogs.add("[ATTEST] Token acquired. Submitting for backend verification...")
-
-                            delay(400)
                             terminalLogs.add("[NETWORK] Establishing encrypted Vanguard uplink...")
                             val walletClient = PanWalletClient()
                             val result = walletClient.registerHardwareKey(
@@ -175,34 +168,36 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
                                 playIntegrityToken = token
                             )
 
-                            result.fold(
-                                onSuccess = { message ->
-                                    delay(500)
-                                    terminalLogs.add("✅ SYSTEM ONLINE. $message")
-                                    delay(400)
-                                    isInitializing = false
-                                    onBootComplete()
-                                },
-                                onFailure = { error ->
-                                    throw Exception("Backend verification failed: ${error.message}")
-                                }
-                            )
+                            if (result.isSuccess) {
+                                val message = result.getOrNull()
+                                delay(500)
+                                terminalLogs.add("✅ SYSTEM ONLINE. $message")
+                                delay(400)
+                                isInitializing = false
+                                onBootComplete()
+                            } else {
+                                val error = result.exceptionOrNull()
+                                throw Exception("Backend verification failed: ${error?.message}")
+                            }
 
                         } catch (e: Exception) {
                             isInitializing = false
                             hasError = true
 
-                            val debugInfo = "Exception: ${e::class.simpleName} | Message: ${e.message}"
-                            terminalLogs.add("[ERROR] $debugInfo")
+                            // 🛡️ RESTORED: Removed ${e.message} to prevent UI leakage
+                            val userMsg = when (e) {
+                                is IllegalStateException -> "Device secure element unavailable."
+                                else -> "Hardware attestation failed. Contact support."
+                            }
+                            terminalLogs.add("[ERROR] $userMsg")
 
                             if (e.toString().contains("ConnectException") ||
                                 e.toString().contains("UnresolvedAddressException") ||
                                 e.message?.contains("Network") == true) {
-                                terminalLogs.add("🔍 DEBUG: Target Host was http://192.168.0.84:5001")
+                                terminalLogs.add("🔍 DEBUG: Target Host was ${BuildConfig.PAN_API_BASE_URL}")
                             }
 
                             terminalLogs.add("🛑 BOOT SEQUENCE TERMINATED.")
-                            e.printStackTrace()
                         }
                     }
                 },

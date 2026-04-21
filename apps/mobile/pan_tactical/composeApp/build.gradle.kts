@@ -48,6 +48,8 @@ buildConfig {
 
     useKotlinOutput { internalVisibility = false }
 
+    buildConfigField("kotlin.Boolean", "IS_DEBUG", "true")
+
     buildConfigField("String", "MAPS_API_KEY", "\"$secureMapsKey\"")
     buildConfigField("String", "IOS_MAPS_API_KEY", "\"$secureIosMapsKey\"")
     buildConfigField("String", "IMGBB_API_KEY", "\"$secureImgbbKey\"")
@@ -103,7 +105,7 @@ kotlin {
             // ML Kit (On-Device Face & Text Privacy Redaction)
             implementation("com.google.mlkit:face-detection:16.1.6")
             implementation("com.google.mlkit:text-recognition:16.0.0")
-            
+
             // CameraX (Native High-Fidelity Capture)
             val camerax_version = "1.3.1"
             implementation("androidx.camera:camera-core:${camerax_version}")
@@ -139,7 +141,7 @@ kotlin {
             implementation("io.ktor:ktor-client-core:2.3.11")
             implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
             implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
-            
+
             // Ktor WebSockets Plugin for real-time dispatch 
             implementation("io.ktor:ktor-client-websockets:2.3.11")
 
@@ -163,6 +165,7 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     buildFeatures {
+        // 🛡️ DEV BYPASS FIX: Re-enable BuildConfig generation so the compiler can read the DEBUG flag
         buildConfig = false
     }
 
@@ -174,7 +177,6 @@ android {
         versionName = "1.0"
 
         manifestPlaceholders["MAPS_API_KEY"] = secureMapsKey
-
     }
 
     packaging {

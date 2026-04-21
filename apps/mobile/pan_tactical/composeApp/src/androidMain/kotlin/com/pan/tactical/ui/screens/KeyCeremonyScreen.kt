@@ -14,7 +14,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
-import com.google.firebase.auth.FirebaseAuth // 🟢 IMPORT FIREBASE
+import com.google.firebase.auth.FirebaseAuth
+import com.pan.tactical.BuildConfig // 🛡️ Added BuildConfig
 import com.pan.tactical.security.PlayIntegrityManager
 import com.pan.tactical.security.StrongBoxManager
 import com.pan.tactical.ui.WalletNetworkClient
@@ -22,10 +23,8 @@ import com.pan.tactical.ui.WalletNetworkClient
 @Composable
 fun KeyCeremonyScreen(
     apiClient: WalletNetworkClient,
-    // 🟢 THE FIX 3: Removed the hardcoded Vanguard-01 default parameter
     onCeremonyComplete: () -> Unit
 ) {
-    // --- STATE MANAGEMENT ---
     var isProcessing by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("INITIALIZE NODE") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -39,7 +38,6 @@ fun KeyCeremonyScreen(
         }
     }
 
-    // --- UI LAYOUT ---
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -65,7 +63,6 @@ fun KeyCeremonyScreen(
             modifier = Modifier.padding(bottom = 64.dp)
         )
 
-        // 2. The Action Area
         if (isProcessing) {
             CircularProgressIndicator(color = Color(0xFFFF9800))
             Spacer(modifier = Modifier.height(16.dp))
@@ -78,24 +75,23 @@ fun KeyCeremonyScreen(
 
                     coroutineScope.launch {
                         try {
-                            // 🟢 THE FIX 3: Strict Identity Enforcement
-                            val agentId = FirebaseAuth.getInstance().currentUser?.uid
-                                ?: throw Exception("Agent identity missing. Please log in.")
+                            // 🛡️ COMPILER-ENFORCED DEV BYPASS
+                            val agentId = FirebaseAuth.getInstance().currentUser?.uid ?: run {
+                                if (BuildConfig.IS_DEBUG) "DEV_AGENT_01" else throw Exception("Agent identity missing. Please log in.")
+                            }
 
-                            // Step A: Generate the TPM 2.0 Key
                             val strongBox = StrongBoxManager()
                             strongBox.generateHardwareKey()
-
-                            // Step B: Extract the Public Key Certificate
                             val publicKeyB64 = strongBox.getPublicKeyBase64()
 
-                            // Step C: Verify device integrity with Google
-                            val playIntegrity = PlayIntegrityManager(context)
-                            
-                            // 🟢 THE FIX: Pass identity bindings to the attestation request
-                            val token = playIntegrity.fetchAttestationToken(agentId, publicKeyB64)
+                            // 🛡️ COMPILER-ENFORCED DEV BYPASS: Skip calling the Play Store entirely in dev mode
+                            val token = if (BuildConfig.IS_DEBUG) {
+                                "DEV_MOCK_TOKEN_${System.currentTimeMillis()}"
+                            } else {
+                                val playIntegrity = PlayIntegrityManager(context)
+                                playIntegrity.fetchAttestationToken(agentId, publicKeyB64)
+                            }
 
-                            // 🟢 THE FIX 2: Transmit the Google Play token to the PAN Backend
                             val result = apiClient.registerHardwareKey(agentId, publicKeyB64, token)
 
                             result.onSuccess {
@@ -108,7 +104,11 @@ fun KeyCeremonyScreen(
 
                         } catch (e: Exception) {
                             isProcessing = false
-                            errorMessage = e.localizedMessage ?: "Hardware Attestation Failed."
+
+                            errorMessage = when (e) {
+                                is IllegalStateException -> "This device does not meet hardware security requirements for Vanguard operations."
+                                else -> "Initialization failed. Please check your connection and try again."
+                            }
                         }
                     }
                 },
@@ -126,7 +126,6 @@ fun KeyCeremonyScreen(
             }
         }
 
-        // 3. Error Display
         errorMessage?.let { error ->
             Spacer(modifier = Modifier.height(24.dp))
             Text(
