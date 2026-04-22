@@ -3,6 +3,7 @@ import os
 import sys
 import uuid
 import importlib
+import redis.asyncio as redis
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,11 @@ sys.path.insert(0, os.path.join(ROOT_DIR, "apps", "backend", "src"))
 # Route the imports through the 'api' directory module
 from api.v2x_bounty_api import router as v2x_router
 from api.onboarding_api import router as onboarding_router
+
+# 🛡️ ISSUE 2 FIX: Hard imports for core Android dependencies. Fail fast if these are broken.
+from api.telemetry_socket import router as telemetry_router
+from api.wallet_api import router as wallet_router
+from api.agent_api import router as agent_router
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -30,41 +36,49 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# 🛡️ THE FIX: Bulletproof Mock Redis Client for Local Dev
+# 🛡️ THE FIX: Bulletproof Mock Redis Client for Local Dev (Now Gated)
+# Note: @app.on_event is deprecated in newer FastAPI versions (Issue 3). 
+# Slated for migration to lifespan context managers in a future architectural pass.
 @app.on_event("startup")
 async def startup_event():
-    class MockRedis:
-        def __init__(self): 
-            self.cache = {}
-            self.hashes = {}
+    if os.getenv("ENVIRONMENT") != "production" and os.getenv("USE_MOCK_REDIS") == "1":
+        class MockRedis:
+            def __init__(self): 
+                self.cache = {}
+                self.hashes = {}
+                
+            async def get(self, key): return self.cache.get(key)
+            async def set(self, key, value, *args, **kwargs): return True
+            async def setex(self, key, time, value): return True
+            async def delete(self, *keys): return True
             
-        async def get(self, key): return self.cache.get(key)
-        async def set(self, key, value, *args, **kwargs): return True
-        async def setex(self, key, time, value): return True
-        async def delete(self, *keys): return True
-        
-        async def exists(self, key):
-            # 🟢 DEV BYPASS: Never block re-registration so you can test multiple times
-            if key.endswith(":pubkey"): return False 
-            return True
-            
-        async def hset(self, name, key=None, value=None, mapping=None): return 1
-            
-        async def hgetall(self, name):
-            # 🟢 BULLETPROOF DEV BYPASS: Accept ANY agent ID Firebase sends
-            if name.startswith("pan:agent:"):
-                return {
-                    "callsign": "DEV-TESTER",
-                    "status": "VERIFIED_AWAITING_HARDWARE",
-                    "email": "dev@proxyagent.network",
-                    "vehicle_class": "TACTICAL"
-                }
-            return {}
-            
-        async def hincrby(self, name, key, amount=1): return 1
-            
-    app.state.redis_client = MockRedis()
-    logger.info("🛡️ Injected BULLETPROOF Mock Redis Client into app.state.")
+            async def exists(self, key):
+                # 🟢 DEV BYPASS: Never block re-registration so you can test multiple times
+                if key.endswith(":pubkey"): return False 
+                return True
+                
+            async def hset(self, name, key=None, value=None, mapping=None): return 1
+                
+            async def hgetall(self, name):
+                # 🟢 BULLETPROOF DEV BYPASS: Accept ANY agent ID Firebase sends
+                if name.startswith("pan:agent:"):
+                    return {
+                        "callsign": "DEV-TESTER",
+                        "status": "VERIFIED_AWAITING_HARDWARE",
+                        "email": "dev@proxyagent.network",
+                        "vehicle_class": "TACTICAL"
+                    }
+                return {}
+                
+            async def hincrby(self, name, key, amount=1): return 1
+                
+        app.state.redis_client = MockRedis()
+        logger.info("🛡️ Injected BULLETPROOF Mock Redis Client into app.state.")
+    else:
+        # 🟢 Fail-closed: Default to a real Redis connection
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        app.state.redis_client = redis.from_url(redis_url)
+        logger.info("🟢 Real Redis client connected and injected into app.state.")
 
 # 🛡️ PHASE 3 FIX: Strict CORS Origins
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://command.proxyagent.network").split(",")
@@ -93,28 +107,22 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 app.include_router(v2x_router, prefix="/api/v1", tags=["V2X Dispatch"])
 app.include_router(onboarding_router, prefix="/api/v1", tags=["Agent Onboarding"])
 
-# 🛡️ THE FIX: Dynamically load missing routers so the Android app doesn't 404
+# 🛡️ ISSUE 2 FIX: Required routers are now firmly registered
+app.include_router(telemetry_router, prefix="/api/v1", tags=["Telemetry"])
+app.include_router(wallet_router, prefix="/api/v1", tags=["Wallet"])
+app.include_router(agent_router, prefix="/api/v1", tags=["Agent"])
+
 def load_optional_router(module_name, prefix, tags):
+    """Dynamically loads non-critical routers. Core systems should use hard imports."""
     try:
         mod = importlib.import_module(module_name)
         app.include_router(mod.router, prefix=prefix, tags=tags)
         logger.info(f"Loaded optional router: {module_name}")
     except ImportError:
-        logger.warning(f"Missing router module: {module_name}. Endpoints will fallback to mock.")
+        # 🛡️ ISSUE 1 FIX: Accurate logging reflecting the removal of the fallback mock
+        logger.warning(f"Missing router module: {module_name}. Endpoints will 404.")
 
-load_optional_router("api.telemetry_socket", "/api/v1", ["Telemetry"])
-load_optional_router("api.wallet_api", "/api/v1", ["Wallet"])
-load_optional_router("api.agent_api", "/api/v1", ["Agent"])
-
-# 🛡️ FALLBACK MOCKS: Catch any stray Android API calls and mock a success response to keep the UI stable
-@app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def fallback_mock(request: Request, path: str):
-    logger.warning(f"Intercepted unhandled route: {request.method} /api/v1/{path}")
-    if "wallet" in path:
-        return {"balance": 25000.0, "linkedCard": None, "history": [], "missions_completed": 0, "vanguard_trust_score": 100.0}
-    if "missions" in path and request.method == "GET":
-        return []
-    return {"status": "success", "message": "Handled by Gateway Mock"}
+# [C2 FIX: Removed the /api/v1/{path:path} fallback mock to ensure routing bugs fail loudly with a 404]
 
 # --- Global Exception Handler ---
 @app.exception_handler(Exception)

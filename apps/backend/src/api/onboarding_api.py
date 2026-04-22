@@ -7,12 +7,17 @@ import time
 import re
 import logging
 import base64
+import binascii  # 🛡️ Added for strict base64 parsing exceptions
 import hashlib
 import asyncio
 import aioboto3
 import aiohttp
 import hmac
 from functools import partial
+
+# 🛡️ H2 FIX: Import cryptographic libraries to validate pubkey at registration
+from cryptography.x509 import load_der_x509_certificate
+from cryptography.hazmat.backends import default_backend
 
 import google.auth
 from googleapiclient.discovery import build
@@ -53,9 +58,14 @@ class KeyRegistrationPayload(BaseModel):
     play_integrity_token: str 
 
 def verify_play_integrity_token(token: str, expected_agent_id: str, expected_public_key: str):
+    # 🛡️ H3 FIX: Strict Environment Gating for Pilot Bypass
     if expected_agent_id == "VNG-50-PILOT":
-        logger.info(f"🛡️ Pilot bypass: Skipping Play Integrity for {expected_agent_id}")
-        return True
+        if os.getenv("ENVIRONMENT") != "production":
+            logger.info(f"🛡️ Pilot bypass: Skipping Play Integrity for {expected_agent_id}")
+            return True
+        else:
+            logger.critical(f"🛑 CRITICAL: Attempted Play Integrity bypass for pilot in production environment!")
+            raise HTTPException(status_code=403, detail="Pilot bypass disabled in production.")
 
     payload_str = f"{expected_agent_id}{expected_public_key}"
     digest = hashlib.sha256(payload_str.encode('utf-8')).digest()
@@ -249,18 +259,32 @@ async def process_enlistment(
         logger.error(f"Enlistment failed for {clean_email}: {e}")
         raise HTTPException(status_code=500, detail="Enlistment processing failed. Please try again.")
 
+
 @router.post("/register-key")
 async def register_public_key(payload: KeyRegistrationPayload, request: Request):
     redis_client = request.app.state.redis_client
+
+    # 🛡️ H2 FIX: Parse the DER cert immediately, catching ONLY the strict crypto/parsing errors
+    try:
+        cert_der = base64.urlsafe_b64decode(payload.public_key_b64)
+        load_der_x509_certificate(cert_der, default_backend())
+    except (ValueError, binascii.Error, TypeError) as e:
+        logger.error(f"🚨 Invalid public key blob submitted by {payload.agent_id}: {e}")
+        raise HTTPException(status_code=400, detail="Invalid public key format. Must be a valid Base64 DER X.509 certificate.")
     
     if payload.agent_id == "VNG-50-PILOT":
-        logger.info(f"🚀 Provisioning Pilot Profile for {payload.agent_id}")
-        await redis_client.hset(f"pan:agent:{payload.agent_id}", mapping={
-            "callsign": "PILOT-ALPHA",
-            "status": "VERIFIED_AWAITING_HARDWARE", 
-            "email": "pilot@pantactical.com",
-            "vehicle_class": "TACTICAL"
-        })
+        # 🛡️ H3 FIX: Strict Environment Gating for Pilot Provisioning
+        if os.getenv("ENVIRONMENT") != "production":
+            logger.info(f"🚀 Provisioning Pilot Profile for {payload.agent_id}")
+            await redis_client.hset(f"pan:agent:{payload.agent_id}", mapping={
+                "callsign": "PILOT-ALPHA",
+                "status": "VERIFIED_AWAITING_HARDWARE", 
+                "email": "pilot@pantactical.com",
+                "vehicle_class": "TACTICAL"
+            })
+        else:
+            logger.critical(f"🛑 ATTEMPTED PILOT PROVISIONING IN PRODUCTION FOR {payload.agent_id}")
+            raise HTTPException(status_code=403, detail="Pilot provisioning disabled in production.")
 
     agent_data = await redis_client.hgetall(f"pan:agent:{payload.agent_id}")
     if not agent_data:
@@ -327,9 +351,6 @@ async def checkr_webhook_listener(request: Request):
     if not hmac.compare_digest(expected_sig, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    # 🛡️ FIX: Parse from the already-read raw_body bytes instead of calling
-    # request.json() — on some ASGI servers the body stream is consumed after
-    # request.body() and a second read returns an empty payload.
     data = json.loads(raw_body)
     
     if data.get("type") == "report.completed":
