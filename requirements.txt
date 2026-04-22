@@ -121,4 +121,4 @@ duckduckgo-search>=5.0.0
 # uncomment these:
 #
 # langchain-google-genai>=1.0.0
-# mcp>=1.0.0
+# mcp>=1.0.0python-multipart>=0.0.16
