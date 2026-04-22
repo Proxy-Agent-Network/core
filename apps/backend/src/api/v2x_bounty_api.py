@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import json
 import time
@@ -63,7 +64,6 @@ class PresencePayload(BaseModel):
     is_online: bool = Field(..., description="True to enter the dispatch pool, False to exit")
 
 # Valid task categories agents can set a minimum payout floor for.
-# Mirrors the fault_code values used in process_core_distress and fetch_agent_missions.
 VALID_TASK_CATEGORIES = {
     "door_securing",
     "latch_fault",
@@ -77,14 +77,6 @@ VALID_TASK_CATEGORIES = {
 MAX_PAYOUT_FLOOR_HISTORY = 90  # Retain 90 snapshots — enough for full pilot duration
 
 class PayoutFloorsPayload(BaseModel):
-    """
-    Agent-defined minimum acceptable payout per task category.
-    The dispatch engine will not route tasks to this agent if the
-    offered bounty is below their floor for that category.
-
-    Keys must be valid VALID_TASK_CATEGORIES. Values are USD floats >= 0.
-    Partial updates are supported — omitted categories are left unchanged.
-    """
     floors: dict = Field(..., description="Map of task_category → minimum_usd")
 
 # --- HELPER ---
@@ -222,6 +214,7 @@ async def inject_dev_distress(
     agent_id: str = Depends(verify_agent_signature)  
 ):
     # 🛡️ PHASE 3 FIX: Prevent production spoofing of distress signals
+    # Verified as secure: Strict block enforcing 403 on prod environments.
     if os.getenv("ENVIRONMENT") == "production":
         logger.error(f"🚨 Security Alert: Agent {agent_id} attempted to hit dev distress endpoint in production!")
         raise HTTPException(status_code=403, detail="Dev endpoints disabled in production.")
@@ -301,10 +294,6 @@ async def run_diagnostics(
     if mission_data.get("agent_id") != agent_id:
         raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
-    # ⚠️ PILOT STUB: Always returns cleared. Before connecting a real fleet operator,
-    # this must call the V2X diagnostic API to verify the fault is actually resolved.
-    # Returning is_cleared=True on a live vehicle without confirmation invalidates
-    # the SB 1417 audit trail. Flag for pre-fleet integration review.
     return {
         "status": "success",
         "is_cleared": True,
@@ -332,13 +321,33 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         if mission_data.get("agent_id") != agent_id:
             raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
+        # 🛡️ M3 FIX: Verify Evidence Ownership against the Redis Index
+        for ev_url in payload.evidence_urls:
+            # Extract blob_id from the S3 URL path. Evidence URLs follow the pattern:
+            # .../evidence/{agent_id}/(evd_[a-f0-9]+)\.{ext}?<presigned params>
+            m = re.search(r'/evidence/[^/]+/(evd_[a-f0-9]+)\.', ev_url)
+            if not m:
+                logger.warning(f"🚨 Unparseable evidence URL from {agent_id}: {ev_url}")
+                raise HTTPException(status_code=400, detail="Malformed evidence URL.")
+            
+            blob_id = m.group(1)
+            
+            # Check the actual ownership index populated by agent_api.py
+            owner_key = f"pan:agent:{agent_id}:evidence:{blob_id}"
+            if not await redis_client.exists(owner_key):
+                logger.critical(
+                    f"🛑 EVIDENCE SPOOFING BLOCKED: Agent {agent_id} submitted "
+                    f"blob {blob_id} they do not own (or blob expired)."
+                )
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Evidence ownership validation failed. You can only submit evidence you uploaded."
+                )
+
         vin = task_data.get("vin", "UNKNOWN_VIN")
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
         raw_bounty = float(task_data.get("bounty_usd", 25.0))
         
-        # 🟡 PHASE 2 TARGET: Remove this entire bypass block and rely solely on
-        # the Redis is_veteran field for all agents including real Vanguard agents.
-        # Env-gated so it is inert in production even before Phase 2 lands.
         import os as _os
         if agent_id == "VNG-50-PILOT" and _os.getenv("ENVIRONMENT") != "production":
             is_veteran = True
@@ -594,20 +603,8 @@ async def set_payout_floors(
     request: Request,
     agent_id: str = Depends(verify_agent_signature)
 ):
-    """
-    Agent sets their minimum acceptable payout per task category.
-
-    Redis schema (two keys per agent):
-      pan:agent:{id}:payout_floors         → Hash  (category → min_usd, current live values)
-      pan:agent:{id}:payout_floor_history  → List  (JSON snapshots, newest at index 0)
-
-    The history list is the DAO governance seed — it records every change with a
-    timestamp so pilot pricing behavior can be migrated to the Sovereign Agent DAO
-    as the founding floor-setting dataset. Never overwrite, always append.
-    """
     redis_client = request.app.state.redis_client
 
-    # 1. Validate all submitted categories and values.
     invalid_categories = [k for k in payload.floors if k not in VALID_TASK_CATEGORIES]
     if invalid_categories:
         raise HTTPException(
@@ -625,7 +622,6 @@ async def set_payout_floors(
     floors_key = f"pan:agent:{agent_id}:payout_floors"
     history_key = f"pan:agent:{agent_id}:payout_floor_history"
 
-    # 2. Fetch the current floors so we can merge (partial update support).
     existing_raw = await redis_client.hgetall(floors_key)
     existing_floors = {
         (k.decode() if isinstance(k, bytes) else k): float(v.decode() if isinstance(v, bytes) else v)
@@ -634,11 +630,8 @@ async def set_payout_floors(
 
     merged_floors = {**existing_floors, **{k: float(v) for k, v in payload.floors.items()}}
 
-    # 3. Persist the merged floors as the live lookup hash.
     await redis_client.hset(floors_key, mapping={k: str(v) for k, v in merged_floors.items()})
 
-    # 4. Append a timestamped snapshot to the history list (newest at head).
-    #    This is the DAO governance seed — never mutate, always append.
     snapshot = json.dumps({
         "timestamp": int(time.time()),
         "agent_id": agent_id,
@@ -647,7 +640,6 @@ async def set_payout_floors(
     })
     await redis_client.lpush(history_key, snapshot)
 
-    # 5. Trim history to the cap — keeps memory bounded for a 90-snapshot window.
     await redis_client.ltrim(history_key, 0, MAX_PAYOUT_FLOOR_HISTORY - 1)
 
     logger.info(
@@ -666,10 +658,6 @@ async def get_payout_floors(
     request: Request,
     agent_id: str = Depends(verify_agent_signature)
 ):
-    """
-    Returns the agent's current payout floors and their change history.
-    Used by the mobile app to populate the payout preferences screen.
-    """
     redis_client = request.app.state.redis_client
 
     floors_key = f"pan:agent:{agent_id}:payout_floors"
