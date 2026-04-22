@@ -207,7 +207,7 @@ async def process_core_distress(payload: DistressPayload, request: Request, flee
 
 # --- ENDPOINTS ---
 
-@router.post("/v1/v2x/distress")
+@router.post("/v2x/distress")
 async def receive_distress_signal(
     payload: DistressPayload, 
     request: Request,
@@ -215,7 +215,7 @@ async def receive_distress_signal(
 ):
     return await process_core_distress(payload, request, fleet_id)
 
-@router.post("/v1/dev/inject-distress")
+@router.post("/dev/inject-distress")
 async def inject_dev_distress(
     payload: DistressPayload, 
     request: Request,
@@ -228,7 +228,7 @@ async def inject_dev_distress(
         
     return await process_core_distress(payload, request, "DEV-FLEET-01")
 
-@router.get("/v1/agent/missions")
+@router.get("/agent/missions")
 async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_agent_signature)):
     redis_client = request.app.state.redis_client
     active_missions = []
@@ -282,7 +282,7 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
             
     return active_missions
 
-@router.post("/v1/agent/missions/{task_id}/diagnose")
+@router.post("/agent/missions/{task_id}/diagnose")
 async def run_diagnostics(
     task_id: str, 
     payload: DiagnosticPayload, 
@@ -311,7 +311,7 @@ async def run_diagnostics(
         "message": "Vehicle systems nominal. Fault cleared."
     }
 
-@router.post("/v1/agent/missions/{task_id}/complete")
+@router.post("/agent/missions/{task_id}/complete")
 async def complete_mission(task_id: str, payload: MissionCompletePayload, request: Request, agent_id: str = Depends(verify_agent_signature)):
     try:
         redis_client = request.app.state.redis_client
@@ -417,7 +417,7 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         logger.error(f"❌ [V2X] Failed to execute settlement for {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal routing failure.")
 
-@router.post("/v1/agent/missions/{task_id}/ack")
+@router.post("/agent/missions/{task_id}/ack")
 async def acknowledge_mission(task_id: str, request: Request, agent_id: str = Depends(verify_agent_signature)):
     redis_client = request.app.state.redis_client
     mission_key = f"mission:active:{task_id}"
@@ -437,7 +437,7 @@ async def acknowledge_mission(task_id: str, request: Request, agent_id: str = De
     })
     return {"status": "success"}
 
-@router.post("/v1/agent/missions/{task_id}/decline")
+@router.post("/agent/missions/{task_id}/decline")
 async def decline_mission(
     task_id: str, 
     request: Request, 
@@ -479,7 +479,7 @@ async def decline_mission(
 
     return {"status": "success", "message": "Mission aborted."}
 
-@router.post("/v1/agent/missions/{task_id}/extend")
+@router.post("/agent/missions/{task_id}/extend")
 async def extend_sentry_mission(
     task_id: str, 
     payload: SentryExtensionPayload, 
@@ -521,7 +521,7 @@ async def extend_sentry_mission(
 
     return {"status": "success", "new_bounty_usd": new_bounty}
 
-@router.post("/v1/agent/missions/{task_id}/feedback")
+@router.post("/agent/missions/{task_id}/feedback")
 async def submit_mission_feedback(
     task_id: str,
     payload: FeedbackPayload,
@@ -575,7 +575,7 @@ async def submit_mission_feedback(
         
     return result
 
-@router.post("/v1/agent/presence")
+@router.post("/agent/presence")
 async def update_presence(
     payload: PresencePayload,
     request: Request,
@@ -588,7 +588,7 @@ async def update_presence(
     return {"status": "success", "is_online": payload.is_online}
 
 
-@router.post("/v1/agent/payout-floors")
+@router.post("/agent/payout-floors")
 async def set_payout_floors(
     payload: PayoutFloorsPayload,
     request: Request,
@@ -661,7 +661,7 @@ async def set_payout_floors(
     }
 
 
-@router.get("/v1/agent/payout-floors")
+@router.get("/agent/payout-floors")
 async def get_payout_floors(
     request: Request,
     agent_id: str = Depends(verify_agent_signature)

@@ -23,7 +23,7 @@ _active_ops_hub_connections = 0
 
 # --- HTTP TELEMETRY INGEST ---
 
-@router.post("/v1/telemetry/ingest")
+@router.post("/telemetry/ingest")
 async def ingest_telemetry(request: Request, agent_identity: dict = Depends(verify_agent_signature)):
     try:
         data = await request.json()
@@ -75,7 +75,7 @@ class StatusUpdateRequest(BaseModel):
     timestamp: int
 
 
-@router.post("/v1/agent/status")
+@router.post("/agent/status")
 async def update_agent_status(
     payload: StatusUpdateRequest,
     request: Request,
@@ -122,7 +122,7 @@ async def update_agent_status(
 
 # --- WEBSOCKET STREAMS ---
 
-@router.websocket("/v1/agent/stream")
+@router.websocket("/agent/stream")
 async def agent_mission_stream(websocket: WebSocket):
     token = websocket.query_params.get("token")
     agent_id = websocket.query_params.get("agent_id")
@@ -193,7 +193,7 @@ async def agent_mission_stream(websocket: WebSocket):
             await pubsub.close()
 
 
-@router.websocket("/v1/telemetry/stream")
+@router.websocket("/telemetry/stream")
 async def websocket_telemetry_endpoint(websocket: WebSocket):
     global _active_ops_hub_connections
 

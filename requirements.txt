@@ -1,32 +1,124 @@
-# API & Server
-fastapi
-uvicorn
-pydantic
+# =============================================================================
+# Proxy Agent Network (PAN) — Python Dependencies
+# =============================================================================
+# Organized by subsystem. Version pins are intentionally conservative —
+# floors (>=) rather than equals (==) wherever possible so the resolver
+# doesn't fight with transitive deps.
+#
+# Last reconciled against source: April 2026 (Mesa Pilot era code).
+# Anything marked [DEPRECATED-PENDING-REMOVAL] is for code slated for
+# removal in the Option B cleanup pass — leave commented out.
+# =============================================================================
 
+
+# -----------------------------------------------------------------------------
+# Web frameworks & ASGI/WSGI
+# -----------------------------------------------------------------------------
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7.0
+
+# Flask stack (app.py — web frontend, command center, marketing pages)
+Flask>=3.0.0
+Jinja2>=3.1.4
+Werkzeug>=3.0.3
+
+
+# -----------------------------------------------------------------------------
+# Configuration & environment
+# -----------------------------------------------------------------------------
+python-dotenv>=1.0.0
+
+
+# -----------------------------------------------------------------------------
+# Database
+# -----------------------------------------------------------------------------
+# psycopg2-binary bundles the PostgreSQL C library — no system build
+# dependency required. For production you may prefer psycopg2 (compiled
+# against your system libpq) but binary is fine for dev and most deploys.
+psycopg2-binary>=2.9.9
+
+
+# -----------------------------------------------------------------------------
 # Redis
+# -----------------------------------------------------------------------------
 redis>=5.0.0
 
-# HTTP Clients
-aiohttp>=3.9.0
-httpx
-requests
 
+# -----------------------------------------------------------------------------
+# HTTP clients
+# -----------------------------------------------------------------------------
+aiohttp>=3.9.0
+httpx>=0.27.0
+requests>=2.31.0
+
+
+# -----------------------------------------------------------------------------
 # AWS / Cloud Storage
+# -----------------------------------------------------------------------------
+# botocore is pulled in transitively by aioboto3; no need to list it.
 aioboto3>=12.3.0
 
-# LND gRPC (Lightning Engine)
-grpcio
-grpcio-tools
-googleapis-common-protos
 
-# Google APIs (Play Integrity + Gemini)
-google-api-python-client==2.118.0
-google-auth==2.28.0
-google-genai
+# -----------------------------------------------------------------------------
+# Lightning Network (LND gRPC)
+# -----------------------------------------------------------------------------
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+googleapis-common-protos>=1.63.0
 
-# Security & Cryptography
+
+# -----------------------------------------------------------------------------
+# Google APIs (Play Integrity attestation for Vanguard onboarding)
+# -----------------------------------------------------------------------------
+# NOTE: Pins relaxed from ==2.118.0 / ==2.28.0 (Feb 2024). Those pins were
+# causing pip to backtrack through 10+ versions of google-genai during install.
+# Floors chosen to match Python 3.10+ era support.
+google-api-python-client>=2.180.0
+google-auth>=2.45.0
+google-genai>=1.55.0
+
+
+# -----------------------------------------------------------------------------
+# Cryptography
+# -----------------------------------------------------------------------------
 cryptography>=41.0.0
-pynacl
+PyNaCl>=1.5.0
+PyJWT>=2.8.0
 
-# Imaging (Evidence Upload)
-pillow
+
+# -----------------------------------------------------------------------------
+# Imaging
+# -----------------------------------------------------------------------------
+# Used by agent_api.py evidence upload path and elsewhere.
+Pillow>=10.0.0
+
+
+# -----------------------------------------------------------------------------
+# HTML sanitization
+# -----------------------------------------------------------------------------
+# app.py registers a global Jinja filter for Bleach HTML sanitization.
+bleach>=6.1.0
+
+
+# -----------------------------------------------------------------------------
+# External search integration (app.py — /search endpoint)
+# -----------------------------------------------------------------------------
+# Note: this library has had frequent breaking changes and rate-limit churn.
+# Flag for review during Option B — may not be load-bearing post-cleanup.
+duckduckgo-search>=5.0.0
+
+
+# =============================================================================
+# [DEPRECATED-PENDING-REMOVAL] AI chatbot / marketplace subsystem
+# =============================================================================
+# These packages are only needed by agent_engine_v2.py and the chatbot
+# subsystem routes in app.py, all of which are scheduled for removal in the
+# Option B cleanup pass. Leaving commented so a clean install does NOT pull
+# in a large transitive tree for dead code.
+#
+# If you need to run agent_engine_v2 temporarily (e.g., for data migration),
+# uncomment these:
+#
+# langchain-google-genai>=1.0.0
+# mcp>=1.0.0

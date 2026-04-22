@@ -8,7 +8,7 @@ from redis.exceptions import WatchError
 from utils.auth import verify_agent_signature 
 
 logger = logging.getLogger("PAN_WalletAPI")
-router = APIRouter(prefix="/v1/wallet", tags=["Agent Wallet"])
+router = APIRouter(prefix="/wallet", tags=["Agent Wallet"])
 
 class LinkCardRequest(BaseModel):
     card_number: str
