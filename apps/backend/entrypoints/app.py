@@ -8,6 +8,7 @@ import jinja2
 import traceback
 import uuid
 import bleach
+import redis  # 🛡️ M1 FIX: Added Redis for distributed rate limiting
 from datetime import timedelta
 
 # --- 1. INJECT MONOREPO PATHS ---
@@ -117,11 +118,14 @@ if not flask_secret or flask_secret == 'fallback_local_secret':
     raise ValueError("Application halted. You must provide a secure FLASK_SECRET_KEY in the environment.")
 app.secret_key = flask_secret
 
+# 🛡️ M1 FIX: Initialize Cluster-Wide Redis Client
+redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.from_url(redis_url)
+
 # ==========================================
 # 🔒 CONCURRENCY & LOCKING ENGINE
 # ==========================================
 SIG_LOCK = threading.Lock() # 🛑 SECURITY FIX: Prevent Thread Collision on USED_SIGNATURES
-RATE_LIMIT_LOCK = threading.Lock() # 🛑 SECURITY FIX: Prevent Thread Collision on RATE_LIMIT_DATA
 
 # ==========================================
 # 🛑 GLOBAL ANTI-CSRF MIDDLEWARE
@@ -184,9 +188,8 @@ def handle_global_exception(e):
     }), 500
 
 # ==========================================
-# ⏱️ RATE LIMITING ENGINE (Sliding Window)
+# ⏱️ RATE LIMITING ENGINE (Distributed)
 # ==========================================
-RATE_LIMIT_DATA = {}
 
 def rate_limit(max_requests: int, window_seconds: int):
     def decorator(f):
@@ -194,23 +197,25 @@ def rate_limit(max_requests: int, window_seconds: int):
         def decorated_function(*args, **kwargs):
             # 🛑 SECURITY FIX: Force TCP remote_addr to prevent X-Forwarded-For spoofing
             client_ip = request.remote_addr
-            now = time.time()
+            key = f"rate_limit:{request.endpoint}:{client_ip}"
             
-            with RATE_LIMIT_LOCK:
-                if client_ip not in RATE_LIMIT_DATA:
-                    RATE_LIMIT_DATA[client_ip] = []
+            try:
+                # 🛡️ M1 FIX: Atomic Redis increments ensure cluster-wide enforcement
+                attempts = redis_client.incr(key)
+                if attempts == 1:
+                    redis_client.expire(key, window_seconds)
                     
-                RATE_LIMIT_DATA[client_ip] = [t for t in RATE_LIMIT_DATA[client_ip] if now - t < window_seconds]
-                
-                if len(RATE_LIMIT_DATA[client_ip]) >= max_requests:
+                if attempts > max_requests:
                     print(f" [SECURITY] 🚨 Rate limit exceeded for IP: {client_ip} on {request.path}")
                     return jsonify({
                         "type": "error", 
                         "status": "429 Too Many Requests", 
                         "message": f"Rate limit exceeded. Maximum {max_requests} requests per {window_seconds} seconds."
                     }), 429
-                
-                RATE_LIMIT_DATA[client_ip].append(now)
+            except Exception as e:
+                # Fail-open gracefully if Redis temporarily drops, but log heavily
+                print(f" [WARN] Distributed rate limiter bypass due to Redis error: {e}")
+
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -799,20 +804,9 @@ def start_security_heartbeat():
                 for k in expired_keys:
                     del USED_SIGNATURES[k]
 
-            with RATE_LIMIT_LOCK:
-                expired_ips = []
-                for ip, timestamps in list(RATE_LIMIT_DATA.items()):
-                    valid_timestamps = [t for t in timestamps if now - t < 3600]
-                    if not valid_timestamps:
-                        expired_ips.append(ip)
-                    else:
-                        RATE_LIMIT_DATA[ip] = valid_timestamps
-                for ip in expired_ips:
-                    del RATE_LIMIT_DATA[ip]
-
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
-    print(" [SYSTEM] ⚙️ Security & Rate Limit Heartbeat Online (10s interval).")
+    print(" [SYSTEM] ⚙️ Security Heartbeat Online (10s interval).")
 
 # ==========================================
 # 🤖 AUTONOMOUS WORKER MOCK ENDPOINTS
@@ -874,7 +868,6 @@ def mock_register():
         
     data = request.json
     raw_seed = os.environ.get("HARDWARE_ATTESTATION_SEED")
-    # 🛡️ L3 FIX: Fail closed if the attestation seed is missing
     if not raw_seed:
         return jsonify({"error": "Configuration missing"}), 500
         

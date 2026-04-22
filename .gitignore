@@ -122,4 +122,5 @@ dump.rdbapps/backend/src/cognitive_vault/cognitive_vault.egg-info/
 
 # PAN Tactical Security
 apps/backend/credentials/
-*.json
+*.jsonapps/backend/venv/
+apps/mobile/pan_tactical/composeApp/google-services.json
