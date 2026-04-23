@@ -7,6 +7,7 @@ interface WalletNetworkClient {
     suspend fun getWalletData(): WalletResponse?
     suspend fun linkDebitCard(cardNumber: String): Result<String>
     suspend fun withdrawFunds(amount: Double): Result<String>
+    suspend fun overrideHardwareLock(): Boolean
 
     // --- Telemetry & Presence ---
     suspend fun updatePresence(isOnline: Boolean): Boolean

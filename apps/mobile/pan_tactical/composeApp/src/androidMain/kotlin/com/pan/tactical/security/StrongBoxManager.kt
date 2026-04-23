@@ -61,7 +61,8 @@ class StrongBoxManager {
         val certificate = keyStore.getCertificate(KEY_ALIAS)
             ?: throw IllegalStateException("Hardware key not found. Please generate it first.")
 
-        return Base64.encodeToString(certificate.publicKey.encoded, Base64.NO_WRAP)
+        // 🟢 THE FIX: Send the FULL X.509 Certificate payload to the backend so it can verify the hardware attestation chain!
+        return Base64.encodeToString(certificate.encoded, Base64.NO_WRAP)
     }
 
     fun generateJwt(agentId: String): String {
@@ -81,6 +82,10 @@ class StrongBoxManager {
         val payload = JSONObject().apply {
             put("iss", "pan_tactical_hardware")
             put("sub", agentId)
+
+            // 🟢 THE FIX: Add the exact Audience claim the backend is looking for
+            put("aud", "pan_dispatch_gateway")
+
             put("iat", now)
             put("exp", now + 300)
             put("attestation_level", if (BuildConfig.IS_DEBUG) "dev_tee_bypass" else "strongbox")

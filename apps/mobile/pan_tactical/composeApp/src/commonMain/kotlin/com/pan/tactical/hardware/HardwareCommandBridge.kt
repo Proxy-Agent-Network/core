@@ -2,7 +2,7 @@ package com.pan.tactical.hardware
 
 /**
  * Platform-agnostic bridge for tactical hardware feedback.
- * - Android: Implements BLE HapHat commands.
+ * - Orchestrates both HapHat and Wingman peripherals.
  * - iOS: Implements CoreHaptics or silent no-ops.
  * * Note: connect() returns false if hardware is unavailable on this platform.
  * This is not an error; it tells the UI to run in software-only mode.
@@ -11,14 +11,24 @@ interface HardwareCommandBridge {
     suspend fun connect(): Boolean
     suspend fun close()
 
-    suspend fun onMissionIncoming()       // Pending alert — purple pulse
-    suspend fun onMissionAccepted()       // En route — white → orange
-    suspend fun onMissionDeclined()       // Declined or timed out — off
-    suspend fun onArrivedAtScene()        // On scene — yellow solid
+    // ─── MISSION LIFECYCLE ─────────────────────────────────────────
+    suspend fun onMissionIncoming()       // Purple pulse (Hat & Wingman)
+    suspend fun onMissionAccepted()       // En route (Orange sweep)
+    suspend fun onMissionDeclined()       // Off
+    suspend fun onArrivedAtScene()        // Yellow solid
+    suspend fun onMissionSuccess()        // Green strobe / Cascade Up
+    suspend fun onMissionFailed()         // Red strobe
+    suspend fun onMissionAborted()        // Off
+    suspend fun onChainedMission()        // Orange solid
+    
+    // ─── NETWORK & SENSORS ─────────────────────────────────────────
     suspend fun onBleHandshakeSuccess()   // UWB credentials secured — cyan solid
-    suspend fun onBleHandshakeFailed()    // Handshake failed — reserved for future haptic
-    suspend fun onMissionSuccess()        // Completed — green strobe
-    suspend fun onMissionFailed()         // Submission failed — red strobe
-    suspend fun onMissionAborted()        // Mid-mission abort — off
-    suspend fun onChainedMission()        // Queued mission loaded — orange solid
+    suspend fun onBleHandshakeFailed()    // Handshake failed
+
+    // ─── NAVIGATION (HapHat & Wingman Sync) ────────────────────────
+    /** * Fires the synchronized 60-second directional pulse.
+     * Hat vibrates the forehead; Wingman lights the corresponding clock position.
+     * @param clockPosition 0-11 representing the bearing to target.
+     */
+    suspend fun onDirectionalTick(clockPosition: Byte)
 }

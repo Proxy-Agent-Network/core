@@ -23,8 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.painterResource
 import pantactical.composeapp.generated.resources.Res
 import pantactical.composeapp.generated.resources.pan_logo
@@ -43,8 +45,28 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
 
     var isInitializing by remember { mutableStateOf(false) }
     var hasError by remember { mutableStateOf(false) }
-
+    var requiresTransfer by remember { mutableStateOf(false) }
     val terminalLogs = remember { mutableStateListOf<String>() }
+
+    // 🟢 Intercept the UI! If a transfer is needed, hijack the screen.
+    if (requiresTransfer) {
+        DeviceTransferScreen(
+            apiClient = PanWalletClient(), // 🟢 THE FIX: Pass the Android network client into the common screen
+            onTransferComplete = {
+                requiresTransfer = false
+                isInitializing = false
+                hasError = false
+                terminalLogs.clear()
+                terminalLogs.add("[SYSTEM] Ready for initialization.")
+            },
+            onCancel = {
+                requiresTransfer = false
+                isInitializing = false
+                hasError = true
+            }
+        )
+        return
+    }
 
     Column(
         modifier = Modifier
@@ -128,6 +150,7 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
 
             Button(
                 onClick = {
+                    if (isInitializing) return@Button
                     isInitializing = true
                     hasError = false
                     terminalLogs.clear()
@@ -135,69 +158,70 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
 
                     coroutineScope.launch {
                         try {
-                            delay(400)
-                            terminalLogs.add("[HW_LINK] Securing TPM Enclave...")
-                            val strongBox = StrongBoxManager()
+                            delay(50)
 
-                            strongBox.generateHardwareKey()
-                            val publicKeyB64 = strongBox.getPublicKeyBase64()
+                            val result = withContext(Dispatchers.IO) {
 
-                            // 🛡️ COMPILER-ENFORCED DEV BYPASS
-                            val agentId = FirebaseAuth.getInstance().currentUser?.uid ?: run {
-                                if (BuildConfig.IS_DEBUG) "DEV_AGENT_01" else throw Exception("Agent identity missing. Please log in.")
+                                withContext(Dispatchers.Main) { terminalLogs.add("[HW_LINK] Securing TPM Enclave...") }
+                                val strongBox = StrongBoxManager()
+                                strongBox.generateHardwareKey()
+                                val publicKeyB64 = strongBox.getPublicKeyBase64()
+
+                                val agentId = FirebaseAuth.getInstance().currentUser?.uid ?: run {
+                                    if (BuildConfig.IS_DEBUG) "DEV_AGENT_01" else throw Exception("Agent identity missing. Please log in.")
+                                }
+
+                                withContext(Dispatchers.Main) { terminalLogs.add("[ATTEST] Requesting Google Play Integrity Token...") }
+                                val token = if (BuildConfig.IS_DEBUG) {
+                                    withContext(Dispatchers.Main) { terminalLogs.add("[WARN] Play Store bypassed. Using Dev Mock Token.") }
+                                    "DEV_MOCK_TOKEN_${System.currentTimeMillis()}"
+                                } else {
+                                    val playIntegrity = PlayIntegrityManager(context)
+                                    playIntegrity.fetchAttestationToken(agentId, publicKeyB64)
+                                }
+
+                                withContext(Dispatchers.Main) { terminalLogs.add("[NETWORK] Establishing encrypted Vanguard uplink...") }
+
+                                val walletClient = PanWalletClient()
+                                walletClient.registerHardwareKey(
+                                    agentId = agentId,
+                                    publicKeyB64 = publicKeyB64,
+                                    playIntegrityToken = token
+                                )
                             }
-
-                            delay(500)
-                            terminalLogs.add("[ATTEST] Requesting Google Play Integrity Token...")
-
-                            // 🛡️ COMPILER-ENFORCED DEV BYPASS: Skip calling the Play Store entirely in dev mode
-                            val token = if (BuildConfig.IS_DEBUG) {
-                                terminalLogs.add("[WARN] Play Store bypassed. Using Dev Mock Token.")
-                                "DEV_MOCK_TOKEN_${System.currentTimeMillis()}"
-                            } else {
-                                val playIntegrity = PlayIntegrityManager(context)
-                                playIntegrity.fetchAttestationToken(agentId, publicKeyB64)
-                            }
-
-                            delay(600)
-                            terminalLogs.add("[NETWORK] Establishing encrypted Vanguard uplink...")
-                            val walletClient = PanWalletClient()
-                            val result = walletClient.registerHardwareKey(
-                                agentId = agentId,
-                                publicKeyB64 = publicKeyB64,
-                                playIntegrityToken = token
-                            )
 
                             if (result.isSuccess) {
                                 val message = result.getOrNull()
-                                delay(500)
                                 terminalLogs.add("✅ SYSTEM ONLINE. $message")
                                 delay(400)
                                 isInitializing = false
                                 onBootComplete()
                             } else {
                                 val error = result.exceptionOrNull()
-                                throw Exception("Backend verification failed: ${error?.message}")
+                                throw error ?: Exception("Backend verification failed.")
                             }
 
                         } catch (e: Exception) {
                             isInitializing = false
-                            hasError = true
 
-                            // 🛡️ RESTORED: Removed ${e.message} to prevent UI leakage
-                            val userMsg = when (e) {
-                                is IllegalStateException -> "Device secure element unavailable."
-                                else -> "Hardware attestation failed. Contact support."
+                            if (e is SecurityException && e.message == "DEVICE_ALREADY_BOUND") {
+                                requiresTransfer = true
+                            } else {
+                                hasError = true
+                                val userMsg = when {
+                                    e is IllegalStateException -> "Device secure element unavailable."
+                                    else -> "Hardware attestation failed. Contact support."
+                                }
+                                terminalLogs.add("[ERROR] $userMsg")
+
+                                if (e.toString().contains("ConnectException") ||
+                                    e.toString().contains("UnresolvedAddressException") ||
+                                    e.message?.contains("Network") == true) {
+                                    terminalLogs.add("🔍 DEBUG: Target Host was ${BuildConfig.PAN_API_BASE_URL}")
+                                }
+
+                                terminalLogs.add("🛑 BOOT SEQUENCE TERMINATED.")
                             }
-                            terminalLogs.add("[ERROR] $userMsg")
-
-                            if (e.toString().contains("ConnectException") ||
-                                e.toString().contains("UnresolvedAddressException") ||
-                                e.message?.contains("Network") == true) {
-                                terminalLogs.add("🔍 DEBUG: Target Host was ${BuildConfig.PAN_API_BASE_URL}")
-                            }
-
-                            terminalLogs.add("🛑 BOOT SEQUENCE TERMINATED.")
                         }
                     }
                 },

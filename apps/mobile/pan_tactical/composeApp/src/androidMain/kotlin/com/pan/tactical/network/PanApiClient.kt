@@ -148,9 +148,9 @@ class PanApiClient : WalletNetworkClient {
     private val strongBoxManager = StrongBoxManager()
     private val attestationEngine = com.pan.tactical.security.AttestationEngine()
 
-    // 🛡️ PHASE 2 FIX: Locked identity to actual Firebase Auth
+    // 🛡️ PHASE 2 FIX: Real identity enforcement via Firebase Auth
     private val secureUid: String?
-        get() = FirebaseAuth.getInstance().currentUser?.uid
+        get() = FirebaseAuth.getInstance().currentUser?.uid ?: if (BuildConfig.IS_DEBUG) "DEV_AGENT_01" else null
 
     private var cachedJwt: String? = null
     private var jwtExpiresAt: Long = 0L
@@ -546,6 +546,11 @@ class PanApiClient : WalletNetworkClient {
         onMissionCleared: () -> Unit
     ) {
         Log.e(TAG, "🛑 listenForMissions called on PanApiClient. Use PanWalletClient for WebSocket dispatch stream.")
+    }
+
+    override suspend fun overrideHardwareLock(): Boolean {
+        Log.e(TAG, "🛑 CRITICAL: Legacy API client does not support hardware override. Use PanWalletClient.")
+        return false
     }
 
     fun close() = client.close()

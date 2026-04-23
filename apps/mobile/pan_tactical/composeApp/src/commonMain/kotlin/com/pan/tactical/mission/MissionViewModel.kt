@@ -5,6 +5,9 @@ import com.pan.tactical.models.MissionData
 import com.pan.tactical.ui.WalletNetworkClient
 import com.pan.tactical.ui.components.AgentRank
 import com.pan.tactical.ui.components.rankForMissions
+import com.pan.tactical.hardware.BleWingmanService
+import com.pan.tactical.hardware.HardwareCommandBridge
+import com.pan.tactical.hardware.TapPattern
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -13,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.*
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 
@@ -45,17 +49,28 @@ data class MissionUiState(
 class MissionViewModel(
     private val apiClient: WalletNetworkClient,
     private val walletClient: WalletNetworkClient,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    // 🟢 NEW: Inject the hardware bridge and Wingman service (defaults to null for safe compilation)
+    private val hardwareBridge: HardwareCommandBridge? = null,
+    private val wingmanService: BleWingmanService? = null
 ) {
     private val _uiState = MutableStateFlow(MissionUiState())
     val uiState: StateFlow<MissionUiState> = _uiState.asStateFlow()
 
     private var currentRank: AgentRank? = null
     private var socketJob: Job? = null
+    
+    // 🟢 NEW: Wingman Navigation State
+    private var directionalTimerJob: Job? = null
+    private var currentAgentLat: Double = 0.0
+    private var currentAgentLon: Double = 0.0
 
     // ─── BOOT ─────────────────────────────────────────────────────────────────
 
     fun initialize() {
+        // 🟢 Start listening for physical taps on the Wingman
+        observeWingmanGestures()
+        
         scope.launch {
             val data = walletClient.getWalletData()
             if (data != null) {
@@ -83,9 +98,87 @@ class MissionViewModel(
                     }
                     apiClient.updatePresence(true)
                     startSocketListener()
+                    startDirectionalTimer() // Resume compass if recovering state
                 }
             } catch (e: Exception) {
                 println("[MISSION_VM] Polling error during boot restore: ${e.message}")
+            }
+        }
+    }
+
+    // ─── HARDWARE ORCHESTRATION ───────────────────────────────────────────────
+
+    /**
+     * Call this from your SharedLocationManager callback in the UI layer
+     * so the ViewModel always knows the agent's live coordinates.
+     */
+    fun updateAgentLocation(lat: Double, lon: Double) {
+        currentAgentLat = lat
+        currentAgentLon = lon
+    }
+
+    private fun calculateClockPositionToTarget(): Byte {
+        val target = _uiState.value.activeMission ?: return 0.toByte()
+        
+        val lat1 = currentAgentLat * PI / 180.0
+        val lon1 = currentAgentLon * PI / 180.0
+        val lat2 = target.lat * PI / 180.0
+        val lon2 = target.lon * PI / 180.0
+
+        val dLon = lon2 - lon1
+        val y = sin(dLon) * cos(lat2)
+        val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        
+        var brng = atan2(y, x) * 180.0 / PI
+        brng = (brng + 360.0) % 360.0
+        
+        // Map 0-360 degrees to 0-11 clock index (where 0 is 12 o'clock straight ahead)
+        val clockIndex = Math.round(brng / 30.0).toInt() % 12
+        return clockIndex.toByte()
+    }
+
+    private fun startDirectionalTimer() {
+        directionalTimerJob?.cancel()
+        directionalTimerJob = scope.launch {
+            while (true) {
+                delay(60_000) // Trigger the 7-second firmware macro every 60 seconds
+                val clockPos = calculateClockPositionToTarget()
+                hardwareBridge?.onDirectionalTick(clockPos)
+            }
+        }
+    }
+
+    private fun stopDirectionalTimer() {
+        directionalTimerJob?.cancel()
+        directionalTimerJob = null
+    }
+
+    private fun observeWingmanGestures() {
+        if (wingmanService == null) return
+        scope.launch {
+            wingmanService.tapEvents.collect { event ->
+                when (event.tapPattern) {
+                    TapPattern.DOUBLE -> {
+                        // 🟢 MANUAL RE-TRIGGER: If active, fire the 7-second sweep on demand
+                        if (_uiState.value.missionPhase == MissionPhase.ACTIVE || 
+                            _uiState.value.missionPhase == MissionPhase.ON_SCENE) {
+                            
+                            val currentBearingClock = calculateClockPositionToTarget()
+                            println("[MISSION_VM] Agent double-tapped Wingman. Replaying 7-second sweep for $currentBearingClock o'clock.")
+                            
+                            hardwareBridge?.onDirectionalTick(currentBearingClock)
+                        }
+                    }
+                    TapPattern.SINGLE -> {
+                        println("[MISSION_VM] Voice log stop / Acknowledge gesture detected.")
+                        // TODO: Implement voice log stop
+                    }
+                    TapPattern.LONG_PRESS -> {
+                        println("[MISSION_VM] Companion Mode activated.")
+                        // TODO: Open voice session
+                    }
+                    else -> { /* Handle other gestures */ }
+                }
             }
         }
     }
@@ -137,11 +230,12 @@ class MissionViewModel(
                             val safeMission = mission.copy(lat = safeLat, lon = safeLon)
 
                             _uiState.update { it.copy(activeMission = safeMission, missionPhase = MissionPhase.PENDING) }
+                            
+                            // Fire Purple Incoming Hardware Alert
+                            scope.launch { hardwareBridge?.onMissionIncoming() }
                         }
                     },
                     onMissionCleared = {
-                        // 🟢 FIX: Prevent race conditions. Never destroy the mission state if the UI
-                        // is currently transitioning, on the final debrief screen, or filling out feedback.
                         val currentPhase = _uiState.value.missionPhase
                         if (currentPhase != MissionPhase.COMPLETED &&
                             currentPhase != MissionPhase.ON_SCENE &&
@@ -176,6 +270,9 @@ class MissionViewModel(
         }
 
         scope.launch {
+            hardwareBridge?.onMissionAccepted()
+            startDirectionalTimer() // 🟢 Begin the 60-second compass sweeps
+
             if (taskId.isNotBlank()) {
                 try {
                     apiClient.acknowledgeMission(taskId)
@@ -188,7 +285,11 @@ class MissionViewModel(
 
     fun onMissionDeclined() {
         val taskId = _uiState.value.activeMission?.taskId
+        
+        stopDirectionalTimer() // 🟢 Stop compass sweeps
+        
         scope.launch {
+            hardwareBridge?.onMissionDeclined()
             if (!taskId.isNullOrBlank()) {
                 try {
                     apiClient.declineMission(taskId, null)
@@ -207,7 +308,10 @@ class MissionViewModel(
         val taskId = _uiState.value.activeMission?.taskId
             ?: _uiState.value.queuedMission?.taskId
 
+        stopDirectionalTimer() // 🟢 Stop compass sweeps
+        
         scope.launch {
+            hardwareBridge?.onMissionAborted()
             if (!taskId.isNullOrBlank()) {
                 try {
                     apiClient.declineMission(taskId, reason)
@@ -235,20 +339,23 @@ class MissionViewModel(
                 sceneArrivalTime = getCurrentTimeMs()
             )
         }
+        
+        // 🟢 Note: We do NOT stop the directional timer here.
+        // Keeping it running helps the agent locate the exact vehicle in a crowded lot.
+        scope.launch { hardwareBridge?.onArrivedAtScene() }
     }
 
     fun onMissionSuccess() {
         val state = _uiState.value
-        
-        // 🟢 THE FIX: Pass the raw, unmodified Gross Bounty to the UI State.
-        // The UI (AgentDashboardScreen/PostMissionOverlays) will handle the 15%/25% math.
         val rawBounty = state.activeMission?.bountyUsd ?: 0.0
         val now = getCurrentTimeMs()
+
+        stopDirectionalTimer() // 🟢 Stop compass sweeps
 
         _uiState.update {
             it.copy(
                 missionPhase = MissionPhase.COMPLETED,
-                lastPayoutAmount = rawBounty, // 🟢 Passed raw gross bounty
+                lastPayoutAmount = rawBounty,
                 lastTxHash = "tx_$now",
                 timeOnSceneMs = if (it.sceneArrivalTime > 0) now - it.sceneArrivalTime else 252000L,
                 totalResponseTimeMs = if (it.missionAcceptTime > 0) now - it.missionAcceptTime else 252000L + 300000L
@@ -256,6 +363,8 @@ class MissionViewModel(
         }
 
         scope.launch {
+            hardwareBridge?.onMissionSuccess()
+            
             val updated = walletClient.getWalletData()
             if (updated != null) {
                 val newCount = updated.missionsCompleted
@@ -266,7 +375,8 @@ class MissionViewModel(
     }
 
     fun onMissionFailed() {
-        // No-op for Q3 bypass
+        stopDirectionalTimer()
+        scope.launch { hardwareBridge?.onMissionFailed() }
     }
 
     // ─── POST-MISSION FLOW ────────────────────────────────────────────────────
@@ -299,6 +409,7 @@ class MissionViewModel(
                     sceneArrivalTime = 0L
                 )
             }
+            startDirectionalTimer() // Resume if chaining missions
         } else {
             _uiState.update {
                 it.copy(
@@ -333,5 +444,6 @@ class MissionViewModel(
 
     fun close() {
         stopSocketListener()
+        stopDirectionalTimer()
     }
 }

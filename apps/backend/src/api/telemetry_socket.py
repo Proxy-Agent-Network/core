@@ -8,7 +8,7 @@ from typing import Dict
 from pydantic import BaseModel
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends
 
-from api.v2x_bounty_api import decode_redis_hash
+from api.agent_api import decode_redis_hash
 from utils.auth import verify_agent_signature, verify_agent_jwt
 
 logger = logging.getLogger("PAN_TelemetryStream")

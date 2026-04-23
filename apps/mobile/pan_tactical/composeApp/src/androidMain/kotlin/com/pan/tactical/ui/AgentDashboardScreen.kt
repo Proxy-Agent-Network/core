@@ -89,11 +89,20 @@ actual fun AgentDashboardScreen(
     val coroutineScope = rememberCoroutineScope()
     val trueWalletClient = remember { PanWalletClient() }
 
+    // 🟢 NEW: Instantiate Tactical Hardware Services
+    val hapHatService = com.pan.tactical.hardware.rememberBleHapHatService()
+    val wingmanService = remember { com.pan.tactical.hardware.AndroidBleWingmanService(context) }
+    val hardwareBridge = remember { 
+        com.pan.tactical.hardware.AndroidHardwareCommandBridge(hapHatService, wingmanService) 
+    }
+
     val missionViewModel = remember {
         MissionViewModel(
             apiClient = panClient,
             walletClient = trueWalletClient,
-            scope = coroutineScope
+            scope = coroutineScope,
+            hardwareBridge = hardwareBridge,   // 🟢 Injected Bridge
+            wingmanService = wingmanService    // 🟢 Injected Wingman
         )
     }
 
@@ -112,6 +121,7 @@ actual fun AgentDashboardScreen(
             when (state) {
                 "BOOT" -> {
                     LaunchedEffect(Unit) {
+                        hardwareBridge.connect() // 🟢 Connect to Tactical Hardware (Hat & Wingman)
                         missionViewModel.initialize()
                         currentScreen = "DASHBOARD"
                         delay(500)
@@ -393,6 +403,7 @@ fun MainDashboardContent(
 
     val locationManager = rememberSharedLocationManager { lat, lon ->
         agentLocation = Pair(lat, lon)
+        missionViewModel.updateAgentLocation(lat, lon) // 🟢 NEW: Feed GPS to Wingman compass
 
         val now = getCurrentTimeMs()
         if (uiState.isOnline && now - lastTelemetryTime > 3000) {

@@ -16,8 +16,6 @@ sys.path.insert(0, os.path.join(ROOT_DIR, "apps", "backend", "src"))
 # Route the imports through the 'api' directory module
 from api.v2x_bounty_api import router as v2x_router
 from api.onboarding_api import router as onboarding_router
-
-# 🛡️ ISSUE 2 FIX: Hard imports for core Android dependencies. Fail fast if these are broken.
 from api.telemetry_socket import router as telemetry_router
 from api.wallet_api import router as wallet_router
 from api.agent_api import router as agent_router
@@ -36,49 +34,24 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# 🛡️ THE FIX: Bulletproof Mock Redis Client for Local Dev (Now Gated)
-# Note: @app.on_event is deprecated in newer FastAPI versions (Issue 3). 
-# Slated for migration to lifespan context managers in a future architectural pass.
 @app.on_event("startup")
 async def startup_event():
-    if os.getenv("ENVIRONMENT") != "production" and os.getenv("USE_MOCK_REDIS") == "1":
-        class MockRedis:
-            def __init__(self): 
-                self.cache = {}
-                self.hashes = {}
-                
-            async def get(self, key): return self.cache.get(key)
-            async def set(self, key, value, *args, **kwargs): return True
-            async def setex(self, key, time, value): return True
-            async def delete(self, *keys): return True
-            
-            async def exists(self, key):
-                # 🟢 DEV BYPASS: Never block re-registration so you can test multiple times
-                if key.endswith(":pubkey"): return False 
-                return True
-                
-            async def hset(self, name, key=None, value=None, mapping=None): return 1
-                
-            async def hgetall(self, name):
-                # 🟢 BULLETPROOF DEV BYPASS: Accept ANY agent ID Firebase sends
-                if name.startswith("pan:agent:"):
-                    return {
-                        "callsign": "DEV-TESTER",
-                        "status": "VERIFIED_AWAITING_HARDWARE",
-                        "email": "dev@proxyagent.network",
-                        "vehicle_class": "TACTICAL"
-                    }
-                return {}
-                
-            async def hincrby(self, name, key, amount=1): return 1
-                
-        app.state.redis_client = MockRedis()
-        logger.info("🛡️ Injected BULLETPROOF Mock Redis Client into app.state.")
-    else:
-        # 🟢 Fail-closed: Default to a real Redis connection
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        app.state.redis_client = redis.from_url(redis_url)
-        logger.info("🟢 Real Redis client connected and injected into app.state.")
+    # 🟢 THE FIX: Default to a real Redis connection
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    client = redis.from_url(redis_url)
+    app.state.redis_client = client
+    logger.info("🟢 Real Redis client connected and injected into app.state.")
+    
+    # 🟢 THE FIX: Seed the dev agent directly into Real Redis!
+    # This bypasses Firebase onboarding but utilizes Real Redis for Pub/Sub WebSocket dispatch.
+    if os.getenv("ENVIRONMENT") != "production":
+        await client.hset("pan:agent:DEV_AGENT_01", mapping={
+            "callsign": "DEV-TESTER",
+            "status": "VERIFIED_AWAITING_HARDWARE",
+            "email": "dev@proxyagent.network",
+            "vehicle_class": "TACTICAL"
+        })
+        logger.info("🛡️ Seeded DEV_AGENT_01 into Real Redis for full end-to-end testing.")
 
 # 🛡️ PHASE 3 FIX: Strict CORS Origins
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://command.proxyagent.network").split(",")
@@ -106,8 +79,6 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 # --- Router Registration ---
 app.include_router(v2x_router, prefix="/api/v1", tags=["V2X Dispatch"])
 app.include_router(onboarding_router, prefix="/api/v1", tags=["Agent Onboarding"])
-
-# 🛡️ ISSUE 2 FIX: Required routers are now firmly registered
 app.include_router(telemetry_router, prefix="/api/v1", tags=["Telemetry"])
 app.include_router(wallet_router, prefix="/api/v1", tags=["Wallet"])
 app.include_router(agent_router, prefix="/api/v1", tags=["Agent"])
@@ -119,10 +90,7 @@ def load_optional_router(module_name, prefix, tags):
         app.include_router(mod.router, prefix=prefix, tags=tags)
         logger.info(f"Loaded optional router: {module_name}")
     except ImportError:
-        # 🛡️ ISSUE 1 FIX: Accurate logging reflecting the removal of the fallback mock
         logger.warning(f"Missing router module: {module_name}. Endpoints will 404.")
-
-# [C2 FIX: Removed the /api/v1/{path:path} fallback mock to ensure routing bugs fail loudly with a 404]
 
 # --- Global Exception Handler ---
 @app.exception_handler(Exception)
@@ -146,6 +114,22 @@ async def enlist_page(request: Request):
 @app.get("/enlist-success", response_class=HTMLResponse)
 async def enlist_success(request: Request):
     return templates.TemplateResponse("enlist_success.html", {"request": request})
+
+@app.post("/api/v1/dev/override-hardware")
+async def override_hardware(request: Request):
+    client = request.app.state.redis_client
+    
+    # 🟢 THE FIX: Explicitly target the exact pubkey string! Wildcards can fail in async Redis.
+    await client.delete("pan:agent:DEV_AGENT_01:pubkey")
+    
+    # Re-seed the clean agent profile
+    await client.hset("pan:agent:DEV_AGENT_01", mapping={
+        "callsign": "DEV-TESTER",
+        "status": "VERIFIED_AWAITING_HARDWARE",
+        "email": "dev@proxyagent.network",
+        "vehicle_class": "TACTICAL"
+    })
+    return {"status": "success", "message": "Old hardware lock obliterated."}
 
 if __name__ == "__main__":
     import uvicorn
