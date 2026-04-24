@@ -2,7 +2,7 @@
 
 Tracking deferred work that has been identified but scheduled for later. Items are grouped by area and rough priority. This is not an authoritative backlog (GitHub Issues remain the source of truth for bugs and features); it is a working notebook for decisions and known gaps that surfaced during code reviews, security sweeps, and documentation passes.
 
-Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. Search for that tag to triage launch-critical work.
+Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 7 pilot blockers across Backend, Compliance, Hardware, Architecture, and Mobile sections. Search for that tag to triage launch-critical work.
 
 Last updated: 2026-04-23.
 
@@ -90,6 +90,28 @@ Last updated: 2026-04-23.
 
 ---
 
+## Architecture / Economics
+
+### High priority
+
+* **[PILOT BLOCKER] Reconcile fee math across code, backend, and docs.** Three sources of truth currently disagree:
+    * **Kotlin UI code** (`MissionAlertOverlay.kt`, `AgentDashboardScreen.kt`): calculates agent-side network fee as 15% (Veteran) or 25% (Standard)
+    * **Backend** (`apps/backend/src/api/v2x_bounty_api.py::complete_mission`): uses `multiplier = 0.85 if is_veteran else 0.75`, matching the UI
+    * **Docs** (`docs/API_SPEC.md`, `docs/legal/COMPLIANCE.md`): state a flat 10% PAN network fee with no veteran tier
+    
+    **Canonical economic model (source of truth going forward):**
+    * Agent-side network fee: Veterans pay 15%, non-Veterans pay 25%.
+    * Platform fee (AV companies): 10% default, reduced to 5% when the fleet partner maintains $25,000 or more in their escrow account at mission start time.
+    
+    **Required fixes:**
+    * Update `docs/API_SPEC.md` and `docs/legal/COMPLIANCE.md` to reflect the tiered agent fee structure (15% / 25%) and the platform fee structure (5% / 10% with escrow threshold).
+    * Backend should become the authoritative calculator: `complete_mission` should return `net_payout` as a field on the response, rather than returning gross amounts that the client subtracts from.
+    * UI should render the `net_payout` field directly rather than computing locally. This eliminates the Item below (`isVeteran` hardcoded mock) as a side effect.
+    * Backend must check escrow account balance at mission-start time and apply either 5% or 10% platform fee accordingly. Verify this logic exists; if not, add it.
+    * Add contract/compliance note to `docs/legal/COMPLIANCE.md` clarifying that the fee structure is disclosed to agents in their onboarding agreement and to fleet partners in their API integration agreement. Legal must sign off on this before Mesa launch.
+
+---
+
 ## Compliance / Storage
 
 ### High priority
@@ -152,6 +174,10 @@ Note: several files above are in modules (`ops/`, `reputation/`) that may have b
 ## Mobile / UI
 
 ### High priority
+
+* **[PILOT BLOCKER] Build real Firebase Auth end-to-end flow.** `PanWalletClient.kt` identity resolution currently falls back to `if (BuildConfig.IS_DEBUG) "DEV_AGENT_01" else null`. Fine for local testing, but there is no real login screen or Firebase Auth flow in the app yet. Without this, real agents arriving at the Mesa Hub cannot sign in to begin their Key Ceremony. Needs: login UI, Firebase Auth integration for email/password or OAuth, identity-to-agent_id mapping logic in `PanWalletClient`, and end-to-end testing against the backend auth middleware.
+
+* **[PILOT BLOCKER] Remove hardcoded `isVeteran` mock in `AgentDashboardScreen.kt`.** Currently: `val isVeteran = true  // MOCKED FEE STATUS for UI testing`. Every agent gets the veteran fee tier regardless of actual status. Resolution depends on the Architecture / Economics fee reconciliation item - once the backend returns `net_payout` directly, the client no longer needs to know `isVeteran` at all. Until that lands, at minimum the flag should be pulled from the agent's `verified_credentials` array in their backend profile rather than hardcoded.
 
 * **Resolve `@file:Suppress` hacks in network clients.** Both `PanWalletClient.kt` and `PanApiClient.kt` currently suppress `INVISIBLE_REFERENCE` and `INVISIBLE_MEMBER` warnings as a workaround for a Gradle `visibility(PUBLIC)` compilation issue. Fix the underlying visibility config, then remove the suppressions. Risk of future breakage: Kotlin/KMP version bumps may promote these warnings to hard errors, which would turn a cosmetic workaround into a build failure.
 
