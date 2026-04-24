@@ -4,7 +4,7 @@
 
 **Notice:** Do **NOT** open a public GitHub Issue for security vulnerabilities.
 
-**Submission:** Encrypt this report using our PGP Key (see [SECURITY.md](https://www.google.com/search?q=../SECURITY.md)) and email it to **security@proxyagent.network** or submit via our encrypted Signal drop.
+**Submission:** Encrypt this report using our PGP Key (see [POLICY.md](./POLICY.md)) and email it to **security@proxyagent.network** or submit via our encrypted Signal drop.
 
 \[\!CAUTION\]
 

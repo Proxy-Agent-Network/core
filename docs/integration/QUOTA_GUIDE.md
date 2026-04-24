@@ -85,4 +85,3 @@ When this happens, the PAN Gateway enters a **Brownout**, returning 503 GEOHASH\
 * **Standard Fleets:** Must route unaffected AVs away from the zone.  
 * **Sector Anchors:** Are placed in an exclusive priority queue and are automatically routed the next available Vanguard Agent as soon as an existing mission clears.
 
-**Reference:** See [Sector Brownout & Congestion Control](https://www.google.com/search?q=../architecture/specs/v1/brownout_logic.md) for detailed telemetry triggers.
