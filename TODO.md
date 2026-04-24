@@ -2,7 +2,7 @@
 
 Tracking deferred work that has been identified but scheduled for later. Items are grouped by area and rough priority. This is not an authoritative backlog (GitHub Issues remain the source of truth for bugs and features); it is a working notebook for decisions and known gaps that surfaced during code reviews, security sweeps, and documentation passes.
 
-Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 8 pilot blockers across Backend, Compliance, Hardware, Architecture, Mobile, and Repo Hygiene sections. Search for that tag to triage launch-critical work.
+Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 7 pilot blockers across Backend, Compliance, Hardware, Architecture, and Mobile sections. Search for that tag to triage launch-critical work.
 
 Last updated: 2026-04-24.
 
@@ -19,9 +19,9 @@ The repository is currently mid-pivot from the original "Proxy AI" cognitive-vau
 * **Docs:** `docs/` (the tree at the repo root, not `core/docs/`).
 
 **What is legacy and scheduled for removal:**
-* `core/` — 444 tracked files from the pre-pivot codebase. Contains an incomplete monorepo migration. See the Repo Hygiene / Architecture section below for the full purge plan.
-* `apps/backend/entrypoints/app.py` — the Flask monolith. Kept temporarily because it still services some dev workflows (mock worker endpoints, dispatch stub). Will be fully retired once the FastAPI side absorbs the remaining responsibilities.
-* Root `Dockerfile` and `docker-compose.yml` — both currently build the pre-pivot Flask + cognitive vault + LND + bitcoind stack. Need to be rewritten or deleted.
+* `core/` — 75 tracked files remaining (down from 444 at start of migration). The v2 "AI civilization" backend code has been fully purged. Remaining content is mostly pre-pivot infrastructure (Dockerfile, docker-compose.yml, requirements.txt, Cargo.toml), pre-pivot Python entrypoints (master_node.py, mcp_server.py, dashboard.py, agent_engine_v2.py, autonomous_worker.py), and legacy subdirectories that may overlap with canonical locations elsewhere in the repo. See the Repo Hygiene / Architecture section for the residual cleanup plan.
+* `apps/backend/entrypoints/app.py` — the Flask monolith. Currently broken: imports from `core.db` and `core.lightning_engine` which no longer exist after the Stage 1c purge. Scheduled for retirement in Stage 1d.
+* Root `Dockerfile` and `docker-compose.yml` — both build the pre-pivot Flask + cognitive vault + LND + bitcoind stack. The `proxy_agent` container they produce no longer boots after Stage 1c. Need to be rewritten or deleted (Stage 1d or later).
 
 Understanding this context is important because several items in this file reference files or symptoms that only make sense if you know the pivot is in progress.
 
@@ -29,48 +29,61 @@ Understanding this context is important because several items in this file refer
 
 ## Repo Hygiene / Architecture
 
-### High priority
+### Completed migration stages (history)
 
-* **[PILOT BLOCKER] Finish the pre-pivot to monorepo migration.** The `core/` directory holds 444 tracked files from the original PAN codebase. The March 14 "phase 1-5 monorepo restructuring" commits moved some things into `apps/` but left `core/` in place and did not update imports. As of this writing, seven files in `apps/backend/` still import from `core.*`:
-    * `apps/backend/entrypoints/app.py` imports `core.db`, `core.lightning_engine` (note: this file is the dying Flask monolith, may get deleted rather than fixed)
-    * `apps/backend/src/api/reputation_api.py` imports `core.reputation.oracle`
-    * `apps/backend/src/ops/master_orchestrator.py` imports `core.api.status_api`, `core.governance.verdict_aggregator`, `core.economics.hodl_escrow`
-    * `apps/backend/src/ops/security_alert_system.py` imports `core.ops.alert_gateway`
-    * `apps/backend/src/reputation/export_utility.py` imports `core.reputation.oracle`
-    * `apps/backend/src/reputation/migration_engine.py` imports `core.reputation.oracle`
-    * `apps/backend/src/run_workers.py` imports from `core.*` (specific imports not yet audited)
-    
-    Until these imports are resolved, `core/` cannot be deleted. The migration plan has multiple stages documented below.
+The pre-pivot-to-monorepo migration has been substantially executed across two days of cleanup work. Stages completed and the commits that landed them:
 
-**Migration Stage 0 (ready to execute, low risk):**
-Safe deletions with no code dependencies from anywhere in `apps/`, Dockerfile, or docker-compose:
-    * `core/docs/` (728K, 80 shadow copies of files in `docs/`)
-    * `core/pan_tactical/` (17M, an unused duplicate of the `apps/mobile/pan_tactical/` Kotlin Multiplatform project)
-    * `core/legacy/` (8K, contains only `HODL_Invoice_Manager.py`)
-    Should be done as a single `chore(core): purge legacy duplicate docs, mobile, and legacy/` commit. Zero risk, fully reviewable.
+* **Stage 0a** (`b503b04`): Purged core/docs/ and core/legacy/ (86 files).
+* **Stage 0c** (`4a9c087`): Purged core/pan_tactical/ duplicate KMP project (85 files).
+* **Stage 0d** (`c06877d`): Purged core/static/, core/templates/, core/streamlit_core/, core/cognitive_vault/, core/node_legacy/ (105 files).
+* **Stage 1a** (`d133f3e`): Removed five orphan importer files in apps/backend/src/ (reputation_api, master_orchestrator, security_alert_system, export_utility, migration_engine) and patched run_workers.py to fix the broken core.economics.surge_pricing_engine import path.
+* **Stage 1c** (`21db5df`): Wholesale deletion of core/backend/ (93 files). Eliminated the v2 "AI civilization" backend (Jury Tribunal, Immigration Office, sovereign identity, etc.) from the repo entirely.
 
-**Migration Stage 1 (investigation):**
-For each of the 7 files in `apps/` that import from `core.*`, determine:
-    * Is the importing file in `apps/` itself dead code? If yes, delete it and the import problem disappears.
-    * If the importing file is live, which modules does it need from `core/`? Enumerate every `from core.X import Y` statement.
-    * For each `core/X.py` that needs to move, check whether a newer or equivalent version already exists somewhere in `apps/`. The working rule per the operator: "duplicate files in `core/` can be erased as long as there is a newer or equal version of that file in a non-`core/` folder."
-    * Produce a migration spreadsheet: for each core module, either (a) migrate to `apps/backend/src/X/`, (b) delete because already replaced, or (c) delete because the importing `apps/` code is dead.
+Cumulative deletion across Stages 0-1: 374 files, ~36,000 lines. apps/backend/src/ now has zero `from core.*` imports.
 
-**Migration Stage 2 (execute migrations):**
-Once the spreadsheet is complete, migrate one module-group per commit. Example:
-    * `refactor(gateway): migrate reputation oracle from core/ to apps/backend/src/reputation/`
-    * `refactor(gateway): migrate economics hodl_escrow`
-    * `refactor(gateway): migrate governance verdict_aggregator`
-    Use `git mv` to preserve history. Update the `from core.X` imports in each commit to the new path. Verify the FastAPI app still boots after each commit.
+### Stage 1d — retire the Flask monolith (priority: medium)
 
-**Migration Stage 3 (final purge):**
-With all needed modules migrated and no remaining `from core.*` imports in `apps/`, delete the entire remaining `core/` directory in a single `chore(core): purge legacy pre-monorepo codebase` commit. This will be the largest deletion commit the repo has ever seen (hundreds of files).
+`apps/backend/entrypoints/app.py` is the dying Flask monolith. After Stage 1c, its `from core.db import get_db_conn` and `from core.lightning_engine` imports point at deleted files. The Flask app no longer boots, and the `proxy_agent` container in the root `docker-compose.yml` no longer starts.
 
-**Migration Stage 4 (downstream cleanup):**
-    * Update the string reference to `core/ops/proof_archive_api.py` in `apps/web/internal_dashboards/src/protocol_data_purge_dashboard.jsx` to point at the new path (or delete the dashboard entirely if it has been replaced).
-    * Update the URL reference to `github.com/Proxy-Agent-Network/core/docs/` in the repo-root `.gitmessage` template to point at the `docs/` tree.
-    * Decide the fate of root `Dockerfile` and `docker-compose.yml` (both currently build the pre-pivot Flask stack and are not how the FastAPI app is actually run today). Either rewrite to build `apps/backend/src/main.py` via uvicorn, or delete if dev workflow has moved to direct `uvicorn` invocation.
-    * Remove the "Security & Verification Items" section from this TODO once the files it references have been removed as part of the `core/` purge.
+This is acceptable broken state because:
+* The Mesa Pilot ships on the FastAPI gateway at `apps/backend/src/main.py`, not the Flask monolith
+* No production workflow depends on the Flask app currently running
+* Local dev work has moved to direct `uvicorn apps.backend.src.main:app` invocation
+
+To formally retire Flask:
+* Decide between deleting `apps/backend/entrypoints/app.py` outright, or migrating any still-useful endpoints (mock worker endpoints, dispatch stub, agent registration mocks) into the FastAPI gateway as proper routers under `apps/backend/src/api/` first.
+* Delete `apps/backend/entrypoints/master_node.py` if it has no remaining purpose.
+* Remove the `proxy_agent` service from the root `docker-compose.yml`. Decide what (if anything) replaces it. Probably a lightweight compose file with just postgres and redis is sufficient for local dev.
+* Delete or rewrite the root `Dockerfile` (currently builds the pre-pivot Flask + cognitive_vault + LND + bitcoind stack via `COPY proxy-core /build/proxy-core` and friends).
+* Delete the now-dead `load_optional_router` helper in `apps/backend/src/main.py` (defined at line 86, never invoked).
+* Update TODO.md to reflect what landed.
+
+### Stage 2 — investigate and clean the residual core/ contents (priority: low)
+
+After Stages 0 and 1, `core/` still has 75 tracked files across these residuals:
+
+* **Root files** (~25): Dockerfile, docker-compose.yml, requirements.txt, Cargo.toml, Cargo.lock, README.md, LICENSE, CITATION.cff, .dockerignore, .flake8, .gitignore, .gitmessage, start_node.sh, favicon.ico, sample.mp3, sample.mp4, master_node.py, autonomous_worker.py, dashboard.py, agent_engine_v2.py, mcp_server.py.
+* **core/hardware-node/** (7 files): Exact duplicate of `hardware/python-node/` at the repo root. Each file matches a sibling in the canonical location. Likely deletable wholesale.
+* **core/proxy-core/** (6 files): Pre-monorepo Rust TPM bindings. The canonical location per the root Dockerfile is `proxy-core/` at the repo root. The `hardware/proxy-core/` and `core/proxy-core/` copies are duplicates.
+* **core/infrastructure/** (12 files): Unknown content. Probably scripts and config, possibly some still-useful operational tooling.
+* **core/examples/** (9 files): Example code, probably mundane.
+* **core/proxy-core/**, **core/sdk/** (3), **core/tools/** (2), **core/pan_command_center/** (4): Various subdirectories with small file counts.
+* **Single-file subdirectories** (7 dirs × 1 file each): core/core/, core/economics/, core/integrations/, core/pan_gateway/, core/protocols/, core/src/, core/utils/.
+
+None of these contain v2 civilization code (governance, jury, immigration, sovereign identity). The investor-optics concern is resolved. Stage 2 is cleanup-for-tidiness, not cleanup-for-safety. Lower priority than the pilot-blocker work.
+
+### Stage 2 sub-items (work back-burner)
+
+* **Verify core/hardware-node/ is fully duplicated by hardware/python-node/.** If yes, single-commit deletion.
+* **Resolve the three proxy-core/ duplicates.** Confirm the repo-root `proxy-core/` is canonical (per root Dockerfile line 24 `COPY proxy-core /build/proxy-core`). Delete `core/proxy-core/` and `hardware/proxy-core/`.
+* **Audit core/infrastructure/.** Read the 12 files, classify each as live/legacy/obsolete.
+* **Audit the loose pre-pivot Python files at core/ root** (master_node.py, autonomous_worker.py, dashboard.py, agent_engine_v2.py, mcp_server.py). Most likely all dead, but some might have informational value worth preserving in a separate archive branch.
+* **Decide the fate of the loose top-level non-Python files.** sample.mp3 and sample.mp4 are obvious deletes. Cargo.toml/Cargo.lock at core/ root are probably superseded by hardware/proxy-core/Cargo.toml.
+
+### Stage 3 — Downstream cleanup (priority: low)
+
+* **`apps/web/internal_dashboards/src/protocol_data_purge_dashboard.jsx`** contains a hardcoded string referencing `core/ops/proof_archive_api.py` (a file that no longer exists after Stage 1c). Update the string or delete the dashboard.
+* **`.gitmessage`** at the repo root contains a URL reference to `https://github.com/Proxy-Agent-Network/core/docs/` (a path that no longer exists after Stage 0a). Update to the actual docs location.
 
 ---
 
@@ -194,30 +207,15 @@ With all needed modules migrated and no remaining `from core.*` imports in `apps
 
 ---
 
-## Security & Verification Items (pending `core/` purge)
+## Security Items (post-core/ purge)
 
-The following files were flagged during an earlier security review and marked `[NEEDS VERIFICATION]` against the codebase. Subsequent investigation revealed that ALL of them live in `core/backend/`, not `apps/backend/src/`. Since `core/` is legacy pre-pivot code scheduled for removal as part of the Repo Hygiene migration plan, these findings will be resolved automatically when `core/` is purged (Migration Stage 3).
+The earlier security review flagged 12 files as `[NEEDS VERIFICATION]`. All 12 lived in `core/backend/` and were removed by Stage 1c (commit `21db5df`). The findings are now auto-resolved.
 
-This section is retained as a historical record. Delete this entire section once the `core/` purge is complete.
+Two items from that review remain active because they concern files that live in `apps/backend/src/`, not in the deleted `core/backend/`:
 
-* `core/backend/ops/compliance_auditor.py` - possible hardcoded secrets
-* `core/backend/ops/compliance_export_api.py`
-* `core/backend/ops/forensic_data_exporter.py`
-* `core/backend/ops/logistics_webhook_api.py`
-* `core/backend/reputation/verification_webhook.py` - fallback WEBHOOK_SECRET
-* `core/backend/api/hub_discovery_api.py` - X-Forwarded-For trust
-* `core/backend/ops/anomaly_detection.py` - possible race conditions
-* `core/backend/reputation/snapshot_utility.py` - silent error swallowing
-* `core/backend/reputation/slashing_engine.py` - WiFi heuristic needs review
-* `core/backend/ops/proof_archive_api.py` - possible path traversal
-* `core/backend/middleware/traffic_shaper.py` - hardcoded actor context
-* `core/backend/core/langchain_client.py` - prompt injection concern
+* **`apps/backend/src/compliance/audit_engine.py`** — load-bearing for SB 1417. Not yet reviewed in detail. Priority review before fleet-partner-facing beta.
 
-Items that are NOT resolved by the `core/` purge (these remain active concerns in `apps/backend/src/`):
-
-* **`apps/backend/src/compliance/audit_engine.py`** - load-bearing for SB 1417. Not yet reviewed in detail. Priority review before fleet-partner-facing beta.
-
-* **Dispatch endpoint auth strength.** `/api/v1/dispatch/request` now uses PARTNER_API_KEY + secrets.compare_digest, which is good. But bearer tokens can still leak via logs, screenshots, Slack pastes, etc. For Waymo/Zoox-level partners, prefer the V2X Ed25519 signature path.
+* **Dispatch endpoint auth strength.** `/api/v1/dispatch/request` now uses `PARTNER_API_KEY` + `secrets.compare_digest`, which is good. But bearer tokens can still leak via logs, screenshots, Slack pastes, etc. For Waymo/Zoox-level partners, prefer the V2X Ed25519 signature path.
 
 ---
 
