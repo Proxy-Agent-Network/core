@@ -15,7 +15,7 @@ logger = logging.getLogger("PAN_Supervisor")
 # WORKER IMPORTS
 # ---------------------------------------------------------------------------
 from matching_engine import run_matching_engine
-from core.economics.surge_pricing_engine import SurgePricingEngine
+from surge_pricing_engine import SurgePricingEngine
 
 # Note: Depending on how watchdog_worker.py is currently structured, 
 # you may need to wrap its main loop in an async def run_watchdog(redis_client):
