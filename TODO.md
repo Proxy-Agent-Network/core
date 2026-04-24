@@ -4,7 +4,7 @@ Tracking deferred work that has been identified but scheduled for later. Items a
 
 Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 8 pilot blockers across Backend, Compliance, Hardware, Architecture, Mobile, and Repo Hygiene sections. Search for that tag to triage launch-critical work.
 
-Last updated: 2026-04-23.
+Last updated: 2026-04-24.
 
 ---
 
@@ -262,6 +262,40 @@ Items that are NOT resolved by the `core/` purge (these remain active concerns i
 ### Low priority
 
 * **Dynamic GPS injection for Dev Menu.** The `LOC 1`, `LOC 2`, `LOC 3` buttons in `AgentDashboardScreen.kt` hardcode Mesa, AZ intersections. When we expand beyond Mesa, these need to dynamically pull coordinates from the active Sector's Geohash polygon. Purely a dev-UX item; doesn't affect production routing.
+
+---
+
+## Post-Pilot Features
+
+These are feature ideas that have been scoped and designed but are deliberately deferred until after Mesa Pilot ships. None are pilot blockers. They are recorded here so the design thinking is not lost. Each links to a more detailed design doc under `docs/design/`.
+
+### Loadout Modes (Vehicle / E-Bike-Scooter / Foot Patrol)
+
+Adds three loadout modes that determine an agent's service radius, eligible mission tiers, and equipment requirements. Vehicle remains the default; E-Bike/Scooter and Foot Patrol open up new agent demographics and service contexts (campus deployments, dense urban cores, airport terminals).
+
+Key design decisions captured:
+* Vehicle: 1-8 mile radius, default 5 miles. Eligible for all mission tiers.
+* E-Bike/Scooter: 0.5-3 mile radius, default 1.5 miles. Eligible for Tier 1 and Tier 2 with constraints. Blocked from vehicle takeover missions because the agent cannot leave their bike or scooter behind to drive the AV.
+* Foot Patrol: 0.125-1 mile radius, default 0.5 miles. Tier 1 only (door closing, trash cleanup, light diagnostics). No gear-heavy or driving-required missions.
+* Service radius is enforced at dispatch: only missions within the agent's eligibility zone get routed to them. Includes the second-mission-in-queue case (radius is measured from the location of the prior mission's AV, not the agent's current location).
+* Loadout mode does NOT affect base fee. Surge pricing applies uniformly per zone.
+* SLA targets remain tier-based (15 min Tier 1, 20 min Tier 2, 25 min Tier 3) regardless of loadout. Adjustments may follow once pilot data exists.
+
+Full design at `docs/design/LOADOUT_MODES.md`.
+
+### Priority Bonus
+
+Optional fleet-manager-set bonus paid to agents who complete a mission within a target time. Bonus is invisible to the agent at dispatch time and accept time; it appears as a pleasant surprise notification after job completion. This is intentional: hiding the bonus prevents cream-skimming, prevents SLA gaming, and removes any temptation for agents to drive recklessly to chase a known reward.
+
+Preset structure:
+* OFF (default): No bonus. ($0 / $0 / $0)
+* Balanced: $3 at 15 min, $6 at 20 min, $9 at 25 min.
+* Fastest: $5 at 15 min, $10 at 20 min, $15 at 25 min.
+* Custom: Any manual modification of any tier value (including turning the OFF preset on with a non-zero amount, or tweaking any value in Balanced or Fastest) auto-switches the preset to Custom.
+
+The name "Priority Bonus" was chosen over "Commendation" (commendation has formal meaning in military and first-responder culture and should be reserved for a future non-monetary honor feature), and over "Rush Fee" or "Speed Bonus" (legal concern: framing risks encouraging agents to run red lights or drive recklessly to chase the bonus).
+
+Full design at `docs/design/PRIORITY_BONUS.md`.
 
 ---
 
