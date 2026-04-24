@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 - **KMP Network Migration:** Migrated the mobile network layer from PanApiClient (Android-only) to PanWalletClient (Kotlin Multiplatform). WalletNetworkClient interfaces now bridge Android and iOS code paths.
-- **JWT Audience Claim:** Vanguard Agent StrongBox JWTs now require the `"aud": "pan_dispatch_gateway"` claim. Tokens missing the claim are rejected at the gateway.
+- **JWT Audience Claim:** Vanguard Agent StrongBox JWTs now require the `"aud": "pan_ops_hub"` claim. Tokens missing the claim are rejected at the gateway.
 - **Gateway Hardening:** Hard imports for required routers (telemetry, wallet, agent) replace the prior fallback-to-mock pattern. Silent ImportError on load-bearing routes is no longer possible.
 - **Webhook Authentication:** Zero-trust webhook authentication via Ed25519 per-fleet keys for V2X distress signals. DEV-FLEET-01 bypass now rejects in production.
 - **Dispatch Engine:** Migrated dispatch routing to OSRM (Open Source Routing Machine) for deterministic street-grid routing. Dynamic L402 surge pricing tied to OSM color taxonomy.
