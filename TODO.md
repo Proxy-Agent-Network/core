@@ -2,9 +2,75 @@
 
 Tracking deferred work that has been identified but scheduled for later. Items are grouped by area and rough priority. This is not an authoritative backlog (GitHub Issues remain the source of truth for bugs and features); it is a working notebook for decisions and known gaps that surfaced during code reviews, security sweeps, and documentation passes.
 
-Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 7 pilot blockers across Backend, Compliance, Hardware, Architecture, and Mobile sections. Search for that tag to triage launch-critical work.
+Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 8 pilot blockers across Backend, Compliance, Hardware, Architecture, Mobile, and Repo Hygiene sections. Search for that tag to triage launch-critical work.
 
 Last updated: 2026-04-23.
+
+---
+
+## Architectural Context (read this first)
+
+The repository is currently mid-pivot from the original "Proxy AI" cognitive-vault Flask monolith to the "Proxy Agent Network" FastAPI V2X gateway for the Mesa autonomous-vehicle-recovery pilot.
+
+**The canonical future stack:**
+* **Backend:** FastAPI, entrypoint at `apps/backend/src/main.py`. This is what gets hardened, audited, and shipped to Mesa.
+* **Mobile:** `apps/mobile/pan_tactical/composeApp/` (Kotlin Multiplatform, Android first, iOS parity pending).
+* **Ops Hub:** `apps/web/internal_dashboards/` (React + Vite).
+* **Docs:** `docs/` (the tree at the repo root, not `core/docs/`).
+
+**What is legacy and scheduled for removal:**
+* `core/` — 444 tracked files from the pre-pivot codebase. Contains an incomplete monorepo migration. See the Repo Hygiene / Architecture section below for the full purge plan.
+* `apps/backend/entrypoints/app.py` — the Flask monolith. Kept temporarily because it still services some dev workflows (mock worker endpoints, dispatch stub). Will be fully retired once the FastAPI side absorbs the remaining responsibilities.
+* Root `Dockerfile` and `docker-compose.yml` — both currently build the pre-pivot Flask + cognitive vault + LND + bitcoind stack. Need to be rewritten or deleted.
+
+Understanding this context is important because several items in this file reference files or symptoms that only make sense if you know the pivot is in progress.
+
+---
+
+## Repo Hygiene / Architecture
+
+### High priority
+
+* **[PILOT BLOCKER] Finish the pre-pivot to monorepo migration.** The `core/` directory holds 444 tracked files from the original PAN codebase. The March 14 "phase 1-5 monorepo restructuring" commits moved some things into `apps/` but left `core/` in place and did not update imports. As of this writing, seven files in `apps/backend/` still import from `core.*`:
+    * `apps/backend/entrypoints/app.py` imports `core.db`, `core.lightning_engine` (note: this file is the dying Flask monolith, may get deleted rather than fixed)
+    * `apps/backend/src/api/reputation_api.py` imports `core.reputation.oracle`
+    * `apps/backend/src/ops/master_orchestrator.py` imports `core.api.status_api`, `core.governance.verdict_aggregator`, `core.economics.hodl_escrow`
+    * `apps/backend/src/ops/security_alert_system.py` imports `core.ops.alert_gateway`
+    * `apps/backend/src/reputation/export_utility.py` imports `core.reputation.oracle`
+    * `apps/backend/src/reputation/migration_engine.py` imports `core.reputation.oracle`
+    * `apps/backend/src/run_workers.py` imports from `core.*` (specific imports not yet audited)
+    
+    Until these imports are resolved, `core/` cannot be deleted. The migration plan has multiple stages documented below.
+
+**Migration Stage 0 (ready to execute, low risk):**
+Safe deletions with no code dependencies from anywhere in `apps/`, Dockerfile, or docker-compose:
+    * `core/docs/` (728K, 80 shadow copies of files in `docs/`)
+    * `core/pan_tactical/` (17M, an unused duplicate of the `apps/mobile/pan_tactical/` Kotlin Multiplatform project)
+    * `core/legacy/` (8K, contains only `HODL_Invoice_Manager.py`)
+    Should be done as a single `chore(core): purge legacy duplicate docs, mobile, and legacy/` commit. Zero risk, fully reviewable.
+
+**Migration Stage 1 (investigation):**
+For each of the 7 files in `apps/` that import from `core.*`, determine:
+    * Is the importing file in `apps/` itself dead code? If yes, delete it and the import problem disappears.
+    * If the importing file is live, which modules does it need from `core/`? Enumerate every `from core.X import Y` statement.
+    * For each `core/X.py` that needs to move, check whether a newer or equivalent version already exists somewhere in `apps/`. The working rule per the operator: "duplicate files in `core/` can be erased as long as there is a newer or equal version of that file in a non-`core/` folder."
+    * Produce a migration spreadsheet: for each core module, either (a) migrate to `apps/backend/src/X/`, (b) delete because already replaced, or (c) delete because the importing `apps/` code is dead.
+
+**Migration Stage 2 (execute migrations):**
+Once the spreadsheet is complete, migrate one module-group per commit. Example:
+    * `refactor(gateway): migrate reputation oracle from core/ to apps/backend/src/reputation/`
+    * `refactor(gateway): migrate economics hodl_escrow`
+    * `refactor(gateway): migrate governance verdict_aggregator`
+    Use `git mv` to preserve history. Update the `from core.X` imports in each commit to the new path. Verify the FastAPI app still boots after each commit.
+
+**Migration Stage 3 (final purge):**
+With all needed modules migrated and no remaining `from core.*` imports in `apps/`, delete the entire remaining `core/` directory in a single `chore(core): purge legacy pre-monorepo codebase` commit. This will be the largest deletion commit the repo has ever seen (hundreds of files).
+
+**Migration Stage 4 (downstream cleanup):**
+    * Update the string reference to `core/ops/proof_archive_api.py` in `apps/web/internal_dashboards/src/protocol_data_purge_dashboard.jsx` to point at the new path (or delete the dashboard entirely if it has been replaced).
+    * Update the URL reference to `github.com/Proxy-Agent-Network/core/docs/` in the repo-root `.gitmessage` template to point at the `docs/` tree.
+    * Decide the fate of root `Dockerfile` and `docker-compose.yml` (both currently build the pre-pivot Flask stack and are not how the FastAPI app is actually run today). Either rewrite to build `apps/backend/src/main.py` via uvicorn, or delete if dev workflow has moved to direct `uvicorn` invocation.
+    * Remove the "Security & Verification Items" section from this TODO once the files it references have been removed as part of the `core/` purge.
 
 ---
 
@@ -128,26 +194,28 @@ Last updated: 2026-04-23.
 
 ---
 
-## Security & Verification Items (from original sweep, not yet reverified)
+## Security & Verification Items (pending `core/` purge)
 
-These items were flagged during an earlier security review and marked `[NEEDS VERIFICATION]` against the current codebase. Each deserves a targeted review to confirm whether the issue still exists or was already resolved by intervening commits.
+The following files were flagged during an earlier security review and marked `[NEEDS VERIFICATION]` against the codebase. Subsequent investigation revealed that ALL of them live in `core/backend/`, not `apps/backend/src/`. Since `core/` is legacy pre-pivot code scheduled for removal as part of the Repo Hygiene migration plan, these findings will be resolved automatically when `core/` is purged (Migration Stage 3).
 
-* `apps/backend/src/ops/compliance_auditor.py` - possible hardcoded secrets
-* `apps/backend/src/ops/compliance_export_api.py`
-* `apps/backend/src/ops/forensic_data_exporter.py`
-* `apps/backend/src/ops/logistics_webhook_api.py`
-* `apps/backend/src/reputation/verification_webhook.py` - fallback WEBHOOK_SECRET
-* `apps/backend/src/api/hub_discovery_api.py` - X-Forwarded-For trust
-* `apps/backend/src/ops/anomaly_detection.py` - possible race conditions
-* `apps/backend/src/reputation/snapshot_utility.py` - silent error swallowing
-* `apps/backend/src/reputation/slashing_engine.py` - WiFi heuristic needs review
-* `apps/backend/src/ops/proof_archive_api.py` - possible path traversal
-* `apps/backend/src/middleware/traffic_shaper.py` - hardcoded actor context
-* `apps/backend/src/core/langchain_client.py` - prompt injection concern
+This section is retained as a historical record. Delete this entire section once the `core/` purge is complete.
 
-Note: several files above are in modules (`ops/`, `reputation/`) that may have been partially deprecated during the Phase 5+ cleanup. First step on each is "does this file still exist and is it reachable from active routes?"
+* `core/backend/ops/compliance_auditor.py` - possible hardcoded secrets
+* `core/backend/ops/compliance_export_api.py`
+* `core/backend/ops/forensic_data_exporter.py`
+* `core/backend/ops/logistics_webhook_api.py`
+* `core/backend/reputation/verification_webhook.py` - fallback WEBHOOK_SECRET
+* `core/backend/api/hub_discovery_api.py` - X-Forwarded-For trust
+* `core/backend/ops/anomaly_detection.py` - possible race conditions
+* `core/backend/reputation/snapshot_utility.py` - silent error swallowing
+* `core/backend/reputation/slashing_engine.py` - WiFi heuristic needs review
+* `core/backend/ops/proof_archive_api.py` - possible path traversal
+* `core/backend/middleware/traffic_shaper.py` - hardcoded actor context
+* `core/backend/core/langchain_client.py` - prompt injection concern
 
-* **compliance/audit_engine.py** - load-bearing for SB 1417. Not yet reviewed in detail. Priority review before fleet-partner-facing beta.
+Items that are NOT resolved by the `core/` purge (these remain active concerns in `apps/backend/src/`):
+
+* **`apps/backend/src/compliance/audit_engine.py`** - load-bearing for SB 1417. Not yet reviewed in detail. Priority review before fleet-partner-facing beta.
 
 * **Dispatch endpoint auth strength.** `/api/v1/dispatch/request` now uses PARTNER_API_KEY + secrets.compare_digest, which is good. But bearer tokens can still leak via logs, screenshots, Slack pastes, etc. For Waymo/Zoox-level partners, prefer the V2X Ed25519 signature path.
 
@@ -161,13 +229,17 @@ Note: several files above are in modules (`ops/`, `reputation/`) that may have b
     * `security` - authentication, attestation, key ceremony, auth middleware
     Avoid adding narrow feature scopes (`patrol`, `sync`, `dispatch`) - those belong in the subject line.
 
-* **Set PYTHONUTF8=1 globally.** Windows Git Bash defaults to cp1252 which mangles the emojis in source and docs. Setting this in the user profile avoids intermittent "invalid byte 0x8f" errors when Python opens files without explicit encoding.
+* **Retire or repurpose root `Dockerfile` and `docker-compose.yml`.** Currently build the pre-pivot Flask + cognitive vault + LND + bitcoind stack. The FastAPI app at `apps/backend/src/main.py` is NOT what docker-compose runs today. When the operator runs `docker-compose up`, it builds a pre-pivot container that is not the real shipping backend. Decision needed: rewrite both files to build and run the FastAPI stack, or delete them and move dev to direct `uvicorn apps.backend.src.main:app` invocation with an optional lightweight docker-compose for postgres/redis only.
+
+* **Set PYTHONUTF8=1 globally.** Windows Git Bash defaults to cp1252 which mangles the emojis in source and docs. Setting this in the user profile avoids intermittent "invalid byte 0x8f" errors when Python opens files without explicit encoding. Also prevents the heredoc emoji-stripping problem that damaged SUMMARY.md once during this cleanup.
 
 * **Second venv at `apps/backend/venv/`.** A stray venv exists alongside the root `.venv/`. Contains `google.genai` and `langsmith` packages from the deprecated chatbot subsystem. Likely leftover and deletable, but verify nothing (IDE config, script) is pointing at it first.
 
 * **Pin `python-multipart` floor in requirements.txt.** Done in 14e967e (added `>=0.0.16`). Leaving this note in case a future dependency resolver needs a pin adjustment.
 
 * **`.gitattributes` for line endings.** Currently no rules. Every file edit on Windows produces `warning: LF will be replaced by CRLF` messages. Not harmful but noisy. Consider `*.md text eol=lf` or similar to lock a convention.
+
+* **Update `.gitmessage` URL reference.** Current template contains `See: https://github.com/Proxy-Agent-Network/core/docs/` which is a dead URL path (the repo structure no longer has `core/docs/` as a documentation root). Update to point at the repo's actual docs location on GitHub.
 
 ---
 
@@ -199,3 +271,4 @@ Note: several files above are in modules (`ops/`, `reputation/`) that may have b
 * Remove items when they ship. Link to the closing commit or PR in the removal commit message.
 * This file is not a substitute for the CHANGELOG. The CHANGELOG records what shipped; this file tracks what we are putting off.
 * Search for **[PILOT BLOCKER]** to surface Mesa Pilot launch-critical items across all sections.
+* When working in this file, the Architectural Context section at the top is the orientation for new contributors — keep it current as the pivot resolves.
