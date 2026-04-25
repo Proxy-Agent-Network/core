@@ -736,9 +736,9 @@ def command_center_css(filename):
 def command_center_js(filename):
     return send_from_directory(os.path.join(CMD_CENTER_DIR, 'js'), filename)
 
-@app.route('/secrets.js')
+@app.route('/pan_client_config.js')
 def command_center_secrets():
-    return send_from_directory(CMD_CENTER_DIR, 'secrets.js')
+    return send_from_directory(CMD_CENTER_DIR, 'pan_client_config.js')
 
 @app.route('/faq')
 def faq():

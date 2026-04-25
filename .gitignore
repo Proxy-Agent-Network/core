@@ -9,7 +9,7 @@ config.local.yaml
 # Secret Lore and Live Agent Databases
 core_memories.json
 agency_lore.db
-secrets.js
+pan_client_config.js
 
 # --- PROVISIONING SECRETS ---
 # Prevent Vanguard 50 pilot credentials from leaking
