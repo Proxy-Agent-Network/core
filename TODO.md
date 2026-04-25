@@ -2,7 +2,7 @@
 
 Tracking deferred work that has been identified but scheduled for later. Items are grouped by area and rough priority. This is not an authoritative backlog (GitHub Issues remain the source of truth for bugs and features); it is a working notebook for decisions and known gaps that surfaced during code reviews, security sweeps, and documentation passes.
 
-Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 8 pilot blockers across Backend, Compliance, Hardware, Architecture, and Mobile sections. Search for that tag to triage launch-critical work.
+Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 9 pilot blockers across Backend, Compliance, Hardware, Architecture, and Mobile sections. Search for that tag to triage launch-critical work.
 
 Last updated: 2026-04-25.
 
@@ -23,6 +23,8 @@ The repository is currently mid-pivot from the original "Proxy AI" cognitive-vau
 * `apps/backend/entrypoints/app.py` — the Flask monolith. Currently broken (imports from deleted `core.db` and `core.lightning_engine`) but contains live backend logic for the Vanguard 50 Command Center web UI (login, admin, reports endpoints, partner dispatch endpoint, telemetry history). Cannot be deleted until those endpoints are migrated to FastAPI routers. Tracked as Stage 1d-3 below.
 * Root `Dockerfile` and `docker-compose.yml` — both build the pre-pivot Flask + cognitive vault + LND + bitcoind stack. The `proxy_agent` container they produce no longer boots after Stage 1c. Cannot be retired until app.py migration completes (Stage 1d-3 + 1d-5).
 
+**Canonical evidence-upload path (added 2026-04-25):** `apps/backend/src/api/agent_api.py` defines the live, hardened `/agent/evidence/upload` endpoint. It is wired into `main.py` at `/api/v1` prefix (final URL `/api/v1/agent/evidence/upload`), is what the Android client calls (`PanApiClient.kt` line 393), and is the production-quality implementation: rate limiting (60/hr/agent), magic-byte content sniffing for JPEG/PNG verification, AES256 server-side encryption, S3 object metadata for chain of custody, presigned URL generation, a Redis ownership index at `pan:agent:{agent_id}:evidence:{blob_id}` used by the mission-completion handler to verify agent ownership of submitted evidence URLs, and a production-blocking startup check that raises `RuntimeError` if `S3_EVIDENCE_BUCKET_NAME` env var is unset in production. The legacy `evidence_api.py` was deleted in Stage 1e-3 (commit `a34123e`) as a half-finished alternative implementation. The single feature evidence_api.py had that agent_api.py lacks is S3 Object Lock in COMPLIANCE mode for SB 1417 §28-9710 12-month tamper-resistant retention. The Object Lock parameters need to be added to `agent_api.py`'s `upload_evidence` handler as part of the existing SB 1417 pilot blocker work (see Compliance / Storage section), NOT by re-introducing a parallel router.
+
 Understanding this context is important because several items in this file reference files or symptoms that only make sense if you know the pivot is in progress.
 
 ---
@@ -40,9 +42,14 @@ The pre-pivot-to-monorepo migration has been substantially executed across two d
 * **Stage 1c** (`21db5df`): Wholesale deletion of core/backend/ (93 files). Eliminated the v2 "AI civilization" backend (Jury Tribunal, Immigration Office, sovereign identity, etc.) from the repo entirely.
 * **Stage 1d-1** (`ec15ca4`): Retired pre-pivot Panopticon files. Removed apps/backend/entrypoints/master_node.py (a 278-line standalone Flask server on port 5001 implementing the v2 civilization treasury dashboard) and apps/backend/entrypoints/autonomous_worker.py (the 103-line client that paired with it). 383 lines deleted.
 * **Stage 1d-2** (`8bb279f`): Fixed the broken `from backend.core.lightning_engine` import in apps/backend/entrypoints/mcp_server.py to `from core.lightning_engine` and added the standard sys.path.insert pattern. mcp_server.py is the FastMCP server exposing Vanguard dispatch tools to fleet partner AI clients (dispatch_vanguard_agent, check_network_surge, check_mission_status, pull_sb1417_report) — preserved as live AV-pilot code.
-* **Stage 3-a** (`ee637c1`): Mass deletion of pre-fork content from `apps/web/internal_dashboards/`. 96 files deleted (98 changes total — 96 deletions plus 2 doc patches): all 71 jsx files in `src/` plus 1 .js file (v2 civilization prototype dashboards: high_court_*, jury_*, juror_*, quarantine_*, reputation_slashing_*, insurance_*, regulatory_audit, identity_migration, hodl_escrow, governance_voting, treasury_audit, etc.); 13 pre-fork audio files in `public/audio/`; the `magic_marvin_dance.webp` image; `human/proxy_node_agreement.md`; 7 v2 civilization HTML pages (aup, economics, governance, legal, privacy, tos, transparency); and 2 captcha-bypass POA legal templates (ai_power_of_attorney.md, UK_LIMITED_POWER_OF_ATTORNEY.md). Patched `legal/JURISDICTION_MAP.md` and `legal/README.md` to reference the not-yet-drafted `AZ_M2H_MANDATE.md` instead of the deleted `ai_power_of_attorney.md`. ~21,500 lines removed in one commit. Discovered new pilot blocker: AZ_M2H_MANDATE.md does not exist (see Compliance / Storage section below).
+* **Stage 1d-4** (`c89ce0c`): Renamed `apps/web/command_center/secrets.js` to `pan_client_config.js`. The file holds `GOOGLE_MAPS_API_KEY` and `FIREBASE_CONFIG` for the command_center frontend; it was correctly gitignored throughout (verified `git ls-files` returns empty), but the filename "secrets.js" in a public repo invited grep curiosity. Audit-time security verification: Firebase Realtime DB / Storage / Firestore all have rules denying all access; Google Maps API key locked down via HTTP referrer restrictions in Google Cloud Console. No key rotation needed. Updated 4 HTML script tag references plus 2 Flask route lines in app.py (the `@app.route('/secrets.js')` and `send_from_directory` filename), updated both gitignores to the new filename, added a committed `pan_client_config.example.js` template with placeholder values and security notes for new developers, deleted accidental `test.rar` check-in. 9 files changed, 41 insertions, 8 deletions.
+* **Stage 3-a** (`ee637c1`): Mass deletion of pre-fork content from `apps/web/internal_dashboards/`. 96 files deleted (98 changes total — 96 deletions plus 2 doc patches): all 71 jsx files in `src/` plus 1 .js file (v2 civilization prototype dashboards: high_court_*, jury_*, juror_*, quarantine_*, reputation_slashing_*, insurance_*, regulatory_audit, identity_migration, hodl_escrow, governance_voting, treasury_audit, etc.); 13 pre-fork audio files in `public/audio/`; the `magic_marvin_dance.webp` image; the `internal_dashboards` copy of `human/proxy_node_agreement.md` (a v2 captcha-bypass "Proxy Protocol Network" agreement, distinct from and unrelated to the post-pivot Vanguard MSA file of the same name preserved in `apps/web/public_website/static/human/`); 7 v2 civilization HTML pages (aup, economics, governance, legal, privacy, tos, transparency); and 2 captcha-bypass POA legal templates (ai_power_of_attorney.md, UK_LIMITED_POWER_OF_ATTORNEY.md). Patched `legal/JURISDICTION_MAP.md` and `legal/README.md` to reference the not-yet-drafted `AZ_M2H_MANDATE.md` instead of the deleted `ai_power_of_attorney.md`. ~21,500 lines removed in one commit. Discovered new pilot blocker: AZ_M2H_MANDATE.md does not exist (see Compliance / Storage section below).
+* **Stage 1e-1** (`d083892`): Deleted 5 orphan files from `apps/backend/src/api/` totaling 510 lines. Four were standalone-FastAPI-app pattern files (each defining their own `app = FastAPI(...)` and self-launching on dedicated ports 8001, 8002, 8021, 8024) that were never imported by `main.py` and contained pre-pivot v2 civilization concepts: `dashboard_api.py` (High Court cases, VRF jury votes, PIP-882 protocol voting), `insurance_actuary_api.py` (Insurance Pool bayesian solvency engine), `status_api.py` (mock global node count regional health), `threat_intelligence_api.py` (Sybil cluster / TPM revocation IP blacklist). The fifth, `agent_request.py`, was a pre-pivot SDK demo CLI script posting hardcoded fake "Photography" tasks to localhost:5000.
+* **Stage 1e-2** (`4f46f53`): Wired `store_api.py` into `main.py`. The router defined four agent gear shop endpoints (checkout, orders, shipment registration, waitlist) but had never been imported, so all four returned 404 in production. Most notably the Vanguard Android app calls `POST /api/v1/store/waitlist` via `PanWalletClient.kt` line 303 when an agent joins the gear waitlist, and this had been silently failing. Stripped explicit `/v1/` prefix from all four route decorators in `store_api.py` so they match the convention used by every other wired router (decorators define routes WITHOUT the `/api/v1` prefix; `main.py` provides it via `include_router(prefix="/api/v1")`). Final URLs: `/api/v1/store/checkout`, `/api/v1/store/orders/{order_id}/shipment`, `/api/v1/store/orders`, `/api/v1/store/waitlist`. 2 files changed, 6 insertions, 4 deletions.
+* **Stage 1e-3** (`a34123e`): Deleted `apps/backend/src/api/evidence_api.py` (86 lines) as superseded by the agent_api.py implementation. The file defined a `/v1/agent/evidence/upload` endpoint that was never imported by main.py, while agent_api.py defines a fully-wired `/agent/evidence/upload` endpoint at the same effective URL. The mobile client calls the agent_api version. See the canonical evidence-upload path note in the Architectural Context section for details on which features survive (in agent_api.py) and which need porting (S3 Object Lock for SB 1417 WORM compliance — tracked as part of the SB 1417 evidence pilot blocker, NOT by reintroducing a parallel router).
+* **Stage 3-a addendum** (`c74dc13`): Cleaned the missed POA duplicates in `apps/web/public_website/static/legal/`. Yesterday's Stage 3-a only deleted the `internal_dashboards` copies; this commit deleted the parallel `public_website` copies of `ai_power_of_attorney.md` and `UK_LIMITED_POWER_OF_ATTORNEY.md`, and applied identical 3-patch updates to `JURISDICTION_MAP.md` and `README.md` so they no longer reference the deleted ai_power_of_attorney.md filename. Preserved: `singapore_poa.md` and `us_delaware_poa.md` (legitimate post-pivot AV M2H mandate templates for One-North LTA and Delaware UETA jurisdictions respectively), and `static/human/proxy_node_agreement.md` (a completely different file from the v2 captcha-bypass agreement of the same filename deleted in Stage 3-a — this one is the legitimate Vanguard Agent Master Service Agreement v2026.1.0 for the Mesa Pilot). 4 files changed, 4 insertions, 142 deletions. Also surfaced a new pilot blocker: the public_website templates link to `/human/proxy_node_agreement.html` but no file or route serves that URL (the file is `.md`, not `.html`); the MSA link is broken in production. See Backend / Gateway section.
 
-Cumulative deletion across Stages 0-3a: 472 files, ~58,500 lines. apps/backend/src/ has zero `from core.*` imports. The two surviving entrypoints in apps/backend/entrypoints/ are app.py (live but broken, awaits migration) and mcp_server.py (live and working).
+Cumulative deletion across Stages 0-3a (including today's commits): ~482 files, ~59,100 lines. apps/backend/src/api/ contains 7 files, all using proper APIRouter pattern: agent_api.py, onboarding_api.py, store_api.py, telemetry_socket.py, v2x_bounty_api.py, v2x_telemetry_api.py, wallet_api.py (six wired into main.py directly, the seventh — v2x_telemetry_api — imported transitively via v2x_bounty_api). The two surviving entrypoints in apps/backend/entrypoints/ are app.py (live but broken, awaits Stage 1d-3 migration) and mcp_server.py (live and working).
 
 ### Stage 1d-3 — migrate command_center backend from Flask to FastAPI (priority: medium-high)
 
@@ -52,7 +59,7 @@ Cumulative deletion across Stages 0-3a: 472 files, ~58,500 lines. apps/backend/s
 * `/login`, `/logout` — admin authentication via `ADMIN_SECRET_TOKEN`
 * `/admin`, `/command`, `/developers`, `/reports`, `/faq`, `/legal/<doc_type>` — login-gated SPA routes
 * `/`, `/enlist`, `/operations`, `/rates`, `/investors` — public marketing pages
-* `/command/css/<filename>`, `/command/js/<filename>`, `/secrets.js` — static asset serving for the command_center
+* `/command/css/<filename>`, `/command/js/<filename>`, `/pan_client_config.js` — static asset serving for the command_center
 
 **API endpoints:**
 * `/api/v1/dispatch/request` — partner dispatch stub with PARTNER_API_KEY auth (returns mock mission_id, no Redis writes)
@@ -73,32 +80,16 @@ To migrate cleanly:
 * Identify which command_center features are live versus aspirational stubs. The reports endpoints (compliance, operations, financials, vendor_sla) all return random data today; if the command_center actually displays this data, decide whether to migrate the stubs or rebuild against real backend data.
 * Migrate the live endpoints into FastAPI routers under `apps/backend/src/api/`. Likely one router per logical group (admin, reports, partner, telemetry, mock-workers).
 * Migrate the Jinja2 template-rendering routes. FastAPI has Jinja2Templates support; main.py already uses it for `/enlist` and `/enlist-success`.
-* Migrate the static-file serving for `/command/css/<filename>`, `/command/js/<filename>`, and `/secrets.js`. FastAPI's StaticFiles is the right tool.
+* Migrate the static-file serving for `/command/css/<filename>`, `/command/js/<filename>`, and `/pan_client_config.js`. FastAPI's StaticFiles is the right tool.
 * Migrate the auth flow (login/logout/session). FastAPI has equivalent session middleware.
 * Migrate the rate_limit and require_node_signature decorators (they live in app.py).
 * Migrate the security_heartbeat daemon thread; it should become a FastAPI startup event.
 
 Substantial work. Probably 1-2 focused sessions. Should be done before Stage 1d-5.
 
-### Stage 1d-4 — rename and rotate `secrets.js` (priority: medium)
-
-`apps/web/command_center/secrets.js` contains `GOOGLE_MAPS_API_KEY` and `FIREBASE_CONFIG` and is served at the URL path `/secrets.js`. Two problems:
-
-* **The filename is bad investor optics.** A path called `secrets.js` in a public repo invites grep curiosity from anyone reviewing the codebase.
-* **The contents may need rotation.** Google Maps API keys and Firebase config are technically "public client credentials," but if they aren't domain-restricted in Google Cloud Console / Firebase Console, they can be lifted from a public repo and abused (mostly to run up your billing).
-
-Action items:
-* Rename the file to `frontend_config.js` or similar non-alarming name. Update all references in the command_center HTML/JS.
-* Update the Flask route in app.py (line 739, `/secrets.js`) to match the new filename. (This is best done as part of Stage 1d-3 when we migrate the route to FastAPI.)
-* Verify in Google Cloud Console that `GOOGLE_MAPS_API_KEY` is restricted to your production domain only (HTTP referrer restriction).
-* Verify in Firebase Console that `FIREBASE_CONFIG` has appropriate Security Rules locked down (Firestore, Storage, Realtime DB).
-* If either is not properly restricted, rotate the keys and redeploy.
-
-This is its own commit, separable from the larger Stage 1d-3 migration.
-
 ### Stage 1d-5 — retire app.py + Dockerfile + docker-compose.yml (priority: medium)
 
-Only after Stage 1d-3 and Stage 1d-4 land. With the command_center backend migrated and secrets.js renamed:
+Only after Stage 1d-3 lands (Stage 1d-4 is already complete). With the command_center backend migrated:
 
 * Delete `apps/backend/entrypoints/app.py`. All its endpoints now live in FastAPI routers under `apps/backend/src/api/`.
 * Delete the now-dead `load_optional_router` helper in `apps/backend/src/main.py` (defined at line 86, never invoked).
@@ -138,7 +129,13 @@ After Stage 3-a, `apps/web/internal_dashboards/` contains 11 surviving files: 4 
 * Deletes the now-empty `apps/web/internal_dashboards/` directory shell
 * Updates any `docs/` README to mention the legal directory
 
+After Stage 3-a addendum, `apps/web/public_website/static/legal/` similarly has surviving content that may want relocation alongside: the patched JURISDICTION_MAP.md and README.md, plus singapore_poa.md and us_delaware_poa.md. The 50 stock-photo headshots in `apps/web/public_website/static/images/roster/` are unrelated and tracked as a separate audit pass.
+
 This is structural cleanup, not pilot-blocking. Lower priority than Stage 1d-3 and the pilot blockers.
+
+### Stage 3-c — investigate apps/web/public_website/static/images/roster/ (priority: low, new)
+
+The directory contains 50 stock-photo-style headshots in 25 personas (alice, bob, charlie, diana, dr_aris, dr_clara, dr_elena, dr_julian, dr_maeve, dr_nora, dr_silas, dr_thorne, dr_vance, ellen, eve, felix, gordon, liam, marcus, maya, olivia, zoe, plus a couple others), each in 50px and full-size variants. Likely vestigial from a pre-pivot "Team" or "Roster" page. Need to confirm whether any active template references them before deletion. Estimate ~5-10 MB of image data deletable in one commit if unused.
 
 ---
 
@@ -196,6 +193,8 @@ This is structural cleanup, not pilot-blocking. Lower priority than Stage 1d-3 a
 
 * **[PILOT BLOCKER] Complete Checkr API wiring in `onboarding_api.py`.** Background checks are a strict requirement per `docs/legal/COMPLIANCE.md`. The onboarding flow needs `CHECKR_API_KEY` fully wired through candidate creation, invitation, and webhook verification paths so agents cannot complete the Key Ceremony without a cleared background check. Env vars `CHECKR_TEST_SECRET_KEY` and `CHECKR_WEBHOOK_SECRET` already defined in `.env.example`.
 
+* **[PILOT BLOCKER] Broken MSA link in public website templates.** Both `apps/web/public_website/templates/base.html` (line 57) and `apps/web/public_website/templates/enlist.html` (line 169) link to `/human/proxy_node_agreement.html`. No file with that path exists, no Flask route in `apps/backend/entrypoints/app.py` serves it, no markdown rendering middleware translates between `.md` and `.html`. The legitimate Vanguard MSA content lives at `apps/web/public_website/static/human/proxy_node_agreement.md` (a fully drafted post-pivot legal document — version 2026.1.0 Mesa Pilot — covering independent contractor status, the 15-minute SLA, the Optical Reclamation Protocol SOP, strict prohibitions, the $5M HNOA/E&O liability shield, and machine adjudication via L402 settlement). The `enlist.html` signup flow asserts that the agent has read and agreed to the MSA, but the link 404s — meaning agents are signing the enlist form without being able to read the agreement they are supposedly agreeing to. This is both a basic contract-formation problem and a UX bug. Discovered during Stage 3-a addendum audit (commit `c74dc13`). Two fix candidates: (a) add a Flask route in `app.py` that renders the `.md` file as HTML when `/human/proxy_node_agreement.html` is requested (interim fix, gets rewritten in Stage 1d-3 anyway), or (b) handle as part of Stage 1d-3 FastAPI migration with proper markdown rendering and a `/human/<filename>.html` route. Either way, must be resolved before Vanguard 50 onboarding.
+
 * **Authenticate `/api/v1/telemetry/history`.** Currently unauthenticated. Anyone with network access can dump the full forensic GPS ledger via `?global=true`. Needs admin auth or OPS_HUB_TOKEN check. Pre-existing, flagged in security sweep.
 
 * **Fix config-loader warning typos in `apps/backend/src/utils/webhook_auth.py`.**
@@ -250,9 +249,9 @@ This is structural cleanup, not pilot-blocking. Lower priority than Stage 1d-3 a
 
 ### High priority
 
-* **[PILOT BLOCKER] Draft `AZ_M2H_MANDATE.md` (Arizona M2H Physical Intervention Mandate).** Discovered during Stage 3-a audit. The PAN Gateway routing logic in `apps/web/internal_dashboards/public/legal/JURISDICTION_MAP.md` references `AZ_M2H_MANDATE.md` as the active legal authorization document for the Mesa pilot, but the file does not exist anywhere in the repo. CA_CPUC_MANDATE.md and TX_M2H_MANDATE.md exist as drafts for future expansion sectors. Mesa Pilot CANNOT ship without an Arizona-specific M2H mandate that satisfies AZ Rev Stat § 28-9701 (SB 1417) and authorizes Vanguard agents to physically interact with stranded $150,000 autonomous assets. The CA and TX mandates can serve as templates. Should be drafted in coordination with retained mobility counsel before fleet-partner onboarding. Without this, the $5M HNOA/E&O liability transfer cannot legally activate when an agent dispatches in Arizona.
+* **[PILOT BLOCKER] Draft `AZ_M2H_MANDATE.md` (Arizona M2H Physical Intervention Mandate).** Discovered during Stage 3-a audit. The PAN Gateway routing logic in `apps/web/internal_dashboards/public/legal/JURISDICTION_MAP.md` (and the parallel patched copy in `apps/web/public_website/static/legal/JURISDICTION_MAP.md` after Stage 3-a addendum) references `AZ_M2H_MANDATE.md` as the active legal authorization document for the Mesa pilot, but the file does not exist anywhere in the repo. CA_CPUC_MANDATE.md and TX_M2H_MANDATE.md exist as drafts for future expansion sectors. Mesa Pilot CANNOT ship without an Arizona-specific M2H mandate that satisfies AZ Rev Stat § 28-9701 (SB 1417) and authorizes Vanguard agents to physically interact with stranded $150,000 autonomous assets. The CA and TX mandates can serve as templates. Should be drafted in coordination with retained mobility counsel before fleet-partner onboarding. Without this, the $5M HNOA/E&O liability transfer cannot legally activate when an agent dispatches in Arizona.
 
-* **[PILOT BLOCKER] Migrate SB 1417 evidence uploads from imgbb to S3/GCP.** The tactical camera currently uploads redacted 720p/3fps evidence frames to imgbb. Acceptable for sandbox, not acceptable for the Vanguard 50 pilot. Evidence must route to WORM-compliant AWS S3 or GCP Cloud Storage before fleet-partner onboarding. This is a statutory Arizona SB 1417 retention requirement and a condition of the $5M tech E&O liability shield. Target bucket configuration already sketched via `S3_EVIDENCE_BUCKET_NAME` env var in `.env.example`.
+* **[PILOT BLOCKER] Migrate SB 1417 evidence uploads from imgbb to S3/GCP, AND add S3 Object Lock for WORM compliance.** The tactical camera currently uploads redacted 720p/3fps evidence frames to imgbb. Acceptable for sandbox, not acceptable for the Vanguard 50 pilot. Evidence must route to WORM-compliant AWS S3 or GCP Cloud Storage before fleet-partner onboarding. This is a statutory Arizona SB 1417 retention requirement and a condition of the $5M tech E&O liability shield. Target bucket configuration already sketched via `S3_EVIDENCE_BUCKET_NAME` env var in `.env.example`. **Implementation note (added 2026-04-25):** the live evidence upload handler in `apps/backend/src/api/agent_api.py::upload_evidence` already does S3 PutObject with AES256 encryption and rate limiting, but does NOT currently set `ObjectLockMode='COMPLIANCE'` and `ObjectLockRetainUntilDate`. The deleted-in-Stage-1e-3 `evidence_api.py` had those parameters. The proper fix is to add the Object Lock parameters to the existing `upload_evidence` handler in agent_api.py; do NOT reintroduce a parallel router. Bucket-side requirement: the S3 bucket itself must have Object Lock enabled at creation time (cannot be enabled retroactively on an existing bucket), with a default retention period of at least 366 days. Per SB 1417 §28-9710 the retention is 12 months; 366 days provides one-day cushion for clock skew.
 
 ---
 
@@ -288,13 +287,13 @@ Two items from that review remain active because they concern files that live in
 
 * **Set PYTHONUTF8=1 globally.** Windows Git Bash defaults to cp1252 which mangles the emojis in source and docs. Setting this in the user profile avoids intermittent "invalid byte 0x8f" errors when Python opens files without explicit encoding. Also prevents the heredoc emoji-stripping problem that damaged SUMMARY.md once during this cleanup.
 
-* **Second venv at `apps/backend/venv/`.** A stray venv exists alongside the root `.venv/`. Contains `google.genai` and `langsmith` packages from the deprecated chatbot subsystem. Likely leftover and deletable, but verify nothing (IDE config, script) is pointing at it first.
+* **Second venv at `apps/backend/venv/`.** A stray venv exists alongside the root `.venv/`. Contains `google.genai` and `langsmith` packages from the deprecated chatbot subsystem. Likely leftover and deletable, but verify nothing (IDE config, script) is pointing at it first. Note: the repo root also has both a `venv/` and `.venv/`; the canonical convention is `.venv/` (with leading dot). The unprefixed `venv/` is also a candidate for deletion once verified unused.
 
 * **Pin `python-multipart` floor in requirements.txt.** Done in 14e967e (added `>=0.0.16`). Leaving this note in case a future dependency resolver needs a pin adjustment.
 
 * **`.gitattributes` for line endings.** Currently no rules. Every file edit on Windows produces `warning: LF will be replaced by CRLF` messages. Not harmful but noisy. Consider `*.md text eol=lf` or similar to lock a convention.
 
-* **Update `.gitmessage` URL reference.** Current template contains `See: https://github.com/Proxy-Agent-Network/core/docs/` which is a dead URL path (the repo structure no longer has `core/docs/` as a documentation root). Update to point at the repo's actual docs location on GitHub.
+* **Update `.gitmessage` URL reference.** Done in commit `508b8a1` (2026-04-25). Template now points at `https://github.com/Proxy-Agent-Network/core/tree/main/docs/`. Leaving this note as a record.
 
 ---
 
