@@ -46,7 +46,7 @@ class WaitlistRequest(BaseModel):
 
 # ─── ENDPOINTS ────────────────────────────────────────────────────────────────
 
-@router.post("/v1/store/checkout")
+@router.post("/store/checkout")
 async def checkout(
     payload: CheckoutRequest,
     request: Request,
@@ -129,7 +129,7 @@ async def checkout(
         "message":   "Order received. Fulfillment confirmation will be sent to your registered email."
     }
 
-@router.post("/v1/store/orders/{order_id}/shipment")
+@router.post("/store/orders/{order_id}/shipment")
 async def register_shipment(
     order_id: str,
     payload: ShipmentRegistrationRequest,
@@ -182,7 +182,7 @@ async def register_shipment(
         "item_id":      item_id,
     }
 
-@router.get("/v1/store/orders")
+@router.get("/store/orders")
 async def get_agent_orders(
     request: Request,
     agent_identity: dict = Depends(verify_agent_signature)
@@ -205,7 +205,7 @@ async def get_agent_orders(
 
     return {"orders": orders}
 
-@router.post("/v1/store/waitlist")
+@router.post("/store/waitlist")
 async def join_waitlist(
     payload: WaitlistRequest,
     request: Request,

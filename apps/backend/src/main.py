@@ -19,6 +19,7 @@ from api.onboarding_api import router as onboarding_router
 from api.telemetry_socket import router as telemetry_router
 from api.wallet_api import router as wallet_router
 from api.agent_api import router as agent_router
+from api.store_api import router as store_router
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -82,6 +83,7 @@ app.include_router(onboarding_router, prefix="/api/v1", tags=["Agent Onboarding"
 app.include_router(telemetry_router, prefix="/api/v1", tags=["Telemetry"])
 app.include_router(wallet_router, prefix="/api/v1", tags=["Wallet"])
 app.include_router(agent_router, prefix="/api/v1", tags=["Agent"])
+app.include_router(store_router, prefix="/api/v1", tags=["Agent Store"])
 
 def load_optional_router(module_name, prefix, tags):
     """Dynamically loads non-critical routers. Core systems should use hard imports."""
