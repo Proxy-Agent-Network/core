@@ -3,9 +3,17 @@ import json
 import time
 import uuid
 import os
+import sys
+
+# --- 1. INJECT MONOREPO PATH ---
+# Match the pattern used by main.py and run_workers.py to make 'core' importable.
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+sys.path.insert(0, os.path.join(ROOT_DIR, "apps", "backend", "src"))
+# --------------------------------
+
 import redis.asyncio as redis
 from mcp.server.fastmcp import FastMCP
-from backend.core.lightning_engine import LightningEngine
+from core.lightning_engine import LightningEngine
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
