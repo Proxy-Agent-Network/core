@@ -20,8 +20,8 @@ The repository is currently mid-pivot from the original "Proxy AI" cognitive-vau
 
 **What is legacy and scheduled for removal:**
 * `core/` — 75 tracked files remaining (down from 444 at start of migration). The v2 "AI civilization" backend code has been fully purged. Remaining content is mostly pre-pivot infrastructure (Dockerfile, docker-compose.yml, requirements.txt, Cargo.toml), pre-pivot Python entrypoints (master_node.py, mcp_server.py, dashboard.py, agent_engine_v2.py, autonomous_worker.py), and legacy subdirectories that may overlap with canonical locations elsewhere in the repo. See the Repo Hygiene / Architecture section for the residual cleanup plan.
-* `apps/backend/entrypoints/app.py` — the Flask monolith. Currently broken: imports from `core.db` and `core.lightning_engine` which no longer exist after the Stage 1c purge. Scheduled for retirement in Stage 1d.
-* Root `Dockerfile` and `docker-compose.yml` — both build the pre-pivot Flask + cognitive vault + LND + bitcoind stack. The `proxy_agent` container they produce no longer boots after Stage 1c. Need to be rewritten or deleted (Stage 1d or later).
+* `apps/backend/entrypoints/app.py` — the Flask monolith. Currently broken (imports from deleted `core.db` and `core.lightning_engine`) but contains live backend logic for the Vanguard 50 Command Center web UI (login, admin, reports endpoints, partner dispatch endpoint, telemetry history). Cannot be deleted until those endpoints are migrated to FastAPI routers. Tracked as Stage 1d-3 below.
+* Root `Dockerfile` and `docker-compose.yml` — both build the pre-pivot Flask + cognitive vault + LND + bitcoind stack. The `proxy_agent` container they produce no longer boots after Stage 1c. Cannot be retired until app.py migration completes (Stage 1d-3 + 1d-5).
 
 Understanding this context is important because several items in this file reference files or symptoms that only make sense if you know the pivot is in progress.
 
@@ -38,25 +38,72 @@ The pre-pivot-to-monorepo migration has been substantially executed across two d
 * **Stage 0d** (`c06877d`): Purged core/static/, core/templates/, core/streamlit_core/, core/cognitive_vault/, core/node_legacy/ (105 files).
 * **Stage 1a** (`d133f3e`): Removed five orphan importer files in apps/backend/src/ (reputation_api, master_orchestrator, security_alert_system, export_utility, migration_engine) and patched run_workers.py to fix the broken core.economics.surge_pricing_engine import path.
 * **Stage 1c** (`21db5df`): Wholesale deletion of core/backend/ (93 files). Eliminated the v2 "AI civilization" backend (Jury Tribunal, Immigration Office, sovereign identity, etc.) from the repo entirely.
+* **Stage 1d-1** (`ec15ca4`): Retired pre-pivot Panopticon files. Removed apps/backend/entrypoints/master_node.py (a 278-line standalone Flask server on port 5001 implementing the v2 civilization treasury dashboard) and apps/backend/entrypoints/autonomous_worker.py (the 103-line client that paired with it). 383 lines deleted.
+* **Stage 1d-2** (`8bb279f`): Fixed the broken `from backend.core.lightning_engine` import in apps/backend/entrypoints/mcp_server.py to `from core.lightning_engine` and added the standard sys.path.insert pattern. mcp_server.py is the FastMCP server exposing Vanguard dispatch tools to fleet partner AI clients (dispatch_vanguard_agent, check_network_surge, check_mission_status, pull_sb1417_report) — preserved as live AV-pilot code.
 
-Cumulative deletion across Stages 0-1: 374 files, ~36,000 lines. apps/backend/src/ now has zero `from core.*` imports.
+Cumulative deletion across Stages 0-1: 376 files, ~37,000 lines. apps/backend/src/ has zero `from core.*` imports. The two surviving entrypoints in apps/backend/entrypoints/ are app.py (live but broken, awaits migration) and mcp_server.py (live and working).
 
-### Stage 1d — retire the Flask monolith (priority: medium)
+### Stage 1d-3 — migrate command_center backend from Flask to FastAPI (priority: medium-high)
 
-`apps/backend/entrypoints/app.py` is the dying Flask monolith. After Stage 1c, its `from core.db import get_db_conn` and `from core.lightning_engine` imports point at deleted files. The Flask app no longer boots, and the `proxy_agent` container in the root `docker-compose.yml` no longer starts.
+`apps/backend/entrypoints/app.py` is 998 lines of Flask code that cannot be deleted as originally hoped. The Vanguard 50 Command Center web UI (at `apps/web/command_center/`) actively depends on it. Specifically, app.py serves:
 
-This is acceptable broken state because:
-* The Mesa Pilot ships on the FastAPI gateway at `apps/backend/src/main.py`, not the Flask monolith
-* No production workflow depends on the Flask app currently running
-* Local dev work has moved to direct `uvicorn apps.backend.src.main:app` invocation
+**Web routes (Jinja2 + login flow):**
+* `/login`, `/logout` — admin authentication via `ADMIN_SECRET_TOKEN`
+* `/admin`, `/command`, `/developers`, `/reports`, `/faq`, `/legal/<doc_type>` — login-gated SPA routes
+* `/`, `/enlist`, `/operations`, `/rates`, `/investors` — public marketing pages
+* `/command/css/<filename>`, `/command/js/<filename>`, `/secrets.js` — static asset serving for the command_center
 
-To formally retire Flask:
-* Decide between deleting `apps/backend/entrypoints/app.py` outright, or migrating any still-useful endpoints (mock worker endpoints, dispatch stub, agent registration mocks) into the FastAPI gateway as proper routers under `apps/backend/src/api/` first.
-* Delete `apps/backend/entrypoints/master_node.py` if it has no remaining purpose.
-* Remove the `proxy_agent` service from the root `docker-compose.yml`. Decide what (if anything) replaces it. Probably a lightweight compose file with just postgres and redis is sufficient for local dev.
-* Delete or rewrite the root `Dockerfile` (currently builds the pre-pivot Flask + cognitive_vault + LND + bitcoind stack via `COPY proxy-core /build/proxy-core` and friends).
+**API endpoints:**
+* `/api/v1/dispatch/request` — partner dispatch stub with PARTNER_API_KEY auth (returns mock mission_id, no Redis writes)
+* `/api/v1/reports/compliance`, `/operations`, `/financials`, `/vendor_sla` — executive reports returning random fake data
+* `/api/v1/network/stats` — network stats stub
+* `/api/v1/admin/settings` — admin UI settings (theme, mood_intensity)
+* `/api/v1/telemetry/history` — real Postgres query for forensic GPS history (UNAUTHENTICATED — flagged in Backend/Gateway section)
+* `/api/v1/node/register`, `/api/v1/task/request`, `/api/v1/task/submit` — mock worker endpoints, 403 in production
+* `/seed-dvr` — Manhattan-grid demo data seeder for telemetry
+
+**Boot side effects:**
+* `start_security_heartbeat()` — daemon thread that prunes USED_SIGNATURES every 10s
+* Initial `INSERT INTO nodes` of MY_NODE_ID
+* `proxy_fix.ProxyFix` middleware
+* Bleach HTML sanitization filter for Jinja templates
+
+To migrate cleanly:
+* Identify which command_center features are live versus aspirational stubs. The reports endpoints (compliance, operations, financials, vendor_sla) all return random data today; if the command_center actually displays this data, decide whether to migrate the stubs or rebuild against real backend data.
+* Migrate the live endpoints into FastAPI routers under `apps/backend/src/api/`. Likely one router per logical group (admin, reports, partner, telemetry, mock-workers).
+* Migrate the Jinja2 template-rendering routes. FastAPI has Jinja2Templates support; main.py already uses it for `/enlist` and `/enlist-success`.
+* Migrate the static-file serving for `/command/css/<filename>`, `/command/js/<filename>`, and `/secrets.js`. FastAPI's StaticFiles is the right tool.
+* Migrate the auth flow (login/logout/session). FastAPI has equivalent session middleware.
+* Migrate the rate_limit and require_node_signature decorators (they live in app.py).
+* Migrate the security_heartbeat daemon thread; it should become a FastAPI startup event.
+
+Substantial work. Probably 1-2 focused sessions. Should be done before Stage 1d-5.
+
+### Stage 1d-4 — rename and rotate `secrets.js` (priority: medium)
+
+`apps/web/command_center/secrets.js` contains `GOOGLE_MAPS_API_KEY` and `FIREBASE_CONFIG` and is served at the URL path `/secrets.js`. Two problems:
+
+* **The filename is bad investor optics.** A path called `secrets.js` in a public repo invites grep curiosity from anyone reviewing the codebase.
+* **The contents may need rotation.** Google Maps API keys and Firebase config are technically "public client credentials," but if they aren't domain-restricted in Google Cloud Console / Firebase Console, they can be lifted from a public repo and abused (mostly to run up your billing).
+
+Action items:
+* Rename the file to `frontend_config.js` or similar non-alarming name. Update all references in the command_center HTML/JS.
+* Update the Flask route in app.py (line 739, `/secrets.js`) to match the new filename. (This is best done as part of Stage 1d-3 when we migrate the route to FastAPI.)
+* Verify in Google Cloud Console that `GOOGLE_MAPS_API_KEY` is restricted to your production domain only (HTTP referrer restriction).
+* Verify in Firebase Console that `FIREBASE_CONFIG` has appropriate Security Rules locked down (Firestore, Storage, Realtime DB).
+* If either is not properly restricted, rotate the keys and redeploy.
+
+This is its own commit, separable from the larger Stage 1d-3 migration.
+
+### Stage 1d-5 — retire app.py + Dockerfile + docker-compose.yml (priority: medium)
+
+Only after Stage 1d-3 and Stage 1d-4 land. With the command_center backend migrated and secrets.js renamed:
+
+* Delete `apps/backend/entrypoints/app.py`. All its endpoints now live in FastAPI routers under `apps/backend/src/api/`.
 * Delete the now-dead `load_optional_router` helper in `apps/backend/src/main.py` (defined at line 86, never invoked).
-* Update TODO.md to reflect what landed.
+* Delete the root `Dockerfile`. It builds the pre-pivot Flask + cognitive_vault + LND + bitcoind stack via `COPY proxy-core /build/proxy-core` and friends.
+* Delete the root `docker-compose.yml` OR replace it with a minimal lightweight compose that runs only postgres, redis, bitcoind, and lnd (no proxy_agent container). The minimal-compose option is preferable if local dev still wants those services available via `docker-compose up`.
+* Stop and remove the running `proxy_agent` Docker container (which has been doing nothing since Stage 1c).
 
 ### Stage 2 — investigate and clean the residual core/ contents (priority: low)
 
@@ -77,7 +124,7 @@ None of these contain v2 civilization code (governance, jury, immigration, sover
 * **Verify core/hardware-node/ is fully duplicated by hardware/python-node/.** If yes, single-commit deletion.
 * **Resolve the three proxy-core/ duplicates.** Confirm the repo-root `proxy-core/` is canonical (per root Dockerfile line 24 `COPY proxy-core /build/proxy-core`). Delete `core/proxy-core/` and `hardware/proxy-core/`.
 * **Audit core/infrastructure/.** Read the 12 files, classify each as live/legacy/obsolete.
-* **Audit the loose pre-pivot Python files at core/ root** (master_node.py, autonomous_worker.py, dashboard.py, agent_engine_v2.py, mcp_server.py). Most likely all dead, but some might have informational value worth preserving in a separate archive branch.
+* **Audit the loose pre-pivot Python files at core/ root** (master_node.py, autonomous_worker.py, dashboard.py, agent_engine_v2.py, mcp_server.py). Most likely all dead, but some might have informational value worth preserving in a separate archive branch. Note: `core/mcp_server.py` is a duplicate of the now-fixed `apps/backend/entrypoints/mcp_server.py` and is safely deletable.
 * **Decide the fate of the loose top-level non-Python files.** sample.mp3 and sample.mp4 are obvious deletes. Cargo.toml/Cargo.lock at core/ root are probably superseded by hardware/proxy-core/Cargo.toml.
 
 ### Stage 3 — Downstream cleanup (priority: low)
