@@ -14,9 +14,8 @@ Because physical AV interventions are bound by specific state-level Department o
 
 | Sector ID | Physical Region | Statutory Reference | M2H Mandate File |
 | :---- | :---- | :---- | :---- |
-| **MESA\_AZ\_01** | Maricopa County, Arizona (US) | AZ Rev Stat § 28-9701 (SB 1417\) | ai\_power\_of\_attorney.md |
+| **MESA\_AZ\_01** | Maricopa County, Arizona (US) | AZ Rev Stat § 28-9701 (SB 1417\) | AZ\_M2H\_MANDATE.md (TBD - pilot blocker) |
 
-*(Note: The M2H Mandate template retains the legacy ai\_power\_of\_attorney.md filename for v2026.1.0 API backwards compatibility).*
 
 ## **2\. Sector Routing Logic (Python Gateway)**
 
@@ -33,7 +32,7 @@ def resolve\_sector\_mandate(lat: float, lng: float) \-\> dict:
         return {  
             "jurisdiction": "State of Arizona",  
             "statute": "SB 1417",  
-            "mandate\_template": "templates/legal/ai\_power\_of\_attorney.md",  
+            "mandate\_template": "templates/legal/AZ\_M2H\_MANDATE.md",  
             "audit\_schema": "sb1417\_optical\_health\_report",  
             "active": True  
         }  

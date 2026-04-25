@@ -14,11 +14,10 @@ Unlike generic digital contracts, PAN M2H mandates are strictly mapped to the Op
 
 | Sector ID | Active File | Key Legislation | Status |
 | :---- | :---- | :---- | :---- |
-| **MESA\_AZ\_01** | ai\_power\_of\_attorney.md\* | AZ Rev Stat § 28-9701 (SB 1417\) | Active Pilot |
+| **MESA\_AZ\_01** | AZ\_M2H\_MANDATE.md (TBD - pilot blocker) | AZ Rev Stat § 28-9701 (SB 1417\) | Active Pilot |
 | **AUSTIN\_TX\_01** | tx\_m2h\_mandate.md | TX Transp Code § 545.454 | Drafting (Q3 2026\) |
 | **SF\_CA\_01** | ca\_cpuc\_mandate.md | CPUC AV Deployment Program | Drafting (Q4 2026\) |
 
-*\*Note: The Mesa Pilot utilizes the legacy ai\_power\_of\_attorney.md filename for v2026.1.0 API backwards compatibility.*
 
 ### **Automated Execution Guide**
 
@@ -55,7 +54,7 @@ def hydrate\_mandate(template\_path, fleet\_id, vin\_hash, agent\_tpm, uds\_code
 
 \# Example: Generate a Mesa AZ-01 Mandate  
 mandate\_text, doc\_hash \= hydrate\_mandate(  
-    template\_path="ai\_power\_of\_attorney.md",   
+    template\_path="AZ\_M2H\_MANDATE.md",   
     fleet\_id="WAYMO\_LLC",  
     vin\_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",  
     agent\_tpm="041d8e9b2c...",  
