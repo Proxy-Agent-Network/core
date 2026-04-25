@@ -2,9 +2,9 @@
 
 Tracking deferred work that has been identified but scheduled for later. Items are grouped by area and rough priority. This is not an authoritative backlog (GitHub Issues remain the source of truth for bugs and features); it is a working notebook for decisions and known gaps that surfaced during code reviews, security sweeps, and documentation passes.
 
-Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 7 pilot blockers across Backend, Compliance, Hardware, Architecture, and Mobile sections. Search for that tag to triage launch-critical work.
+Items tagged **[PILOT BLOCKER]** must be resolved before the Vanguard 50 Mesa Pilot goes live. There are currently 8 pilot blockers across Backend, Compliance, Hardware, Architecture, and Mobile sections. Search for that tag to triage launch-critical work.
 
-Last updated: 2026-04-24.
+Last updated: 2026-04-25.
 
 ---
 
@@ -15,7 +15,7 @@ The repository is currently mid-pivot from the original "Proxy AI" cognitive-vau
 **The canonical future stack:**
 * **Backend:** FastAPI, entrypoint at `apps/backend/src/main.py`. This is what gets hardened, audited, and shipped to Mesa.
 * **Mobile:** `apps/mobile/pan_tactical/composeApp/` (Kotlin Multiplatform, Android first, iOS parity pending).
-* **Ops Hub:** `apps/web/internal_dashboards/` (React + Vite).
+* **Ops Hub:** `apps/ops-hub/` (React + Vite + Leaflet, post-AV-pivot Sector Command map for live dispatch). Note: `apps/web/internal_dashboards/` previously held pre-fork prototype dashboards but was purged in Stage 3-a; only legitimate AV regulatory legal docs and the `command.html` Sector Command page remain there pending relocation to `docs/legal/`.
 * **Docs:** `docs/` (the tree at the repo root, not `core/docs/`).
 
 **What is legacy and scheduled for removal:**
@@ -40,8 +40,9 @@ The pre-pivot-to-monorepo migration has been substantially executed across two d
 * **Stage 1c** (`21db5df`): Wholesale deletion of core/backend/ (93 files). Eliminated the v2 "AI civilization" backend (Jury Tribunal, Immigration Office, sovereign identity, etc.) from the repo entirely.
 * **Stage 1d-1** (`ec15ca4`): Retired pre-pivot Panopticon files. Removed apps/backend/entrypoints/master_node.py (a 278-line standalone Flask server on port 5001 implementing the v2 civilization treasury dashboard) and apps/backend/entrypoints/autonomous_worker.py (the 103-line client that paired with it). 383 lines deleted.
 * **Stage 1d-2** (`8bb279f`): Fixed the broken `from backend.core.lightning_engine` import in apps/backend/entrypoints/mcp_server.py to `from core.lightning_engine` and added the standard sys.path.insert pattern. mcp_server.py is the FastMCP server exposing Vanguard dispatch tools to fleet partner AI clients (dispatch_vanguard_agent, check_network_surge, check_mission_status, pull_sb1417_report) — preserved as live AV-pilot code.
+* **Stage 3-a** (`ee637c1`): Mass deletion of pre-fork content from `apps/web/internal_dashboards/`. 96 files deleted (98 changes total — 96 deletions plus 2 doc patches): all 71 jsx files in `src/` plus 1 .js file (v2 civilization prototype dashboards: high_court_*, jury_*, juror_*, quarantine_*, reputation_slashing_*, insurance_*, regulatory_audit, identity_migration, hodl_escrow, governance_voting, treasury_audit, etc.); 13 pre-fork audio files in `public/audio/`; the `magic_marvin_dance.webp` image; `human/proxy_node_agreement.md`; 7 v2 civilization HTML pages (aup, economics, governance, legal, privacy, tos, transparency); and 2 captcha-bypass POA legal templates (ai_power_of_attorney.md, UK_LIMITED_POWER_OF_ATTORNEY.md). Patched `legal/JURISDICTION_MAP.md` and `legal/README.md` to reference the not-yet-drafted `AZ_M2H_MANDATE.md` instead of the deleted `ai_power_of_attorney.md`. ~21,500 lines removed in one commit. Discovered new pilot blocker: AZ_M2H_MANDATE.md does not exist (see Compliance / Storage section below).
 
-Cumulative deletion across Stages 0-1: 376 files, ~37,000 lines. apps/backend/src/ has zero `from core.*` imports. The two surviving entrypoints in apps/backend/entrypoints/ are app.py (live but broken, awaits migration) and mcp_server.py (live and working).
+Cumulative deletion across Stages 0-3a: 472 files, ~58,500 lines. apps/backend/src/ has zero `from core.*` imports. The two surviving entrypoints in apps/backend/entrypoints/ are app.py (live but broken, awaits migration) and mcp_server.py (live and working).
 
 ### Stage 1d-3 — migrate command_center backend from Flask to FastAPI (priority: medium-high)
 
@@ -127,10 +128,17 @@ None of these contain v2 civilization code (governance, jury, immigration, sover
 * **Audit the loose pre-pivot Python files at core/ root** (master_node.py, autonomous_worker.py, dashboard.py, agent_engine_v2.py, mcp_server.py). Most likely all dead, but some might have informational value worth preserving in a separate archive branch. Note: `core/mcp_server.py` is a duplicate of the now-fixed `apps/backend/entrypoints/mcp_server.py` and is safely deletable.
 * **Decide the fate of the loose top-level non-Python files.** sample.mp3 and sample.mp4 are obvious deletes. Cargo.toml/Cargo.lock at core/ root are probably superseded by hardware/proxy-core/Cargo.toml.
 
-### Stage 3 — Downstream cleanup (priority: low)
+### Stage 3-b — relocate surviving regulatory legal files to docs/ (priority: low, deferred)
 
-* **`apps/web/internal_dashboards/src/protocol_data_purge_dashboard.jsx`** contains a hardcoded string referencing `core/ops/proof_archive_api.py` (a file that no longer exists after Stage 1c). Update the string or delete the dashboard.
-* **`.gitmessage`** at the repo root contains a URL reference to `https://github.com/Proxy-Agent-Network/core/docs/` (a path that no longer exists after Stage 0a). Update to the actual docs location.
+After Stage 3-a, `apps/web/internal_dashboards/` contains 11 surviving files: 4 AV regulatory M2H mandate templates (CA_CPUC_MANDATE.md, TX_M2H_MANDATE.md, singapore_poa.md, us_delaware_poa.md), 2 supporting legal docs (JURISDICTION_MAP.md, README.md), 1 post-pivot HTML page (command.html, the Sector Command observability UI), 1 README (DASHBOARD.md), and 3 supporting frontend assets (css/main.css, css/themes.css, js/theme-engine.js). The proper home for the legal/regulatory documents is `docs/legal/` since they are reference documentation read by Fleet Legal Counsel and the PAN Compliance Engine, not assets served by an Ops Hub frontend. The HTML/CSS/JS Sector Command frontend has no host project (no package.json or vite.config.js), and its functionality may eventually be absorbed into the canonical Ops Hub at `apps/ops-hub/`. Recommend a future commit that:
+* Creates `docs/legal/` directory if it does not exist
+* `git mv` the 6 legal markdown files to `docs/legal/`
+* Either deletes or relocates the `command.html` Sector Command page (decision deferred)
+* Either deletes or relocates `DASHBOARD.md`, `css/`, `js/` (decision deferred)
+* Deletes the now-empty `apps/web/internal_dashboards/` directory shell
+* Updates any `docs/` README to mention the legal directory
+
+This is structural cleanup, not pilot-blocking. Lower priority than Stage 1d-3 and the pilot blockers.
 
 ---
 
@@ -241,6 +249,8 @@ None of these contain v2 civilization code (governance, jury, immigration, sover
 ## Compliance / Storage
 
 ### High priority
+
+* **[PILOT BLOCKER] Draft `AZ_M2H_MANDATE.md` (Arizona M2H Physical Intervention Mandate).** Discovered during Stage 3-a audit. The PAN Gateway routing logic in `apps/web/internal_dashboards/public/legal/JURISDICTION_MAP.md` references `AZ_M2H_MANDATE.md` as the active legal authorization document for the Mesa pilot, but the file does not exist anywhere in the repo. CA_CPUC_MANDATE.md and TX_M2H_MANDATE.md exist as drafts for future expansion sectors. Mesa Pilot CANNOT ship without an Arizona-specific M2H mandate that satisfies AZ Rev Stat § 28-9701 (SB 1417) and authorizes Vanguard agents to physically interact with stranded $150,000 autonomous assets. The CA and TX mandates can serve as templates. Should be drafted in coordination with retained mobility counsel before fleet-partner onboarding. Without this, the $5M HNOA/E&O liability transfer cannot legally activate when an agent dispatches in Arizona.
 
 * **[PILOT BLOCKER] Migrate SB 1417 evidence uploads from imgbb to S3/GCP.** The tactical camera currently uploads redacted 720p/3fps evidence frames to imgbb. Acceptable for sandbox, not acceptable for the Vanguard 50 pilot. Evidence must route to WORM-compliant AWS S3 or GCP Cloud Storage before fleet-partner onboarding. This is a statutory Arizona SB 1417 retention requirement and a condition of the $5M tech E&O liability shield. Target bucket configuration already sketched via `S3_EVIDENCE_BUCKET_NAME` env var in `.env.example`.
 
