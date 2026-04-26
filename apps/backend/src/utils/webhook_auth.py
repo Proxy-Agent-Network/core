@@ -17,11 +17,16 @@ from cryptography.exceptions import InvalidSignature
 
 logger = logging.getLogger("WebhookAuth")
 
-def _optional_env(key: str) -> Union[str, None]:
-    """Helper to load secrets gracefully. Unconfigured keys safely disable their respective routes."""
+def _optional_env(key: str, category: str = "webhook") -> Union[str, None]:
+    """Helper to load secrets gracefully. Unconfigured keys safely disable their respective routes.
+    
+    The category parameter clarifies in the warning message what subsystem the key belongs to,
+    so operators debugging missing config can tell whether a missing key affects carrier
+    webhook signature verification, V2X fleet authentication, or another category.
+    """
     value = os.getenv(key)
     if not value:
-        logger.warning(f"⚠️ Optional configuration '{key}' is missing. Associated webhooks will be rejected.")
+        logger.warning(f"⚠️ Optional configuration '{key}' is missing. Associated {category} routes will be rejected.")
     return value
 
 class SecurityVault:
@@ -29,14 +34,14 @@ class SecurityVault:
     Secure credential management. Gracefully degrades if specific fleet/carrier partners are not active.
     """
     CARRIER_SECRETS = {
-        "DHL": _optional_env("WHSEC_DHL"),
-        "FEDEX": _optional_env("WHSEC_FEDEX"),
-        "UPS": _optional_env("WHSEC_UPS")
+        "DHL": _optional_env("WHSEC_DHL", category="carrier webhook"),
+        "FEDEX": _optional_env("WHSEC_FEDEX", category="carrier webhook"),
+        "UPS": _optional_env("WHSEC_UPS", category="carrier webhook")
     }
     
     V2X_FLEET_PUBKEYS = {
-        "WAYMO_MESA_01": _optional_env("PUBKEY_WAYMO_MESA_01"),
-        "MAGNA_TEST_01": _optional_env("PUBKEY_MAGNA_TEST_01")
+        "WAYMO_MESA_01": _optional_env("PUBKEY_WAYMO_MESA_01", category="V2X fleet authentication"),
+        "MAGNA_TEST_01": _optional_env("PUBKEY_MAGNA_TEST_01", category="V2X fleet authentication")
     }
 
     @classmethod
