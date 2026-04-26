@@ -476,7 +476,7 @@ def api_dispatch_request():
 # ==========================================
 @app.route('/')
 def index():
-    return render_template('home.html')
+    return render_template('index.html')
 
 @app.route('/enlist')
 def enlist():

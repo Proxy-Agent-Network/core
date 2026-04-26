@@ -104,10 +104,27 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "An internal operational error occurred.", "correlation_id": correlation_id},
     )
 
-# --- Root/Health Check ---
-@app.get("/")
-async def root_health_check():
+# --- API Health Check ---
+@app.get("/api/v1/health")
+async def health_check():
     return {"network": "Proxy Agent Network", "gateway_status": "ONLINE"}
+
+# --- Public Marketing Pages (Jinja2 Templates) ---
+@app.get("/", response_class=HTMLResponse)
+async def index_page(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/operations", response_class=HTMLResponse)
+async def operations_page(request: Request):
+    return templates.TemplateResponse("operations.html", {"request": request})
+
+@app.get("/rates", response_class=HTMLResponse)
+async def rates_page(request: Request):
+    return templates.TemplateResponse("rates.html", {"request": request})
+
+@app.get("/investors", response_class=HTMLResponse)
+async def investors_page(request: Request):
+    return templates.TemplateResponse("investors.html", {"request": request})
 
 @app.get("/enlist", response_class=HTMLResponse)
 async def enlist_page(request: Request):
