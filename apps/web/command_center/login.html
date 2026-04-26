@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Command Login | ProxyAgent.Network</title>
+
+    <link rel="stylesheet" href="/static/css/main.css">
+
+    <style>
+        .login-wrapper { max-width: 1000px; width: 100%; margin: 60px auto; padding: 0 20px; box-sizing: border-box; }
+        .header-login { text-align: center; margin-bottom: 50px; border-bottom: 1px solid var(--border-color); padding-bottom: 30px; }
+        .header-login h1 { font-size: 2.5rem; margin: 0 0 10px 0; font-weight: 800; letter-spacing: -1px; color: var(--text-main); }
+        .badge-login { color: var(--copper); font-family: monospace; font-size: 0.9rem; letter-spacing: 2px; }
+
+        .split-container { display: flex; gap: 40px; }
+        .login-card { flex: 1; padding: 40px; position: relative; overflow: hidden; }
+        .login-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--copper); }
+        .login-card.agent::before { background: var(--slate); }
+
+        .input-group { margin-bottom: 20px; }
+
+        .submit-btn { width: 100%; padding: 15px; background: transparent; color: var(--copper); border: 1px solid var(--copper); font-weight: bold; font-size: 1rem; cursor: pointer; border-radius: 4px; transition: 0.3s; letter-spacing: 1px; margin-top: 10px; }
+        .submit-btn:hover { background: var(--copper-bg); }
+
+        .agent-btn { color: var(--slate); border-color: var(--slate); }
+        .agent-btn:hover { background: rgba(136, 146, 176, 0.1); color: var(--text-main); border-color: var(--text-main); }
+
+        .status-msg { margin-top: 20px; font-family: monospace; font-size: 0.85rem; text-align: center; min-height: 40px; }
+        .alert-text { color: var(--alert); }
+        .redirect-link { color: var(--copper); text-decoration: underline; cursor: pointer; }
+
+        .global-error { max-width: 800px; margin: 20px auto 0; padding: 15px 20px; border: 1px solid var(--alert); background: rgba(255, 77, 77, 0.08); color: var(--alert); font-family: monospace; font-size: 0.9rem; text-align: center; border-radius: 4px; }
+
+        @media (max-width: 768px) { .split-container { flex-direction: column; } }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="https://proxyagent.network/" class="nav-logo" style="display: flex; align-items: center;">
+            <picture>
+                <source srcset="/static/images/pan-logo-dark-mode-v2.png" media="(prefers-color-scheme: dark)">
+                <img src="/static/images/pan-logo-light-mode-v2.png" alt="Proxy Agent Network" style="height: 45px; object-fit: contain;">
+            </picture>
+        </a>
+        <div class="nav-links">
+            <a href="https://proxyagent.network/">Home</a>
+            <a href="https://proxyagent.network/our-mission">Mission</a>
+            <a href="https://proxyagent.network/operations">Sector Ops</a>
+            <a href="https://proxyagent.network/rates">SLA Rates</a>
+            <a href="https://proxyagent.network/investors">Investors</a>
+            <a href="https://proxyagent.network/partners">Partners</a>
+            <a href="/login" class="btn-login">Login</a>
+            <a href="https://proxyagent.network/enlist" class="btn-enlist">Enlist Now</a>
+        </div>
+    </nav>
+
+    <div class="login-wrapper">
+        <div class="header-login">
+            <div class="badge-login">SYSTEM ENCRYPTED // L402 ACTIVE</div>
+            <h1>Command Portal</h1>
+            <p class="subtext">Select your secure gateway to access the PAN Protocol.</p>
+        </div>
+
+        {% if error %}
+        <div class="global-error">
+            [!] AUTHENTICATION FAILED: Invalid credentials. Connection terminated.
+        </div>
+        {% endif %}
+
+        <div class="split-container">
+            <div class="card login-card">
+                <h2>Fleet Command</h2>
+                <p class="subtext">For AV operators, API routing, and venture partners.</p>
+                <form id="fleetForm" method="POST" action="/login">
+                    <div class="input-group">
+                        <label>CORPORATE ID / NODE ADDRESS</label>
+                        <input type="text" name="corporate_id" placeholder="Enter API Node..." autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label>ENCRYPTED ACCESS KEY</label>
+                        <input type="password" name="password" placeholder="••••••••••••" autocomplete="current-password" required>
+                    </div>
+                    <button type="submit" class="submit-btn" id="fleetBtn">AUTHENTICATE FLEET</button>
+                </form>
+                <div class="status-msg" id="fleetStatus"></div>
+            </div>
+
+            <div class="card login-card agent">
+                <h2>Agent Terminal</h2>
+                <p class="subtext">For active Vanguard 50 deployed personnel.</p>
+                <form id="agentForm" method="POST" action="/login">
+                    <div class="input-group">
+                        <label>OPERATOR CALLSIGN</label>
+                        <input type="text" name="callsign" placeholder="Enter Callsign..." autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label>SECURE ENCLAVE PIN</label>
+                        <input type="password" name="password" placeholder="••••••••••••" autocomplete="current-password" required>
+                    </div>
+                    <button type="submit" class="submit-btn agent-btn" id="agentBtn">ACCESS TERMINAL</button>
+                </form>
+                <div class="status-msg" id="agentStatus"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        &copy; 2026 Proxy Agent Network. All Rights Reserved.
+    </footer>
+
+</body>
+</html>

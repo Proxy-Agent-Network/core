@@ -2,12 +2,17 @@ import logging
 import os
 import sys
 import uuid
+import secrets
 import importlib
+
 import redis.asyncio as redis
-from fastapi import FastAPI, Request, status, HTTPException
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi import FastAPI, Request, status, HTTPException, Form
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+from jinja2 import FileSystemLoader
 
 # --- 1. INJECT MONOREPO PATHS ---
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
@@ -37,6 +42,26 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# --- Session Middleware ---
+# Stage 1d-3-c: signed-cookie session for command center auth.
+# Refuses to boot without a real signing key. Falls back to FLASK_SECRET_KEY
+# during the parallel-period transition for one-config convenience.
+session_secret = os.getenv("SESSION_SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
+if not session_secret or session_secret == "fallback_local_secret":
+    raise RuntimeError(
+        "SESSION_SECRET_KEY (or legacy FLASK_SECRET_KEY) must be set. "
+        "Refusing to boot without a real session signing key."
+    )
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret,
+    session_cookie="pan_session",
+    max_age=60 * 60,                                          # 1 hour, matches old Flask PERMANENT_SESSION_LIFETIME
+    same_site="strict",                                       # matches old Flask SESSION_COOKIE_SAMESITE
+    https_only=os.getenv("ENVIRONMENT") == "production",
+)
+
 @app.on_event("startup")
 async def startup_event():
     # 🟢 THE FIX: Default to a real Redis connection
@@ -44,7 +69,7 @@ async def startup_event():
     client = redis.from_url(redis_url)
     app.state.redis_client = client
     logger.info("🟢 Real Redis client connected and injected into app.state.")
-    
+
     # 🟢 THE FIX: Seed the dev agent directly into Real Redis!
     # This bypasses Firebase onboarding but utilizes Real Redis for Pub/Sub WebSocket dispatch.
     if os.getenv("ENVIRONMENT") != "production":
@@ -60,10 +85,10 @@ async def startup_event():
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://command.proxyagent.network").split(",")
 if os.getenv("ENVIRONMENT") != "production":
     allowed_origins.extend([
-        "http://localhost:5000", 
-        "http://127.0.0.1:5000", 
-        "http://localhost:3000", 
-        "http://localhost", 
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://localhost:3000",
+        "http://localhost",
         "https://pan-tactical.local"
     ])
 
@@ -71,13 +96,52 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"], 
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # --- Templates ---
-TEMPLATE_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "templates")
-templates = Jinja2Templates(directory=TEMPLATE_DIR)
+# Stage 1d-3-c: command center templates live in apps/web/command_center/.
+# Their parent dashboard_base.html and the 404.html live in
+# apps/web/public_website/templates/. FileSystemLoader takes a list of
+# directories and searches them in order, mirroring what the old Flask
+# ChoiceLoader did.
+PUBLIC_TEMPLATE_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "templates")
+COMMAND_CENTER_DIR = os.path.join(ROOT_DIR, "apps", "web", "command_center")
+PUBLIC_STATIC_DIR = os.path.join(ROOT_DIR, "apps", "web", "public_website", "static")
+
+templates = Jinja2Templates(directory=PUBLIC_TEMPLATE_DIR)
+templates.env.loader = FileSystemLoader([COMMAND_CENTER_DIR, PUBLIC_TEMPLATE_DIR])
+
+def base_context(request: Request) -> dict:
+    """Jinja context shared by command center templates.
+
+    Mirrors the old Flask context_processor that injected these globals on
+    every render. csrf_token is intentionally omitted because we no longer
+    run global CSRF middleware; revisit if and when we add session-cookie
+    POST forms beyond /login itself.
+    """
+    return {
+        "request": request,
+        "csp_nonce": secrets.token_hex(16),
+        "ops_hub_token": os.environ.get("OPS_HUB_TOKEN", "dev-token-777"),
+    }
+
+# --- Static Asset Mounts ---
+# /static/...      -> public_website/static/   (PAN brand CSS, logos, images)
+# /command/css/... -> command_center/css/      (command center stylesheets)
+# /command/js/...  -> command_center/js/       (command center JS bundles)
+app.mount("/static", StaticFiles(directory=PUBLIC_STATIC_DIR), name="static")
+app.mount(
+    "/command/css",
+    StaticFiles(directory=os.path.join(COMMAND_CENTER_DIR, "css")),
+    name="command_css",
+)
+app.mount(
+    "/command/js",
+    StaticFiles(directory=os.path.join(COMMAND_CENTER_DIR, "js")),
+    name="command_js",
+)
 
 # --- Router Registration ---
 app.include_router(v2x_router, prefix="/api/v1", tags=["V2X Dispatch"])
@@ -129,38 +193,89 @@ async def not_found_handler(request: Request, exc: HTTPException):
 async def health_check():
     return {"network": "Proxy Agent Network", "gateway_status": "ONLINE"}
 
-# --- Public Marketing Pages (Jinja2 Templates) ---
-@app.get("/", response_class=HTMLResponse)
-async def index_page(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+# ============================================================================
+# Stage 1d-3-c: Authentication & Command Center Pages
+# ============================================================================
+# All public marketing pages (/, /operations, /rates, /investors, /enlist,
+# /enlist-success, /our-mission, /partners, /api-spec) are served by Netlify
+# from apps/web/netlify_public/ and intentionally NOT routed here.
+#
+# This server (command.proxyagent.network) handles only:
+#   - JSON APIs at /api/v1/*
+#   - The login flow (/login, /logout)
+#   - Authenticated command center pages (/command, /developers, /reports)
+#   - Static assets those pages reference (/static, /command/css, /command/js)
+# ============================================================================
 
-@app.get("/operations", response_class=HTMLResponse)
-async def operations_page(request: Request):
-    return templates.TemplateResponse("operations.html", {"request": request})
+# --- Login / Logout ---
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, error: str = None):
+    ctx = base_context(request)
+    ctx["error"] = error
+    return templates.TemplateResponse("login.html", ctx)
 
-@app.get("/rates", response_class=HTMLResponse)
-async def rates_page(request: Request):
-    return templates.TemplateResponse("rates.html", {"request": request})
+@app.post("/login")
+async def login_submit(request: Request, password: str = Form(...)):
+    expected = os.environ.get("ADMIN_SECRET_TOKEN")
+    if not expected:
+        logger.error("CRITICAL: ADMIN_SECRET_TOKEN missing; login disabled.")
+        raise HTTPException(
+            status_code=500,
+            detail="Server configuration error: admin credential not configured.",
+        )
+    if not password or not secrets.compare_digest(password, expected):
+        return RedirectResponse(url="/login?error=invalid", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.get("/investors", response_class=HTMLResponse)
-async def investors_page(request: Request):
-    return templates.TemplateResponse("investors.html", {"request": request})
+    # Success: clear any prior session state, mark authenticated.
+    request.session.clear()
+    request.session["authenticated"] = True
+    return RedirectResponse(url="/command", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.get("/enlist", response_class=HTMLResponse)
-async def enlist_page(request: Request):
-    return templates.TemplateResponse("enlist.html", {"request": request})
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.get("/enlist-success", response_class=HTMLResponse)
-async def enlist_success(request: Request):
-    return templates.TemplateResponse("enlist_success.html", {"request": request})
+# --- Authenticated Command Center Pages ---
+# Inline auth check is used instead of a Depends() because a redirect from a
+# dependency requires extra exception-handler plumbing in FastAPI. Three
+# routes is too few to justify that abstraction; revisit if the list grows.
+@app.get("/command", response_class=HTMLResponse)
+async def command_center_root(request: Request):
+    if not request.session.get("authenticated"):
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse("index.html", base_context(request))
 
+@app.get("/developers", response_class=HTMLResponse)
+async def developer_portal(request: Request):
+    if not request.session.get("authenticated"):
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse("developer.html", base_context(request))
+
+@app.get("/reports", response_class=HTMLResponse)
+async def reports_portal(request: Request):
+    if not request.session.get("authenticated"):
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse("reports.html", base_context(request))
+
+# --- Command Center Client Config (singleton at root path) ---
+# Mirrors the old Flask /pan_client_config.js route. Holds the public
+# Firebase and Google Maps API keys the command center JS needs at runtime.
+@app.get("/pan_client_config.js")
+async def command_center_secrets():
+    return FileResponse(
+        os.path.join(COMMAND_CENTER_DIR, "pan_client_config.js"),
+        media_type="application/javascript",
+    )
+
+# --- Dev tooling ---
 @app.post("/api/v1/dev/override-hardware")
 async def override_hardware(request: Request):
     client = request.app.state.redis_client
-    
+
     # 🟢 THE FIX: Explicitly target the exact pubkey string! Wildcards can fail in async Redis.
     await client.delete("pan:agent:DEV_AGENT_01:pubkey")
-    
+
     # Re-seed the clean agent profile
     await client.hset("pan:agent:DEV_AGENT_01", mapping={
         "callsign": "DEV-TESTER",
