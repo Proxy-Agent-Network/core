@@ -4,7 +4,7 @@ import sys
 import uuid
 import importlib
 import redis.asyncio as redis
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
@@ -102,6 +102,22 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An internal operational error occurred.", "correlation_id": correlation_id},
+    )
+
+# --- 404 Handler ---
+# Renders a branded HTML 404 page for browser requests; returns JSON for API requests.
+# Detection: paths starting with /api/ get JSON, everything else gets HTML.
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: HTTPException):
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Not Found", "path": request.url.path},
+        )
+    return templates.TemplateResponse(
+        "404.html",
+        {"request": request},
+        status_code=404,
     )
 
 # --- API Health Check ---

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Sector Not Found | ProxyAgent.Network</title>
+    <style>
+        :root {
+            --navy: #0A192F;
+            --copper: #B87333;
+            --slate: #8892B0;
+            --white: #E6F1FF;
+            --success: #64FFDA;
+            --alert: #FF4D4D;
+            --bg-dark: #020c1b;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--navy);
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            color: var(--white);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-nav {
+            padding: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-align: center;
+            border-bottom: 1px solid #112240;
+        }
+
+        .top-nav a {
+            color: var(--slate);
+            text-decoration: none;
+            transition: color 0.3s;
+            margin: 0 15px;
+        }
+
+        .top-nav a:hover { color: var(--copper); }
+
+        .container-404 {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px 20px;
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .status-code {
+            font-family: 'Courier Prime', 'Courier New', monospace;
+            font-size: 8rem;
+            font-weight: 900;
+            color: var(--copper);
+            margin: 0;
+            line-height: 1;
+            letter-spacing: -4px;
+        }
+
+        .status-label {
+            font-family: 'Courier Prime', 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: var(--alert);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin: 20px 0 40px 0;
+        }
+
+        h1 {
+            font-size: 2.4rem;
+            margin: 0 0 20px 0;
+            color: var(--white);
+            font-weight: 900;
+        }
+
+        .lead-text {
+            font-size: 1.1rem;
+            color: var(--slate);
+            max-width: 560px;
+            margin: 0 auto 40px auto;
+        }
+
+        .telemetry-box {
+            background: rgba(2, 12, 27, 0.8);
+            border: 1px solid #112240;
+            border-radius: 4px;
+            padding: 20px 30px;
+            margin: 30px 0;
+            font-family: 'Courier Prime', 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: var(--slate);
+            text-align: left;
+            max-width: 560px;
+        }
+
+        .telemetry-box .term-key {
+            color: var(--success);
+        }
+
+        .telemetry-box .term-fail {
+            color: var(--alert);
+        }
+
+        .nav-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            justify-content: center;
+            margin: 40px 0 0 0;
+        }
+
+        .nav-options a {
+            display: inline-block;
+            padding: 14px 28px;
+            border: 1px solid var(--copper);
+            color: var(--copper);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+            border-radius: 2px;
+        }
+
+        .nav-options a:hover {
+            background: var(--copper);
+            color: var(--navy);
+        }
+
+        .nav-options a.primary {
+            background: var(--copper);
+            color: var(--navy);
+        }
+
+        .nav-options a.primary:hover {
+            background: var(--success);
+            border-color: var(--success);
+            color: var(--navy);
+        }
+
+        .custom-footer {
+            margin-top: auto;
+            padding: 30px 20px;
+            border-top: 1px solid #112240;
+            text-align: center;
+            color: var(--slate);
+            font-size: 0.85rem;
+        }
+
+        .custom-footer a { color: var(--copper); text-decoration: none; }
+    </style>
+</head>
+<body>
+
+    <div class="top-nav">
+        <a href="/">[ HOME ]</a>
+        <a href="/enlist">[ VANGUARD 50 ENLISTMENT ]</a>
+        <a href="/operations">[ SECTOR OPS ]</a>
+        <a href="/rates">[ SLA RATES ]</a>
+        <a href="/investors">[ INVESTOR RELATIONS ]</a>
+    </div>
+
+    <div class="container-404">
+        <div class="status-code">404</div>
+        <div class="status-label">// Sector Not Found</div>
+
+        <h1>This Coordinate Is Off-Grid.</h1>
+        <p class="lead-text">
+            The URL you requested is not a registered sector in the PAN gateway. Either the page has been relocated, the link contains a typo, or the route has not yet been provisioned.
+        </p>
+
+        <div class="telemetry-box">
+            <span class="term-key">REQUEST:</span> <span class="term-fail">UNRESOLVED</span><br>
+            <span class="term-key">DISPATCH:</span> No matching handler in routing table<br>
+            <span class="term-key">FALLBACK:</span> Returning to Base Command coordinates
+        </div>
+
+        <div class="nav-options">
+            <a href="/" class="primary">RETURN TO BASE COMMAND</a>
+            <a href="/operations">SECTOR OPS</a>
+            <a href="/rates">SLA RATES</a>
+            <a href="/investors">INVESTORS</a>
+            <a href="/enlist">ENLIST</a>
+        </div>
+    </div>
+
+    <div class="custom-footer">
+        © 2026 ProxyAgent.Network &nbsp;|&nbsp;
+        <a href="/api/v1/health">Gateway Status</a>
+    </div>
+
+</body>
+</html>
