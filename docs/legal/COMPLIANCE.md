@@ -89,8 +89,8 @@ Vanguard Agents are deployed strictly for exterior, edge-case physical recovery.
 ### 4. Settlement, Escrow & Agent Earnings
 
 - **L402 HODL Invoices:** Intervention bounties are locked in Lightning Escrow upon AV task broadcast and only released when the three-stage settlement oracle is satisfied: (1) hardware attestation, (2) SB 1417 compliance confirmation, (3) AV-signed Ed25519 Ed25519 payload verified by Rust smart contract.
-- **Agent Earnings Split:** Agents receive 90% of the settled bounty. The remaining 10% covers network operational costs. This split is fixed and disclosed to agents at onboarding.
-- **Surge Pricing:** Bounties are dynamically adjusted when Agent Utilization Ratio (AUR) exceeds 75%. Maximum surge is 3.0× the base rate. Surge is applied before the 90/10 split — agents benefit from surge in full proportion.
+- **Agent Earnings Split:** Agents receive 75% of the settled bounty (85% for verified Veterans). Fleet partners pay a 10% platform fee, discounted to 5% if they maintain a $25,000+ escrow balance. *(Note to Counsel: This fee structure is disclosed to agents in their onboarding agreement and to fleet partners in their API integration agreement. Final legal sign-off required prior to Mesa Launch).*
+- **Surge Pricing:** Bounties are dynamically adjusted when Agent Utilization Ratio (AUR) exceeds 75%. Maximum surge is 3.0× the base rate. Surge is applied before the agent fee split — agents benefit from surge in full proportion.
 - **Multi-Agent Collaboration Bonuses:** Agents operating on the same incident may earn verified collaboration bonuses ($5.00 base, $7.00 flourish upgrades) through the Gauntlets VFG-1 gesture system. Bonuses require NFC bilateral cryptographic confirmation that two registered agents made physical contact on the same `incident_id`. Bonus eligibility is capped at 3 events per agent pair per 8-hour shift to prevent gaming.
 - **Strict SLA Geofencing:** Tasks are only dispatched to Agents within a highly restricted physical radius (< 3 miles) to mathematically guarantee our 15-minute response SLA.
 
@@ -161,6 +161,6 @@ The following features are documented in PAN's technical specifications but requ
 
 ---
 
-**CONFIDENTIAL // PROPRIETARY INFRASTRUCTURE**  
-*© 2026 PROXY AGENT NETWORK LLC. All Rights Reserved.*  
+**CONFIDENTIAL // PROPRIETARY INFRASTRUCTURE** 
+*© 2026 PROXY AGENT NETWORK LLC. All Rights Reserved.* 
 *Questions regarding this document: rob@proxyagent.network*

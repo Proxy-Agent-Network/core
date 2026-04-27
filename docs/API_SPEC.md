@@ -32,14 +32,14 @@ PAN routes physical AV incident response through a two-sided API:
 
 - **Fleet Partners** (Waymo, Zoox, etc.) send authenticated distress signals when an AV encounters a physical edge case it cannot self-resolve. PAN locks a bounty in escrow, dispatches the nearest qualified Vanguard Agent, and returns a sealed SB 1417 Optical Health Report on completion.
 
-- **Vanguard Agents** authenticate via hardware-bound TPM keys and poll for assigned missions. They acknowledge dispatch, complete the physical task, and submit evidence. Settlement is immediate via Lightning Network L402 HODL invoices — agents receive 90% of the settled bounty.
+- **Vanguard Agents** authenticate via hardware-bound TPM keys and poll for assigned missions. They acknowledge dispatch, complete the physical task, and submit evidence. Settlement is immediate via Lightning Network L402 HODL invoices.
 
 ### Key Architectural Notes
 
 - **Deduplication:** Duplicate distress signals for the same VIN + fault code within 300 seconds are rejected with \`409 Conflict\`. This prevents double-dispatch from AV retry loops.
 - **Replay Protection:** Fleet webhook requests older than 300 seconds are rejected regardless of signature validity.
 - **IDOR Protection:** All mission completion and acknowledgement endpoints verify that the requesting agent ID matches the agent assigned to the mission. Cross-agent access returns \`403 Forbidden\`.
-- **Settlement:** Bounty is stated in USD. Agent net payout = \`bounty_usd × 0.90\`. The PAN network retains 10% for operational costs.
+- **Settlement:** Bounty is stated in USD. Agent net payout is calculated dynamically: Verified Veterans receive 85% of the bounty (\`bounty_usd × 0.85\`), standard agents receive 75% (\`bounty_usd × 0.75\`). Platform fees are 10% by default, reduced to 5% if the fleet maintains a $25,000+ escrow balance at mission genesis.
 
 ---
 
@@ -57,12 +57,12 @@ All fleet-to-network requests must be signed with the fleet's registered Ed25519
 | \`X-Fleet-Signature\` | Ed25519 signature over the raw request body, hex-encoded |
 
 **Signature computation (Python):**
-```python
+'''python
 import nacl.signing
 
 signing_key = nacl.signing.SigningKey(your_private_key_bytes)
 signature = signing_key.sign(request_body_bytes).signature.hex()
-```
+'''
 
 **Replay protection:** The signature must accompany a request with a \`timestamp\` field no more than 300 seconds old. Older requests are rejected with \`401 Unauthorized\`.
 
@@ -128,7 +128,7 @@ Triggers dispatch of the nearest qualified Vanguard Agent. Locks the bounty in L
 | \`secondary_escalation_usd_per_min\` | \`float\` | — | Secondary bid escalation rate. Defaults to \`2.00\`. |
 
 **Example Request:**
-```bash
+'''bash
 POST /api/v1/v2x/distress
 X-Fleet-Id: WAYMO_MESA_01
 X-Fleet-Signature: <ed25519_hex_signature>
@@ -142,10 +142,10 @@ Content-Type: application/json
   "bounty_usd": 45.00,
   "osm_color": "YELLOW"
 }
-```
+'''
 
 **Example Request — With Secondary Agent:**
-```bash
+'''bash
 POST /api/v1/v2x/distress
 X-Fleet-Id: WAYMO_MESA_01
 X-Fleet-Signature: <ed25519_hex_signature>
@@ -163,28 +163,28 @@ Content-Type: application/json
   "secondary_max_bid_usd": 24.00,
   "secondary_escalation_usd_per_min": 2.00
 }
-```
+'''
 
 **Response \`201 Created\`:**
 
-```json
+'''json
 {
   "status": "success",
   "task_id": "tsk_a3f8c291b04d",
   "incident_id": "inc_3f8c291b04"
 }
-```
+'''
 
 **Response \`201 Created\` — With Secondary:**
 
-```json
+'''json
 {
   "status": "success",
   "task_id": "tsk_a3f8c291b04d",
   "incident_id": "inc_3f8c291b04",
   "sentry_task_id": "tsk_b5e9d102c13e"
 }
-```
+'''
 
 \`incident_id\` links the primary and secondary tasks under a single incident. Both tasks will share the same SB 1417 Optical Health Report scope. Both agents will be excluded from being assigned to each other's task.
 
@@ -212,7 +212,7 @@ Polled by the PAN Command mobile app to retrieve missions assigned to the authen
 
 **Response \`200 OK\`:**
 
-```json
+'''json
 [
   {
     "task_id": "tsk_a3f8c291b04d",
@@ -221,12 +221,13 @@ Polled by the PAN Command mobile app to retrieve missions assigned to the authen
     "lon": -111.84,
     "error_code": "UDS_SENSOR_OCCLUSION_LIDAR_FL",
     "bounty_usd": 45.0,
+    "net_payout": 38.25,
     "intersection": "WAYMO-404",
     "role": "PRIMARY",
     "status": "ASSIGNED"
   }
 ]
-```
+'''
 
 Returns an empty array \`[]\` if no missions are currently assigned. The \`role\` field will be \`"PRIMARY"\` for standard dispatch or \`"SENTRY"\` for secondary agent assignment. Sentry missions display \`fault_code: "SENTRY_TRAFFIC_DIRECTION"\`.
 
@@ -240,12 +241,12 @@ Fired silently by PAN Command the moment the mission UI renders on the agent's s
 
 **Response \`200 OK\`:**
 
-```json
+'''json
 {
   "status": "success",
   "message": "Mission acknowledged."
 }
-```
+'''
 
 | Code | Condition |
 |---|---|
@@ -258,23 +259,23 @@ Fired silently by PAN Command the moment the mission UI renders on the agent's s
 
 **\`POST /v1/agent/missions/{task_id}/complete\`**
 
-Fired when the agent has physically resolved the incident. Triggers the three-stage settlement oracle: hardware attestation → SB 1417 compliance seal → AV-signed Ed25519 payload verified by Rust smart contract. On success, agent receives 90% of \`bounty_usd\` in their wallet immediately.
+Fired when the agent has physically resolved the incident. Triggers the three-stage settlement oracle: hardware attestation → SB 1417 compliance seal → AV-signed Ed25519 payload verified by Rust smart contract. On success, the agent receives their calculated net payout (75% or 85% of `bounty_usd`) in their wallet immediately.
 
 **Request Body:**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | \`agent_id\` | \`string\` | ✅ | Must match the authenticated agent's ID. |
-| \`net_payout\` | \`float\` | ✅ | Agent's expected payout. Server verifies this equals \`bounty_usd × 0.90\` — client-submitted values are not trusted for settlement calculations. |
+| \`net_payout\` | \`float\` | ✅ | Agent's expected payout. Server verifies this equals the correct multiplier (`0.85` or `0.75`). Client-submitted values are not trusted for settlement calculations. |
 | \`evidence_urls\` | \`array[string]\` | — | URLs of redacted photographic evidence (processed through \`PrivacyFilter.sanitizeImage()\` before upload — faces and license plates redacted on-device). |
 | \`hardware_attestation_token\` | \`string\` | — | StrongBox TPM attestation JWT binding the report to the agent's physical device. |
 | \`av_signature_hex\` | \`string\` | — | Ed25519 signature from the AV confirming the agent was physically present and the fault code cleared. |
 
 **Example Request:**
-```json
+'''json
 {
   "agent_id": "VNG-A3F8C2-ALPHA",
-  "net_payout": 40.50,
+  "net_payout": 38.25,
   "evidence_urls": [
     "[https://cdn.proxyagent.network/evidence/redacted_frame_001.jpg](https://cdn.proxyagent.network/evidence/redacted_frame_001.jpg)",
     "[https://cdn.proxyagent.network/evidence/redacted_frame_002.jpg](https://cdn.proxyagent.network/evidence/redacted_frame_002.jpg)"
@@ -282,15 +283,16 @@ Fired when the agent has physically resolved the incident. Triggers the three-st
   "hardware_attestation_token": "<strongbox_jwt>",
   "av_signature_hex": "<ed25519_hex>"
 }
-```
+'''
 
 **Response \`200 OK\`:**
 
-```json
+'''json
 {
-  "status": "success"
+  "status": "success",
+  "net_payout": 38.25
 }
-```
+'''
 
 On success, the SB 1417 Optical Health Report is sealed, the mission is removed from the active queue, and the agent's status returns to \`ONLINE\` for re-dispatch.
 
@@ -310,12 +312,12 @@ Agent rejects the assigned mission. Places a 15-minute price-sensitive cooldown 
 
 **Response \`200 OK\`:**
 
-```json
+'''json
 {
   "status": "success",
   "message": "Mission declined."
 }
-```
+'''
 
 No request body required. The agent's status automatically returns to \`ONLINE\`.
 
@@ -336,22 +338,22 @@ Accepts a fleet-offered time extension for an active \`SENTRY\` role mission. On
 | \`accepted_bounty_usd\` | \`float\` | ✅ | Additional bounty accepted for the extension period. Must not cause the total bounty to exceed \`max_bounty_usd\`. |
 
 **Example Request:**
-```json
+'''json
 {
   "task_id": "tsk_b5e9d102c13e",
   "extension_minutes": 15,
   "accepted_bounty_usd": 5.00
 }
-```
+'''
 
 **Response \`200 OK\`:**
 
-```json
+'''json
 {
   "status": "success",
   "new_bounty_usd": 19.00
 }
-```
+'''
 
 | Code | Condition |
 |---|---|
@@ -380,11 +382,11 @@ Updates the agent's geospatial position and availability status in the Redis dis
 
 **Response \`200 OK\`:**
 
-```json
+'''json
 {
   "status": "success"
 }
-```
+'''
 
 **Important:** GPS coordinates written via this endpoint are stored permanently in the SB 1417 Optical Health Report alongside all safety events. This is a regulatory requirement — agent location data within compliance reports is not ephemeral.
 
@@ -410,7 +412,7 @@ Multi-agent bonuses are validated server-side when two Gauntlets VFG-1 report a 
 
 Gesture events are submitted by the Gauntlets firmware via PAN Command. The backend validates eligibility before crediting wallets.
 
-```kotlin
+'''kotlin
 data class GauntletGestureEvent(
     val gloveId: String,            // Unique registered glove ID
     val agentId: String,            // Bound agent from Key Ceremony
@@ -431,7 +433,7 @@ enum class GestureType {
     MIYAGI_TWO_HAND, MIYAGI_SURFACE,
     CONTACT_GENERIC
 }
-```
+'''
 
 ### Anti-Gaming Safeguards
 
@@ -487,7 +489,7 @@ The Surge Pricing Engine dynamically adjusts bounties when Agent Utilization Rat
 | 85–95% | 2.0× |
 | > 95% | 3.0× (maximum) |
 
-Surge is applied to the \`bounty_usd\` value before the task enters the dispatch queue. Agents always receive 90% of the surged bounty. The \`3.0×\` cap is hard-coded and cannot be overridden by fleet partners.
+Surge is applied to the \`bounty_usd\` value before the task enters the dispatch queue. Agents always receive their tier percentage (75% or 85%) of the surged bounty. The \`3.0×\` cap is hard-coded and cannot be overridden by fleet partners.
 
 Fleet partners configure their starting bid, escalation rate, and maximum bid via the Auto-Dispatch Rules panel in the Partner Integration Portal. The \`bounty_usd\` field in the distress signal should reflect the fleet's current bid at time of dispatch — escalation beyond the starting bid is managed by the fleet partner's bidding logic.
 
@@ -511,7 +513,7 @@ Fleet partners configure their starting bid, escalation rate, and maximum bid vi
 
 ### \`DistressPayload\`
 
-```python
+'''python
 class DistressPayload(BaseModel):
     vin: str                                      # Vehicle VIN (plain text)
     fault_code: str                               # UDS fault code
@@ -523,33 +525,33 @@ class DistressPayload(BaseModel):
     secondary_start_bid_usd: float = 14.0         # Secondary opening bid
     secondary_max_bid_usd: float = 24.0           # Secondary maximum bid
     secondary_escalation_usd_per_min: float = 2.0 # Secondary escalation rate
-```
+'''
 
 ### \`MissionCompletePayload\`
 
-```python
+'''python
 class MissionCompletePayload(BaseModel):
     agent_id: str
     net_payout: float                    # Expected payout (server validates)
     evidence_urls: list = []             # Redacted frame URLs
     hardware_attestation_token: str = "" # StrongBox TPM JWT
     av_signature_hex: str = ""           # AV Ed25519 confirmation
-```
+'''
 
 ### \`SentryExtensionPayload\`
 
-```python
+'''python
 class SentryExtensionPayload(BaseModel):
     task_id: str             # Must match path parameter
     extension_minutes: int   # Duration of extension
     accepted_bounty_usd: float  # Additional bounty for extension
-```
+'''
 
 ### \`AegisBiometricEvent\`
 
 Published internally from the Aegis Polo via BLE → PAN Command → backend. Not a REST endpoint — documented here for fleet partner awareness of what feeds the SB 1417 compliance record.
 
-```python
+'''python
 class AegisBiometricEvent:
     agent_id: str
     mission_id: str | None
@@ -559,13 +561,13 @@ class AegisBiometricEvent:
     gsr_microsiemens: float
     stress_index: float        # 0.0–1.0 derived from HR + GSR combined
     timestamp: int
-```
+'''
 
 The \`stress_index\` field feeds the Composite Threat Response algorithm: if \`stress_index > 0.7\` while the vest RATS system is actively tracking a Zone 2 threat, the system escalates directly to Zone 1 maximum response, skipping the Zone 2 warning sequence.
 
 ### Mission Object (Agent-Facing)
 
-```json
+'''json
 {
   "task_id": "tsk_a3f8c291b04d",
   "incident_id": "inc_3f8c291b04",
@@ -577,7 +579,7 @@ The \`stress_index\` field feeds the Composite Threat Response algorithm: if \`s
   "role": "PRIMARY",
   "status": "ASSIGNED"
 }
-```
+'''
 
 \`role\` is one of \`"PRIMARY"\` or \`"SENTRY"\`. Sentry missions will always have \`error_code: "SENTRY_TRAFFIC_DIRECTION"\` regardless of the primary fault at the incident.
 
