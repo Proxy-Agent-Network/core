@@ -4,12 +4,14 @@ import logging
 import json
 import asyncio
 import secrets
-from typing import Dict
+from typing import Dict, Optional, List
 from pydantic import BaseModel
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends, Query
 
-from api.agent_api import decode_redis_hash
+from api.v2x_bounty_api import decode_redis_hash
 from utils.auth import verify_agent_signature, verify_agent_jwt
+# We import the DB dependency from the utils package you created in Stage 1d-3-b-2
+from utils.db import get_db_dep, DBWrapper
 
 logger = logging.getLogger("PAN_TelemetryStream")
 router = APIRouter()
@@ -20,6 +22,21 @@ AGENT_STATE_TTL_SECONDS = 60 * 60 * 24 * 30
 # One command center per deployment is the expected topology.
 MAX_OPS_HUB_CONNECTIONS = 5
 _active_ops_hub_connections = 0
+
+# --- SHARED OPS HUB AUTHENTICATION ---
+# 🛡️ THE FIX: Extracted token validation into a reusable dependency
+def verify_ops_hub_token(token: str = Query(...)) -> str:
+    expected_token = os.getenv("OPS_HUB_TOKEN")
+    if not expected_token:
+        if os.getenv("ENVIRONMENT") == "production":
+            raise RuntimeError("FATAL: OPS_HUB_TOKEN is not set in production.")
+        expected_token = "dev-token-777"
+        
+    if not token or not secrets.compare_digest(token, expected_token):
+        logger.warning("🚨 Unauthorized Ops Hub connection attempt blocked.")
+        raise HTTPException(status_code=401, detail="Invalid Command Center Token.")
+        
+    return token
 
 # --- HTTP TELEMETRY INGEST ---
 
@@ -119,6 +136,61 @@ async def update_agent_status(
 
     return {"status": "success"}
 
+# --- HISTORICAL TELEMETRY DUMP ---
+
+# 🛑 THE FIX: Migrated the vulnerable endpoint out of Flask and added strict Ops Hub Authentication.
+# 🛑 THE FIX: Runs synchronously because we are executing a blocking psycopg2 database query.
+@router.get("/telemetry/history")
+def get_telemetry_history(
+    agent_id: Optional[str] = None,
+    mission_id: Optional[str] = None,
+    is_global: Optional[bool] = Query(False, alias="global"),
+    start_time: Optional[float] = None,
+    end_time: Optional[float] = None,
+    minutes: int = 60,
+    token: str = Depends(verify_ops_hub_token),
+    db: DBWrapper = Depends(get_db_dep)
+):
+    """
+    [PILOT BLOCKER] Secure Forensic Telemetry Retrieval.
+    Used by the Command Center DVR Rewind feature.
+    Strictly gated by verify_ops_hub_token to prevent unauthenticated surveillance.
+    """
+    if not agent_id and not mission_id and not is_global:
+        raise HTTPException(status_code=400, detail="Must provide agent_id, mission_id, or global=true.")
+
+    query = '''
+        SELECT agent_id, latitude, longitude, status, current_mission_id, event_type, 
+               EXTRACT(EPOCH FROM recorded_at) as timestamp
+        FROM agent_telemetry_history 
+        WHERE 1=1
+    '''
+    params = []
+
+    if start_time and end_time:
+        query += " AND recorded_at >= to_timestamp(%s) AND recorded_at <= to_timestamp(%s)"
+        params.extend([start_time, end_time])
+    else:
+        query += " AND recorded_at >= NOW() - INTERVAL '%s minutes'"
+        params.append(minutes)
+
+    if agent_id:
+        query += " AND agent_id = %s"
+        params.append(agent_id)
+    
+    if mission_id:
+        query += " AND current_mission_id = %s"
+        params.append(mission_id)
+
+    query += " ORDER BY recorded_at ASC"
+
+    try:
+        history = db.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in history]
+    except Exception as e:
+        logger.error(f" [TELEMETRY] 🚨 Forensic Retrieval Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve forensic history.")
+
 
 # --- WEBSOCKET STREAMS ---
 
@@ -134,7 +206,6 @@ async def agent_mission_stream(websocket: WebSocket):
 
     redis_client = websocket.app.state.redis_client
 
-    # 🟢 THE FIX: Correctly awaited the async verify_agent_jwt with redis_client
     try:
         verified_id = await verify_agent_jwt(token, redis_client) 
         
@@ -197,29 +268,16 @@ async def agent_mission_stream(websocket: WebSocket):
 async def websocket_telemetry_endpoint(websocket: WebSocket):
     global _active_ops_hub_connections
 
-    # 🛡️ Connection cap: reject if too many ops hub sessions are already active.
     if _active_ops_hub_connections >= MAX_OPS_HUB_CONNECTIONS:
         logger.warning("🚨 [OPS_HUB] Max concurrent connections reached. Rejecting new client.")
         await websocket.close(code=1008)
         return
 
-    # 🛡️ Token resolution: use OPS_HUB_TOKEN env var in all environments.
-    # In production this MUST be set. In dev it falls back to dev-token-777.
-    # index.html injects this same value via the {{ ops_hub_token }} Jinja2
-    # template variable (set in app.py context_processor from os.environ).
-    # DO NOT use the Flask CSRF token here — it is per-session and unknown to FastAPI.
-    expected_token = os.getenv("OPS_HUB_TOKEN")
-    if not expected_token:
-        if os.getenv("ENVIRONMENT") == "production":
-            raise RuntimeError("FATAL: OPS_HUB_TOKEN is not set in production.")
-        expected_token = "dev-token-777"
-        logger.warning("⚠️ Using insecure dev token. Set OPS_HUB_TOKEN for production.")
-        
-    token = websocket.query_params.get("token")
-
-    # 🛡️ Use secrets.compare_digest to prevent cryptographic timing attacks.
-    if not token or not secrets.compare_digest(token, expected_token):
-        logger.warning("🚨 Unauthorized WebSocket connection attempt blocked.")
+    # 🛑 THE FIX: Replaced duplicate token logic with the new dependency logic
+    try:
+        token = websocket.query_params.get("token")
+        verify_ops_hub_token(token)
+    except HTTPException:
         await websocket.close(code=1008)
         return
 
@@ -350,9 +408,6 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                             logger.warning(f"⚠️ Invalid task_id format in dispatch command: {task_id}")
                             continue
 
-                        # 🛡️ Validate the task actually exists in Redis before enqueuing.
-                        # Prevents a malicious ops-hub client from injecting arbitrary
-                        # tsk_* strings into pan:dispatch:active_tasks.
                         raw_task = await redis_client.hgetall(f"pan:task:{task_id}")
                         if not raw_task:
                             logger.warning(f"⚠️ [OPS_HUB] Rejected dispatch for unknown task: {task_id}")
