@@ -8,7 +8,7 @@ from typing import Dict, Optional, List
 from pydantic import BaseModel
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends, Query
 
-from api.v2x_bounty_api import decode_redis_hash
+from utils.redis_helpers import decode_redis_hash
 from utils.auth import verify_agent_signature, verify_agent_jwt
 # We import the DB dependency from the utils package you created in Stage 1d-3-b-2
 from utils.db import get_db_dep, DBWrapper

@@ -5,6 +5,10 @@ import uuid
 import secrets
 import importlib
 import markdown # 🛡️ Added for Pilot Blocker #3 Markdown Rendering
+from dotenv import load_dotenv # 🟢 Added load_dotenv
+
+# 🟢 Fire dotenv before anything else loads
+load_dotenv()
 
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, status, HTTPException, Form, Path
@@ -14,9 +18,6 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from jinja2 import FileSystemLoader
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # --- 1. INJECT MONOREPO PATHS ---
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
@@ -32,6 +33,7 @@ from api.agent_api import router as agent_router
 from api.store_api import router as store_router
 from api.reports_api import router as reports_router
 from api.network_stats_api import router as network_stats_router
+from api.dev_api import router as dev_router # 🟢 Add this import
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -158,6 +160,7 @@ app.include_router(agent_router, prefix="/api/v1", tags=["Agent"])
 app.include_router(store_router, prefix="/api/v1", tags=["Agent Store"])
 app.include_router(reports_router, prefix="/api/v1", tags=["Executive Reports"])
 app.include_router(network_stats_router, prefix="/api/v1", tags=["Network Stats"])
+app.include_router(dev_router, prefix="/api/v1", tags=["Dev Tools"]) # 🟢 Add this registration
 
 def load_optional_router(module_name, prefix, tags):
     """Dynamically loads non-critical routers. Core systems should use hard imports."""
