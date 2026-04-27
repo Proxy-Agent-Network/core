@@ -14,6 +14,9 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from jinja2 import FileSystemLoader
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- 1. INJECT MONOREPO PATHS ---
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
