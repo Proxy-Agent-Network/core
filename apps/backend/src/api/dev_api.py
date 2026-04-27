@@ -1,9 +1,13 @@
 import os
 import random
+import logging # 🟢 ADDED THIS
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from utils.db import get_db_dep, DBWrapper
+
+# 🟢 ADDED THIS
+logger = logging.getLogger("DevAPI")
 
 router = APIRouter()
 
@@ -89,3 +93,29 @@ def seed_dvr(request: Request, db: DBWrapper = Depends(get_db_dep)):
             
     db.commit()
     return {"status": "success", "message": f"Injected {count} Manhattan street-grid GPS pings!"}
+
+@router.post("/reset-hardware/{agent_id}")
+async def dev_reset_hardware(agent_id: str, request: Request):
+    """
+    [DEV ONLY] Clears the hardware public key for an agent.
+    Requires OPS_HUB_TOKEN in the Authorization header.
+    """
+    if os.getenv("ENVIRONMENT") == "production":
+        raise HTTPException(status_code=403, detail="Dev endpoints disabled in production.")
+        
+    auth_header = request.headers.get("Authorization")
+    expected_token = os.getenv("OPS_HUB_TOKEN", "dev-token-777")
+    if not auth_header or auth_header != f"Bearer {expected_token}":
+        logger.warning(f"🚨 Unauthorized attempt to reset hardware for {agent_id}")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    redis_client = request.app.state.redis_client
+    
+    # 🟢 THE FIX: Scorched Earth. Nuke the agent's profile keys AND the entire global key set.
+    async with redis_client.pipeline(transaction=True) as pipe:
+        pipe.hdel(f"pan:agent:{agent_id}", "pubkey", "public_key", "public_key_b64")
+        pipe.delete("pan:global:registered_keys") # 🧨 Wipe the global registry clean!
+        await pipe.execute()
+            
+    logger.info(f"🛠️ [DEV] Cleared hardware lock for agent {agent_id} and nuked global registry.")
+    return {"status": "success", "message": "Scorched earth hardware reset complete."}
