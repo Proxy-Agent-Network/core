@@ -15,15 +15,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.FirebaseAuth // 🟢 THE FIX: Real Firebase Auth End-to-End
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun LoginScreen(
-    isLoading: Boolean,
-    errorMessage: String?,
-    onLoginClick: (String, String) -> Unit // <-- We just pass the email/pass out!
+    onLoginSuccess: () -> Unit // 🟢 Simplified callback; LoginScreen handles the auth state
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -90,7 +94,7 @@ fun LoginScreen(
         // --- ERROR TELEMETRY ---
         if (errorMessage != null) {
             Text(
-                text = errorMessage,
+                text = errorMessage!!,
                 color = Color(0xFFF44336), // Red error
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace
@@ -102,7 +106,23 @@ fun LoginScreen(
         Button(
             onClick = {
                 if (email.isNotBlank() && password.isNotBlank()) {
-                    onLoginClick(email.trim(), password)
+                    isLoading = true
+                    errorMessage = null
+                    coroutineScope.launch {
+                        try {
+                            val auth = FirebaseAuth.getInstance()
+                            val result = auth.signInWithEmailAndPassword(email.trim(), password).await()
+                            if (result.user != null) {
+                                onLoginSuccess()
+                            } else {
+                                errorMessage = "Authentication failed: Unknown error."
+                                isLoading = false
+                            }
+                        } catch (e: Exception) {
+                            errorMessage = "Access Denied: ${e.localizedMessage ?: "Invalid credentials."}"
+                            isLoading = false
+                        }
+                    }
                 }
             },
             modifier = Modifier

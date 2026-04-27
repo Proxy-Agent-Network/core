@@ -135,9 +135,9 @@ class PanWalletClient : WalletNetworkClient {
     private val hostUrl = BuildConfig.PAN_API_BASE_URL
     private val baseUrl = "$hostUrl/api/v1/wallet"
 
-    // 🛡️ PHASE 2 FIX: Real identity enforcement via Firebase Auth
+    // 🛡️ PHASE 2 FIX: Real identity enforcement via Firebase Auth (STRICT MODE)
     private val secureUid: String?
-        get() = FirebaseAuth.getInstance().currentUser?.uid ?: if (BuildConfig.IS_DEBUG) "DEV_AGENT_01" else null
+        get() = FirebaseAuth.getInstance().currentUser?.uid
 
     private val jwtMutex = Mutex()
     private var cachedJwt: String? = null
@@ -199,7 +199,9 @@ class PanWalletClient : WalletNetworkClient {
     override suspend fun overrideHardwareLock(): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val response = client.post("$hostUrl/api/v1/dev/override-hardware")
+                val response = client.post("$hostUrl/api/v1/dev/override-hardware") {
+                    attachAgentSignature() // Pass the auth token!
+                }
                 response.status.isSuccess()
             } catch (e: Exception) { 
                 Log.e(TAG, "Override Hardware Lock failed: ${e.message}", e)

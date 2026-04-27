@@ -34,15 +34,16 @@ data class MissionData(
     val lat: Double,
     val lon: Double,
 
-    // 🛡️ FIX: Aligning with the WebSocket payload's "fault_code" key
     @SerialName("fault_code")
     val errorCode: String? = null,
 
     @SerialName("bounty_usd")
     val bountyUsd: Double,
 
-    // 🛡️ FIX: Providing a default value prevents the parser from crashing
-    // when the real-time WebSocket omits this field.
+    // 🟢 THE FIX: Parsing the backend's explicit net payout math!
+    @SerialName("net_payout")
+    val netPayout: Double = 0.0,
+
     val intersection: String = "Target Location",
 
     val role: TaskRole = TaskRole.PRIMARY,
@@ -57,6 +58,5 @@ data class MissionData(
     @SerialName("extension_bounty_usd")
     val extensionBountyUsd: Double = 0.0,
 
-    // 🟢 NEW: Diagnostic instruction from the backend to display on the Terminal
     val diagnostic: String? = null
 )

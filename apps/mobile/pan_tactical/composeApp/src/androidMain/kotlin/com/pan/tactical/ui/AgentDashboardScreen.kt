@@ -89,7 +89,6 @@ actual fun AgentDashboardScreen(
     val coroutineScope = rememberCoroutineScope()
     val trueWalletClient = remember { PanWalletClient() }
 
-    // 🟢 NEW: Instantiate Tactical Hardware Services
     val hapHatService = com.pan.tactical.hardware.rememberBleHapHatService()
     val wingmanService = remember { com.pan.tactical.hardware.AndroidBleWingmanService(context) }
     val hardwareBridge = remember { 
@@ -101,8 +100,8 @@ actual fun AgentDashboardScreen(
             apiClient = panClient,
             walletClient = trueWalletClient,
             scope = coroutineScope,
-            hardwareBridge = hardwareBridge,   // 🟢 Injected Bridge
-            wingmanService = wingmanService    // 🟢 Injected Wingman
+            hardwareBridge = hardwareBridge,
+            wingmanService = wingmanService
         )
     }
 
@@ -121,7 +120,7 @@ actual fun AgentDashboardScreen(
             when (state) {
                 "BOOT" -> {
                     LaunchedEffect(Unit) {
-                        hardwareBridge.connect() // 🟢 Connect to Tactical Hardware (Hat & Wingman)
+                        hardwareBridge.connect()
                         missionViewModel.initialize()
                         currentScreen = "DASHBOARD"
                         delay(500)
@@ -214,8 +213,7 @@ fun MainDashboardContent(
 
     val uiState by missionViewModel.uiState.collectAsState()
     
-    // 🟢 MOCKED FEE STATUS for UI testing
-    val isVeteran = true 
+    // 🛑 THE FIX: Removed hardcoded `val isVeteran = true` completely.
 
     val homingState = object {
         val isResolving = false
@@ -403,7 +401,7 @@ fun MainDashboardContent(
 
     val locationManager = rememberSharedLocationManager { lat, lon ->
         agentLocation = Pair(lat, lon)
-        missionViewModel.updateAgentLocation(lat, lon) // 🟢 NEW: Feed GPS to Wingman compass
+        missionViewModel.updateAgentLocation(lat, lon) 
 
         val now = getCurrentTimeMs()
         if (uiState.isOnline && now - lastTelemetryTime > 3000) {
@@ -488,11 +486,12 @@ fun MainDashboardContent(
                     exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                     modifier = Modifier.fillMaxSize()
                 ) {
+                    // 🟢 THE FIX: Render backend `netPayout` directly in UI
                     MissionAlertOverlay(
                         activeMission = uiState.activeMission,
                         countdownProgress = countdownProgress.value,
                         flashAlpha = flashAlpha,
-                        isVeteran = isVeteran,
+                        netPayout = uiState.activeMission?.netPayout ?: 0.0, 
                         distanceMiles = distanceMiles,
                         onAccept = {
                             val targetLat = uiState.activeMission?.lat ?: 0.0
@@ -526,17 +525,15 @@ fun MainDashboardContent(
                     )
                 }
 
-                val correctedPayout = uiState.lastPayoutAmount * if (isVeteran) 0.85 else 0.75
-
                 PostMissionOverlays(
                     isUploadingProof = homingState.isResolving,
                     capturedEvidence = contextItems.mapNotNull { it.payloadBytes },
                     missionState = uiState.missionPhase.name,
-                    lastPayoutAmount = correctedPayout, // 🟢 Passed corrected payout
+                    // 🟢 THE FIX: Pass the raw net payout directly.
+                    lastPayoutAmount = uiState.lastPayoutAmount, 
                     timeOnSceneMs = uiState.timeOnSceneMs,
                     totalResponseTimeMs = uiState.totalResponseTimeMs,
                     lastTxHash = uiState.lastTxHash,
-                    isVeteran = isVeteran, 
                     onReturnToPatrol = {
                         missionViewModel.onReturnToPatrol()
                     }
@@ -794,19 +791,16 @@ fun MainDashboardContent(
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
                     Button(onClick = {
-                        // 🟢 THE FIX: Use rawWalletClient instead of apiClient
                         coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.3161, -111.6601, "scene_securement", "N Dobson Rd / E Baseline Rd") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 1: Police Liaison (Tier 3)", color = Color.White) }
 
                     Button(onClick = {
-                        // 🟢 THE FIX: Use rawWalletClient instead of apiClient
                         coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.3061, -111.6451, "spill_remediation", "E Southern Ave / S Power Rd") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 2: Bio/Liquid Remediation (Tier 2)", color = Color.White) }
 
                     Button(onClick = {
-                        // 🟢 THE FIX: Use rawWalletClient instead of apiClient
                         coroutineScope.launch { rawWalletClient.triggerBackendDispatch(33.2961, -111.6601, "latch_fault", "E Guadalupe Rd / S Dobson Rd") }
                         showDevMenu = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = PanColors.ButtonSecondary), modifier = Modifier.fillMaxWidth()) { Text("LOC 3: Door Securing (Tier 1)", color = Color.White) }
