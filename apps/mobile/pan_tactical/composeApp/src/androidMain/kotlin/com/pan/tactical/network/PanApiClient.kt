@@ -12,6 +12,8 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.plugins.ServerResponseException
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
@@ -23,11 +25,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import com.google.android.gms.maps.model.LatLng
 import okhttp3.CertificatePinner
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLPeerUnverifiedException
 
 // --- DATA MODELS ---
 @Serializable
@@ -214,8 +219,23 @@ class PanApiClient : WalletNetworkClient {
                     ))
                 }
                 response.status.isSuccess()
+            } catch (e: SSLPeerUnverifiedException) {
+                Log.e(TAG, "🚨 [SECURITY FATAL] SB 1417 Chain-of-Custody broken! MITM attack detected: ${e.message}")
+                false
+            } catch (e: IOException) {
+                Log.w(TAG, "⚠️ [NETWORK DROP] Connection severed. AV may be in a dead zone. Queuing for offline sync: ${e.message}")
+                false
+            } catch (e: ClientRequestException) {
+                Log.e(TAG, "🚨 [AUTH/REJECTED] Backend actively rejected payload. HTTP ${e.response.status}")
+                false
+            } catch (e: ServerResponseException) {
+                Log.e(TAG, "🚨 [SERVER FAULT] Vanguard 50 Command Center is unreachable. HTTP ${e.response.status}")
+                false
+            } catch (e: SerializationException) {
+                Log.e(TAG, "🚨 [PAYLOAD FAULT] Data corruption. Failed to parse JSON: ${e.message}")
+                false
             } catch (e: Exception) {
-                Log.e(TAG, "Backend V2X injection failed: ${e.message}", e)
+                Log.e(TAG, "🚨 [UNKNOWN FAULT] Critical network layer failure: ${e.message}", e)
                 false
             }
         }
@@ -261,8 +281,23 @@ class PanApiClient : WalletNetworkClient {
                     }
 
                 response.status.isSuccess()
+            } catch (e: SSLPeerUnverifiedException) {
+                Log.e(TAG, "🚨 [SECURITY FATAL] SB 1417 Chain-of-Custody broken! MITM attack detected: ${e.message}")
+                false
+            } catch (e: IOException) {
+                Log.w(TAG, "⚠️ [NETWORK DROP] Connection severed. Queuing status update for offline sync: ${e.message}")
+                false
+            } catch (e: ClientRequestException) {
+                Log.e(TAG, "🚨 [AUTH/REJECTED] Backend actively rejected status update. HTTP ${e.response.status}")
+                false
+            } catch (e: ServerResponseException) {
+                Log.e(TAG, "🚨 [SERVER FAULT] Vanguard 50 Command Center is unreachable. HTTP ${e.response.status}")
+                false
+            } catch (e: SerializationException) {
+                Log.e(TAG, "🚨 [PAYLOAD FAULT] Data corruption. Failed to parse JSON: ${e.message}")
+                false
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to update agent status: ${e.message}", e)
+                Log.e(TAG, "🚨 [UNKNOWN FAULT] Critical network layer failure: ${e.message}", e)
                 false
             }
         }
@@ -410,8 +445,18 @@ class PanApiClient : WalletNetworkClient {
                     } else {
                         Log.e(TAG, "Backend rejected evidence upload. HTTP Status: ${response.status.value}")
                     }
+                } catch (e: SSLPeerUnverifiedException) {
+                    Log.e(TAG, "🚨 [SECURITY FATAL] SB 1417 Chain-of-Custody broken! MITM attack detected: ${e.message}")
+                } catch (e: IOException) {
+                    Log.w(TAG, "⚠️ [NETWORK DROP] Connection severed. Queuing evidence for offline sync: ${e.message}")
+                } catch (e: ClientRequestException) {
+                    Log.e(TAG, "🚨 [AUTH/REJECTED] Backend rejected evidence payload. HTTP ${e.response.status}")
+                } catch (e: ServerResponseException) {
+                    Log.e(TAG, "🚨 [SERVER FAULT] Vanguard 50 Command Center is unreachable. HTTP ${e.response.status}")
+                } catch (e: SerializationException) {
+                    Log.e(TAG, "🚨 [PAYLOAD FAULT] Data corruption. Failed to parse JSON: ${e.message}")
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to upload evidence bitmap: ${e.message}", e)
+                    Log.e(TAG, "🚨 [UNKNOWN FAULT] Critical network layer failure during upload: ${e.message}", e)
                 }
             }
             uploadedUrls
@@ -506,8 +551,23 @@ class PanApiClient : WalletNetworkClient {
                     )
                 }
                 response.status.isSuccess()
+            } catch (e: SSLPeerUnverifiedException) {
+                Log.e(TAG, "🚨 [SECURITY FATAL] SB 1417 Chain-of-Custody broken! MITM attack detected: ${e.message}")
+                false
+            } catch (e: IOException) {
+                Log.w(TAG, "⚠️ [NETWORK DROP] Connection severed. Queuing completion logic for offline sync: ${e.message}")
+                false
+            } catch (e: ClientRequestException) {
+                Log.e(TAG, "🚨 [AUTH/REJECTED] Backend actively rejected completion payload. HTTP ${e.response.status}")
+                false
+            } catch (e: ServerResponseException) {
+                Log.e(TAG, "🚨 [SERVER FAULT] Vanguard 50 Command Center is unreachable. HTTP ${e.response.status}")
+                false
+            } catch (e: SerializationException) {
+                Log.e(TAG, "🚨 [PAYLOAD FAULT] Data corruption. Failed to parse JSON: ${e.message}")
+                false
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to complete mission: ${e.message}", e)
+                Log.e(TAG, "🚨 [UNKNOWN FAULT] Critical network layer failure: ${e.message}", e)
                 false
             }
         }
