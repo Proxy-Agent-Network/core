@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pan.tactical.ui.toCurrency
-import kotlin.math.round
 
 @Composable
 fun PostMissionOverlays(
@@ -27,7 +26,6 @@ fun PostMissionOverlays(
     timeOnSceneMs: Long,
     totalResponseTimeMs: Long,
     lastTxHash: String,
-    isVeteran: Boolean = false, // 🟢 Defaults to false (25%) if not passed from Dashboard!
     onReturnToPatrol: () -> Unit
 ) {
     if (isUploadingProof) {
@@ -52,7 +50,7 @@ fun PostMissionOverlays(
         val sceneMins = sceneSecs / 60
         val remSceneSecs = sceneSecs % 60
 
-        val travelMs = (totalResponseTimeMs - timeOnSceneMs).coerceAtLeast(0)
+        val travelMs = (totalResponseTimeMs - timeOnSceneMs).coerceAtLeast(0L)
         val travelSecs = (travelMs / 1000).toInt()
         val travelMins = travelSecs / 60
         val remTravelSecs = travelSecs % 60
@@ -64,14 +62,6 @@ fun PostMissionOverlays(
             totalSecs < 1200 -> Color(0xFFFF9800) // 12 - 20 mins (Warning Orange)
             else -> Color(0xFFF44336) // >= 20 mins (Critical Red)
         }
-
-        // --- FEE TRANSPARENCY MATH (Reverse Calculation with strict rounding) ---
-        val feePercentage = if (isVeteran) 0.15 else 0.25
-        val feePercentText = if (isVeteran) "15%" else "25%"
-
-        // Reconstruct the gross bounty from the net payout, rounded to 2 decimal places
-        val grossBounty = round((lastPayoutAmount / (1.0 - feePercentage)) * 100) / 100.0
-        val feeAmount = round((grossBounty - lastPayoutAmount) * 100) / 100.0
 
         Box(
             modifier = Modifier.fillMaxSize().background(Color(0xEE121212)).padding(24.dp),
@@ -95,9 +85,9 @@ fun PostMissionOverlays(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "${grossBounty.toCurrency()} - ${feeAmount.toCurrency()} ($feePercentText) network fee",
+                    text = "FEE CALCULATED AND DEDUCTED AT SOURCE",
                     color = Color(0xFFAAAAAA),
-                    fontSize = 14.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
                 )
 

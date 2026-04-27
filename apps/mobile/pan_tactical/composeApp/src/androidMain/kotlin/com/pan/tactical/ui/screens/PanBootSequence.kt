@@ -48,21 +48,25 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
     var requiresTransfer by remember { mutableStateOf(false) }
     val terminalLogs = remember { mutableStateListOf<String>() }
 
-    // 🟢 Intercept the UI! If a transfer is needed, hijack the screen.
+    // 🟢 THE FIX: Render our new Mismatch Screen and wire up the Dev Reset hook
     if (requiresTransfer) {
-        DeviceTransferScreen(
-            apiClient = PanWalletClient(), // 🟢 THE FIX: Pass the Android network client into the common screen
-            onTransferComplete = {
+        HardwareMismatchScreen(
+            onRetryScan = {
+                // Not used in dev environment
+            },
+            onResetSuccess = {
                 requiresTransfer = false
                 isInitializing = false
                 hasError = false
                 terminalLogs.clear()
-                terminalLogs.add("[SYSTEM] Ready for initialization.")
+                terminalLogs.add("[SYSTEM] Previous lock cleared. Ready for initialization.")
             },
-            onCancel = {
-                requiresTransfer = false
-                isInitializing = false
-                hasError = true
+            onDevResetBinding = {
+                // Pass the function down so the screen stays KMP safe
+                val walletClient = PanWalletClient()
+                val success = walletClient.overrideHardwareLock()
+                walletClient.close()
+                success
             }
         )
         return
@@ -183,11 +187,13 @@ fun PanBootSequence(onBootComplete: () -> Unit) {
                                 withContext(Dispatchers.Main) { terminalLogs.add("[NETWORK] Establishing encrypted Vanguard uplink...") }
 
                                 val walletClient = PanWalletClient()
-                                walletClient.registerHardwareKey(
+                                val regResult = walletClient.registerHardwareKey(
                                     agentId = agentId,
                                     publicKeyB64 = publicKeyB64,
                                     playIntegrityToken = token
                                 )
+                                walletClient.close()
+                                regResult
                             }
 
                             if (result.isSuccess) {

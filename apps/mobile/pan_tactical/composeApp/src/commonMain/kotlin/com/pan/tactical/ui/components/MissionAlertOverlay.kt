@@ -27,9 +27,9 @@ private fun formatCurrency(value: Double): String {
 fun MissionAlertOverlay(
     activeMission: MissionData?,
     countdownProgress: Float,
-    flashAlpha: Float, // Retained for compatibility with the view model
-    isVeteran: Boolean = false, // 🟢 NEW: Drives the 15% vs 25% math
-    distanceMiles: Double = 0.0, // 🟢 NEW: Dynamically render distance
+    flashAlpha: Float,
+    netPayout: Double,
+    distanceMiles: Double,
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
@@ -40,13 +40,6 @@ fun MissionAlertOverlay(
     val displayFault = activeMission?.errorCode?.replace("_", " ")?.split(" ")?.joinToString(" ") {
         it.replaceFirstChar { char -> char.uppercase() }
     } ?: "Unknown Alert"
-
-    // --- FEE TRANSPARENCY MATH ---
-    val grossBounty = activeMission?.bountyUsd ?: 0.0
-    val feePercentage = if (isVeteran) 0.15 else 0.25
-    val feeAmount = grossBounty * feePercentage
-    val netPayout = grossBounty - feeAmount
-    val feePercentText = if (isVeteran) "15%" else "25%"
 
     // The mockup floats at the bottom over the map
     Box(
@@ -107,9 +100,9 @@ fun MissionAlertOverlay(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "$${formatCurrency(grossBounty)} - $${formatCurrency(feeAmount)} ($feePercentText) fee",
+                        text = "FEE CALCULATED AND DEDUCTED AT SOURCE",
                         color = Color(0xFFAAAAAA),
-                        fontSize = 14.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
