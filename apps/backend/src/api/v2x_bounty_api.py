@@ -41,6 +41,12 @@ async def process_core_distress(payload: DistressPayload, request: Request, flee
         if not await redis_client.set(dedup_key, "active", nx=True, ex=300):
             raise HTTPException(status_code=409, detail="Duplicate task already active.")
 
+        # 🛑 THE FIX: Evaluate fleet escrow balance at mission start for platform fee tier
+        # Fleet partners maintaining $25,000+ get a discounted 5% platform fee.
+        raw_escrow = await redis_client.get(f"pan:fleet:{fleet_id}:escrow_balance")
+        escrow_balance = float(raw_escrow) if raw_escrow else 0.0
+        platform_fee_pct = 0.05 if escrow_balance >= 25000.0 else 0.10
+
         task_id = f"tsk_{uuid.uuid4().hex[:12]}"
         incident_id = f"inc_{uuid.uuid4().hex[:10]}"
         
@@ -52,6 +58,7 @@ async def process_core_distress(payload: DistressPayload, request: Request, flee
             "lon": payload.longitude,
             "bounty_usd": payload.bounty_usd,
             "base_bounty_usd": payload.bounty_usd,
+            "platform_fee_pct": platform_fee_pct, # Locked in at mission genesis
             "osm_color": payload.osm_color.upper(),
             "timestamp": int(time.time()),
             "status": "pending",
@@ -86,6 +93,7 @@ async def process_core_distress(payload: DistressPayload, request: Request, flee
                 "base_bounty_usd": payload.secondary_start_bid_usd,
                 "max_bounty_usd": payload.secondary_max_bid_usd,
                 "escalation_usd_per_min": payload.secondary_escalation_usd_per_min,
+                "platform_fee_pct": platform_fee_pct, # Sentry receives same fee tier as primary
                 "osm_color": payload.osm_color.upper(),
                 "timestamp": int(time.time()),
                 "status": "pending",

@@ -9,6 +9,8 @@ import traceback
 import uuid
 import bleach
 import redis  # 🛡️ M1 FIX: Added Redis for distributed rate limiting
+import psycopg2
+import sqlite3
 from datetime import timedelta
 
 # --- 1. INJECT MONOREPO PATHS ---
@@ -46,14 +48,15 @@ try:
     # TODO (RUST TEAM): Substring checks are not secure attestation. Migrate this to 
     # verify a signed payload from the TPM rather than checking for a magic prefix.
     HW_SECURED = "0x8F9B" in MY_NODE_ID
-except Exception as e:
-    print(f" [WARN] ⚠️ Rust Enclave not found, attempting legacy fallback: {e}")
+except (ImportError, ModuleNotFoundError) as e:
+    # Safely degrade ONLY if the library physically doesn't exist
+    print(f" [SYSTEM] ⚠️ Rust Enclave module not found, attempting legacy fallback: {e}")
     try:
         from node_legacy.tpm_binding import NodeHardware
         hw_bridge = NodeHardware()
         MY_NODE_ID = hw_bridge.get_fingerprint()
         HW_SECURED = True
-    except Exception as legacy_e:
+    except (ImportError, ModuleNotFoundError) as legacy_e:
         # 🛡️ DEV BYPASS: Allow local testing without physical TPM hardware
         if os.environ.get("ENVIRONMENT") != "production":
             print(" [DEV BYPASS] ⚠️ Mocking Hardware Root of Trust for local development.")
@@ -68,6 +71,10 @@ except Exception as e:
             # 🛑 THE FIX: Fail loud and fail closed in PROD. 
             print(f" [SECURITY] 🚨 CRITICAL: Hardware Root of Trust totally failed! ({legacy_e})")
             raise RuntimeError("Cannot boot Agent Node without secure hardware attestation. Aborting.")
+except Exception as e:
+    # THE FIX: If it's a PermissionError, SegFault, etc. -> WE CRASH.
+    print(f" [SECURITY] 🚨 CRITICAL: Rust Enclave present but failed to initialize! ({e})")
+    raise RuntimeError("Hardware tampering or permission denial detected on TPM. Halting for SB 1417 compliance.")
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -992,8 +999,9 @@ if __name__ == '__main__':
             db = get_db()
             db.execute("INSERT INTO nodes (node_id, total_earned, xp, last_seen) VALUES (%s, '0', 0, %s) ON CONFLICT (node_id) DO NOTHING", (MY_NODE_ID, time.time()))
             db.commit()
-        except Exception as e:
-            pass
+        except (psycopg2.OperationalError, psycopg2.ProgrammingError, sqlite3.Error) as db_err:
+            print(f" [SECURITY] 🚨 CRITICAL: Database connection failed during Node Boot! ({db_err})")
+            raise RuntimeError("Ghost Agent Prevention: Cannot track AV telemetry without database. Halting boot sequence.")
             
     start_security_heartbeat()
     app.run(host='0.0.0.0', port=5000)

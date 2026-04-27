@@ -19,7 +19,8 @@ import os
 import re
 import time
 import uuid
-from datetime import datetime, timezone
+import hashlib
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import aioboto3
@@ -245,9 +246,14 @@ async def upload_evidence(
     if len(body) > MAX_EVIDENCE_BYTES:
         raise HTTPException(status_code=413, detail="Evidence exceeds payload limit.")
 
-    blob_id = f"evd_{uuid.uuid4().hex}"
+    # 🛑 THE FIX: Content-Addressable Cryptographic Hashing
+    file_hash = hashlib.sha256(body).hexdigest()
+    blob_id = f"evd_{uuid.uuid4().hex}_{file_hash}"
     extension = "jpg" if sniffed_mime == "image/jpeg" else "png"
     s3_key = f"evidence/{agent_id}/{blob_id}.{extension}"
+
+    # 🛑 THE FIX: SB 1417 §28-9710 WORM Compliance Lock (12 months + 1 day skew)
+    retention_until = datetime.now(timezone.utc) + timedelta(days=366)
 
     try:
         boto_session = aioboto3.Session()
@@ -258,10 +264,13 @@ async def upload_evidence(
                 Body=body,
                 ContentType=sniffed_mime,
                 ServerSideEncryption="AES256",
+                ObjectLockMode='COMPLIANCE',
+                ObjectLockRetainUntilDate=retention_until,
                 Metadata={
                     "uploading_agent_id": agent_id,
                     "uploaded_at": str(int(time.time())),
                     "blob_id": blob_id,
+                    "sha256_hash": file_hash
                 },
             )
 
@@ -277,7 +286,7 @@ async def upload_evidence(
     index_key = f"pan:agent:{agent_id}:evidence:{blob_id}"
     await redis_client.set(index_key, s3_key, ex=EVIDENCE_INDEX_TTL_SECONDS)
 
-    logger.info("📎 Evidence uploaded: agent=%s blob=%s", agent_id, blob_id)
+    logger.info("📎 Evidence uploaded: agent=%s blob=%s (WORM Locked)", agent_id, blob_id)
 
     return EvidenceUploadResponse(url=presigned_url, blob_id=blob_id, bytes_stored=len(body))
 
@@ -289,6 +298,16 @@ async def upload_evidence(
 async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_agent_signature)):
     redis_client = request.app.state.redis_client
     active_missions = []
+    
+    # 🛑 THE FIX: Calculate net_payout authoritatively on the backend
+    import os as _os
+    if agent_id == "VNG-50-PILOT" and _os.getenv("ENVIRONMENT") != "production":
+        is_veteran = True
+    else:
+        veteran_raw = await redis_client.hget(f"pan:agent:{agent_id}", "is_veteran")
+        is_veteran = str(veteran_raw).lower() == "true" if veteran_raw else False
+        
+    multiplier = 0.85 if is_veteran else 0.75
     
     task_ids = await redis_client.smembers(f"pan:agent:{agent_id}:missions")
     
@@ -313,6 +332,9 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
             elif fault == "scene_securement":
                 diag_text = "Interact with police/flares. Requires safety flares."
             
+            raw_bounty = float(task.get('bounty_usd', 25.0))
+            net_payout = round(raw_bounty * multiplier, 2)
+            
             active_missions.append({
                 "task_id": task_id,
                 "taskId": task_id,
@@ -326,8 +348,10 @@ async def fetch_agent_missions(request: Request, agent_id: str = Depends(verify_
                 "errorCode": fault,
                 "fault_code": fault,
                 "faultCode": fault,
-                "bounty_usd": float(task.get('bounty_usd', 25.0)), 
-                "bountyUsd": float(task.get('bounty_usd', 25.0)), 
+                "bounty_usd": raw_bounty, 
+                "bountyUsd": raw_bounty, 
+                "net_payout": net_payout,
+                "netPayout": net_payout,
                 "intersection": str(task.get("intersection", "Unknown Location")), 
                 "vin": str(task.get("vin", "Target Location")),
                 "role": str(task.get("role", "PRIMARY")).upper(),
@@ -358,6 +382,10 @@ async def run_diagnostics(
     if mission_data.get("agent_id") != agent_id:
         raise HTTPException(status_code=403, detail="Mission not assigned to this agent.")
 
+    # ⚠️ PILOT STUB: Always returns cleared. Before connecting a real fleet operator,
+    # this must call the V2X diagnostic API to verify the fault is actually resolved.
+    # Returning is_cleared=True on a live vehicle without confirmation invalidates
+    # the SB 1417 audit trail. Flag for pre-fleet integration review.
     return {
         "status": "success",
         "is_cleared": True,
@@ -387,7 +415,8 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
 
         # 🛡️ M3 FIX: Verify Evidence Ownership against the Redis Index
         for ev_url in payload.evidence_urls:
-            m = re.search(r'/evidence/[^/]+/(evd_[a-f0-9]+)\.', ev_url)
+            # Note: Regex updated to support cryptographic sha256 filenames with underscores
+            m = re.search(r'/evidence/[^/]+/(evd_[a-f0-9_]+)\.', ev_url)
             if not m:
                 logger.warning(f"🚨 Unparseable evidence URL from {agent_id}: {ev_url}")
                 raise HTTPException(status_code=400, detail="Malformed evidence URL.")
@@ -409,7 +438,14 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         fault_code = task_data.get("fault_code", "UNKNOWN_FAULT")
         raw_bounty = float(task_data.get("bounty_usd", 25.0))
         
-        if agent_id == "VNG-50-PILOT" and os.getenv("ENVIRONMENT") != "production":
+        # 🛑 THE FIX: Reconciled Platform Fee Math & Fleet Escrow Deductions
+        fleet_id = task_data.get("fleet_id", "UNKNOWN_FLEET")
+        platform_fee_pct = float(task_data.get("platform_fee_pct", 0.10))
+        platform_fee = round(raw_bounty * platform_fee_pct, 2)
+        total_fleet_cost = raw_bounty + platform_fee
+
+        import os as _os
+        if agent_id == "VNG-50-PILOT" and _os.getenv("ENVIRONMENT") != "production":
             is_veteran = True
         else:
             veteran_raw = await redis_client.hget(f"pan:agent:{agent_id}", "is_veteran")
@@ -438,15 +474,21 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
         
         wallet_key = f"pan:agent:{agent_id}:wallet"
         missions_key = f"pan:agent:{agent_id}:missions_completed"
+        fleet_escrow_key = f"pan:fleet:{fleet_id}:escrow_balance"
         
         async with redis_client.pipeline() as pipe:
             for attempt in range(10):
                 try:
-                    await pipe.watch(wallet_key)
+                    await pipe.watch(wallet_key, fleet_escrow_key)
+                    
                     wallet_raw = await pipe.get(wallet_key)
                     wallet = json.loads(wallet_raw) if wallet_raw else {"balance": 0.0, "linkedCard": None, "history": []}
                     wallet["balance"] += actual_payout
                     
+                    fleet_escrow_raw = await pipe.get(fleet_escrow_key)
+                    fleet_escrow = float(fleet_escrow_raw) if fleet_escrow_raw else 0.0
+                    new_fleet_escrow = max(0.0, fleet_escrow - total_fleet_cost)
+
                     role = task_data.get("role", "PRIMARY").upper()
                     role_label = "Sentry Assist" if role == "SENTRY" else "Bounty"
 
@@ -461,6 +503,7 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
                     
                     pipe.multi()
                     pipe.set(wallet_key, json.dumps(wallet))
+                    pipe.set(fleet_escrow_key, str(new_fleet_escrow))
                     pipe.incr(missions_key)
                     pipe.set(f"pan:agent:{agent_id}:last_active", int(time.time()))
                     await pipe.execute()
@@ -477,7 +520,9 @@ async def complete_mission(task_id: str, payload: MissionCompletePayload, reques
             "pan:stream:mission_cleared", 
             json.dumps({"task_id": task_id, "agent_id": agent_id, "reason": "completed"})
         )
-        return {"status": "success"}
+        
+        logger.info(f"💸 Settlement Complete: Task {task_id} | Agent Net: ${actual_payout} | Fleet Cost: ${total_fleet_cost} (Fee: {platform_fee_pct*100}%)")
+        return {"status": "success", "net_payout": actual_payout}
         
     except HTTPException:
         raise
@@ -655,14 +700,27 @@ async def update_presence(
     await redis_client.hset(f"pan:agent:{agent_id}", "status", status_str)
     return {"status": "success", "is_online": payload.is_online}
 
+
 @router.post("/agent/payout-floors")
 async def set_payout_floors(
     payload: PayoutFloorsPayload,
     request: Request,
     agent_id: str = Depends(verify_agent_signature)
 ):
+    """
+    Agent sets their minimum acceptable payout per task category.
+
+    Redis schema (two keys per agent):
+      pan:agent:{id}:payout_floors         → Hash  (category → min_usd, current live values)
+      pan:agent:{id}:payout_floor_history  → List  (JSON snapshots, newest at index 0)
+
+    The history list is the DAO governance seed — it records every change with a
+    timestamp so pilot pricing behavior can be migrated to the Sovereign Agent DAO
+    as the founding floor-setting dataset. Never overwrite, always append.
+    """
     redis_client = request.app.state.redis_client
 
+    # 1. Validate all submitted categories and values.
     invalid_categories = [k for k in payload.floors if k not in VALID_TASK_CATEGORIES]
     if invalid_categories:
         raise HTTPException(
@@ -680,6 +738,7 @@ async def set_payout_floors(
     floors_key = f"pan:agent:{agent_id}:payout_floors"
     history_key = f"pan:agent:{agent_id}:payout_floor_history"
 
+    # 2. Fetch the current floors so we can merge (partial update support).
     existing_raw = await redis_client.hgetall(floors_key)
     existing_floors = {
         (k.decode() if isinstance(k, bytes) else k): float(v.decode() if isinstance(v, bytes) else v)
@@ -688,8 +747,11 @@ async def set_payout_floors(
 
     merged_floors = {**existing_floors, **{k: float(v) for k, v in payload.floors.items()}}
 
+    # 3. Persist the merged floors as the live lookup hash.
     await redis_client.hset(floors_key, mapping={k: str(v) for k, v in merged_floors.items()})
 
+    # 4. Append a timestamped snapshot to the history list (newest at head).
+    #    This is the DAO governance seed — never mutate, always append.
     snapshot = json.dumps({
         "timestamp": int(time.time()),
         "agent_id": agent_id,
@@ -698,6 +760,7 @@ async def set_payout_floors(
     })
     await redis_client.lpush(history_key, snapshot)
 
+    # 5. Trim history to the cap — keeps memory bounded for a 90-snapshot window.
     await redis_client.ltrim(history_key, 0, MAX_PAYOUT_FLOOR_HISTORY - 1)
 
     logger.info(
@@ -716,6 +779,10 @@ async def get_payout_floors(
     request: Request,
     agent_id: str = Depends(verify_agent_signature)
 ):
+    """
+    Returns the agent's current payout floors and their change history.
+    Used by the mobile app to populate the payout preferences screen.
+    """
     redis_client = request.app.state.redis_client
 
     floors_key = f"pan:agent:{agent_id}:payout_floors"

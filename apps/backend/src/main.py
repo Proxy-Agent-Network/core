@@ -4,9 +4,10 @@ import sys
 import uuid
 import secrets
 import importlib
+import markdown # 🛡️ Added for Pilot Blocker #3 Markdown Rendering
 
 import redis.asyncio as redis
-from fastapi import FastAPI, Request, status, HTTPException, Form
+from fastapi import FastAPI, Request, status, HTTPException, Form, Path
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.join(ROOT_DIR, "apps", "backend", "src"))
 
 # Route the imports through the 'api' directory module
 from api.v2x_bounty_api import router as v2x_router
+from api.dispatch_api import router as dispatch_router
 from api.onboarding_api import router as onboarding_router
 from api.telemetry_socket import router as telemetry_router
 from api.wallet_api import router as wallet_router
@@ -145,6 +147,7 @@ app.mount(
 
 # --- Router Registration ---
 app.include_router(v2x_router, prefix="/api/v1", tags=["V2X Dispatch"])
+app.include_router(dispatch_router, prefix="/api/v1", tags=["Partner Dispatch"])
 app.include_router(onboarding_router, prefix="/api/v1", tags=["Agent Onboarding"])
 app.include_router(telemetry_router, prefix="/api/v1", tags=["Telemetry"])
 app.include_router(wallet_router, prefix="/api/v1", tags=["Wallet"])
@@ -171,6 +174,70 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An internal operational error occurred.", "correlation_id": correlation_id},
     )
+
+# 🛡️ PILOT BLOCKER FIX: Render Legal Markdown as HTML
+@app.get("/human/{filename}.html", response_class=HTMLResponse)
+async def render_human_markdown(
+    request: Request, 
+    filename: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$") # 🛡️ Updated to 'pattern' for FastAPI >= 0.106 compatibility
+):
+    """
+    [PILOT BLOCKER #3] Serves Vanguard Master Service Agreements (MSA) and other legal
+    documents from Markdown files natively as HTML for the enlistment flow.
+    
+    Security Note: Content must be from a trusted source (static .md files in the repo). 
+    Not sanitized for user-submitted Markdown.
+    """
+    md_path = os.path.join(PUBLIC_STATIC_DIR, "human", f"{filename}.md")
+    
+    if not os.path.exists(md_path):
+        logger.warning(f"Failed to locate markdown file at {md_path}")
+        raise HTTPException(status_code=404, detail="Document not found")
+        
+    try:
+        with open(md_path, "r", encoding="utf-8") as f:
+            md_text = f.read()
+            
+        # Convert Markdown to HTML
+        html_snippet = markdown.markdown(md_text, extensions=['tables', 'fenced_code'])
+        
+        # Inject the parsed Markdown into a clean, readable layout matching PAN styling
+        html_content = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Proxy Agent Network - Legal Agreement</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                    line-height: 1.6;
+                    color: #e0e0e0;
+                    background-color: #0d1117;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 2rem;
+                }}
+                h1, h2, h3 {{ color: #ffffff; border-bottom: 1px solid #30363d; padding-bottom: 0.3em; }}
+                a {{ color: #58a6ff; text-decoration: none; }}
+                a:hover {{ text-decoration: underline; }}
+                table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; }}
+                th, td {{ border: 1px solid #30363d; padding: 0.5rem; text-align: left; }}
+                th {{ background-color: #161b22; }}
+                code {{ background: #161b22; padding: 0.2rem 0.4rem; border-radius: 3px; font-family: monospace; }}
+            </style>
+        </head>
+        <body>
+            {html_snippet}
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        logger.error(f"Error rendering markdown document {filename}: {e}")
+        raise HTTPException(status_code=500, detail="Error rendering document")
 
 # --- 404 Handler ---
 # Renders a branded HTML 404 page for browser requests; returns JSON for API requests.
@@ -267,23 +334,6 @@ async def command_center_secrets():
         os.path.join(COMMAND_CENTER_DIR, "pan_client_config.js"),
         media_type="application/javascript",
     )
-
-# --- Dev tooling ---
-@app.post("/api/v1/dev/override-hardware")
-async def override_hardware(request: Request):
-    client = request.app.state.redis_client
-
-    # 🟢 THE FIX: Explicitly target the exact pubkey string! Wildcards can fail in async Redis.
-    await client.delete("pan:agent:DEV_AGENT_01:pubkey")
-
-    # Re-seed the clean agent profile
-    await client.hset("pan:agent:DEV_AGENT_01", mapping={
-        "callsign": "DEV-TESTER",
-        "status": "VERIFIED_AWAITING_HARDWARE",
-        "email": "dev@proxyagent.network",
-        "vehicle_class": "TACTICAL"
-    })
-    return {"status": "success", "message": "Old hardware lock obliterated."}
 
 if __name__ == "__main__":
     import uvicorn
